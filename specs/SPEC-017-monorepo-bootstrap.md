@@ -254,6 +254,16 @@ clean:
 | `tempo` | `grafana/tempo:latest` | 4317 (OTLP) | Tracing |
 | `loki` | `grafana/loki:latest` | 3100 | Logs |
 
+### 5.0 本地不啟用之元件
+
+下列 SPEC-014 列出的元件**本地 dev 不啟用**，避免拖慢 `make dev`；服務在本地以 in-memory / 降級模式運行，於 staging 起方啟用。任何 service 之單元測試**不得**依賴下列元件可用：
+
+| 元件 | SPEC-014 出處 | 本地替代 | 啟用環境 |
+|------|--------------|---------|---------|
+| TimescaleDB | §3.1 | PostgreSQL（同 image，不啟用 timescaledb extension）| staging+ |
+| Meilisearch | §3.1 | 市場查詢走 PG ILIKE | staging+ |
+| ClickHouse | §7.3 | 分析查詢暫無 | staging+ |
+
 ### 5.1 Healthcheck 範例
 
 每個服務必須有 healthcheck，使 `docker compose up -d` 等到 `healthy` 才返回：
