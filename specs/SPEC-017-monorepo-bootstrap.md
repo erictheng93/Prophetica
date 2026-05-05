@@ -165,6 +165,8 @@ use (
     ./services/referral-service
     ./services/notification-service
     ./packages/go-sdk
+    ./tools/mocks/sumsub
+    ./tools/mocks/payment
 )
 ```
 
@@ -372,6 +374,15 @@ func main() {
 - `app/page.tsx`：顯示 "prophetica web — bootstrapping"
 - `app/api/health/route.ts`：回 `{status: "ok"}`
 - `next.config.mjs`：含 `@cloudflare/next-on-pages` 設定（呼應 ADR-0004）
+
+### 6.3 admin / liff app stub 條件
+
+| App | 最小 stub 要素 |
+|-----|---------------|
+| `apps/admin/` | `app/page.tsx` 顯示登入佔位；`app/api/health/route.ts`；middleware 設置「僅內網 / mTLS placeholder」註記；不部署至公開 Cloudflare Pages |
+| `apps/liff/` | `app/page.tsx` 載入 LIFF SDK 並 `liff.init({ liffId: process.env.NEXT_PUBLIC_LIFF_ID })`；`app/api/health/route.ts`；`NEXT_PUBLIC_LIFF_ID` 缺值時 fail-fast |
+
+三個 Next.js app（web / admin / liff）共用 `packages/ts-sdk` 與 Kumo 元件，由 Turborepo `^build` 依賴拓撲連動。
 
 ---
 
