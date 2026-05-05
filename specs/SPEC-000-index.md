@@ -1,7 +1,7 @@
 # SPEC-000 — 規格總索引（Master Index）
 
 > **prophetica** — 趣味預測娛樂遊戲平台
-> 文件版本：v0.2.1 · 最後更新：2026-05-05 · 維護人：Tech Lead
+> 文件版本：v0.2.2 · 最後更新：2026-05-05 · 維護人：Tech Lead
 
 ---
 
@@ -39,7 +39,7 @@
 | [SPEC-004](./SPEC-004-settlement-dispute.md) | 結算與爭議處理 | Oracle、結算狀態機、申訴窗口 | 🟢 v0.1 |
 | [SPEC-015](./SPEC-015-market-lifecycle.md) | 市場生命週期管理 | 市場創建、上架審查、內容紅線、開盤排程、強制下架 | 🟢 v0.1 |
 | [SPEC-016](./SPEC-016-payment-gateway.md) | 支付通路整合 | 通路選型、Webhook、Chargeback、跨幣別、PCI 範圍 | 🟢 v0.1 |
-| [SPEC-017](./SPEC-017-monorepo-bootstrap.md) | Monorepo Bootstrap & Local Dev | Repo 骨架（Cargo workspace）、Docker Compose、Makefile、CI bootstrap | 🟢 v0.2.1（Rust） |
+| [SPEC-017](./SPEC-017-monorepo-bootstrap.md) | Monorepo Bootstrap & Local Dev | Repo 骨架（Cargo workspace）、Docker Compose、Makefile、CI bootstrap、PR #1 acceptance checklist | 🟢 v0.2.2（Rust） |
 
 ### P1 — 必須在公開 Beta 之前完成
 
@@ -87,6 +87,7 @@
 
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
+| 2026-05-05 | v0.2.2 | Tech Lead | SPEC-017 §11 擴充：拆 §11.1（整體 Definition of Done）+ §11.2（Codex PR #1 acceptance checklist），含 10 個子節（repo 根結構 / Rust workspace / Protobuf / Frontend / docker-compose / env / CI / tools / 文件 / 規模預期）約 50 項勾選項，明列 PR diff 規模 5-9k 行、commit 8-15、CI cold cache < 25 min 與 reject 紅線。SPEC-017 v0.2.1 → v0.2.2。 |
 | 2026-05-05 | v0.2.1 | Tech Lead | Rust 工具鏈 6 項硬性決議拍板（R-1..R-6）：(1) **R-1 TLS**：rustls 為預設（sqlx / fred / reqwest / tonic / opentelemetry 全 rustls-tls），rdkafka 例外沿用 librdkafka OpenSSL；(2) **R-2 Edition**：採 Rust edition **2024** + MSRV **1.85**；(3) **R-3 Runtime**：撮合引擎 current_thread + per-market `LocalSet` + `core_affinity` thread pinning；其餘 11 個 service 走 multi-thread runtime；(4) **R-4 Mutation testing**：cargo-mutants 限縮 `crates/sdk/ledger` + `services/{wallet-ledger-service,matching-engine}` 核心邏輯，nightly CI cron，caught rate ≥ 75%；(5) **R-5 Unsafe**：workspace 全域 `#![forbid(unsafe_code)]`，例外須 ADR + 4-eye review，CI 跑 cargo geiger；(6) **R-6 sqlx offline**：`.sqlx/` commit 進 git，CI 跑 `cargo sqlx prepare --check`。落入 SPEC-014 §3.1 / SPEC-017 §3.3 / §4.2 / §6.1.1 / §8 / §8.2，及 .gitignore。SPEC-014 v0.2.0 → v0.2.1，SPEC-017 v0.2.0 → v0.2.1。 |
 | 2026-05-05 | v0.2.0 | Tech Lead | **後端語言由 Go 切換至 Rust（重大）**：(1) SPEC-014 v0.2.0 改寫 §3.1 後端技術棧（Rust 1.78+ / axum / tonic / sqlx / tokio / sccache / cargo-nextest / rdkafka / fred / tracing / dotenvy / ulid），§4 service 表全標 Rust，§5 monorepo 結構新增 `crates/sdk/` + `crates/proto/`、移除 `packages/go-sdk/`，§6 / §8 / §9 / §10 / §12 / §14 同步；§14 OQ #5「撮合切 Rust」隨之 Resolved；(2) SPEC-017 v0.2.0：§2 file tree、§3 toolchain（Rust 1.78+ / clippy / rustfmt / sqlx-cli + sccache + cargo-nextest + cargo-chef + cargo-deny）、§4.2 Cargo workspace 取代 go.work、§4.4 prost/tonic 取代 protoc-gen-go、§4.5 Makefile cargo 命令、§6.1 Rust axum stub 範例、§8 CI 改 dtolnay/rust-toolchain + sccache + Swatinem/rust-cache、§11 / §12 同步；(3) SPEC-003 v0.2.0：§1 in-process memory 改 Rust、§4.3 `OrderID = [u8; 16]` Rust canonical、§5 OrderBook 改 BTreeMap + VecDeque、§6 開頭加 pseudocode 註記、§19 OQ #3 落地動作對齊 ulid crate；(4) SPEC-002 v0.1.3：§3.2 內部型別 int64 → i64；(5) SPEC-013 / 016 / README / ADR-0004 / .gitignore / packages/proto/README + common.proto / CLAUDE.md 同步；(6) packages/proto/v1/common.proto 之 `OrderID` 由 uint64 改為 `bytes`（16 bytes ULID）對齊 SPEC-003 §19。 |
 | 2026-05-05 | v0.1.7 | Tech Lead | Codex 動工前 OQ 收尾 round 2：(1) SPEC-017 §12 OQ #3 mock servers 同 monorepo Resolved（含 production binary 隔離 build tag）；(2) SPEC-002 §12 OQ #2 `ledger_entries` Phase 1 不分區，明列分區觸發門檻與 monthly partition 為未來方案；(3) SPEC-003 §19 OQ #3 訂單 ID 採 ULID（保留 per-market `seq uint64` 為撮合 FIFO 排序），§4.3 加 TODO 標記 PR #1 改 [16]byte；(4) SPEC-016 §7 Phase 2 多幣別觸發條件由「Q-3 拍板」改為業務驅動（Op Co. 國際版本 / FX 對沖），明示**目前無啟用計畫**；SPEC-002 §3.1 國際化說明同步收斂。 |

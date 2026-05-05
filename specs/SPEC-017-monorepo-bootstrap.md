@@ -1,10 +1,11 @@
 # SPEC-017 — Monorepo Bootstrap & Local Dev Environment
 
 > 優先級：**P0（必須在第一行業務 code 之前完成）**
-> 版本：v0.2.1 · 最後更新：2026-05-05
+> 版本：v0.2.2 · 最後更新：2026-05-05
 > 依賴：SPEC-014（架構定義）
 > 被依賴：所有 SPEC（實作載體）
 
+> **v0.2.2 變更**：§11 拆 §11.1（整體 DoD）+ §11.2（Codex PR #1 acceptance checklist，10 個子節 ~50 項，含規模預期與 reject 紅線）。
 > **v0.2.1 變更**：新增 §3.3 Rust 工具鏈硬性決議 R-1..R-6（rustls 預設 + rdkafka OpenSSL 例外、edition 2024 / 1.85 MSRV、撮合 current_thread + thread pinning、cargo-mutants nightly 限縮 ledger+撮合、`#![forbid(unsafe_code)]` + cargo geiger gate、`.sqlx/` commit + sqlx prepare --check）；§4.2 Cargo.toml 加 `[workspace.lints]`、rustls feature、core_affinity / async-trait 依賴；§6.1.1 撮合引擎 main 範例；§8 CI 加 sqlx prepare check + cargo geiger + rdkafka 系統依賴；§8.2 nightly mutation testing workflow。
 > **v0.2.0 變更（重大）**：跟隨 SPEC-014 v0.2.0 後端切 Rust，本 SPEC 大幅改寫：(1) §2 service 全標 Rust crate；新增 `crates/sdk/`、`crates/proto/`，移除 `packages/go-sdk/`；mocks 改 Rust；(2) §3 toolchain：Go / sqlc / golangci-lint / go-migrate / gofumpt 全替換為 Rust 1.78+ / clippy / rustfmt / sqlx / sqlx-cli + 新增 sccache / cargo-nextest / cargo-chef / cargo-deny；(3) §4.2 `go.work` → 根 `Cargo.toml` workspace；(4) §4.4 buf.gen.yaml Go plugin → prost/tonic Rust plugin；(5) §4.5 Makefile go 命令 → cargo；(6) §6.1 Rust axum 範例取代原 Echo 範例；(7) §8 CI 改 dtolnay/rust-toolchain action + sccache cache；(8) §11 acceptance / §12 OQ 內文同步。
 
@@ -780,6 +781,8 @@ make test
 
 ## 11. 驗收條件
 
+### 11.1 SPEC-017 整體驗收（Definition of Done）
+
 - [ ] §2 file tree 全部建立且通過 `make doctor`
 - [ ] `make bootstrap` 在乾淨環境（無 cache）完成 < 10 分鐘
 - [ ] `make dev` 之後所有 docker-compose 服務 healthy < 60 秒
@@ -787,6 +790,106 @@ make test
 - [ ] CI `.github/workflows/ci.yml` 在第一個 PR 通過 lint / test / sentinel-scan 三 gate
 - [ ] 任一新進工程師依 §9 流程能在 30 分鐘內首次 bootstrap 成功
 - [ ] `buf generate` 為每個 .proto 產出 Rust（`crates/proto/src/gen/`）+ TS（`packages/proto/gen/ts/`）stub 並 commit 進 git
+
+### 11.2 Codex PR #1 — Bootstrap PR 完整 acceptance checklist
+
+> 本節為 Codex 第一個 PR（對應 SPEC-017 全篇）的驗收明細，PR description 須引用「SPEC-017 §11.2」並逐項對應檔案。任一項缺失即 reject。預估 PR diff 規模 80-130 個新檔。
+
+#### 11.2.1 Repo 根結構
+
+- [ ] `Cargo.toml`（workspace root）含 §4.2 之 `[workspace]` / `[workspace.package]` / `[workspace.lints]` / `[workspace.dependencies]` / `[profile.release]` 全部段落
+- [ ] `Cargo.lock` commit
+- [ ] `rust-toolchain.toml` 內容對齊 §4.2.1（channel = "1.85"）
+- [ ] `.cargo/config.toml` 對齊 §4.2.2（sccache wrapper + lld linker）
+- [ ] `pnpm-workspace.yaml` 列 `apps/*`、`packages/ts-sdk`、`packages/proto`
+- [ ] `turbo.json` 對齊 §4.3
+- [ ] `Makefile` 之 9 個 target（`doctor / bootstrap / dev / down / test / lint / fmt / proto / migrate / clean`）行為對齊 §4.5
+- [ ] `buf.yaml` / `buf.gen.yaml` 對齊 §4.4，產出 Rust（prost + tonic）與 TS（bufbuild/es）兩語言 stub
+- [ ] `.gitignore` 包含 Rust / Cargo / Node 區塊；**不**排除 `.sqlx/` 與 `crates/proto/src/gen/` 與 `packages/proto/gen/ts/`
+- [ ] `.editorconfig` / `.nvmrc` / `.npmrc`（含 `@cloudflare:registry`）就緒
+- [ ] `README.md` 後端技術棧 + 倉庫結構與本 SPEC 一致
+
+#### 11.2.2 Rust workspace（services + crates）
+
+- [ ] **12 個 service crate** 全建立（§4 列表），每個含 `Cargo.toml` + `src/main.rs` + `src/lib.rs`（若需）
+- [ ] **每個 service stub 含 §6 五要素**：tokio main + signal handling、`/healthz/live`、`/healthz/ready`、`/metrics`、JSON log
+- [ ] `services/api-gateway/src/main.rs` 對齊 §6.1 範例
+- [ ] **`services/matching-engine/src/main.rs` 對齊 §6.1.1 範例**（current_thread + LocalSet + core_affinity，**不可**用 `#[tokio::main]`）
+- [ ] `crates/sdk/` 至少含 `observability`（tracing-subscriber init）、`errors`（thiserror 共用 ErrorEnvelope）、`config`（dotenvy + env 解析）三個模組
+- [ ] `crates/proto/` 為合法 Cargo crate，`src/lib.rs` 以 `include!("gen/...")` expose 所有 .proto module
+- [ ] `tools/mocks/sumsub` 與 `tools/mocks/payment` 為 binary crate，僅在 docker-compose mock-* service 中使用，**不**被任一 `services/*` 之 Cargo.toml 依賴
+- [ ] workspace 全域編譯通過 `cargo build --workspace --locked`
+- [ ] 全綠 `cargo clippy --workspace --all-targets --locked -- -D warnings`
+- [ ] 全綠 `cargo fmt --all -- --check`
+- [ ] 全綠 `cargo nextest run --workspace --locked`（即使是 hello-world 測試也算）
+- [ ] 全綠 `cargo deny check`（提交 `deny.toml` 含 advisories / licenses / bans 三段）
+
+#### 11.2.3 Protobuf schema（`packages/proto/v1/`）
+
+- [ ] 6 份 .proto 已存在：`errors.proto / common.proto / ledger.proto / engine.proto / market.proto / kyc.proto / payment.proto`（呼應 SPEC-000 v0.1.5 changelog）
+- [ ] `buf lint` / `buf breaking --against '.git#branch=main'` 全綠
+- [ ] `buf generate` 產出寫入 `crates/proto/src/gen/` 與 `packages/proto/gen/ts/`，皆 commit
+- [ ] `OrderID` 為 `bytes`（16 bytes ULID），對齊 SPEC-003 §19 OQ #3 與 v0.2.0 commit 之 common.proto
+
+#### 11.2.4 Frontend apps
+
+- [ ] `apps/web/` 為 Next.js 15 + React 19 + App Router + `@cloudflare/kumo` peer 安裝
+- [ ] `apps/web/app/page.tsx` 顯示 "prophetica web — bootstrapping"
+- [ ] `apps/web/app/api/health/route.ts` 回 `{status: "ok"}`
+- [ ] `apps/web/next.config.mjs` 含 `@cloudflare/next-on-pages` 設定（呼應 ADR-0004）
+- [ ] `apps/admin/` 與 `apps/liff/` 對齊 §6.3 stub 條件
+- [ ] `pnpm turbo run lint` 全綠（eslint + prettier）
+- [ ] `pnpm turbo run test` 全綠
+
+#### 11.2.5 Local dev stack（`infra/docker-compose.local.yaml`）
+
+- [ ] §5 所列 11 個服務（postgres / redis / kafka / vault / mailhog / mock-sumsub / mock-payment / prometheus / grafana / tempo / loki）全部就緒並有 healthcheck
+- [ ] §5.0 所列 timescaledb / meilisearch / clickhouse 不啟動
+- [ ] grafana 由 host port 3001 暴露（避撞 web 之 3000）
+- [ ] `make dev` 後所有 service `healthy` < 60 秒（CI 跑一次端到端測試驗證）
+- [ ] `tools/scripts/seed.sh` 載入 §5.2 之 3 個帳號（`alice/bob/dmm-001`，KYC tier 字面對齊 SPEC-005 §2.1 canonical enum `TIER_*`）+ 1 個測試市場 `mkt_dev_demo`
+
+#### 11.2.6 環境變數與 secrets
+
+- [ ] repo 根 `.env.example` 對齊 §7.1 所有 key
+- [ ] `make bootstrap` 首次執行偵測 `.env` 不存在則 copy 自 `.env.example`
+- [ ] **無**任何 service 之 Rust code 出現 `.unwrap_or("dev-...")` / hardcoded fallback secret（CI grep gate）
+- [ ] `.env` 已加入 `.gitignore`
+- [ ] `KUMO_NPM_TOKEN` 缺值時 `make doctor` fail-fast
+
+#### 11.2.7 CI pipelines
+
+- [ ] `.github/workflows/ci.yml` 對齊 §8 全部 step（rust-toolchain 1.85、Swatinem/rust-cache、sccache、rdkafka 系統依賴、buf、sqlx prepare check、cargo deny、cargo geiger、sentinel-scan）
+- [ ] `.github/workflows/release.yml` 為 §8 所述 placeholder（內容為 `echo "release pipeline owned by SPEC-013"`）
+- [ ] `.github/workflows/nightly-mutants.yml` 對齊 §8.2，限縮 ledger + 撮合三 crate
+- [ ] `.github/workflows/macos-nightly.yml` 對齊 §12 OQ #5 解法（macos-latest 跑 unit test + `make doctor`，cron 排程）
+- [ ] CI **首次**執行通過 §8.1 所有必過 gate
+- [ ] CI artifact：`mutants.json` / `geiger.json` 上傳保存 30 天
+
+#### 11.2.8 Tools / scripts
+
+- [ ] `tools/scripts/check-versions.sh`（被 `make doctor` 呼叫）檢查 Rust / Node / pnpm / Docker / buf / sqlx-cli / sccache 版本
+- [ ] `tools/scripts/migrate.sh up` 串接所有 service 之 `migrations/` 目錄（sqlx-cli）
+- [ ] `tools/scripts/seed.sh` 含 §5.2 種子資料
+- [ ] `tools/scripts/check-mutants.sh` / `tools/scripts/check-geiger.sh` 解析 JSON 報告並依門檻 exit code
+
+#### 11.2.9 文件與 ADR
+
+- [ ] PR description 引用 **SPEC-017 §11.2** 並逐項勾選對應 commit
+- [ ] 若 PR 過程衍生新決策（例如 axum middleware 順序、sqlx pool size 預設），開新 ADR 落入 `docs/architecture/decisions/`
+- [ ] 不修改任何業務 SPEC（SPEC-001 ~ 016）；若發現 SPEC 與本 PR 衝突，先開獨立 SPEC patch PR 對齊後再續本 PR
+
+#### 11.2.10 規模與時間預期（Tech Lead review hint）
+
+> 給 Codex 與 review 者的對齊基準。實際數字若大幅偏離，PR 應拆小或延後。
+
+| 指標 | 預期 |
+|------|------|
+| PR diff（不含 gen/ 與 lock 檔） | 5,000 – 9,000 行 |
+| Commit 數 | 8 – 15（建議按 §11.2.1 ~ §11.2.8 分階段） |
+| CI 首次 cold cache 時間 | < 25 分鐘（暖快取後 < 8 分鐘） |
+| review 預估輪次 | 2 – 3 輪（Tech Lead + 4-eye for ledger / engine stub）|
+| Reject 紅線 | 任一 §11.2.1 ~ §11.2.7 缺項；任何 unsafe block；任何 hardcoded secret；任何業務邏輯 |
 
 ---
 
