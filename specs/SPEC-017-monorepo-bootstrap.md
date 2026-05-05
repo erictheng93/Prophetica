@@ -297,6 +297,13 @@ postgres:
     interval: 3s
     timeout: 3s
     retries: 10
+
+grafana:
+  image: grafana/grafana:latest
+  ports:
+    - "3001:3000"   # host:container — 避撞 apps/web Next.js dev server (3000)
+  environment:
+    GF_AUTH_ANONYMOUS_ENABLED: "true"
 ```
 
 ### 5.2 種子資料（Seed）
@@ -474,6 +481,8 @@ jobs:
                --include='*.go' services/ packages/ ; then
             echo "::error::ADR-0001 §6 forbidden words detected"; exit 1; fi
 ```
+
+> `release.yml`（tag 觸發、build & push image、產 SBOM、ArgoCD sync）之完整內容定義於 [SPEC-013 § 3](./SPEC-013-cicd-release.md)；本 SPEC 不重複規範。Bootstrap 階段僅需在 `.github/workflows/release.yml` 放置一個 `on: push: tags: ['v*']` 的 placeholder workflow（內容為 `echo "release pipeline owned by SPEC-013"`），讓 tag push 不會 404。
 
 ### 8.1 必過 gate
 
