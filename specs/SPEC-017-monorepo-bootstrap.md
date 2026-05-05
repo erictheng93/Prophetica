@@ -1,10 +1,11 @@
 # SPEC-017 — Monorepo Bootstrap & Local Dev Environment
 
 > 優先級：**P0（必須在第一行業務 code 之前完成）**
-> 版本：v0.2.2 · 最後更新：2026-05-05
+> 版本：v0.2.3 · 最後更新：2026-05-05
 > 依賴：SPEC-014（架構定義）
 > 被依賴：所有 SPEC（實作載體）
 
+> **v0.2.3 erratum（2026-05-05）**：修正 §3 toolchain 表與 §3.2 對 `@cloudflare/kumo` 套件來源的錯誤假設 —— Kumo 發佈於**公開 npm registry**，非 Cloudflare 私有 registry。連帶移除 `KUMO_NPM_TOKEN` 從 `.npmrc` / `make doctor` / CI secret / Vault 的依賴。發現過程：實作 `apps/web` 期間直接讀取 `github.com/cloudflare/kumo` README，並由 `pnpm add @cloudflare/kumo` 從公開 npm registry 解析成功（`v2.0.3`）雙重驗證。落地：`.npmrc` 移除 `@cloudflare:registry` 與 `_authToken` 兩行；`turbo.json` 移除 `KUMO_NPM_TOKEN` 從 `env` 列表；本 SPEC §3 第 114 列 `@cloudflare/kumo` 鎖定方式重寫；§3.2 整節重寫。
 > **v0.2.2 變更**：§11 拆 §11.1（整體 DoD）+ §11.2（Codex PR #1 acceptance checklist，10 個子節 ~50 項，含規模預期與 reject 紅線）。
 > **v0.2.1 變更**：新增 §3.3 Rust 工具鏈硬性決議 R-1..R-6（rustls 預設 + rdkafka OpenSSL 例外、edition 2024 / 1.85 MSRV、撮合 current_thread + thread pinning、cargo-mutants nightly 限縮 ledger+撮合、`#![forbid(unsafe_code)]` + cargo geiger gate、`.sqlx/` commit + sqlx prepare --check）；§4.2 Cargo.toml 加 `[workspace.lints]`、rustls feature、core_affinity / async-trait 依賴；§6.1.1 撮合引擎 main 範例；§8 CI 加 sqlx prepare check + cargo geiger + rdkafka 系統依賴；§8.2 nightly mutation testing workflow。
 > **v0.2.0 變更（重大）**：跟隨 SPEC-014 v0.2.0 後端切 Rust，本 SPEC 大幅改寫：(1) §2 service 全標 Rust crate；新增 `crates/sdk/`、`crates/proto/`，移除 `packages/go-sdk/`；mocks 改 Rust；(2) §3 toolchain：Go / sqlc / golangci-lint / go-migrate / gofumpt 全替換為 Rust 1.78+ / clippy / rustfmt / sqlx / sqlx-cli + 新增 sccache / cargo-nextest / cargo-chef / cargo-deny；(3) §4.2 `go.work` → 根 `Cargo.toml` workspace；(4) §4.4 buf.gen.yaml Go plugin → prost/tonic Rust plugin；(5) §4.5 Makefile go 命令 → cargo；(6) §6.1 Rust axum 範例取代原 Echo 範例；(7) §8 CI 改 dtolnay/rust-toolchain action + sccache cache；(8) §11 acceptance / §12 OQ 內文同步。
@@ -111,7 +112,7 @@ prophetica/
 | pnpm | 9.x | `package.json#packageManager` |
 | Next.js | 15.x | `apps/*/package.json` peer 鎖 |
 | React / React-DOM | 19.x | 同上 |
-| `@cloudflare/kumo` | latest stable | 同上；私有 registry 須在 `.npmrc` 指向 Cloudflare（見 §3.2） |
+| `@cloudflare/kumo` | latest stable | `apps/*/package.json` peer 鎖；公開 npm registry，無需特殊 `.npmrc` 配置（見 §3.2 v0.2.3 erratum）|
 | `@phosphor-icons/react` | 與 Kumo peer 對齊 | 同上 |
 | Rust | **1.85+ stable**（edition 2024） | `rust-toolchain.toml`（`channel = "1.85"`，鎖 components: rustfmt / clippy / rust-analyzer）|
 | Rust nightly（CI mutation testing only） | latest nightly | `rust-toolchain-mutants.toml`（CI nightly job 自行 install via `rustup toolchain install nightly`） |
@@ -125,16 +126,25 @@ prophetica/
 | cargo-deny | 0.14+ | CI 跑 `cargo deny check`（許可、advisory、bans）|
 | make | 任意（Linux）/ Make for Windows / WSL2 | 文件提示 |
 
-### 3.2 `@cloudflare/kumo` registry 配置
+### 3.2 `@cloudflare/kumo` 安裝（v0.2.3 重寫）
 
-Kumo 由 Cloudflare 私有 registry 發佈（非 npmjs.com），repo 根目錄 `.npmrc` 須包含：
+> **v0.2.3 erratum（2026-05-05）**：先前版本錯誤假設 Kumo 由 Cloudflare 私有 registry 發佈，並要求 `KUMO_NPM_TOKEN`。實際上 `@cloudflare/kumo` 經 `github.com/cloudflare/kumo` README 與 `pnpm add` 雙重驗證，**發佈於公開 npm registry**（與 `@cloudflare/workers-types` 等其他 `@cloudflare/*` 套件一致）。本節重寫以反映正確真相。
 
+`@cloudflare/kumo` 為 Cloudflare 維護的 React 元件庫（建立於 Base UI），發佈於公開 npm registry，**不需要**特殊 `.npmrc` registry 配置或 auth token。安裝指令與一般 npm 套件無異：
+
+```bash
+pnpm add @cloudflare/kumo @phosphor-icons/react react react-dom
 ```
-@cloudflare:registry=https://npm.cloudflare.com
-//npm.cloudflare.com/:_authToken=${KUMO_NPM_TOKEN}
-```
 
-`KUMO_NPM_TOKEN` 由 Vault 注入；CI 從 GitHub Actions secret `KUMO_NPM_TOKEN` 取得。本機開發者首次 `make bootstrap` 時 `make doctor` 須檢查此環境變數存在。
+落地動作：
+
+- repo 根 `.npmrc` **不**設 `@cloudflare:registry`、**不**注入 `KUMO_NPM_TOKEN`
+- `make doctor` **不**檢查 Kumo 相關環境變數
+- CI 不需 `KUMO_NPM_TOKEN` GitHub Actions secret
+- Vault 不需託管 Kumo token
+- `turbo.json` 之 `tasks.build.env` 不含 `KUMO_NPM_TOKEN`
+
+如未來 Cloudflare 將 Kumo 改回私有 registry，本節需再開 erratum 並更新 `.npmrc` / `make doctor` / CI / Vault / turbo.json 一致性鏈條。
 
 ### 3.3 Rust 工具鏈硬性決議（v0.2.0）
 
@@ -855,7 +865,7 @@ make test
 - [ ] `make bootstrap` 首次執行偵測 `.env` 不存在則 copy 自 `.env.example`
 - [ ] **無**任何 service 之 Rust code 出現 `.unwrap_or("dev-...")` / hardcoded fallback secret（CI grep gate）
 - [ ] `.env` 已加入 `.gitignore`
-- [ ] `KUMO_NPM_TOKEN` 缺值時 `make doctor` fail-fast
+- [ ] ~~`KUMO_NPM_TOKEN` 缺值時 `make doctor` fail-fast~~ —— **作廢於 v0.2.3 erratum**（§3.2），Kumo 走公開 npm registry，無 token 需求
 
 #### 11.2.7 CI pipelines
 

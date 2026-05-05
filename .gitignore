@@ -51,6 +51,7 @@ out/
 .pnpm-store/
 .swc/
 next-env.d.ts
+*.tsbuildinfo
 dist/
 .DS_Store
 *.log
