@@ -506,8 +506,106 @@ ws://api.../ws/me/orders
 | 市場狀態 | `market.status == OPEN` | MARKET_NOT_OPEN |
 | 玩家狀態 | `user.status == ACTIVE` & `!self_excluded` | USER_RESTRICTED |
 | 反作弊評分 | `risk_score < 80` | RISK_REJECTED |
+| **平台帳戶禁區** | `order.user_id ∉ PLATFORM_SYSTEM_USER_IDS`（呼應 ADR-0001 §6）| PLATFORM_USER_NOT_ALLOWED |
 
 風控前置在獨立 service 完成，撮合引擎假設輸入已通過。
+
+### 12.1 PLATFORM_SYSTEM_USER_IDS Sentinel Set（Compliance 紅線）
+
+> **強制紅線**：呼應 [ADR-0001 §6](../docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md)。引擎 `ingressCh` 必須對 incoming order 執行 `order.user_id != PLATFORM_SYSTEM_USER_IDS` 檢查；命中則直接 reject 並寫入 SIEM。任何將平台 / 系統 user_id 加入下單能力之 PR **必須 CI fail + reject**。
+
+#### 12.1.1 常數定義（Go）
+
+```go
+// services/matching-engine/internal/engine/sentinel.go
+package engine
+
+// PLATFORM_SYSTEM_USER_IDS 列舉所有「禁止下單」之系統 user_id。
+// 任何 incoming order 的 user_id 命中本集合則直接拒絕。
+//
+// 紅線理由：
+//   - 平台不得在自家訂單簿掛單（SPEC-001 §1.1 ② No House Position）
+//   - ADR-0001 §6 列為靜態掃描禁字
+//
+// 新增 user_id 至本集合需要：
+//   1. ADR-XXXX 簽核
+//   2. Compliance Officer 4-eye review
+//   3. 與本檔案的 git blame 對照可追溯
+var PLATFORM_SYSTEM_USER_IDS = map[uint64]string{
+    1: "system.root",                  // bootstrap / migration only, never used at runtime
+    2: "system.compliance",            // 凍結 / 解凍帳戶之 audit shim, never trades
+    3: "system.settlement_oracle",     // Oracle 提交 shim, never trades
+    4: "system.platform_announcement", // 公告錢包（ADR-0001 §6 唯一例外，預設不啟用）
+    5: "system.cs_compensation",       // 客服補償帳戶，呼應 SPEC-002 §8
+    6: "system.suspense",              // 對帳暫掛，呼應 SPEC-002 §4.2
+    7: "system.affiliate_pool",        // 推薦獎勵發放暫存池，呼應 SPEC-011
+    8: "system.dmm_rebate_pool",       // DMM 補貼暫存池，呼應 SPEC-009
+}
+
+// IsPlatformSystemUser returns true if the given user_id is reserved as a
+// platform sentinel and must NEVER appear as an order placer.
+func IsPlatformSystemUser(uid uint64) bool {
+    _, ok := PLATFORM_SYSTEM_USER_IDS[uid]
+    return ok
+}
+```
+
+#### 12.1.2 引擎入口檢查（強制）
+
+```go
+// services/matching-engine/internal/engine/ingress.go
+func (s *MarketShard) handleCommand(c command) {
+    if order, ok := c.(*PlaceOrderCmd); ok {
+        if engine.IsPlatformSystemUser(order.UserID) {
+            // 立即 reject，並產生 critical 等級 audit log
+            s.publishEvent(OrderRejected{
+                OrderID: order.ID,
+                Reason:  ReasonPlatformUserNotAllowed,
+            })
+            metrics.PlatformUserOrderBlocked.Inc()
+            audit.Critical("platform sentinel user attempted order", map[string]any{
+                "user_id":   order.UserID,
+                "order_id":  order.ID,
+                "market_id": order.MarketID,
+            })
+            return
+        }
+        // ... 進入正常撮合
+    }
+}
+```
+
+#### 12.1.3 CI 靜態掃描
+
+呼應 ADR-0001 §6，CI pipeline 必含以下檢查（在 SPEC-013 §3.2 列為阻斷 gate）：
+
+```bash
+# .github/workflows/sentinel-scan.yml （示意）
+# 1. 禁字掃描（ADR-0001 §6）
+rg -n -e 'auto_quote|market_balancer|house_book|probability_symmetry|auto_hedge' \
+   --type go services/ packages/ \
+   && echo "ADR-0001 §6 forbidden words detected" && exit 1
+
+# 2. PLATFORM_SYSTEM_USER_IDS 集合不得在 ingressCh 路徑外被旁路
+rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type go services/matching-engine/ \
+   | grep -vE '(sentinel\.go|ingress\.go|sentinel_test\.go)' \
+   && echo "PLATFORM_SYSTEM_USER_IDS referenced outside whitelisted paths" && exit 1
+
+# 3. DMM session 檢查：DMM order 進入 engine 前必須轉換 user_id 為 DMM 法人帳戶
+#    （SPEC-009 §3.4），不可使用 system user_id
+rg -n -e 'PLATFORM_SYSTEM_USER_IDS\[.*\]' --type go services/dmm-gateway/ \
+   && echo "DMM gateway must not reference platform sentinel users" && exit 1
+```
+
+#### 12.1.4 例外情況
+
+唯一可能在訂單簿掛單的「系統相關」是 ADR-0001 §6 之 `system.platform_announcement`（user_id = 4）「冷啟動補貼」極端情境。本路徑：
+
+- **預設 `disabled` feature flag**
+- 啟用需 Compliance Officer + Tech Lead + CTO 三方簽核
+- 啟用後該帳戶之 order 在訂單簿 UI 強制標記 `[Platform Bootstrap]`（呼應 SPEC-009 §5）
+- 月度監管報表強制揭露
+- **強烈建議永不啟用**
 
 ## 13. 自我成交防止（Self-Trade Prevention, STP）
 
@@ -678,8 +776,10 @@ Machine 2: markets ['m51', ..., 'm100']
 
 ## 19. Open Questions
 
+> 跨檔決策已收斂至 [SPEC-000 §5](./SPEC-000-index.md) 中央追蹤表。本節僅保留 SPEC-003 自身範圍內議題。
+
 1. WAL 是否需要 mmap 加速？或直接 buffered write 已足夠？
 2. Snapshot 序列化格式：protobuf vs MessagePack vs custom binary？
 3. 訂單 ID 生成策略：snowflake vs ULID vs DB sequence？
 4. 是否支援 stop-limit / trailing-stop 等高階訂單類型（首發版不需要）？
-5. DMM API 是否走獨立 binary protocol（FIX 協議）還是共用 REST？
+5. ~~DMM API 是否走獨立 binary protocol（FIX 協議）還是共用 REST？~~（→ SPEC-000 Q-8，已 Resolved by SPEC-009 §3.4：自建 binary protobuf over TLS）
