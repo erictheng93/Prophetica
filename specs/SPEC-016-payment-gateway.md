@@ -133,6 +133,74 @@ Body: 通路原生 JSON / form-data
 - 對比平台 ledger 之該日 `deposit` transaction 數量 vs 通路後台對帳檔
 - 差異 > 0 自動寫入 `Suspense.Reconciliation`（SPEC-002 §7.2）+ P0 告警
 
+### 5.5 通路 Webhook Payload 對映表
+
+> 各通路 webhook payload schema 不一致。本節定義從**通路原生格式**到後端統一 `ProviderWebhookEnvelope`（見 [`packages/proto/v1/payment.proto`](../packages/proto/v1/payment.proto)）的對映規則。每個通路在 `services/payment-service/internal/providers/{provider}/` 內實作 driver-specific verifier。
+
+#### 5.5.1 共用流程
+
+```
+provider webhook (HTTPS POST)
+  │
+  ▼
+1. Cloudflare WAF + IP allowlist（drop 非通路 IP 段）
+2. Provider-specific HMAC verifier（簽章演算法 / header 名各異）
+3. Replay window 檢查（payload timestamp ± 5 min）
+4. Driver decode：通路原生 JSON → ProviderWebhookEnvelope
+5. Idempotency lookup（key = provider + provider_transaction_id）
+6. 進主流程：依事件類型呼叫 ledger PostTransaction（deposit / refund / chargeback）
+```
+
+#### 5.5.2 通路對映表
+
+| Provider | HMAC header | HMAC algo | Timestamp 來源 | Provider txn ID 欄位 | settled_amount 欄位 | Currency 欄位 | 事件類型映射 |
+|----------|------------|-----------|---------------|-------------------|-------------------|--------------|-------------|
+| **ECPay 綠界** | `CheckMacValue`（form field，非 header）| MD5 / SHA256（依設定）| `PaymentDate` | `MerchantTradeNo` | `TradeAmt`（TWD 整數元）× 100 | 固定 TWD | `RtnCode=1` → SETTLED；`RtnCode≠1` → FAILED |
+| **Stripe** | `Stripe-Signature` | HMAC-SHA256 | header `t=` 部分 | `id`（event）+ `data.object.id`（charge）| `data.object.amount_received`（已是最小單位）| `data.object.currency`（lower case ISO）| `payment_intent.succeeded` → SETTLED；`charge.refunded` → REFUNDED；`charge.dispute.created` → CHARGEBACK |
+| **NewebPay 藍新** | `TradeSha`（form field）| SHA256 + AES | `PayTime` | `MerchantOrderNo` | `Amt`（TWD 元）× 100 | 固定 TWD | `Status=SUCCESS` → SETTLED |
+| **PayMongo** | `Paymongo-Signature` | HMAC-SHA256（含 `t=` / `te=` / `li=`）| header `t=` | `data.id`（event）| `data.attributes.amount` | `data.attributes.currency` | `payment.paid` → SETTLED；`payment.refunded` → REFUNDED |
+| **MoMo VN** | `Signature`（query param）| HMAC-SHA256 + RSA | `responseTime` | `requestId` + `transId` | `amount`（VND 整數元）× 100 | 固定 VND | `resultCode=0` → SETTLED |
+| **VNPay** | `vnp_SecureHash` | HMAC-SHA512 | `vnp_PayDate` | `vnp_TxnRef` | `vnp_Amount`（VND × 100，已最小單位）| 固定 VND | `vnp_ResponseCode=00` → SETTLED |
+
+> 表中「× 100」表示 driver 在 decode 時必須換算為**內部單位**（SPEC-002 §3.2）。對於通路本身已用最小單位（如 Stripe / VNPay）則直接帶入。
+
+#### 5.5.3 Phase 1 換算規則
+
+> SPEC-016 §7.1 規定 Phase 1 ledger 僅有 `Bank.TrustAccount.TWD`。對非 TWD 通路（PayMongo / MoMo / VNPay 等）：
+
+- Driver decode 時取通路提供的 `fx_rate`（若無則拒絕，要求業主與通路重簽合約包含 FX 透明欄位）
+- `settled_twd = original.amount × fx_rate`，存入 `ProviderWebhookEnvelope.settled_twd`
+- 主流程僅 deposit `settled_twd` 到 `Bank.TrustAccount.TWD`，原幣別僅作 audit 紀錄
+- `fx_rate` 字串保留小數精度（如 `"31.5"`），不轉 float
+
+#### 5.5.4 Driver 必含介面（Go）
+
+```go
+// services/payment-service/internal/providers/provider.go
+package providers
+
+type Driver interface {
+    // VerifyAndDecode 驗證 HMAC、replay window、IP 白名單，並 decode 為統一 envelope。
+    // 失敗回傳 ErrorCode（呼應 errors.proto）。
+    VerifyAndDecode(ctx context.Context, req *http.Request) (*v1.ProviderWebhookEnvelope, error)
+
+    // CreateIntent 創建支付意圖（玩家發起儲值入口）。
+    CreateIntent(ctx context.Context, req CreateIntentInput) (CreateIntentOutput, error)
+
+    // IssueRefund 對通路發出退款。
+    IssueRefund(ctx context.Context, req IssueRefundInput) (IssueRefundOutput, error)
+
+    // Health 通路健康檢查（用於 §9 多通路備援）。
+    Health(ctx context.Context) HealthStatus
+}
+```
+
+#### 5.5.5 對映表維護規則
+
+- 新增通路必須先在本表新增一列、實作 Driver、補 unit test 含 happy / replay / HMAC fail 三案例。
+- 通路若改變 webhook 格式，driver 需 bump version，driver registry 同時支援新舊版至少 30 天。
+- 任何「通路特殊處理」（如綠界 form-encoded vs JSON）都被 driver 層吸收，主流程**只看** `ProviderWebhookEnvelope`。
+
 ## 6. Chargeback 與退款
 
 ### 6.1 Chargeback 流程
