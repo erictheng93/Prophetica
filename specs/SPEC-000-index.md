@@ -104,11 +104,6 @@
 | Q-4 | 入金通路供應商：綠界 / 藍新 / 紅陽 / Stripe；MCC 接受度 | SPEC-001 §2.1 / SPEC-016 | 🟡 Pending | [SPEC-016 §3.2](./SPEC-016-payment-gateway.md) 列驗證項 | 簽通路合約前完成至少 3 家詢價，並對齊支付 Gateway BIN 檢查 |
 | Q-5 | 未成年下限：18 歲 vs 20 歲 | SPEC-001 §3.1 / SPEC-006 §6 | ✅ Resolved | [SPEC-006 §6](./SPEC-006-responsible-gaming.md) | 18 歲（依台灣民法成年新制）|
 | Q-6 | 數據主權：Cloudflare R2（EU / 全球）vs Linode Object Storage (Tokyo) vs AWS S3 (Singapore) | SPEC-001 §4.1 / SPEC-005 §5.1 | 🟡 Pending | — | 個資跨境傳輸合規評估；目前 SPEC-001 §4.1 指定 KYC 證件在 R2 EU、撮合事件流在 Linode Tokyo |
-| Q-7 | KYC SaaS 供應商：SumSub vs Onfido | SPEC-005 §3.1 / SPEC-014 §3.1 | ✅ Resolved（首選） | [SPEC-014 §3.1](./SPEC-014-tech-architecture.md) | SumSub 為主、Onfido 為備援 |
-| Q-8 | DMM API 協議：FIX 4.4 vs 自建 binary | SPEC-003 §19 / SPEC-009 §3.4 | ✅ Resolved | [SPEC-009 §3.4](./SPEC-009-dmm-liquidity.md) | 自建 binary protobuf over TLS |
-| Q-9 | CFC（受控外國公司）風險評估：是否需在 BVI 上加一層信託 | ADR-0002 §11 V-2 | 🔴 Deal-breaker | — | 跨境稅務律師意見書 |
-| Q-10 | 香港 / 新加坡是否首發開放（🔴 vs 🟠）| SPEC-001 §2 / SPEC-000 §1 | 🟡 Pending（暫定保守 🔴）| 暫由 SPEC-001 §2 的 🔴 紅名單機制收斂 | 待當地律師意見書才放寬，必要時在 SPEC-001 補回司法管轄區分級表 |
-| Q-11 | DAU 規模門檻決定 LM Phase 2 啟動 | SPEC-009 §4.1 | ✅ Resolved | [SPEC-009 §4.1](./SPEC-009-dmm-liquidity.md) | DAU ≥ 5,000 + 反作弊 90 天穩定 + 3 家 DMM ≥ 6 月 |
 
 ### 5.1 議題狀態圖示
 

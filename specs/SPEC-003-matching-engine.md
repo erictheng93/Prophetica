@@ -782,4 +782,4 @@ Machine 2: markets ['m51', ..., 'm100']
 2. Snapshot 序列化格式：protobuf vs MessagePack vs custom binary？
 3. 訂單 ID 生成策略：snowflake vs ULID vs DB sequence？
 4. 是否支援 stop-limit / trailing-stop 等高階訂單類型（首發版不需要）？
-5. ~~DMM API 是否走獨立 binary protocol（FIX 協議）還是共用 REST？~~（→ SPEC-000 Q-8，已 Resolved by SPEC-009 §3.4：自建 binary protobuf over TLS）
+5. ~~DMM API 是否走獨立 binary protocol（FIX 協議）還是共用 REST？~~（已 Resolved by [SPEC-009 §3.4](./SPEC-009-dmm-liquidity.md)：自建 binary protobuf over TLS）
