@@ -1,7 +1,7 @@
 # SPEC-000 — 規格總索引（Master Index）
 
 > **prophetica** — 趣味預測娛樂遊戲平台
-> 文件版本：v0.1.4 · 最後更新：2026-05-05 · 維護人：Tech Lead
+> 文件版本：v0.1.5 · 最後更新：2026-05-05 · 維護人：Tech Lead
 
 ---
 
@@ -39,6 +39,7 @@
 | [SPEC-004](./SPEC-004-settlement-dispute.md) | 結算與爭議處理 | Oracle、結算狀態機、申訴窗口 | 🟢 v0.1 |
 | [SPEC-015](./SPEC-015-market-lifecycle.md) | 市場生命週期管理 | 市場創建、上架審查、內容紅線、開盤排程、強制下架 | 🟢 v0.1 |
 | [SPEC-016](./SPEC-016-payment-gateway.md) | 支付通路整合 | 通路選型、Webhook、Chargeback、跨幣別、PCI 範圍 | 🟢 v0.1 |
+| [SPEC-017](./SPEC-017-monorepo-bootstrap.md) | Monorepo Bootstrap & Local Dev | Repo 骨架、Docker Compose、Makefile、CI bootstrap、首次設定流程 | 🟢 v0.1 |
 
 ### P1 — 必須在公開 Beta 之前完成
 
@@ -86,6 +87,7 @@
 
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
+| 2026-05-05 | v0.1.5 | Tech Lead | Codex 動工前置補強：(1) 新增 SPEC-017 monorepo bootstrap & local dev（P0）；(2) 建立 packages/proto/v1/ 共 6 份 .proto（errors / common / ledger / engine / market / kyc / payment）；(3) SPEC-002 §4.4.3 trade entry 改寫對齊 §4.4.4 不對稱 escrow，移除「兩邊皆鎖 6,500」之簡化；(4) SPEC-015 §6 補 outcomes / oracle_submissions / disputes / dispute_resolutions / positions 五張 schema，SPEC-004 §6.3 改為呼應引用；(5) SPEC-016 §5.5 補通路 webhook payload 對映表（綠界 / Stripe / 藍新 / PayMongo / MoMo / VNPay 6 家）；(6) SPEC-010 §3.1 補 JWT claims schema、refresh token rotation、reuse detection、step-up MFA 細節。 |
 | 2026-05-05 | v0.1.4 | Tech Lead | 第二輪交叉一致性 review（純技術視角，合規由業主自治）：(1) SPEC-005 §2.4 對 SPEC-001 §3.1 之 dead link 改為指 SPEC-001 §2.1；(2) SPEC-015 §11 7 年保留改為呼應 SPEC-001 §1.1 ③；(3) ADR-0002 多處對 SPEC-001 §2 / §2.2 / §8.3 / §10、SPEC-002 §2.1 之 dead link 全部修正並補 v1.0.2 Revision History；(4) 補回 SPEC-002 §3.2 內部精度（純技術整數化規範）；(5) SPEC-016 §7 跨幣別整節重寫，明確 Phase 1 單幣別 / Phase 2 多幣別保留設計，移除 `Bank.TrustAccount.USD` 舉例；(6) SPEC-002 §12 Open Questions 補齊編號 1/2 並收斂跨檔議題引用。 |
 | 2026-05-05 | v0.1.3 | Tech Lead | 依 SPEC-001 v0.1.1 精簡後章節重整索引：更新 SPEC-001 標題、摘要、狀態版本；Geo-block 全域描述改以 SPEC-001 §2 為準；跨檔決策追蹤表中 SPEC-001 章節引用改為現行 §2 / §3.1 / §4.1，移除對已刪除公司結構與司法管轄區分級表的硬引用。 |
 | 2026-05-05 | v0.1.2 | Tech Lead | 完成首輪交叉一致性 review：(1) 修 SPEC-002 §5 INV 編號對齊 ADR-0003 §5；(2) 修 PRD.md dead link；(3) HK/SG geo-block 統一為保守 🔴；(4) 修 SPEC-002 §4.4.4 零金額結算 entry 衝突；(5) ADR-0002 / ADR-0003 §11 改名為「Pre-Execution Validation Items」；(6) §5 改為跨檔決策追蹤表（含 Resolved-by 欄位）；(7) SPEC-005 補 declared_monthly_income 並對齊 SPEC-006 §4.1；(8) SPEC-005 §2.4 補首發 5 國 Tier 1 證件驗證；(9) 新增 SPEC-015 市場生命週期；(10) 新增 SPEC-016 支付通路整合；(11) SPEC-003 §12.1 補 PLATFORM_SYSTEM_USER_IDS sentinel 定義；(12) SPEC-015 / SPEC-016 加入 P0 索引。 |
