@@ -1,0 +1,180 @@
+// errors.proto — 全平台共用錯誤碼與 ErrorEnvelope
+//
+// 所有 service 的錯誤回傳必須使用 ErrorEnvelope。
+// HTTP / gRPC / WS 三種介面之錯誤格式皆映射到此 message。
+//
+// 新增錯誤碼規則：
+//   1. 在對應 service 的命名空間區段內遞增（如 LEDGER_* / ENGINE_* / KYC_*）
+//   2. enum 值不可重用、不可刪除（標記為 deprecated 即可）
+//   3. 新增需在 PR description 引用 SPEC 章節
+//
+// 對應 SPEC：本檔案是 SPEC-014 §6.3 之實作；錯誤碼字典過去散落於多份 SPEC，
+// 由本檔案集中。
+
+syntax = "proto3";
+
+package proph.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/erictheng93/prophetica/packages/proto/gen/go/v1;protov1";
+
+// ErrorEnvelope 是所有對外錯誤回應的統一 wrapper。
+//
+// gRPC 介面：透過 google.rpc.Status.details 攜帶 ErrorEnvelope
+// HTTP 介面：JSON body 直接序列化此 message
+// WS 介面：error frame 之 payload
+message ErrorEnvelope {
+  // 機器可解析的錯誤碼。
+  ErrorCode code = 1;
+
+  // 人類可讀訊息（英文，已適合直接面對工程師 / 進 oncall log）。
+  // **不**塞玩家可見訊息，玩家文案由前端依 code 在地化。
+  string message = 2;
+
+  // 玩家可見訊息的 i18n key（前端依玩家 locale 解 i18n）。
+  // 若空字串表示此錯誤不對玩家顯示（後台 / 內部錯誤）。
+  string user_message_key = 3;
+
+  // 觸發此錯誤的請求 trace_id（呼應 SPEC-007 OTel）。
+  string trace_id = 4;
+
+  // 錯誤發生時刻。
+  google.protobuf.Timestamp at = 5;
+
+  // 結構化補充資訊（如 limit_exceeded 時的 limit / current 值）。
+  // **不可**包含 PII（呼應 SPEC-007 §4.3）。
+  google.protobuf.Struct details = 6;
+
+  // 對應 idempotency_key（若請求帶有），用於玩家 / 客服回查。
+  string idempotency_key = 7;
+}
+
+// ErrorCode 為全平台統一錯誤碼。
+//
+// 命名規範：
+//   ERROR_CODE_<DOMAIN>_<REASON>
+// 區段：
+//   0      未指定（不得出現於 production，CI 應 reject）
+//   1-99   通用 / 跨服務錯誤
+//   100-199  AuthN / AuthZ
+//   200-299  Validation
+//   300-399  Rate limiting / quota
+//   400-499  KYC（SPEC-005）
+//   500-599  Wallet / Ledger（SPEC-002）
+//   600-699  Matching Engine（SPEC-003）
+//   700-799  Settlement / Dispute（SPEC-004）
+//   800-899  Payment Gateway（SPEC-016）
+//   900-999  Risk / Anti-fraud（SPEC-010）
+//   1000-1099  RG / Self-exclusion（SPEC-006）
+//   1100-1199  Market lifecycle（SPEC-015）
+//   1200-1299  Compliance / Geo-block（SPEC-001）
+//   1300-1399  Affiliate / Referral（SPEC-011）
+//   1400-1499  DMM / Liquidity（SPEC-009）
+enum ErrorCode {
+  // 0 = 未指定。CI 應拒絕任何 production 路徑回傳此值。
+  ERROR_CODE_UNSPECIFIED = 0;
+
+  // 1-99 通用
+  ERROR_CODE_INTERNAL = 1;                  // 5xx, 對玩家通用「系統忙碌」
+  ERROR_CODE_NOT_FOUND = 2;
+  ERROR_CODE_ALREADY_EXISTS = 3;
+  ERROR_CODE_FAILED_PRECONDITION = 4;
+  ERROR_CODE_DEADLINE_EXCEEDED = 5;
+  ERROR_CODE_UNAVAILABLE = 6;               // 下游服務不可達
+  ERROR_CODE_IDEMPOTENCY_CONFLICT = 7;      // 同 key 不同 payload
+
+  // 100-199 AuthN / AuthZ
+  ERROR_CODE_UNAUTHENTICATED = 100;
+  ERROR_CODE_TOKEN_EXPIRED = 101;
+  ERROR_CODE_TOKEN_INVALID = 102;
+  ERROR_CODE_PERMISSION_DENIED = 110;
+  ERROR_CODE_STEP_UP_REQUIRED = 111;        // 高敏操作需重新 MFA
+  ERROR_CODE_MFA_INVALID = 112;
+  ERROR_CODE_REFRESH_TOKEN_REUSED = 113;    // refresh rotation 被重用 → 強制全裝置登出
+
+  // 200-299 Validation
+  ERROR_CODE_INVALID_ARGUMENT = 200;
+  ERROR_CODE_INVALID_PRICE = 201;           // 0 < price < 100 之外
+  ERROR_CODE_INVALID_QUANTITY = 202;
+  ERROR_CODE_INVALID_CURRENCY = 203;
+
+  // 300-399 Rate / Quota
+  ERROR_CODE_RATE_LIMITED = 300;
+  ERROR_CODE_QUOTA_EXCEEDED = 301;
+
+  // 400-499 KYC
+  ERROR_CODE_KYC_TIER_REQUIRED = 400;
+  ERROR_CODE_KYC_PENDING = 401;
+  ERROR_CODE_KYC_REJECTED = 402;
+  ERROR_CODE_KYC_DOCUMENT_EXPIRED = 403;
+  ERROR_CODE_KYC_SANCTION_HIT = 404;
+  ERROR_CODE_KYC_PEP_HIT = 405;             // 需 EDD，非禁止
+
+  // 500-599 Wallet / Ledger
+  ERROR_CODE_INSUFFICIENT_FUNDS = 500;
+  ERROR_CODE_LEDGER_IMBALANCE = 501;        // 觸發 P0，理論不應對外
+  ERROR_CODE_WALLET_FROZEN = 502;
+  ERROR_CODE_NEGATIVE_BALANCE = 503;
+  ERROR_CODE_LEDGER_ACCOUNT_CLOSED = 504;
+
+  // 600-699 Matching Engine
+  ERROR_CODE_MARKET_NOT_OPEN = 600;
+  ERROR_CODE_ORDER_QTY_TOO_LARGE = 601;
+  ERROR_CODE_POSITION_LIMIT_EXCEEDED = 602;
+  ERROR_CODE_SELF_TRADE_PREVENTED = 603;
+  ERROR_CODE_POST_ONLY_REJECTED = 604;
+  ERROR_CODE_FOK_NOT_FILLABLE = 605;
+  ERROR_CODE_IOC_REMAINDER_CANCELLED = 606; // 通常不算 error，僅作回應 reason
+  ERROR_CODE_PLATFORM_USER_NOT_ALLOWED = 607; // sentinel set 命中
+  ERROR_CODE_RISK_REJECTED = 608;
+
+  // 700-799 Settlement / Dispute
+  ERROR_CODE_MARKET_CLOSED = 700;
+  ERROR_CODE_MARKET_SETTLING = 701;
+  ERROR_CODE_DISPUTE_WINDOW_CLOSED = 702;
+  ERROR_CODE_DISPUTE_DUPLICATE = 703;
+  ERROR_CODE_ORACLE_DEADLOCK = 704;         // 兩 Oracle 結果不一致
+
+  // 800-899 Payment Gateway
+  ERROR_CODE_PAYMENT_PROVIDER_UNAVAILABLE = 800;
+  ERROR_CODE_PAYMENT_AMOUNT_OUT_OF_RANGE = 801;
+  ERROR_CODE_PAYMENT_BIN_BLOCKED = 802;
+  ERROR_CODE_WEBHOOK_HMAC_INVALID = 803;
+  ERROR_CODE_WEBHOOK_REPLAY = 804;          // 5 分鐘外 timestamp
+  ERROR_CODE_CHARGEBACK_RECEIVED = 805;
+  ERROR_CODE_PAYMENT_REFUND_WINDOW_EXPIRED = 806;
+
+  // 900-999 Risk / Anti-fraud
+  ERROR_CODE_MULTI_ACCOUNT_DETECTED = 900;
+  ERROR_CODE_DEVICE_FINGERPRINT_BLOCKED = 901;
+  ERROR_CODE_CHARGEBACK_BLACKLIST = 902;
+
+  // 1000-1099 RG
+  ERROR_CODE_DEPOSIT_LIMIT_EXCEEDED = 1000;
+  ERROR_CODE_SELF_EXCLUDED = 1001;          // 永久 / 暫時自我排除中
+  ERROR_CODE_RG_COOLOFF_ACTIVE = 1002;
+  ERROR_CODE_UNDERAGE = 1003;
+
+  // 1100-1199 Market lifecycle
+  ERROR_CODE_MARKET_REVIEW_REQUIRED = 1100;
+  ERROR_CODE_MARKET_REVIEW_CONFLICT = 1101; // Reviewer 利益衝突
+  ERROR_CODE_MARKET_TIME_INVALID = 1102;
+  ERROR_CODE_MARKET_FORCE_DELISTED = 1103;
+
+  // 1200-1299 Compliance / Geo-block
+  ERROR_CODE_GEO_BLOCKED = 1200;
+  ERROR_CODE_VPN_DETECTED = 1201;
+  ERROR_CODE_BIN_GEO_MISMATCH = 1202;
+
+  // 1300-1399 Affiliate
+  ERROR_CODE_REFERRAL_DUPLICATE = 1300;
+  ERROR_CODE_REFERRAL_INVALID_CODE = 1301;
+  ERROR_CODE_REFERRAL_SELF = 1302;
+
+  // 1400-1499 DMM
+  ERROR_CODE_DMM_NOT_AUTHORIZED = 1400;
+  ERROR_CODE_DMM_LIMIT_EXCEEDED = 1401;
+  ERROR_CODE_DMM_PROTOCOL_VIOLATION = 1402;
+}

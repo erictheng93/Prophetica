@@ -1,0 +1,211 @@
+// market.proto — Market Service / Settlement Worker 對外契約
+//
+// 對應 SPEC：SPEC-015（Market Lifecycle）、SPEC-004（Settlement & Dispute）。
+
+syntax = "proto3";
+
+package proph.v1;
+
+import "google/protobuf/timestamp.proto";
+import "v1/common.proto";
+
+option go_package = "github.com/erictheng93/prophetica/packages/proto/gen/go/v1;protov1";
+
+// Market 對應 SPEC-015 §6.1 markets 表 + SPEC-003 §3.1 撮合用 Market struct。
+message Market {
+  MarketID id = 1;
+  string title = 2;
+  string description = 3;
+  MarketCategory category = 4;
+  MarketStatus status = 5;
+
+  // 時間
+  google.protobuf.Timestamp opens_at = 10;
+  google.protobuf.Timestamp closes_at = 11;
+  google.protobuf.Timestamp settles_at = 12;
+
+  // 撮合參數（→ engine）
+  int32 min_tick_pts = 20;
+  int64 min_lot = 21;
+  int64 max_order_qty = 22;
+  int64 max_position_per_user = 23;
+  int32 fee_bps = 24;
+
+  // Oracle
+  OracleConfig oracle = 30;
+
+  // 多 entity 支援（呼應 ADR-0002 Option E 雙執照預備）
+  string operating_co_id = 40;
+
+  google.protobuf.Timestamp created_at = 50;
+  google.protobuf.Timestamp approved_at = 51;
+}
+
+enum MarketCategory {
+  MARKET_CATEGORY_UNSPECIFIED = 0;
+  MARKET_CATEGORY_POLITICS = 1;
+  MARKET_CATEGORY_SPORTS = 2;
+  MARKET_CATEGORY_FINANCE = 3;
+  MARKET_CATEGORY_WEATHER = 4;
+  MARKET_CATEGORY_CORPORATE = 5;
+  MARKET_CATEGORY_ENTERTAINMENT = 6;
+}
+
+message OracleConfig {
+  OracleType type = 1;
+  repeated string source_urls = 2;
+  string resolution_rules = 3;     // 白話文判定規則
+}
+
+enum OracleType {
+  ORACLE_TYPE_UNSPECIFIED = 0;
+  ORACLE_TYPE_OFFICIAL_ANNOUNCEMENT = 1;
+  ORACLE_TYPE_AUTHORITATIVE_MEDIA = 2;
+  ORACLE_TYPE_API = 3;
+  ORACLE_TYPE_MANUAL = 4;
+}
+
+// MarketOutcome — 結果腿（補 SPEC-015 §6 缺口）。
+//
+// 設計選擇：每市場固定兩列（YES / NO）。雖 SPEC-003 為二元，
+// 仍以 outcomes 表呈現以利未來 N 元市場擴展（不需 schema migration）。
+message MarketOutcome {
+  string id = 1;                   // 'mkt_X:YES'
+  MarketID market = 2;
+  Outcome outcome = 3;
+  string label = 4;                // UI 顯示用，如「主隊勝」
+}
+
+// OracleSubmission — 對應 SPEC-004 §4.2 oracle_submissions（schema 細節由本 message 規範）。
+//
+// 設計：兩位 Operator **獨立提交**；後端比對結果一致才推進到 PENDING。
+message OracleSubmission {
+  string id = 1;
+  MarketID market = 2;
+  Outcome outcome_result = 3;
+  UserID submitted_by = 4;
+  google.protobuf.Timestamp submitted_at = 5;
+  repeated string evidence_urls = 6;
+  string evidence_hash = 7;        // R2 manifest SHA256
+  string notes = 8;
+  string signature = 9;            // operator 數位簽章
+}
+
+// DisputeResolution — 對應 SPEC-004 §6.3 dispute_resolutions 表。
+message DisputeResolution {
+  string id = 1;
+  MarketID market = 2;
+  DisputeDecision decision = 3;
+  repeated DisputeVote votes = 4;
+  UserID final_signoff_by = 5;     // Compliance Officer
+  google.protobuf.Timestamp final_signoff_at = 6;
+  string audit_hash = 7;
+}
+
+enum DisputeDecision {
+  DISPUTE_DECISION_UNSPECIFIED = 0;
+  DISPUTE_DECISION_UPHOLD_INITIAL = 1;
+  DISPUTE_DECISION_OVERTURN = 2;
+  DISPUTE_DECISION_VOID_MARKET = 3;
+  DISPUTE_DECISION_EXTEND = 4;     // 延長 review
+}
+
+message DisputeVote {
+  UserID adjudicator = 1;
+  DisputeDecision vote = 2;
+  string reason = 3;
+  google.protobuf.Timestamp ts = 4;
+}
+
+// Position — 對應 SPEC-002 §4.4.4 settlement 之 position 概念。
+message Position {
+  PositionID id = 1;
+  UserID user = 2;
+  MarketID market = 3;
+  Outcome outcome = 4;
+  int64 qty = 5;                   // 股數
+  int64 locked_amount = 6;         // 對應該 position 在 escrow 中的鎖倉（內部單位）
+  google.protobuf.Timestamp opened_at = 7;
+}
+
+// CreateMarketRequest — Operator 提案新市場（SPEC-015 §7）。
+message CreateMarketRequest {
+  AuditMeta audit = 1;
+  string title = 2;
+  string description = 3;
+  MarketCategory category = 4;
+  google.protobuf.Timestamp opens_at = 5;
+  google.protobuf.Timestamp closes_at = 6;
+  google.protobuf.Timestamp settles_at = 7;
+  OracleConfig oracle = 8;
+  string risk_assessment_url = 9;
+  // 撮合參數可選；未指定走平台預設
+  int32 min_tick_pts = 20;
+  int64 max_order_qty = 22;
+  int64 max_position_per_user = 23;
+  int32 fee_bps = 24;
+}
+
+message CreateMarketResponse { Market market = 1; }
+
+// SubmitMarketReviewRequest — Compliance / Legal 投票（SPEC-015 §7.2，2-of-2）。
+message SubmitMarketReviewRequest {
+  AuditMeta audit = 1;
+  MarketID market = 2;
+  ReviewerRole role = 3;           // compliance / legal
+  ReviewDecision decision = 4;
+  string notes = 5;
+  repeated string evidence_urls = 6;
+}
+
+enum ReviewerRole {
+  REVIEWER_ROLE_UNSPECIFIED = 0;
+  REVIEWER_ROLE_COMPLIANCE = 1;
+  REVIEWER_ROLE_LEGAL = 2;
+}
+
+enum ReviewDecision {
+  REVIEW_DECISION_UNSPECIFIED = 0;
+  REVIEW_DECISION_APPROVE = 1;
+  REVIEW_DECISION_REJECT = 2;
+  REVIEW_DECISION_REQUIRE_CHANGES = 3;
+}
+
+message SubmitMarketReviewResponse { Market market = 1; }
+
+// SubmitOracleResultRequest — 兩位 Operator 各自獨立提交。
+message SubmitOracleResultRequest {
+  AuditMeta audit = 1;
+  MarketID market = 2;
+  Outcome outcome_result = 3;
+  repeated string evidence_urls = 4;
+  string evidence_hash = 5;
+  string notes = 6;
+  string signature = 7;
+}
+
+message SubmitOracleResultResponse {
+  OracleSubmission submission = 1;
+  bool ready_for_pending = 2;      // true 表第二位 Operator 已對齊，狀態將推進
+}
+
+service MarketService {
+  rpc CreateMarket(CreateMarketRequest) returns (CreateMarketResponse);
+  rpc SubmitMarketReview(SubmitMarketReviewRequest) returns (SubmitMarketReviewResponse);
+  rpc SubmitOracleResult(SubmitOracleResultRequest) returns (SubmitOracleResultResponse);
+  rpc GetMarket(GetMarketRequest) returns (Market);
+  rpc ListMarkets(ListMarketsRequest) returns (ListMarketsResponse);
+}
+
+message GetMarketRequest { MarketID market = 1; }
+
+message ListMarketsRequest {
+  MarketStatus status = 1;
+  MarketCategory category = 2;
+  PageRequest page = 3;
+}
+
+message ListMarketsResponse {
+  repeated Market markets = 1;
+  PageResponse page = 2;
+}

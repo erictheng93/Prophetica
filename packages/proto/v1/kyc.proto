@@ -1,0 +1,108 @@
+// kyc.proto — KYC Service 對外契約
+//
+// 對應 SPEC：SPEC-005（KYC/AML）。
+
+syntax = "proto3";
+
+package proph.v1;
+
+import "google/protobuf/timestamp.proto";
+import "v1/common.proto";
+
+option go_package = "github.com/erictheng93/prophetica/packages/proto/gen/go/v1;protov1";
+
+// KycTier 0~3（SPEC-005 §2.1）。
+enum KycTier {
+  KYC_TIER_UNSPECIFIED = 0;
+  KYC_TIER_0 = 1;     // 訪客
+  KYC_TIER_1 = 2;     // 基礎（Email + OTP + 證件 checksum）
+  KYC_TIER_2 = 3;     // 標準（OCR + Liveness）
+  KYC_TIER_3 = 4;     // 強化（EDD）
+}
+
+// KycStatus 玩家當前 KYC 狀態。
+enum KycStatus {
+  KYC_STATUS_UNSPECIFIED = 0;
+  KYC_STATUS_PENDING = 1;
+  KYC_STATUS_PASSED = 2;
+  KYC_STATUS_REJECTED = 3;
+  KYC_STATUS_EXPIRED = 4;
+  KYC_STATUS_FROZEN = 5;     // sanction hit / 制裁名單命中
+}
+
+// KycRecord 對應 SPEC-005 §4 user_kyc_records。
+message KycRecord {
+  int64 id = 1;
+  UserID user = 2;
+  KycTier tier = 3;
+  KycStatus status = 4;
+  string provider = 5;            // 'sumsub' / 'iproov' / 'manual'
+  string provider_applicant_id = 6;
+  string document_id_hash = 7;    // SHA256(salt + ID)（不存原值）
+  string country = 8;             // ISO 3166-1 alpha-2
+  google.protobuf.Timestamp submitted_at = 9;
+  google.protobuf.Timestamp reviewed_at = 10;
+  google.protobuf.Timestamp expires_at = 11;
+  // 月收入申報（SPEC-005 §2.1.1）。-1 表未申報。
+  int64 declared_monthly_income = 12;
+}
+
+// StartKycUpgradeRequest — 玩家自願升級 Tier。
+message StartKycUpgradeRequest {
+  AuditMeta audit = 1;
+  UserID user = 2;
+  KycTier target_tier = 3;
+}
+
+message StartKycUpgradeResponse {
+  string sdk_token = 1;            // SumSub Web SDK token
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+// SumsubWebhookEvent — 對應 SPEC-005 §3.3 webhook payload 之內部 normalized 形式。
+message SumsubWebhookEvent {
+  string applicant_id = 1;
+  string external_user_id = 2;     // 對應 'user_42'
+  string event_type = 3;           // 'applicantReviewed' 等
+  ReviewAnswer review_answer = 4;
+  string kyc_reason = 5;
+  repeated SanctionMatch sanction_matches = 6;
+  google.protobuf.Timestamp at = 7;
+  // 原始 payload hash 留作稽核
+  string raw_payload_sha256 = 8;
+}
+
+enum ReviewAnswer {
+  REVIEW_ANSWER_UNSPECIFIED = 0;
+  REVIEW_ANSWER_GREEN = 1;         // 通過
+  REVIEW_ANSWER_RED = 2;           // 拒絕
+  REVIEW_ANSWER_YELLOW = 3;        // 需補件
+}
+
+message SanctionMatch {
+  string list_name = 1;            // 'OFAC SDN' / 'UN' / ...
+  string matched_name = 2;
+  double similarity = 3;
+}
+
+// CheckKycTierRequest — 給其他 service 查詢當前 user 的 KYC tier 之同步 API。
+//
+// 性能契約：cache hit P99 < 1ms（Redis）；cache miss P99 < 30ms（PG）。
+message CheckKycTierRequest { UserID user = 1; }
+message CheckKycTierResponse {
+  KycTier current_tier = 1;
+  KycStatus status = 2;
+  int64 declared_monthly_income = 3;   // -1 = 未申報
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+service KycService {
+  rpc StartKycUpgrade(StartKycUpgradeRequest) returns (StartKycUpgradeResponse);
+  rpc CheckKycTier(CheckKycTierRequest) returns (CheckKycTierResponse);
+  rpc GetKycRecord(GetKycRecordRequest) returns (KycRecord);
+}
+
+message GetKycRecordRequest {
+  UserID user = 1;
+  KycTier tier = 2;                // 0 = 最新一筆
+}

@@ -1,0 +1,146 @@
+// ledger.proto — Wallet / Ledger Service 對外契約
+//
+// 對應 SPEC：SPEC-002（Funds Safety / Double-entry Ledger）、ADR-0003。
+
+syntax = "proto3";
+
+package proph.v1;
+
+import "google/protobuf/timestamp.proto";
+import "v1/common.proto";
+
+option go_package = "github.com/erictheng93/prophetica/packages/proto/gen/go/v1;protov1";
+
+// AccountType 對應 SPEC-002 §4.2 Chart of Accounts 的根分類。
+enum AccountType {
+  ACCOUNT_TYPE_UNSPECIFIED = 0;
+  ACCOUNT_TYPE_ASSET = 1;
+  ACCOUNT_TYPE_LIABILITY = 2;
+  ACCOUNT_TYPE_REVENUE = 3;
+  ACCOUNT_TYPE_EXPENSE = 4;
+  ACCOUNT_TYPE_SUSPENSE = 5;
+}
+
+// LedgerAccount。對應 SPEC-002 §4.3 ledger_accounts 表。
+message LedgerAccount {
+  int64 id = 1;
+  string code = 2;                 // 'Player.Wallet.42' / 'Bank.TrustAccount.TWD'
+  AccountType type = 3;
+  string currency = 4;             // 'PTS' for player; 'TWD' / 'USD' / ... for bank
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp closed_at = 6;
+}
+
+// EntryDirection: +1 借方 / -1 貸方（SPEC-002 §4.3 ledger_entries.direction）。
+enum EntryDirection {
+  ENTRY_DIRECTION_UNSPECIFIED = 0;
+  ENTRY_DIRECTION_DEBIT = 1;
+  ENTRY_DIRECTION_CREDIT = 2;     // 對應 -1
+}
+
+// LedgerEntry。amount 永遠 > 0；direction 表正負（SPEC-002 §4.3）。
+message LedgerEntry {
+  int64 id = 1;
+  TxnID txn = 2;
+  string account_code = 3;
+  EntryDirection direction = 4;
+  int64 amount = 5;                // 內部單位（× 100）
+  string currency = 6;
+  int64 balance_after = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+// LedgerTransaction 對應 SPEC-002 §4.3 ledger_transactions 表。
+message LedgerTransaction {
+  TxnID id = 1;
+  TxnType type = 2;
+  string idempotency_key = 3;
+  string correlation_id = 4;
+  string description = 5;
+  google.protobuf.Timestamp posted_at = 6;
+  repeated LedgerEntry entries = 7;
+}
+
+// TxnType enum 對應 SPEC-002 §4.4 的 Txn 類別。
+//
+// 強制規則（ADR-0003 §10 點 4）：禁止使用 'misc' 之類的萬用值。
+// 新增 type 必須對應 SPEC 章節並走 PR review。
+enum TxnType {
+  TXN_TYPE_UNSPECIFIED = 0;
+  TXN_TYPE_DEPOSIT = 1;             // §4.4.1
+  TXN_TYPE_ORDER_LOCK = 2;          // §4.4.2
+  TXN_TYPE_TRADE = 3;               // §4.4.3
+  TXN_TYPE_SETTLE = 4;              // §4.4.4
+  TXN_TYPE_MARKET_VOID_REFUND = 5;  // SPEC-004 §8.2
+  TXN_TYPE_CHARGEBACK = 6;          // SPEC-002 §8.1
+  TXN_TYPE_CS_COMPENSATION = 7;     // SPEC-012 §11
+  TXN_TYPE_AFFILIATE_COMMISSION = 8;// SPEC-011 §4.5
+  TXN_TYPE_DMM_REBATE = 9;          // SPEC-009 §3.3
+  TXN_TYPE_LM_REWARD = 10;          // SPEC-009 §4.4
+  TXN_TYPE_FX_RECONCILE = 11;       // SPEC-016 §7.4 Phase 2
+  TXN_TYPE_RECONCILIATION_ADJUST = 12; // 對帳暫掛人工修正
+}
+
+// PostTransactionRequest. 由業務 service 呼叫 ledger 提交一筆 balanced transaction.
+//
+// 不變式：
+//   - len(entries) >= 2
+//   - Σ(direction × amount) = 0（SPEC-002 INV-1）
+//   - 同 idempotency_key 重送 → 回原結果
+message PostTransactionRequest {
+  AuditMeta audit = 1;
+  TxnType type = 2;
+  string description = 3;
+  repeated PostEntry entries = 4;
+}
+
+message PostEntry {
+  string account_code = 1;
+  EntryDirection direction = 2;
+  int64 amount = 3;
+  string currency = 4;
+}
+
+message PostTransactionResponse {
+  TxnID txn_id = 1;
+  bool replayed = 2;                // true 表本次為 idempotent replay
+  repeated LedgerEntry entries = 3; // 含 balance_after
+}
+
+// GetWalletBalanceRequest / Response — 玩家錢包餘額查詢（高頻 API）。
+//
+// 性能契約（SPEC-002 §9.2）：
+//   - cache hit P99 < 1ms（Redis）
+//   - cache miss P99 < 20ms（PG balance_after）
+message GetWalletBalanceRequest {
+  UserID user = 1;
+}
+
+message GetWalletBalanceResponse {
+  Money available = 1;       // Player.Wallet.{user}
+  Money locked = 2;          // Player.Locked.{user}
+  google.protobuf.Timestamp as_of = 3;
+}
+
+// ListEntriesRequest — 玩家 / 客服 / 稽核查歷史。
+message ListEntriesRequest {
+  oneof scope {
+    UserID user = 1;
+    string account_code = 2;
+  }
+  google.protobuf.Timestamp from = 3;
+  google.protobuf.Timestamp to = 4;
+  PageRequest page = 5;
+}
+
+message ListEntriesResponse {
+  repeated LedgerEntry entries = 1;
+  PageResponse page = 2;
+}
+
+// LedgerService — 由 wallet-ledger-service 暴露（SPEC-014 §4）。
+service LedgerService {
+  rpc PostTransaction(PostTransactionRequest) returns (PostTransactionResponse);
+  rpc GetWalletBalance(GetWalletBalanceRequest) returns (GetWalletBalanceResponse);
+  rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse);
+}

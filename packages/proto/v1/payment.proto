@@ -1,0 +1,146 @@
+// payment.proto — Payment Gateway Integration 對外契約
+//
+// 對應 SPEC：SPEC-016（Payment Gateway Integration）。
+
+syntax = "proto3";
+
+package proph.v1;
+
+import "google/protobuf/timestamp.proto";
+import "v1/common.proto";
+
+option go_package = "github.com/erictheng93/prophetica/packages/proto/gen/go/v1;protov1";
+
+enum PaymentProvider {
+  PAYMENT_PROVIDER_UNSPECIFIED = 0;
+  PAYMENT_PROVIDER_ECPAY = 1;       // 綠界
+  PAYMENT_PROVIDER_STRIPE = 2;
+  PAYMENT_PROVIDER_NEWEBPAY = 3;    // 藍新
+  PAYMENT_PROVIDER_PAYMONGO = 4;    // 菲律賓
+  PAYMENT_PROVIDER_MOMO = 5;        // 越南
+  PAYMENT_PROVIDER_VNPAY = 6;       // 越南
+  PAYMENT_PROVIDER_WISE = 7;        // 跨境 B2B 備援
+  PAYMENT_PROVIDER_AIRWALLEX = 8;
+}
+
+enum PaymentMethod {
+  PAYMENT_METHOD_UNSPECIFIED = 0;
+  PAYMENT_METHOD_CREDIT_CARD = 1;
+  PAYMENT_METHOD_ATM_TRANSFER = 2;
+  PAYMENT_METHOD_APPLE_PAY = 3;
+  PAYMENT_METHOD_GOOGLE_PAY = 4;
+  PAYMENT_METHOD_LOCAL_WALLET = 5;  // Momo / VNPay 等
+}
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_PENDING = 1;       // 玩家已發起、待通路確認
+  PAYMENT_STATUS_AUTHORIZED = 2;    // 通路已授權，待結算
+  PAYMENT_STATUS_SETTLED = 3;       // 通路已結算入 trust account
+  PAYMENT_STATUS_FAILED = 4;
+  PAYMENT_STATUS_REFUNDED = 5;
+  PAYMENT_STATUS_CHARGEBACK = 6;
+}
+
+// PaymentRecord — 對應後端統一支付紀錄 model（SPEC-016 §5.5 webhook 對映後產物）。
+message PaymentRecord {
+  string id = 1;                    // 內部 payment_id (ULID)
+  UserID user = 2;
+  PaymentProvider provider = 3;
+  PaymentMethod method = 4;
+  PaymentStatus status = 5;
+
+  // 玩家原儲值
+  Money original = 10;              // 100 USD（amount = 10000 internal）
+  // 結算後入 ledger（永遠 TWD，Phase 1 由通路換算）
+  Money settled_twd = 11;
+  string fx_rate = 12;              // "31.5"，採字串避免精度損失
+  google.protobuf.Timestamp fx_locked_at = 13;
+  Money provider_fee_twd = 14;
+
+  string provider_transaction_id = 20;
+  string raw_payload_sha256 = 21;
+
+  google.protobuf.Timestamp initiated_at = 30;
+  google.protobuf.Timestamp authorized_at = 31;
+  google.protobuf.Timestamp settled_at = 32;
+}
+
+// CreatePaymentIntentRequest — 玩家發起儲值。
+message CreatePaymentIntentRequest {
+  AuditMeta audit = 1;
+  UserID user = 2;
+  PaymentProvider provider = 3;
+  PaymentMethod method = 4;
+  Money amount = 5;                 // 玩家欲儲值金額（原幣別）
+}
+
+message CreatePaymentIntentResponse {
+  string payment_id = 1;
+  string redirect_url = 2;          // 通路跳轉頁（SAQ A 模型，PCI out-of-scope）
+  string client_secret = 3;         // Stripe-style，前端 SDK 用
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+// ProviderWebhookEnvelope — 各通路 webhook 進入 payment-service 的內部統一格式。
+//
+// 對應 SPEC-016 §5：driver-specific verifier 在 webhook receiver 處先驗 HMAC 與
+// timestamp window，再將 payload 標準化為本 envelope 進入主流程。
+message ProviderWebhookEnvelope {
+  PaymentProvider provider = 1;
+  string event_type = 2;            // 各通路 normalized 後的事件名
+  string provider_transaction_id = 3;
+
+  // 通路提供之必含欄位（SPEC-016 §7.1.1）
+  Money settled_twd = 10;
+  Money original = 11;
+  string fx_rate = 12;
+  google.protobuf.Timestamp fx_locked_at = 13;
+  Money provider_fee_twd = 14;
+
+  // 稽核
+  google.protobuf.Timestamp received_at = 20;
+  string hmac_verified = 21;        // 'sha256:...'
+  string raw_payload_sha256 = 22;
+}
+
+// IssueRefundRequest — 退款 API（SPEC-016 §6.2）。
+message IssueRefundRequest {
+  AuditMeta audit = 1;
+  string payment_id = 2;
+  Money amount = 3;                 // 部分退款；amount = 0 表全額
+  RefundReason reason = 4;
+  // 4-eye 簽核 metadata（SPEC-012 §11）
+  UserID requested_by = 10;
+  UserID approved_by = 11;
+}
+
+enum RefundReason {
+  REFUND_REASON_UNSPECIFIED = 0;
+  REFUND_REASON_USER_REQUEST = 1;
+  REFUND_REASON_DUPLICATE_CHARGE = 2;
+  REFUND_REASON_KYC_FAILED = 3;
+  REFUND_REASON_MARKET_CREATION_ERROR = 4;
+  REFUND_REASON_FRAUD_DETECTED = 5;
+}
+
+message IssueRefundResponse {
+  string refund_id = 1;
+  PaymentStatus payment_status = 2;
+}
+
+service PaymentService {
+  rpc CreatePaymentIntent(CreatePaymentIntentRequest) returns (CreatePaymentIntentResponse);
+  rpc IssueRefund(IssueRefundRequest) returns (IssueRefundResponse);
+  rpc GetPayment(GetPaymentRequest) returns (PaymentRecord);
+  // webhook 由 HTTP receiver 接收，內部標準化後透過此 RPC 進主流程
+  rpc HandleProviderWebhook(ProviderWebhookEnvelope) returns (HandleProviderWebhookResponse);
+}
+
+message GetPaymentRequest { string payment_id = 1; }
+
+message HandleProviderWebhookResponse {
+  string payment_id = 1;
+  PaymentStatus status = 2;
+  bool replayed = 3;                // idempotent replay
+}

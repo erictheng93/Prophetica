@@ -1,0 +1,174 @@
+// engine.proto — Matching Engine 對外契約
+//
+// 對應 SPEC：SPEC-003（Matching Engine）、ADR-0001。
+
+syntax = "proto3";
+
+package proph.v1;
+
+import "google/protobuf/timestamp.proto";
+import "v1/common.proto";
+
+option go_package = "github.com/erictheng93/prophetica/packages/proto/gen/go/v1;protov1";
+
+// Order 對應 SPEC-003 §4.3 Order struct（API 邊界版本）。
+//
+// 注意：UI 看到的 buy/sell 在進入引擎前已轉換為 SIDE_BID/SIDE_ASK（YES 腿）。
+message Order {
+  OrderID id = 1;
+  UserID user_id = 2;
+  MarketID market_id = 3;
+  Side side = 4;
+  OrderType type = 5;
+  int32 price_pts = 6;          // 0-100 對應 0.00-1.00；MARKET 單時為 0
+  int64 qty_total = 7;
+  int64 qty_remaining = 8;
+  OrderStatus status = 9;
+  TimeInForce tif = 10;
+  bool post_only = 11;
+  string client_order_id = 12;
+  google.protobuf.Timestamp submitted_at = 13;
+  uint64 seq_no = 14;
+}
+
+// PlaceOrderRequest — 玩家 / DMM 下單（API Gateway 統一入口）。
+//
+// 風控前置（SPEC-003 §12）：
+//   - api-gateway 在轉發前已調用 risk-antifraud-service 取得 risk_score
+//   - 若 user_id 命中 PLATFORM_SYSTEM_USER_IDS（SPEC-003 §12.1），引擎內層拒絕
+message PlaceOrderRequest {
+  AuditMeta audit = 1;
+  UserID user_id = 2;
+  MarketID market_id = 3;
+  Side side = 4;
+  Outcome outcome = 5;          // 給 UI 用的 buy/sell × YES/NO 邊界轉換用
+  OrderType type = 6;
+  int32 price_pts = 7;
+  int64 quantity = 8;
+  TimeInForce tif = 9;
+  bool post_only = 10;
+  string client_order_id = 11;
+}
+
+message PlaceOrderResponse {
+  Order order = 1;
+  int64 filled_qty = 2;
+  int32 avg_price_pts = 3;
+  Money fee = 4;
+}
+
+message CancelOrderRequest {
+  AuditMeta audit = 1;
+  OrderID order_id = 2;
+  UserID user_id = 3;           // 需與 order.user_id 相符
+}
+
+message CancelOrderResponse {
+  Order order = 1;
+}
+
+// Trade（SPEC-003 §6.3）。
+message Trade {
+  uint64 seq_no = 1;
+  TradeID id = 2;
+  MarketID market_id = 3;
+  int32 price_pts = 4;
+  int64 qty = 5;
+  OrderID taker_order = 6;
+  OrderID maker_order = 7;
+  UserID taker_user = 8;
+  UserID maker_user = 9;
+  int32 taker_fee_bps = 10;
+  int32 maker_fee_bps = 11;     // 可為負（rebate）
+  google.protobuf.Timestamp ts = 12;
+}
+
+// EngineEvent — 撮合引擎 → Kafka 事件流的 union 訊息（topic: engine.events）。
+//
+// 下游消費者：wallet-ledger-service / position-service / ws-gateway / risk / k 線。
+message EngineEvent {
+  uint64 seq_no = 1;
+  MarketID market_id = 2;
+  google.protobuf.Timestamp ts = 3;
+
+  oneof event {
+    OrderAccepted accepted = 10;
+    OrderRejected rejected = 11;
+    OrderResting resting = 12;
+    Trade trade = 13;
+    OrderFilled filled = 14;
+    OrderPartiallyFilled partial = 15;
+    OrderCancelled cancelled = 16;
+    BookSnapshot snapshot = 17;
+    BookDelta delta = 18;
+    MarketStatusChanged status_changed = 19;
+  }
+}
+
+message OrderAccepted { OrderID order_id = 1; }
+
+message OrderRejected {
+  OrderID order_id = 1;
+  ErrorCode reason = 2;        // 引用 errors.proto
+  string detail = 3;
+}
+
+message OrderResting { OrderID order_id = 1; }
+message OrderFilled  { OrderID order_id = 1; int64 total_filled = 2; }
+message OrderPartiallyFilled { OrderID order_id = 1; int64 filled_now = 2; int64 remaining = 3; }
+message OrderCancelled {
+  OrderID order_id = 1;
+  CancelReason reason = 2;
+}
+
+enum CancelReason {
+  CANCEL_REASON_UNSPECIFIED = 0;
+  CANCEL_REASON_USER_REQUEST = 1;
+  CANCEL_REASON_IOC_REMAINDER = 2;
+  CANCEL_REASON_FOK_NOT_FILLABLE = 3;
+  CANCEL_REASON_MARKET_CLOSED = 4;
+  CANCEL_REASON_STP = 5;       // self-trade prevention
+  CANCEL_REASON_KILL_SWITCH = 6;
+}
+
+// BookLevel / BookSnapshot / BookDelta — WS 推播訂單簿（SPEC-003 §10.3）。
+message BookLevel {
+  int32 price_pts = 1;
+  int64 qty = 2;
+}
+
+message BookSnapshot {
+  uint64 seq_no = 1;
+  repeated BookLevel bids = 2;     // 由高至低
+  repeated BookLevel asks = 3;     // 由低至高
+  int32 last_trade_pts = 4;
+}
+
+message BookDelta {
+  uint64 seq_no = 1;
+  Side side = 2;
+  int32 price_pts = 3;
+  int64 qty_delta = 4;             // 正/負；qty=0 表該價位移除
+}
+
+message MarketStatusChanged {
+  MarketID market_id = 1;
+  MarketStatus old_status = 2;
+  MarketStatus new_status = 3;
+}
+
+// EngineService — Matching Engine 暴露的 RPC（內部）。
+//
+// 注意：高頻路徑（PlaceOrder / CancelOrder）走 gRPC；
+// WS 推播由 ws-gateway 訂閱 Kafka 後扇出，不經此 service。
+service EngineService {
+  rpc PlaceOrder(PlaceOrderRequest) returns (PlaceOrderResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+  // 訂單簿快照（給 ws-gateway 新連線初始化用）
+  rpc GetBookSnapshot(GetBookSnapshotRequest) returns (BookSnapshot);
+}
+
+message GetBookSnapshotRequest {
+  MarketID market_id = 1;
+  int32 depth = 2;             // 預設 10
+}
