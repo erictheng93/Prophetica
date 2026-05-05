@@ -1,7 +1,9 @@
 # SPEC-014 — 整體技術架構（Tech Architecture）
 
 > 優先級：跨章節（被多份 SPEC 依賴）
-> 版本：v0.1.0 · 最後更新：2026-05-05
+> 版本：v0.1.2 · 最後更新：2026-05-05
+>
+> **v0.1.2 變更**：前端框架由 Nuxt 3 (Vue 3) 切換至 Next.js 15 (React 19)，元件庫採用 Cloudflare Kumo（`@cloudflare/kumo`，建立於 Base UI）。狀態管理 Pinia → Zustand；表單 VeeValidate → React Hook Form。理由詳見 `design/COMPONENTS.md`。
 
 ---
 
@@ -20,7 +22,7 @@
                        ┌──────────── Cloudflare ────────┼──────────────────┐
                        │ (WAF, CDN, DNS, R2)            │                  │
                        │                                ▼                  │
-   Player Browser ────►│ ── Nuxt 3 SSR (Pages) ──► API Gateway (Go/Echo) ─►│
+   Player Browser ────►│ ── Next.js 15 SSR/RSC ──► API Gateway (Go/Echo) ─►│
                        │                                │                  │
                        │ ── WS connections ──────────► WS Gateway (Go) ◄───│
                        │                                                   │
@@ -89,13 +91,16 @@
 
 | 元件 | 選擇 | 替代 | 理由 |
 |------|------|------|------|
-| Web App | **Nuxt 3 (Vue 3)** | Next.js | 維持 PRD 選擇；UI 由 ShadCN-Vue 風格化 |
-| 狀態管理 | **Pinia** | Vuex | Vue 3 標準 |
-| Style | **TailwindCSS + Bento Grid** | — | PRD 確認 |
+| Web App | **Next.js 15 (React 19, App Router)** | Remix | Kumo 為 React-only 元件庫；RSC + SSR 對 SEO 與初載速度有利 |
+| UI 元件庫 | **`@cloudflare/kumo`**（建立於 Base UI） | Radix UI / shadcn/ui | 業主指定；無障礙開箱即用，CSS variables 易主題化 |
+| Icon | **`@phosphor-icons/react`** | lucide-react | Kumo peer 依賴 |
+| 狀態管理 | **Zustand** | Redux Toolkit / Jotai | React 18+ 友善、bundle 小、與 RSC 共存無痛 |
+| Data Fetching | **TanStack Query v5** | SWR | 撮合資料快取 + 樂觀更新 |
+| Style | **TailwindCSS** | — | 與 Kumo CSS variables 並用 |
 | WS Client | **native WebSocket** + custom reconnect | Phoenix Channels | 簡單可控 |
 | Charts | **Lightweight Charts (TradingView)** | Recharts | 高性能訂單簿圖 |
-| LIFF / LINE | **LIFF SDK** | — | PRD 確認 |
-| 表單 | **VeeValidate + Zod** | — | 標準 |
+| LIFF / LINE | **LIFF SDK**（需 React wrapper） | — | PRD 確認 |
+| 表單 | **React Hook Form + Zod** | — | RHF 為 React 標準；Zod schema 與後端共用 |
 | 行為追蹤 | **Mixpanel + 自建 tracking** | Amplitude | 預測市場專屬 |
 
 ### 3.3 基礎設施
@@ -129,17 +134,17 @@
 | `risk-antifraud-service` | Go | 風控規則、行為分析 | 2+ replicas |
 | `referral-service` | Go | 推薦關係、佣金計算 | 1+ replica |
 | `notification-service` | Go | Email / SMS / Push / 站內訊息 | 2+ replicas |
-| `web-app` | Nuxt 3 | 玩家前台 | Cloudflare Pages |
-| `admin-app` | Nuxt 3 / SvelteKit | 內部後台 | 私網 + mTLS |
+| `web-app` | Next.js 15 (React 19) | 玩家前台 | Cloudflare Pages（`@cloudflare/next-on-pages`） |
+| `admin-app` | Next.js 15 (React 19) | 內部後台 | 私網 + mTLS |
 
 ## 5. Repository 結構（Monorepo）
 
 採用 **Turborepo + pnpm workspaces** + **Go workspace（go.work）**
 
 ```
-propheticaNet/
+prophetica/
 ├── apps/
-│   ├── web/                    Nuxt 3 玩家前台
+│   ├── web/                    Next.js 15 玩家前台（React + Kumo）
 │   ├── admin/                  內部後台
 │   └── liff/                   LINE LIFF mini app
 ├── services/
@@ -307,27 +312,36 @@ func (s *Service) PostTransaction(ctx context.Context, txn *Transaction) error {
 }
 ```
 
-### 8.2 Vue / Nuxt 3
+### 8.2 React / Next.js 15
 
-```vue
-<!-- apps/web/components/MarketCard.vue -->
-<script setup lang="ts">
-import { useMarket } from '~/composables/useMarket'
+```tsx
+// apps/web/components/MarketCard.tsx
+'use client'
 
-const props = defineProps<{ marketId: string }>()
-const { market, depth, lastPrice, isLoading } = useMarket(props.marketId)
-</script>
+import { Button } from '@cloudflare/kumo'
+import { useMarket } from '@/hooks/useMarket'
+import { formatPct } from '@/lib/format'
+import { OrderBookDepth } from './OrderBookDepth'
 
-<template>
-  <div class="rounded-2xl border bg-zinc-900 p-4 transition hover:border-emerald-400">
-    <h3 class="text-lg font-semibold">{{ market?.title }}</h3>
-    <div class="mt-2 flex items-baseline gap-2">
-      <span class="text-2xl font-bold text-emerald-400">{{ formatPct(lastPrice) }}</span>
-      <span class="text-xs text-zinc-400">YES</span>
-    </div>
-    <OrderBookDepth :depth="depth" />
-  </div>
-</template>
+type Props = { marketId: string }
+
+export function MarketCard({ marketId }: Props) {
+  const { market, depth, lastPrice, isLoading } = useMarket(marketId)
+
+  if (isLoading) return null
+
+  return (
+    <article className="rounded-2xl border bg-zinc-900 p-4 transition hover:border-emerald-400">
+      <h3 className="text-lg font-semibold">{market?.title}</h3>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-2xl font-bold text-emerald-400">{formatPct(lastPrice)}</span>
+        <span className="text-xs text-zinc-400">YES</span>
+      </div>
+      <OrderBookDepth depth={depth} />
+      <Button variant="primary" className="mt-4 w-full">下單</Button>
+    </article>
+  )
+}
 ```
 
 ## 9. 命名規範
@@ -338,8 +352,9 @@ const { market, depth, lastPrice, isLoading } = useMarket(props.marketId)
 | Go file | snake_case | `order_book.go` |
 | Go type | PascalCase | `OrderBook` |
 | Go func | PascalCase（exported）| `MatchOrder` |
-| Vue component | PascalCase | `MarketCard.vue` |
-| Vue composable | `use{Name}` | `useMarket.ts` |
+| React component | PascalCase, `.tsx` | `MarketCard.tsx` |
+| React hook | `use{Name}`, `.ts` | `useMarket.ts` |
+| Next.js route segment | kebab-case 目錄 | `app/markets/[id]/page.tsx` |
 | Database table | snake_case 複數 | `ledger_entries` |
 | Database column | snake_case | `created_at` |
 | Kafka topic | dot.delimited | `orders.placed` |

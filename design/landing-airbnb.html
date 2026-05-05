@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prophetica — 找到你相信的那個市場</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#ff385c; --primary-active:#e00b41;
+    --ink:#222222; --body:#3f3f3f; --muted:#6a6a6a; --muted-soft:#929292;
+    --hairline:#dddddd; --hairline-soft:#ebebeb;
+    --canvas:#ffffff; --surface-soft:#f7f7f7; --surface-strong:#f2f2f2;
+    --on-primary:#ffffff;
+    --shadow-card:rgba(0,0,0,0.02) 0 0 0 1px,
+                  rgba(0,0,0,0.04) 0 2px 6px 0,
+                  rgba(0,0,0,0.10) 0 4px 8px 0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--canvas);color:var(--ink);
+    font-family:Inter,'Airbnb Cereal VF',Circular,-apple-system,system-ui,Roboto,sans-serif;
+    font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--ink);text-decoration:none}
+  ul{list-style:none}
+
+  /* ───── Top nav ───── */
+  .top-nav{height:80px;border-bottom:1px solid var(--hairline);
+    display:flex;align-items:center;justify-content:space-between;padding:0 80px;
+    position:sticky;top:0;background:var(--canvas);z-index:30}
+  .wordmark{color:var(--primary);font-weight:700;font-size:22px;letter-spacing:-0.5px;
+    display:flex;align-items:center;gap:6px}
+  .wordmark svg{width:28px;height:28px}
+  .product-tabs{display:flex;gap:32px;align-items:flex-end}
+  .tab{display:flex;flex-direction:column;align-items:center;gap:4px;
+    padding-bottom:18px;cursor:pointer;color:var(--muted);font-weight:600;font-size:16px;position:relative}
+  .tab .icon{font-size:24px;line-height:1}
+  .tab.active{color:var(--ink)}
+  .tab.active::after{content:"";position:absolute;left:8px;right:8px;bottom:0;height:2px;background:var(--ink);border-radius:2px}
+  .tab .new{position:absolute;top:-2px;right:-22px;background:var(--canvas);
+    border:1px solid var(--hairline);border-radius:9999px;
+    font-size:8px;font-weight:700;letter-spacing:.04em;padding:2px 6px;color:var(--ink)}
+  .nav-utils{display:flex;gap:8px;align-items:center}
+  .nav-utils .link{font-weight:600;font-size:14px;padding:12px 16px;border-radius:9999px;cursor:pointer}
+  .nav-utils .link:hover{background:var(--surface-soft)}
+  .nav-account{display:flex;align-items:center;gap:12px;border:1px solid var(--hairline);
+    border-radius:9999px;padding:5px 6px 5px 12px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .nav-account .avatar{width:30px;height:30px;border-radius:50%;background:var(--ink);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+
+  /* ───── Hero ───── */
+  .hero{padding:48px 80px 24px;text-align:center}
+  .hero h1{font-size:32px;font-weight:700;line-height:1.2;letter-spacing:-0.5px;margin-bottom:8px;color:var(--ink)}
+  .hero p{color:var(--muted);font-size:16px;margin-bottom:32px}
+  .search-pill{margin:0 auto;max-width:850px;background:var(--canvas);
+    border:1px solid var(--hairline);border-radius:9999px;height:64px;
+    display:grid;grid-template-columns:1.4fr 1fr 1fr 1.2fr 80px;align-items:center;
+    box-shadow:var(--shadow-card)}
+  .seg{padding:8px 24px;text-align:left;border-right:1px solid var(--hairline);height:100%;
+    display:flex;flex-direction:column;justify-content:center;cursor:pointer;border-radius:9999px}
+  .seg:hover{background:var(--surface-soft)}
+  .seg:last-of-type{border-right:0}
+  .seg .label{font-size:12px;font-weight:600;color:var(--ink)}
+  .seg .placeholder{font-size:14px;color:var(--muted)}
+  .search-orb{width:48px;height:48px;background:var(--primary);border-radius:50%;
+    display:flex;align-items:center;justify-content:center;color:#fff;margin:0 8px;cursor:pointer;border:0}
+  .search-orb svg{width:18px;height:18px}
+
+  /* ───── Category strip ───── */
+  .cat-strip{display:flex;gap:32px;justify-content:center;padding:24px 80px;
+    overflow-x:auto;border-bottom:1px solid var(--hairline-soft)}
+  .cat{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--muted);
+    cursor:pointer;font-size:12px;font-weight:600;padding:8px 0;white-space:nowrap}
+  .cat.active{color:var(--ink);border-bottom:2px solid var(--ink)}
+  .cat .icon{font-size:24px;line-height:1}
+
+  /* ───── Section: featured markets ───── */
+  .section{padding:32px 80px 64px}
+  .section-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px}
+  .section-head h2{font-size:22px;font-weight:700;letter-spacing:-0.4px;color:var(--ink)}
+  .section-head a{font-size:14px;color:var(--muted);font-weight:500}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+  @media (max-width:1280px){.grid{grid-template-columns:repeat(3,1fr)}}
+  @media (max-width:980px){.grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:640px){.grid{grid-template-columns:1fr}.section,.hero,.top-nav,.cat-strip{padding-left:24px;padding-right:24px}}
+  .card{background:var(--canvas);border-radius:14px;cursor:pointer;transition:transform .2s ease}
+  .card:hover{transform:translateY(-2px)}
+  .photo{position:relative;aspect-ratio:1/1;border-radius:14px;overflow:hidden;
+    display:flex;align-items:flex-end;padding:16px;color:#fff}
+  .photo .badge{position:absolute;top:12px;left:12px;background:#fff;color:var(--ink);
+    border-radius:9999px;padding:4px 10px;font-size:11px;font-weight:600;box-shadow:var(--shadow-card)}
+  .photo .heart{position:absolute;top:12px;right:12px;width:32px;height:32px;
+    background:rgba(0,0,0,.32);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px}
+  .photo .label{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;opacity:.92}
+  .meta{padding:12px 4px 0}
+  .meta .q{font-size:16px;font-weight:600;line-height:1.25;color:var(--ink);margin-bottom:4px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .meta .sub{font-size:14px;color:var(--muted);margin-bottom:4px}
+  .meta .price-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:6px}
+  .meta .yes{color:var(--ink);font-weight:600}
+  .meta .yes b{color:var(--primary)}
+  .meta .vol{font-size:13px;color:var(--muted)}
+
+  /* photo-as-illustration backgrounds (no external images) */
+  .ph-1{background:linear-gradient(135deg,#0b3d91 0%,#3860BE 60%,#9bb8ff 100%)}
+  .ph-2{background:linear-gradient(135deg,#7a3300 0%,#c95b1c 60%,#ffb37a 100%)}
+  .ph-3{background:linear-gradient(135deg,#1f6f3a 0%,#3eaf63 60%,#a9e6bf 100%)}
+  .ph-4{background:linear-gradient(135deg,#5a1a6b 0%,#9b3fb7 60%,#e4b8f0 100%)}
+  .ph-5{background:linear-gradient(135deg,#7a0a26 0%,#c01e44 60%,#ff95a8 100%)}
+  .ph-6{background:linear-gradient(135deg,#2a2a2a 0%,#525252 60%,#9a9a9a 100%)}
+  .ph-7{background:linear-gradient(135deg,#003d4a 0%,#0a8aa1 60%,#83d2e0 100%)}
+  .ph-8{background:linear-gradient(135deg,#3b0a5b 0%,#7a36b0 60%,#cba1e0 100%)}
+
+  /* city link grid */
+  .cities{display:grid;grid-template-columns:repeat(6,1fr);gap:8px 24px;padding:16px 80px 64px;border-top:1px solid var(--hairline-soft)}
+  .cities .blk{padding:12px 0}
+  .cities .name{font-size:14px;font-weight:600;color:var(--ink)}
+  .cities .sub{font-size:14px;color:var(--muted)}
+  @media (max-width:980px){.cities{grid-template-columns:repeat(3,1fr)}}
+  @media (max-width:640px){.cities{grid-template-columns:repeat(2,1fr);padding-left:24px;padding-right:24px}}
+
+  /* footer */
+  footer{background:var(--canvas);border-top:1px solid var(--hairline);padding:48px 80px}
+  .foot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-bottom:24px}
+  footer h4{font-size:16px;font-weight:500;color:var(--ink);margin-bottom:12px}
+  footer li{font-size:14px;line-height:2;color:var(--ink)}
+  .legal{border-top:1px solid var(--hairline);padding-top:24px;display:flex;justify-content:space-between;flex-wrap:wrap;
+    color:var(--muted);font-size:13px;gap:16px}
+  @media (max-width:640px){footer,.cities{padding-left:24px;padding-right:24px}.foot-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top-nav">
+  <div class="wordmark">
+    <svg viewBox="0 0 32 32" fill="currentColor"><path d="M16 1c-3 0-5 2-7 7L2 25c-1 3 1 6 4 6 2 0 3-1 5-4l5-9 5 9c2 3 3 4 5 4 3 0 5-3 4-6L23 8c-2-5-4-7-7-7z"/></svg>
+    Prophetica
+  </div>
+  <nav class="product-tabs">
+    <div class="tab active"><span class="icon">📈</span><span>市場</span></div>
+    <div class="tab"><span class="icon">🔮</span><span>研究</span><span class="new">NEW</span></div>
+    <div class="tab"><span class="icon">🤝</span><span>DMM</span><span class="new">NEW</span></div>
+  </nav>
+  <div class="nav-utils">
+    <span class="link">成為 DMM</span>
+    <span class="link">🌐</span>
+    <div class="nav-account"><span>☰</span><span class="avatar">E</span></div>
+  </div>
+</header>
+
+<section class="hero">
+  <h1>找到你相信的那個市場。</h1>
+  <p>逾 1,200 個正在運行的預測市場，由真實供需驅動價格。</p>
+  <form class="search-pill" onsubmit="event.preventDefault()">
+    <div class="seg">
+      <span class="label">主題</span><span class="placeholder">政治、財報、運動、加密…</span>
+    </div>
+    <div class="seg">
+      <span class="label">結算前</span><span class="placeholder">何時揭曉</span>
+    </div>
+    <div class="seg">
+      <span class="label">流動性</span><span class="placeholder">最少成交量</span>
+    </div>
+    <div class="seg">
+      <span class="label">立場</span><span class="placeholder">YES / NO / 任意</span>
+    </div>
+    <button class="search-orb" aria-label="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    </button>
+  </form>
+</section>
+
+<nav class="cat-strip" aria-label="categories">
+  <div class="cat active"><span class="icon">🏛️</span>政治</div>
+  <div class="cat"><span class="icon">📊</span>財報</div>
+  <div class="cat"><span class="icon">⚽</span>運動</div>
+  <div class="cat"><span class="icon">₿</span>加密</div>
+  <div class="cat"><span class="icon">🎬</span>娛樂</div>
+  <div class="cat"><span class="icon">🏦</span>央行</div>
+  <div class="cat"><span class="icon">🚀</span>科技</div>
+  <div class="cat"><span class="icon">🌦️</span>氣候</div>
+  <div class="cat"><span class="icon">🌍</span>地緣</div>
+</nav>
+
+<section class="section">
+  <div class="section-head">
+    <h2>本週最熱市場 — 台灣</h2>
+    <a href="#">查看全部 ›</a>
+  </div>
+  <div class="grid">
+
+    <article class="card">
+      <div class="photo ph-1"><span class="badge">⭐ 高流動性</span><span class="heart">♡</span><span class="label">政治 · 2026</span></div>
+      <div class="meta">
+        <div class="q">2026 台北市長選舉，蔣萬安是否連任？</div>
+        <div class="sub">結算 · 2026/12/26</div>
+        <div class="price-row"><span class="yes">YES <b>$0.58</b></span><span class="vol">$1.42M 成交</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="photo ph-2"><span class="badge">⭐ 高流動性</span><span class="heart">♡</span><span class="label">財報 · TSMC</span></div>
+      <div class="meta">
+        <div class="q">台積電 2026 Q3 EPS 是否突破 18 元？</div>
+        <div class="sub">結算 · 2026/10/16</div>
+        <div class="price-row"><span class="yes">YES <b>$0.71</b></span><span class="vol">$880K 成交</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="photo ph-3"><span class="heart">♡</span><span class="label">加密 · 2026</span></div>
+      <div class="meta">
+        <div class="q">BTC 在 2026/12/31 前是否突破 $200K USD？</div>
+        <div class="sub">結算 · 2026/12/31</div>
+        <div class="price-row"><span class="yes">YES <b>$0.34</b></span><span class="vol">$2.1M 成交</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="photo ph-4"><span class="heart">♡</span><span class="label">總體 · 央行</span></div>
+      <div class="meta">
+        <div class="q">央行 6 月理監事會議是否升息？</div>
+        <div class="sub">結算 · 2026/06/19</div>
+        <div class="price-row"><span class="yes">YES <b>$0.12</b></span><span class="vol">$412K 成交</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="photo ph-5"><span class="heart">♡</span><span class="label">運動 · 世足</span></div>
+      <div class="meta">
+        <div class="q">2026 世足賽冠軍是否為阿根廷？</div>
+        <div class="sub">結算 · 2026/07/19</div>
+        <div class="price-row"><span class="yes">YES <b>$0.18</b></span><span class="vol">$720K 成交</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="photo ph-6"><span class="badge">新上架</span><span class="heart">♡</span><span class="label">科技 · AI</span></div>
+      <div class="meta">
+        <div class="q">OpenAI 是否在 2026 年內公開 IPO？</div>
+        <div class="sub">結算 · 2026/12/31</div>
+        <div class="price-row"><span class="yes">YES <b>$0.07</b></span><span class="vol">$1.05M 成交</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="photo ph-7"><span class="heart">♡</span><span class="label">氣候 · 颱風</span></div>
+      <div class="meta">
+        <div class="q">2026 是否有 3 個以上颱風直撲台灣？</div>
+        <div class="sub">結算 · 2026/11/30</div>
+        <div class="price-row"><span class="yes">YES <b>$0.46</b></span><span class="vol">$340K 成交</span></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <div class="photo ph-8"><span class="heart">♡</span><span class="label">娛樂 · 電影</span></div>
+      <div class="meta">
+        <div class="q">奧斯卡最佳影片是否頒給亞洲導演？</div>
+        <div class="sub">結算 · 2027/03/15</div>
+        <div class="price-row"><span class="yes">YES <b>$0.22</b></span><span class="vol">$96K 成交</span></div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <h2>啟發你下一筆預測</h2>
+    <a href="#">研究中心 ›</a>
+  </div>
+  <div class="cities">
+    <div class="blk"><div class="name">台北</div><div class="sub">在地政治市場</div></div>
+    <div class="blk"><div class="name">新竹</div><div class="sub">半導體財報市場</div></div>
+    <div class="blk"><div class="name">高雄</div><div class="sub">能源與港務</div></div>
+    <div class="blk"><div class="name">東京</div><div class="sub">日經指數預測</div></div>
+    <div class="blk"><div class="name">首爾</div><div class="sub">韓股與選舉</div></div>
+    <div class="blk"><div class="name">紐約</div><div class="sub">美股與聯準會</div></div>
+    <div class="blk"><div class="name">倫敦</div><div class="sub">英鎊與政局</div></div>
+    <div class="blk"><div class="name">香港</div><div class="sub">恆指與政策</div></div>
+    <div class="blk"><div class="name">新加坡</div><div class="sub">東南亞總體</div></div>
+    <div class="blk"><div class="name">舊金山</div><div class="sub">AI 與創投</div></div>
+    <div class="blk"><div class="name">柏林</div><div class="sub">歐元區政策</div></div>
+    <div class="blk"><div class="name">杜拜</div><div class="sub">原油與航運</div></div>
+  </div>
+</section>
+
+<footer>
+  <div class="foot-grid">
+    <div>
+      <h4>支援</h4>
+      <ul><li>幫助中心</li><li>結算保證</li><li>取消退款政策</li><li>身分驗證</li><li>無障礙</li></ul>
+    </div>
+    <div>
+      <h4>市場製造</h4>
+      <ul><li>成為 DMM</li><li>負責任地承擔風險</li><li>API 文件</li><li>研究中心</li><li>社群論壇</li></ul>
+    </div>
+    <div>
+      <h4>Prophetica</h4>
+      <ul><li>新聞編輯室</li><li>新功能</li><li>投資人</li><li>徵才</li><li>合規邊界（SPEC-001）</li></ul>
+    </div>
+  </div>
+  <div class="legal">
+    <span>© 2026 Prophetica, Inc. · 點數不可兌換現金 · 僅限 KYC 通過之台灣居民使用 · 隱私權 · 服務條款 · Sitemap</span>
+    <span>🌐 繁體中文 (台灣) · NTD</span>
+  </div>
+</footer>
+
+</body>
+</html>

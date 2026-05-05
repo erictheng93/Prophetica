@@ -39,15 +39,16 @@ vendor/
 go.work.sum
 
 # ---------------------------------------------------------------
-# Node / Nuxt / Vue
+# Node / Next.js / React
 # ---------------------------------------------------------------
 node_modules/
-.nuxt/
-.output/
-.nitro/
+.next/
+out/
 .cache/
 .turbo/
 .pnpm-store/
+.swc/
+next-env.d.ts
 dist/
 .DS_Store
 *.log

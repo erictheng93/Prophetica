@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prophetica — 用價格發現未來</title>
+<style>
+  :root{
+    --primary:#0066cc; --primary-on-dark:#2997ff;
+    --ink:#1d1d1f; --body:#1d1d1f; --ink-muted-80:#333333; --ink-muted-48:#7a7a7a;
+    --hairline:#e0e0e0;
+    --canvas:#ffffff; --parchment:#f5f5f7; --pearl:#fafafc;
+    --tile-1:#272729; --tile-2:#2a2a2c; --tile-3:#252527; --black:#000000;
+    --on-primary:#ffffff;
+    --shadow-product:rgba(0,0,0,0.22) 3px 5px 30px 0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--canvas);color:var(--ink);
+    font-family:"SF Pro Text",system-ui,-apple-system,BlinkMacSystemFont,Inter,sans-serif;
+    font-size:17px;line-height:1.47;letter-spacing:-0.374px;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  a{color:var(--primary);text-decoration:none}
+  a.on-dark{color:var(--primary-on-dark)}
+  .display{font-family:"SF Pro Display",system-ui,-apple-system,Inter,sans-serif;font-weight:600}
+
+  /* ───── Global nav (44px black bar) ───── */
+  .global-nav{position:sticky;top:0;z-index:50;background:var(--black);color:#fff;height:44px;
+    display:flex;align-items:center;justify-content:center;gap:32px;font-size:12px;letter-spacing:-0.12px}
+  .global-nav span,.global-nav a{color:#fff;opacity:.88}
+
+  /* ───── Sub-nav frosted ───── */
+  .sub-nav{position:sticky;top:44px;z-index:49;height:52px;
+    background:rgba(245,245,247,0.8);backdrop-filter:saturate(180%) blur(20px);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    border-bottom:1px solid rgba(0,0,0,.04);
+    display:flex;align-items:center;padding:0 24px;justify-content:space-between}
+  .sub-nav .brand{font-family:"SF Pro Display",Inter,sans-serif;font-size:21px;font-weight:600;letter-spacing:0.231px}
+  .sub-nav nav{display:flex;gap:24px;align-items:center;font-size:14px;letter-spacing:-0.224px;color:var(--ink-muted-80)}
+  .sub-nav nav a{color:var(--ink-muted-80)}
+  .btn-pill{display:inline-block;background:var(--primary);color:var(--on-primary);
+    border-radius:9999px;padding:11px 22px;font-size:17px;line-height:1;letter-spacing:-0.374px;
+    border:0;cursor:pointer;transition:transform .15s ease}
+  .btn-pill:active{transform:scale(0.95)}
+  .btn-pill.ghost{background:transparent;color:var(--primary);border:1px solid var(--primary)}
+
+  /* ───── Tile system ───── */
+  .tile{padding:80px 24px;text-align:center}
+  .tile.parchment{background:var(--parchment)}
+  .tile.dark-1{background:var(--tile-1);color:#fff}
+  .tile.dark-2{background:var(--tile-2);color:#fff}
+  .tile.dark-3{background:var(--tile-3);color:#fff}
+  .tile h1{font-family:"SF Pro Display",Inter,sans-serif;font-weight:600;font-size:56px;line-height:1.07;letter-spacing:-0.28px;margin-bottom:16px}
+  .tile h2{font-family:"SF Pro Display",Inter,sans-serif;font-weight:600;font-size:40px;line-height:1.1;letter-spacing:-0.01em;margin-bottom:12px}
+  .tile p.lead{font-family:"SF Pro Display",Inter,sans-serif;font-size:28px;font-weight:400;line-height:1.14;letter-spacing:0.196px;color:inherit;margin-bottom:24px}
+  .tile .ctas{display:flex;gap:16px;justify-content:center;margin-top:8px}
+
+  /* ───── Hero product render (a synthetic price chart) ───── */
+  .render-frame{margin:48px auto 0;max-width:980px;border-radius:18px;overflow:hidden;
+    box-shadow:var(--shadow-product);background:#fff}
+  .chart{display:block;width:100%;height:auto}
+
+  /* ───── Two-up tile row ───── */
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  .row-2 .tile{padding:64px 32px}
+  @media (max-width:833px){.row-2{grid-template-columns:1fr}}
+
+  /* ───── Market chip grid ───── */
+  .market-grid{max-width:1240px;margin:48px auto 0;display:grid;
+    grid-template-columns:repeat(3,1fr);gap:24px;padding:0 24px}
+  @media (max-width:1068px){.market-grid{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:640px){.market-grid{grid-template-columns:1fr}}
+  .market-card{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;
+    padding:24px;text-align:left;color:var(--ink)}
+  .market-card .cat{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--ink-muted-48);margin-bottom:12px}
+  .market-card .q{font-size:21px;font-weight:600;line-height:1.19;letter-spacing:0.231px;margin-bottom:24px;color:var(--ink)}
+  .market-card .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;font-size:14px}
+  .market-card .price{font-family:"SF Pro Display",Inter,sans-serif;font-weight:600;font-size:21px;color:var(--ink);letter-spacing:-0.01em}
+  .market-card .yes .price{color:var(--primary)}
+  .market-card .no .price{color:#a3320e}
+  .market-card .meta{margin-top:16px;color:var(--ink-muted-48);font-size:12px;letter-spacing:-0.12px}
+
+  /* ───── Footer ───── */
+  footer{background:var(--parchment);color:var(--ink-muted-80);padding:64px 24px 48px}
+  .footer-inner{max-width:1240px;margin:0 auto;display:grid;
+    grid-template-columns:repeat(4,1fr);gap:32px}
+  footer h4{font-size:14px;font-weight:600;letter-spacing:-0.224px;color:var(--ink);margin-bottom:12px}
+  footer ul{list-style:none}
+  footer li{font-size:14px;line-height:2.41;color:var(--ink-muted-80)}
+  footer .legal{max-width:1240px;margin:48px auto 0;padding-top:24px;border-top:1px solid var(--hairline);
+    font-size:12px;color:var(--ink-muted-48);letter-spacing:-0.12px}
+  @media (max-width:833px){.footer-inner{grid-template-columns:repeat(2,1fr)}}
+
+  /* ───── Floating sticky bar ───── */
+  .sticky-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;
+    background:rgba(245,245,247,0.85);backdrop-filter:saturate(180%) blur(20px);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    border:1px solid rgba(0,0,0,.06);border-radius:9999px;
+    padding:12px 16px 12px 24px;display:flex;align-items:center;gap:24px;
+    box-shadow:0 8px 24px rgba(0,0,0,.06);z-index:60}
+  .sticky-bar .label{font-size:14px;color:var(--ink-muted-80)}
+
+  /* tiny logo */
+  .logo-mark{display:inline-block;width:18px;height:18px;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%,#fff 0,#fff 35%,var(--primary) 36%,var(--primary) 100%);
+    vertical-align:-3px;margin-right:6px}
+</style>
+</head>
+<body>
+
+<div class="global-nav" role="navigation" aria-label="global">
+  <span>Prophetica</span><a href="#">市場</a><a href="#">流動性</a><a href="#">研究</a><a href="#">支援</a><a href="#">登入</a>
+</div>
+
+<div class="sub-nav">
+  <div class="brand"><span class="logo-mark"></span>Prophetica</div>
+  <nav>
+    <a href="#">總覽</a><a href="#">熱門市場</a><a href="#">DMM 計畫</a><a href="#">法遵</a>
+    <button class="btn-pill" style="font-size:12px;padding:8px 14px">註冊</button>
+  </nav>
+</div>
+
+<!-- HERO TILE (light) -->
+<section class="tile">
+  <h1 class="display">用價格發現未來。</h1>
+  <p class="lead">Prophetica 是台灣第一個以訂單簿驅動的預測市場。<br>每個結果都有價格，每個價格都是群眾的判斷。</p>
+  <div class="ctas">
+    <button class="btn-pill">開始預測</button>
+    <button class="btn-pill ghost">了解運作</button>
+  </div>
+  <div class="render-frame" aria-hidden="true">
+    <svg class="chart" viewBox="0 0 980 420" xmlns="http://www.w3.org/2000/svg">
+      <rect width="980" height="420" fill="#fafafc"/>
+      <!-- grid -->
+      <g stroke="#ebebeb" stroke-width="1">
+        <line x1="0" y1="84"  x2="980" y2="84"/>
+        <line x1="0" y1="168" x2="980" y2="168"/>
+        <line x1="0" y1="252" x2="980" y2="252"/>
+        <line x1="0" y1="336" x2="980" y2="336"/>
+      </g>
+      <!-- YES line -->
+      <path d="M0,300 C120,290 180,180 260,200 S420,80 540,140 S720,260 820,180 980,120 980,120"
+            fill="none" stroke="#0066cc" stroke-width="2.5"/>
+      <!-- NO line -->
+      <path d="M0,120 C120,140 180,260 260,240 S420,360 540,300 S720,180 820,260 980,320 980,320"
+            fill="none" stroke="#a3320e" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>
+      <!-- labels -->
+      <text x="24" y="36" font-family="SF Pro Display, Inter, sans-serif" font-size="14" fill="#7a7a7a" letter-spacing="-0.224">2026 台北市長 — 黃國昌當選機率</text>
+      <text x="24" y="60" font-family="SF Pro Display, Inter, sans-serif" font-size="32" font-weight="600" fill="#1d1d1f" letter-spacing="-0.01em">YES 0.62</text>
+      <text x="190" y="60" font-family="SF Pro Display, Inter, sans-serif" font-size="32" font-weight="600" fill="#a3320e" letter-spacing="-0.01em">NO 0.38</text>
+      <text x="900" y="36" font-family="SF Pro Text, Inter, sans-serif" font-size="12" fill="#7a7a7a" text-anchor="end">最近 30 日</text>
+    </svg>
+  </div>
+</section>
+
+<!-- DARK TILE -->
+<section class="tile dark-1">
+  <h2 class="display">流動性，由市場本身餵養。</h2>
+  <p class="lead" style="color:#cccccc">不是平台下場做市。是 DMM 在訂單簿上競價。<br>價格是真實供需，不是合成曲線。</p>
+  <div class="ctas">
+    <a href="#" class="on-dark">查看 DMM 計畫 ›</a>
+  </div>
+</section>
+
+<!-- LIGHT TILE: Three values -->
+<section class="tile parchment">
+  <h2 class="display">三件事，我們不會做。</h2>
+  <p class="lead" style="color:var(--ink-muted-80)">這不是優化點，是創辦人的法律邊界。</p>
+  <div class="row-2" style="max-width:1200px;margin:48px auto 0;grid-template-columns:1fr 1fr 1fr;gap:24px">
+    <div style="text-align:left">
+      <div style="font-size:14px;font-weight:600;color:var(--primary);margin-bottom:8px">SPEC-001 §1.1</div>
+      <h3 class="display" style="font-size:24px;line-height:1.2;letter-spacing:-0.01em;margin-bottom:8px">不允許點數兌現</h3>
+      <p style="font-size:17px;color:var(--ink-muted-80)">點數是預測單位，不是現金等價物。提現、轉讓、二級市場一律不開通。</p>
+    </div>
+    <div style="text-align:left">
+      <div style="font-size:14px;font-weight:600;color:var(--primary);margin-bottom:8px">SPEC-009 §1</div>
+      <h3 class="display" style="font-size:24px;line-height:1.2;letter-spacing:-0.01em;margin-bottom:8px">平台不下場</h3>
+      <p style="font-size:17px;color:var(--ink-muted-80)">不做市、不對沖、不在訂單簿掛單。撮合引擎只服務人類交易者。</p>
+    </div>
+    <div style="text-align:left">
+      <div style="font-size:14px;font-weight:600;color:var(--primary);margin-bottom:8px">SPEC-006</div>
+      <h3 class="display" style="font-size:24px;line-height:1.2;letter-spacing:-0.01em;margin-bottom:8px">責任博弈強制流程</h3>
+      <p style="font-size:17px;color:var(--ink-muted-80)">每位交易者都有冷靜期、自我排除、與每月上限可選。</p>
+    </div>
+  </div>
+</section>
+
+<!-- DARK TILE -->
+<section class="tile dark-2">
+  <h2 class="display">熱門市場</h2>
+  <p class="lead" style="color:#cccccc">最後 24 小時換手前 6 名。</p>
+  <div class="market-grid">
+    <div class="market-card" style="background:#fff">
+      <div class="cat">政治 · 2026</div>
+      <div class="q">2026 台北市長選舉，蔣萬安會否連任？</div>
+      <div class="row yes"><span>YES</span><span class="price">0.58</span></div>
+      <div class="row no"><span>NO</span><span class="price">0.42</span></div>
+      <div class="meta">$ 1.42M 成交量 · 2,184 交易者</div>
+    </div>
+    <div class="market-card" style="background:#fff">
+      <div class="cat">財報 · TSMC</div>
+      <div class="q">台積電 2026 Q3 EPS 是否突破 18 元？</div>
+      <div class="row yes"><span>YES</span><span class="price">0.71</span></div>
+      <div class="row no"><span>NO</span><span class="price">0.29</span></div>
+      <div class="meta">$ 880K 成交量 · 1,012 交易者</div>
+    </div>
+    <div class="market-card" style="background:#fff">
+      <div class="cat">加密 · 2026</div>
+      <div class="q">BTC 在 2026/12/31 前是否突破 $200K？</div>
+      <div class="row yes"><span>YES</span><span class="price">0.34</span></div>
+      <div class="row no"><span>NO</span><span class="price">0.66</span></div>
+      <div class="meta">$ 2.1M 成交量 · 4,506 交易者</div>
+    </div>
+    <div class="market-card" style="background:#fff">
+      <div class="cat">總體 · 央行</div>
+      <div class="q">央行 6 月理監事會議是否升息？</div>
+      <div class="row yes"><span>YES</span><span class="price">0.12</span></div>
+      <div class="row no"><span>NO</span><span class="price">0.88</span></div>
+      <div class="meta">$ 412K 成交量 · 689 交易者</div>
+    </div>
+    <div class="market-card" style="background:#fff">
+      <div class="cat">運動 · 世足</div>
+      <div class="q">2026 World Cup 冠軍是否為阿根廷？</div>
+      <div class="row yes"><span>YES</span><span class="price">0.18</span></div>
+      <div class="row no"><span>NO</span><span class="price">0.82</span></div>
+      <div class="meta">$ 720K 成交量 · 1,853 交易者</div>
+    </div>
+    <div class="market-card" style="background:#fff">
+      <div class="cat">科技 · AI</div>
+      <div class="q">OpenAI 是否在 2026 內公開 IPO？</div>
+      <div class="row yes"><span>YES</span><span class="price">0.07</span></div>
+      <div class="row no"><span>NO</span><span class="price">0.93</span></div>
+      <div class="meta">$ 1.05M 成交量 · 2,440 交易者</div>
+    </div>
+  </div>
+</section>
+
+<!-- LIGHT TILE: closing -->
+<section class="tile">
+  <h2 class="display">準備好讓你的判斷有價格嗎？</h2>
+  <p class="lead">註冊免費，KYC 完成後立即可下單。</p>
+  <div class="ctas">
+    <button class="btn-pill">建立帳號</button>
+    <button class="btn-pill ghost">下載白皮書</button>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <div>
+      <h4>市場</h4>
+      <ul><li><a href="#">總覽</a></li><li><a href="#">政治</a></li><li><a href="#">財經</a></li><li><a href="#">運動</a></li></ul>
+    </div>
+    <div>
+      <h4>學習</h4>
+      <ul><li><a href="#">新手指南</a></li><li><a href="#">DMM 文件</a></li><li><a href="#">API</a></li><li><a href="#">研究</a></li></ul>
+    </div>
+    <div>
+      <h4>法遵</h4>
+      <ul><li><a href="#">SPEC-001 法律邊界</a></li><li><a href="#">責任博弈</a></li><li><a href="#">KYC/AML</a></li><li><a href="#">資金安全</a></li></ul>
+    </div>
+    <div>
+      <h4>公司</h4>
+      <ul><li><a href="#">關於</a></li><li><a href="#">徵才</a></li><li><a href="#">聯絡</a></li><li><a href="#">媒體</a></li></ul>
+    </div>
+  </div>
+  <div class="legal">© 2026 Prophetica. 本平台僅供 KYC 通過之台灣居民使用。點數不可兌換現金。</div>
+</footer>
+
+<div class="sticky-bar" role="region" aria-label="quick action">
+  <span class="label">準備好下你的第一單？</span>
+  <button class="btn-pill" style="padding:8px 18px;font-size:14px">註冊</button>
+</div>
+
+</body>
+</html>

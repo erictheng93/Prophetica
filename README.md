@@ -1,6 +1,8 @@
-# propheticaNet
+# prophetica
+域名將會註冊為：prophetica.net
 
 > 趣味預測競猜娛樂遊戲平台 · Spec-Driven Development
+
 
 ## 專案性質
 
@@ -36,7 +38,7 @@
 ## 技術棧（簡）
 
 - **後端**：Go 1.22 · Echo · gRPC · Kafka · PostgreSQL 16 · Redis 7
-- **前端**：Nuxt 3 · TailwindCSS · Pinia · Lightweight Charts
+- **前端**：Next.js 15 (App Router, React 19) · TypeScript · `@cloudflare/kumo` · TailwindCSS · Zustand · Lightweight Charts
 - **基礎設施**：Linode LKE (Tokyo Primary) + AWS (Singapore DR) · Cloudflare · ArgoCD
 - **觀測**：Prometheus + Grafana + Loki + Tempo (OpenTelemetry)
 - **KYC SaaS**：SumSub（主）+ Onfido（備）
@@ -46,8 +48,8 @@
 ## 倉庫結構（規劃中）
 
 ```
-propheticaNet/
-├── apps/                  Nuxt 3 前台、後台
+prophetica/
+├── apps/                  Next.js 15 前台、後台（React + Kumo）
 ├── services/              Go 後端服務
 ├── packages/              共用 protobuf / SDK
 ├── infra/                 Terraform / Helm / ArgoCD
