@@ -1,0 +1,17 @@
+[package]
+name = "wallet-ledger-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+sdk = { path = "../../crates/sdk" }
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
