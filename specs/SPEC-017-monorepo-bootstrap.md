@@ -69,6 +69,10 @@ prophetica/
 │   └── diagrams/                   圖表（暫空）
 ├── design/                         前端設計探索（landing 候選方案）
 ├── tools/
+│   ├── scripts/                    bootstrap / migrate / seed / doctor 腳本（被 §4.5 Makefile 引用）
+│   ├── mocks/
+│   │   ├── sumsub/                 Go：SumSub KYC webhook 模擬（§5）
+│   │   └── payment/                Go：支付 Gateway webhook 模擬（§5）
 │   └── load-test/                  k6 / Vegeta 壓測（暫空）
 ├── .github/
 │   └── workflows/
