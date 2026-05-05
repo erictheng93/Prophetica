@@ -141,6 +141,8 @@
 
 採用 **Turborepo + pnpm workspaces** + **Go workspace（go.work）**
 
+> 此處為**規範來源（normative）**；SPEC-017 §2 為 bootstrap 後的實際 file tree，必須與本節一致。
+
 ```
 prophetica/
 ├── apps/
@@ -161,30 +163,38 @@ prophetica/
 │   ├── referral-service/       Go
 │   └── notification-service/   Go
 ├── packages/
-│   ├── proto/                  protobuf 定義（跨服務共用）
+│   ├── proto/                  buf workspace + .proto + generated stubs（v1/）
 │   ├── go-sdk/                 Go 內部共用程式庫
 │   └── ts-sdk/                 TypeScript 客戶端（給 web/admin）
 ├── infra/
-│   ├── terraform/              IaC
-│   ├── helm/                   K8s charts
-│   ├── argocd/                 GitOps
-│   └── runbooks/               P0 告警 runbook
+│   ├── docker-compose.local.yaml   本地 dev 環境（SPEC-017 §5）
+│   ├── terraform/                  IaC
+│   ├── helm/                       K8s charts
+│   ├── argocd/                     GitOps
+│   └── runbooks/                   P0 告警 runbook
 ├── specs/                      ← 本目錄
 ├── docs/
 │   ├── architecture/           架構決策記錄（ADR）
 │   ├── postmortems/            事故報告
 │   └── diagrams/               圖表
+├── design/                     前端設計探索（landing 候選方案）
 ├── tools/
+│   ├── scripts/                bootstrap / migrate / seed / doctor 腳本
+│   ├── mocks/                  本地 mock servers（SumSub / 支付）
 │   └── load-test/              k6 / Vegeta 壓測
 ├── .github/
-│   └── workflows/              CI
+│   └── workflows/              CI（ci.yml / release.yml）
 ├── go.work
 ├── pnpm-workspace.yaml
 ├── turbo.json
+├── Makefile
+├── buf.yaml
+├── buf.gen.yaml
+├── .editorconfig
+├── .gitignore
 ├── README.md
 ├── CLAUDE.md                   ← 不上傳
-├── AGENTS.md                   ← 不上傳
-└── .gitignore
+└── AGENTS.md                   ← 不上傳
 ```
 
 ## 6. 跨服務通訊協議
