@@ -13,7 +13,7 @@
 
 ## 1. Context and Problem Statement
 
-propheticaNet 需要為玩家提供一個進行二元（YES/NO）預測下注的市場機制。預測市場業界主流設計可歸為兩派：
+prophetica 需要為玩家提供一個進行二元（YES/NO）預測下注的市場機制。預測市場業界主流設計可歸為兩派：
 
 - **AMM 派**（Polymarket、Augur、早期 Predictit 部分機制）：以**自動造市公式**（多數採 LMSR — Logarithmic Market Scoring Rule）由平台或合約池主動掛價，玩家對「池」下注。
 - **Order Book 派**（Kalshi、傳統證交所）：玩家對玩家**撮合**，平台維護訂單簿，僅收手續費。
@@ -25,7 +25,7 @@ propheticaNet 需要為玩家提供一個進行二元（YES/NO）預測下注的
 3. 決定**初期資本曝險**（平台是否要擔負造市責任）
 4. 決定**冷啟動流動性策略**（自動有 vs 需要外部來源）
 
-> 原 PRD（PRD.md §3.2）提出的「概率對稱腳本」實質為**平台自建造市機器人**——技術屬性接近 LMSR，法律屬性與 AMM 等同。本 ADR 一併處理該方案的去留。
+> 原 PRD（PRD.md §3.2，該檔案於 2026-05-05 隨 SPEC v0.1.1 升級時隨同刪除，可由 git history 回溯）提出的「概率對稱腳本」實質為**平台自建造市機器人**——技術屬性接近 LMSR，法律屬性與 AMM 等同。本 ADR 一併處理該方案的去留。
 
 ## 2. Decision Drivers
 
@@ -176,7 +176,7 @@ price_yes = exp(q_yes / b) / (exp(q_yes / b) + exp(q_no / b))
 - [SPEC-001 §1.1](../../../specs/SPEC-001-legal-compliance.md) — 合規黃金三原則
 - [SPEC-003](../../../specs/SPEC-003-matching-engine.md) — 撮合引擎詳規（Order Book 實作）
 - [SPEC-009 §1](../../../specs/SPEC-009-dmm-liquidity.md) — DMM 紅線聲明
-- [PRD.md §3.2](../../../PRD.md) — 原始「概率對稱」提案（已被本 ADR 否決）
+- ~~PRD.md §3.2~~ — 原始「概率對稱」提案（已被本 ADR 否決；PRD.md 於 2026-05-05 刪除，git commit `6013b92` 之前可查）
 
 ### 8.2 外部參考
 
@@ -200,3 +200,4 @@ price_yes = exp(q_yes / b) / (exp(q_yes / b) + exp(q_no / b))
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
 | 2026-05-05 | v1.0 | Tech Lead | 首版 Accepted |
+| 2026-05-05 | v1.0.1 | Tech Lead | typo-level：§1 與 §8.1 引用之 PRD.md 已於 2026-05-05 隨 SPEC v0.1.1 升級時刪除，將連結改為 git history 回溯說明，避免 dead link。決策內容無變動。 |

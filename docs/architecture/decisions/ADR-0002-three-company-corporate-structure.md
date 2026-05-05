@@ -14,7 +14,7 @@
 
 ## 1. Context and Problem Statement
 
-propheticaNet 在動工之前，必須先決定**法律實體結構**：哪些公司、註冊在哪、彼此關係如何。這個決策會直接影響：
+prophetica 在動工之前，必須先決定**法律實體結構**：哪些公司、註冊在哪、彼此關係如何。這個決策會直接影響：
 
 1. **創辦人 / 工程師的刑事責任邊界**（特別是中華民國刑法 §268「圖利供給賭場罪」）
 2. **與玩家的合約對手方**（誰跟玩家簽 ToS？玩家儲值錢進誰的帳戶？）
@@ -26,7 +26,7 @@ propheticaNet 在動工之前，必須先決定**法律實體結構**：哪些�
 8. **銀行帳戶可開立性**（離岸金流 vs 在地金流）
 9. **DR / 商業連續性**（單一 entity 倒閉如何處理）
 
-由於 propheticaNet 之服務形式（即使定位為娛樂遊戲）在台灣司法管轄區仍有被認定為 §268 的風險，**單純設於台灣**會把所有以上風險集中於同一法人，導致創辦人/工程師個人陷入刑事追訴的可能性。
+由於 prophetica 之服務形式（即使定位為娛樂遊戲）在台灣司法管轄區仍有被認定為 §268 的風險，**單純設於台灣**會把所有以上風險集中於同一法人，導致創辦人/工程師個人陷入刑事追訴的可能性。
 
 > 必要說明：本 ADR 為**工程與創辦人視角的架構草案**，不是法律意見。最終結構必須由執照地與台灣兩地律師、跨境稅務律師、會計師三方分別出具意見書並簽署後才視為定案。本 ADR 提供論證骨架，供律師補強或調整。
 
@@ -104,7 +104,7 @@ Option B 表面看似最乾淨：法律風險全在離岸、稅率低。但有�
 |------|------------|-----------|
 | 台灣工程師雇傭 | 須以離岸雇主身份「外派」，**違反台灣就業服務法**對於本地受僱於外國公司的限制 | Tech Co. 為合法本地雇主 |
 | 工程師勞健保 / 退休金 | 需另外掛「人力派遣公司」，灰色 | Tech Co. 直接處理，合法 |
-| 台灣徵才品牌 | 「我們是 BVI / Malta 公司」對工程師求職吸引力低 | 「propheticaNet 台灣分部」可正常徵才 |
+| 台灣徵才品牌 | 「我們是 BVI / Malta 公司」對工程師求職吸引力低 | 「prophetica 台灣分部」可正常徵才 |
 | 程式碼與技術文件擁有權 | 工程師簽約對象為境外公司，IP 移轉合法性需個案處理 | 員工合約由 Tech Co. 簽，IP 透過 work-for-hire 移轉至 Holdings |
 | 銀行對開戶之審查 | 離岸法人在台開帳戶極困難（KYC 嚴格） | Tech Co. 為台灣公司，正常開戶 |
 | 監管面試 | 對方可能質疑「沒有實質運營，只是空殼」| 有真實的研發與客服職能可展示 |
@@ -156,7 +156,7 @@ E 列為**第 12–18 月**升級選項，待 MVP 驗證商業模式且首張執
 
 ## 5. 三公司職能分工矩陣
 
-> 此節為 SPEC-001 §2.2 之延伸，補充更細的職能對應。
+> 本節為三公司架構在工程實作中的職能拆分依據。SPEC-001 v0.1.1 起已將「經營主體架構」整節移除並由本 ADR 唯一持有，故此處不再引用 SPEC-001 對應章節。
 
 | 職能 | Holdings (BVI) | Operating Co. (執照地) | Tech Service Co. (Taiwan) |
 |------|---------------|----------------------|--------------------------|
@@ -197,7 +197,7 @@ E 列為**第 12–18 月**升級選項，待 MVP 驗證商業模式且首張執
 
 關鍵設計：
 
-- **玩家儲值與營運資金分離**：信託帳戶不可動用於行銷、薪資、稅費（SPEC-002 §2.1）
+- **玩家儲值與營運資金分離**：玩家信託帳戶（`Bank.TrustAccount.*`）不可動用於行銷、薪資、稅費。SPEC-002 §4.2 之 Chart of Accounts 已將託管 / 營運 / 收入 / 費用以獨立 ledger account 區隔；具體銀行帳戶開立、受託契約、動用權限由 Op Co. 法律 / 財務部門落實，不在 SPEC-002 維護
 - **BPO 服務費為市場行情**：Op Co. → Tech Co. 之服務費需符合 arm's length 原則（避免被視為移轉訂價避稅）
 - **Tech Co. 不接觸玩家資金**：玩家儲值任何時刻**都不**進入台灣銀行帳戶
 - **股利分配遵循執照地稅務協定**：Op Co. → Holdings 之分配適用執照地與 BVI 之雙邊協定
@@ -300,34 +300,35 @@ E 列為**第 12–18 月**升級選項，待 MVP 驗證商業模式且首張執
 - [ ] Holdings → Op Co. IP 授權合約簽署
 - [ ] Op Co. → Tech Co. BPO 服務合約簽署
 - [ ] Tech Co. 員工合約模板 + ESOP 規劃完成
-- [ ] Op Co. 取得至少一張正式遊戲執照（與 SPEC-001 §10 共驗）
+- [ ] Op Co. 取得至少一張正式遊戲執照
 - [ ] Op Co. 在執照地有實質營運跡象（office、director、staff）
 - [ ] 三方銀行帳戶開立完成（Holdings 信託 / Op Co. 玩家信託 + 營運 / Tech Co. 營運）
 - [ ] 第一年 Transfer Pricing Report 完成
 - [ ] 監管面試 / 律師意見書中三公司架構之表述被各方接受
 
-## 11. Open Questions（必須在動工前解決）
+## 11. Pre-Execution Validation Items（動工前驗證項目）
 
-1. **Op Co. 執照地最終定案**（影響 Op Co. 設立地）：
-   - Malta MGA：聲譽最佳、最嚴、年費 ~EUR 25k、適合走國際品牌路線
-   - Curaçao：彈性、一張牌照覆蓋多型態、年費 ~USD 25k、適合 MVP 起步
-   - PAGCOR：菲律賓本地門檻高、僅限菲律賓市場、不建議首選
-   - Isle of Man：聲譽佳、稅務友善、貴
-2. **CFC 風險評估**：台灣居民股東 + 海外控制 → 是否需在 BVI 之上加一層？
-3. **Holdings 股權結構**：創辦人直接持有 vs 透過信託 / 基金會持有？
-4. **Op Co. 與 Tech Co. 的 BPO markup 比例**：稅務律師建議多少？
-5. **是否首階段就引入 Local Director 而非全由創辦人擔任三方董事**？
-6. **ESOP 池規模**（Holdings 層級）：10% / 15% / 20%？
-7. **未來募資是否將 BVI 重組為 Cayman**？切換時機？
+> **MADR 體裁註記**：本節非「待重新決定的問題」（ADR 已 Accepted，三公司架構為定案）。本節為**動工前必須由律師 / 會計師驗證的執行細節**——不確認則不得執行 §10 Validation Criteria 之公司註冊步驟。所有跨 SPEC / 跨檔的決策議題改由 [SPEC-000 §5](../../../specs/SPEC-000-index.md) 中央追蹤表收斂。
+
+| ID | 待驗證項目 | 驗證對象 | 影響 |
+|----|----------|---------|------|
+| V-1 | Op Co. 執照地擇一（Malta MGA / Curaçao / PAGCOR / Isle of Man）| 執照地律師 | Op Co. 設立地、年費、合規負擔 |
+| V-2 | CFC（受控外國公司）風險：台灣居民股東是否需在 BVI 上加一層信託 / 基金會 | 跨境稅務律師（KPMG / PwC / EY 國際稅務部）| 可能成為首要 deal-breaker，須個案出意見書 |
+| V-3 | Holdings 股權結構：創辦人直接持有 vs 信託 / 基金會 | 跨境稅務律師 + 信託專業 | 與 V-2 連動 |
+| V-4 | Op Co. → Tech Co. 之 BPO 服務費 markup 比例（建議 7–12%）| 國際會計師事務所 | Transfer Pricing Report 基礎 |
+| V-5 | 首階段 Local Director 配置：外包 vs 創辦人兼任 | 執照地律師 | Op Co. 實質營運跡象門檻 |
+| V-6 | ESOP 池規模（Holdings 層級）：10% / 15% / 20% | 創投顧問 + 律師 | 影響首輪募資估值 dilution |
+| V-7 | 未來 IPO 路徑：BVI → Cayman / Delaware 重組時機 | 投資銀行 + 律師 | 屬遠期議題，不阻塞 MVP 上線 |
+
+V-1 ~ V-3 標記為 **deal-breaker class**（任一未過則暫停 §10 第一條 entity 註冊步驟）。V-4 ~ V-7 標記為 **execution class**（可在註冊後 90 天內完成）。
 
 ## 12. References
 
 ### 12.1 內部文件
 
-- [SPEC-001 §2](../../../specs/SPEC-001-legal-compliance.md) — 經營主體架構（本 ADR 之 SPEC 對應）
-- [SPEC-001 §1.1](../../../specs/SPEC-001-legal-compliance.md) — 合規黃金三原則
+- [SPEC-001 §1.1](../../../specs/SPEC-001-legal-compliance.md#11-合規黃金三原則non-negotiable) — 合規黃金三原則（本 ADR 之上位約束）
 - [ADR-0001](./ADR-0001-order-book-with-dmm-over-lmsr.md) — 撮合機制（共構平台基本面）
-- [SPEC-002 §2.1](../../../specs/SPEC-002-funds-safety.md) — 託管銀行帳戶要求
+- [SPEC-002 §4.2](../../../specs/SPEC-002-funds-safety.md) — Chart of Accounts（託管帳戶 ledger account 分離設計）
 
 ### 12.2 外部參考
 
@@ -344,11 +345,11 @@ E 列為**第 12–18 月**升級選項，待 MVP 驗證商業模式且首張執
 技術實作層面，三公司架構落到 codebase 為以下幾條規則：
 
 1. **資料庫多租戶（multi-tenant）感知**：所有業務資料應隱含 `operating_co_id`，未來支援 Option E（雙執照）時可平滑切分
-2. **金流模組分離**：Op Co. 信託帳戶 vs 營運帳戶必須在 ledger 不同 account（SPEC-002 §4.2 已定義）
+2. **金流模組分離**：託管帳戶（`Bank.TrustAccount.*`）與其他類別帳戶（`Revenue.*` / `Expense.*` / `Suspense.*`）必須在 ledger 為不同 account（SPEC-002 §4.2 已定義帳戶體系）。Op Co. 在實際開設銀行帳戶時，營運帳戶 vs 信託帳戶之分離由 Op Co. 財務 / 法律部門落實
 3. **靜態檔案 / 法律文件**：ToS / Privacy Policy 之文件儲存須帶版本與 issuing entity，記錄為 Op Co. 名義
 4. **Email From / Sender**：所有對玩家發信的 sender 須為 Op Co. 之 domain，禁止用 Tech Co. domain
 5. **客服系統**：Zendesk / Freshdesk 帳戶歸 Op Co. 名下，Tech Co. 員工以 contractor 身份登入處理
-6. **Audit log 中的 operator**：每筆 admin 操作記錄需註明執行者所屬法人（Op Co. employee vs Tech Co. contractor），與 SPEC-001 §8.3 之強制留痕一致
+6. **Audit log 中的 operator**：每筆 admin 操作記錄需註明執行者所屬法人（Op Co. employee vs Tech Co. contractor），對齊 [SPEC-001 §1.1 ③ Full Audit Trail](../../../specs/SPEC-001-legal-compliance.md#11-合規黃金三原則non-negotiable) 之留痕原則
 7. **域名 ownership**：主域名（propheticanet.com 之類）由 Holdings 持有，Op Co. 透過 IP 授權使用
 
 ## 14. Revision History
@@ -356,3 +357,5 @@ E 列為**第 12–18 月**升級選項，待 MVP 驗證商業模式且首張執
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
 | 2026-05-05 | v1.0 | Tech Lead | 首版 Accepted（待法律意見書最終背書）|
+| 2026-05-05 | v1.0.1 | Tech Lead | typo-level：§11「Open Questions」改名為「Pre-Execution Validation Items」並重組為驗證表格，將跨檔決策議題改由 SPEC-000 §5 中央追蹤表收斂。決策內容無變動。 |
+| 2026-05-05 | v1.0.2 | Tech Lead | typo-level：因 SPEC-001 v0.1.1 起精簡（移除 §1.2 / §2 / §3.1 / §5.1 / §6 / §8.1 / §9 / §10 / §11），本 ADR 對 SPEC-001 §2 / §2.2 / §8.3 / §10 與 SPEC-002 §2.1 之引用全部修正：去除 dead link、改指 SPEC-001 §1.1 三原則或宣告由本 ADR 唯一持有公司結構。決策內容無變動。 |

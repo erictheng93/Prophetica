@@ -27,7 +27,7 @@ prophetica 的核心是一個金融級帳本系統。每一筆玩家行為（儲
 - **單簿記（Single-Entry）**：直接 `UPDATE wallets SET balance = balance + ?`，配合 audit_log 記錄變動明細。簡單、易實作。
 - **雙簿記（Double-Entry）**：每筆 business event 產生一個 `transaction`，含至少兩條 `entry`，分別對借方（debit）與貸方（credit）帳戶記帳，所有 entries 的金額變動代數和為零。源自 1494 年 Luca Pacioli 之會計學。
 
-> 必要說明：SPEC-002 已實質採用雙簿記設計（§4 表結構、INV-3 不變式、§4.4 範例），本 ADR 的角色是把這個技術決策**升格為架構原則**，並把單簿記的捷徑明確列為禁區，避免未來在性能壓力下被工程師「優化掉」。
+> 必要說明：SPEC-002 已實質採用雙簿記設計（§4 表結構、INV-1「entries 借貸代數和為 0」不變式、§4.4 範例），本 ADR 的角色是把這個技術決策**升格為架構原則**，並把單簿記的捷徑明確列為禁區，避免未來在性能壓力下被工程師「優化掉」。
 
 ## 2. Decision Drivers
 
@@ -367,16 +367,24 @@ E 否決。但本決策中採納其**設計理念**：SPEC-002 §4.2 的 Chart o
 9. **若你發現對帳差異**：禁止「自動修正」。寫入 `Suspense.Reconciliation` 暫掛、觸發 P0 告警、由人工以新 reversal transaction 修正
 10. **若你認為本 ADR 的決策應該被推翻**：寫一份 ADR-XXXX 標記本 ADR 為 Superseded，附上替代方案的論證、遷移計畫、Compliance 簽核——不要直接改 schema
 
-## 11. Open Questions
+## 11. Pre-Execution Validation Items（動工前驗證項目）
 
-1. ledger 是否拆獨立 microservice（呼應 SPEC-014 服務清單）？或與 wallet 同 service 不同 module？
-2. ledger_entries partition 策略：每月 / 每週 / 每年？影響查詢性能與歸檔
-3. 客服 compensation transaction 的 4-eye 介面：自建還是接 Workflow 工具？
-4. 跨 Operating Co.（未來雙執照）的 ledger 是否完全分離？或共用 ledger 用 entity_id 區分？
-5. 點數計價單位敲定後（呼應 SPEC-000 §5 cross-cutting Q3），ledger 是否需 schema 變更？
+> **MADR 體裁註記**：本節非「待重新決定的問題」（ADR 已 Accepted，雙簿記為架構定案）。以下為動工前必須驗證的實作細節，由 wallet-ledger-service 第一個 PR 之前釐清。所有跨 SPEC 的決策議題改由 [SPEC-000 §5](../../../specs/SPEC-000-index.md) 中央追蹤表收斂。
+
+| ID | 待驗證項目 | 驗證對象 | 影響 |
+|----|----------|---------|------|
+| V-1 | ledger 是否拆獨立 microservice（呼應 SPEC-014 服務清單）或與 wallet 同 service 不同 module | Tech Lead + 撮合 / 結算工程團隊 | 部署拓撲、跨服務 transaction 邊界 |
+| V-2 | `ledger_entries` partition 策略：每月 / 每週 / 每年 | DBA + SRE | 查詢性能、歸檔成本 |
+| V-3 | 客服 `compensation` transaction 的 4-eye 簽核介面：自建 vs Workflow 工具（如 Temporal / Airflow） | Engineering + Compliance | 建置時程、稽核可被監管接受度 |
+| V-4 | 跨 Operating Co.（未來 ADR-0002 升級 Option E 雙執照）的 ledger 是否完全分離，或共用 ledger 用 `entity_id` 區分 | Tech Lead + Compliance | 多執照擴展時的遷移路徑 |
+| V-5 | 點數計價單位敲定後（追蹤於 SPEC-000 §5）對 ledger schema 是否需變更 | Tech Lead | 若決定 1 點 = USD 0.01 則 currency 列預設值需變更 |
+
+V-1 ~ V-2 標記為 **must-resolve**（影響第一個 migration script），需於 wallet-ledger-service 第一個 PR 之前釐清。V-3 ~ V-5 標記為 **defer-acceptable**（可在第一次客服補償 / 雙執照需求出現前處理）。
 
 ## 12. Revision History
 
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
 | 2026-05-05 | v1.0 | Tech Lead | 首版 Accepted |
+| 2026-05-05 | v1.0.1 | Tech Lead | typo-level：§1 對 SPEC-002 不變式的引用由「INV-3」修正為「INV-1」，以對齊本 ADR §5 之編號（SPEC-002 §5 同步重排）。決策內容無變動。 |
+| 2026-05-05 | v1.0.2 | Tech Lead | typo-level：§11「Open Questions」改名為「Pre-Execution Validation Items」並重組為驗證表格，將跨檔決策議題改由 SPEC-000 §5 中央追蹤表收斂。決策內容無變動。 |

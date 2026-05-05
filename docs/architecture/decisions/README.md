@@ -29,9 +29,10 @@ ADR 描述「**為什麼這樣決定 / 為什麼別的方案被否決**」，一
 
 ## 修訂規則
 
-- `Accepted` 後不可直接修改 ADR 主體（除拼寫錯誤等）
+- `Accepted` 後不可直接修改 ADR 主體（除拼寫錯誤、dead link 修正、章節改名等）
 - 需要變更決策 → 寫一份新的 ADR，舊 ADR 標記為 `Superseded by ADR-XXXX`
-- Revision History 區塊只記錄 metadata 級變更（typo、外部連結更新）
+- Revision History 區塊只記錄 metadata 級變更（typo、外部連結更新、章節改名）
+- 「Open Questions」於 `Accepted` 狀態之 ADR 應命名為「Pre-Execution Validation Items」（驗證項目）以區隔「待重新決定的問題」（後者請改至 SPEC-000 §5 中央追蹤表）
 
 ## 目前 ADR 索引
 
@@ -40,6 +41,7 @@ ADR 描述「**為什麼這樣決定 / 為什麼別的方案被否決**」，一
 | [ADR-0001](./ADR-0001-order-book-with-dmm-over-lmsr.md) | 採用 Order Book + DMM，捨棄 LMSR 與平台造市腳本 | Accepted | matching-engine, liquidity, regulatory |
 | [ADR-0002](./ADR-0002-three-company-corporate-structure.md) | 採用三公司架構（BVI Holdings + 離岸 Op Co. + 台灣 Tech Co.）| Accepted（待律師背書）| corporate-structure, legal, tax, regulatory |
 | [ADR-0003](./ADR-0003-double-entry-ledger.md) | 採用雙簿記帳本，捨棄單簿記與「balance += amount」捷徑 | Accepted | ledger, finance, audit, core-architecture, invariant |
+| [ADR-0004](./ADR-0004-react-stack-due-to-kumo.md) | 採用 Cloudflare Kumo 作為元件庫，前端框架由 Nuxt 3 / Vue 3 切換至 Next.js 15 / React 19 | Accepted | frontend, component-library, framework, accessibility, core-architecture |
 
 ## 何時要寫 ADR
 
