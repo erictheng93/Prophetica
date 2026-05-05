@@ -189,27 +189,41 @@ Txn: order_lock, idempotency_key='order-789'
   Entry 2: Player.Locked.42                     -50,000
 ```
 
-#### 4.4.3 兩玩家成交（A 買 YES@0.65 × 100，B 賣 YES@0.65 × 100）
+#### 4.4.3 兩玩家成交（A 買 YES@0.65 × 100，B 買 NO@0.35 × 100，opening trade）
+
+> 本範例採 Kalshi 對稱 escrow 模型，與 §4.4.4 結算範例的**前置狀態 100% 對齊**。
+> A 與 B 各自從掛單階段（§4.4.2 等同邏輯）已鎖入各自的 max loss，撮合成交時**僅扣手續費**，鎖倉不釋出 — 因為 escrow 必須留至結算才釋出（呼應 §4.4.4）。
+
+語意：
+
+- A 在掛單階段 `Player.Locked.A` 鎖入 `0.65 × 100 × 100 = 6,500`（A 的 max loss = 0.65 × 100 股）
+- B 在掛單階段 `Player.Locked.B` 鎖入 `0.35 × 100 × 100 = 3,500`（B 的 max loss = 0.35 × 100 股）
+- 撮合成交時 trade_value = `price × qty = 65 × 100 = 6,500`（內部單位）
+- 平台手續費 2%，雙邊各 `6,500 × 200 / 10000 = 130`（= 1.3 點）
+- 手續費**從各自 wallet 扣**（不動 escrow）
 
 ```text
-A 買 YES @ 0.65 → A 付 65 點，獲得 100 股 YES
-B 賣 YES @ 0.65 → B 收 65 點，賣出 100 股 YES
-平台手續費：2% of trade value = 1.3 點 × 2 邊 = 2.6 點
+Txn: trade, idempotency_key='trade-001', metadata: {trade_value: 6500, fee_bps: 200}
 
-Txn: trade, idempotency_key='trade-001'
+  Entry 1: Player.Wallet.A    +130     (從 A 可用餘額扣 1.3 點手續費 → 負債減少)
+  Entry 2: Revenue.TradingFee -130     (平台 fee 收入增加)
 
-  Entry 1: Player.Locked.A    +6,500   (A 鎖倉釋出 65 點)
-  Entry 2: Player.Wallet.A    -6,370   (A 實付 65 - 1.3 手續費後 = 63.7)
-  Entry 3: Revenue.TradingFee -130     (平台收 A 手續費)
+  Entry 3: Player.Wallet.B    +130
+  Entry 4: Revenue.TradingFee -130
 
-  Entry 4: Player.Locked.B    +6,500
-  Entry 5: Player.Wallet.B    -6,370
-  Entry 6: Revenue.TradingFee -130
-
-(每筆 entry 借貸總和為 0)
+  借貸代數和：130 + (-130) + 130 + (-130) = 0 ✓
 ```
 
-> 註：本節為手續費與鎖倉釋出的**簡化示意**。實際二元市場的 escrow 會依買賣腿與成交價不對稱鎖倉，見 §4.4.4。
+> 同時由 application 層產生 Position 紀錄（呼應 SPEC-015 outcomes / position 表）：
+>
+> - `Position{user: A, market: X, outcome: YES, qty: 100, locked_amount: 6500}`
+> - `Position{user: B, market: X, outcome: NO,  qty: 100, locked_amount: 3500}`
+>
+> 這些 position 之 `locked_amount` 對應的 `Player.Locked.{A,B}` 餘額**不在本 trade transaction 變動**；其釋放發生於 §4.4.4 settle。
+
+#### 4.4.3.1 closing trade（玩家賣出已持倉）
+
+> 上述 §4.4.3 為**兩位玩家同時 open 反向倉位**之新成交。若其中一方為**已持倉者賣出 close 倉位**（如 A 已持 100 YES，現以 0.70 賣給新買家 C），則 A 的 escrow 在賣出成交時釋放回 wallet，C 鎖入新 escrow。完整範例見 SPEC-015 §10 銜接點與 SPEC-003 §14.2 撮合公式。
 
 #### 4.4.4 結算（YES 中獎，A 持 100 股 YES、B 持 100 股 NO）
 
@@ -249,7 +263,7 @@ Txn: settle, idempotency_key='market-X-settle:position-B-001:NO'
 2. 若市場進入 `CANCELLED`（VOID），則退回為「各方退回原 escrow」：每個 position 寫入兩條 entry（`Locked.X +x`、`Wallet.X -x`）。
 3. 對於**同一玩家同時持 YES 與 NO**（hedge）情境，結算批次內仍以 `position_id` 為單位逐筆處理，避免 cross-position 抵銷導致 entry 數量驟減而難以稽核。
 4. `settlement_logs` 額外記錄每筆 settle 的對應 `trade_id` / `position_id` / `oracle_submission_id` 來源，供爭議裁決回溯（呼應 SPEC-004 §6.3）。
-5. §4.4.3 之 trade entry 範例為**簡化版本**（兩邊鎖倉皆顯示 6,500）；實際撮合時鎖倉金額依買賣腿與成交價不對稱，如本節所示。完整 trade 撮合與鎖倉公式詳見 SPEC-003 §14.2 與 SPEC-015 市場生命週期。
+5. §4.4.3 已對齊本節對稱 escrow 模型（A 鎖 6,500 / B 鎖 3,500），不再為簡化版本。完整 trade 撮合與鎖倉公式詳見 SPEC-003 §14.2 與 SPEC-015 §10 之銜接點。
 
 ## 5. 不變式（Invariants）
 
