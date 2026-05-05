@@ -39,6 +39,7 @@ ADR 描述「**為什麼這樣決定 / 為什麼別的方案被否決**」，一
 |------|------|------|------|
 | [ADR-0001](./ADR-0001-order-book-with-dmm-over-lmsr.md) | 採用 Order Book + DMM，捨棄 LMSR 與平台造市腳本 | Accepted | matching-engine, liquidity, regulatory |
 | [ADR-0002](./ADR-0002-three-company-corporate-structure.md) | 採用三公司架構（BVI Holdings + 離岸 Op Co. + 台灣 Tech Co.）| Accepted（待律師背書）| corporate-structure, legal, tax, regulatory |
+| [ADR-0003](./ADR-0003-double-entry-ledger.md) | 採用雙簿記帳本，捨棄單簿記與「balance += amount」捷徑 | Accepted | ledger, finance, audit, core-architecture, invariant |
 
 ## 何時要寫 ADR
 
