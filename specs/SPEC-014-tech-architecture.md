@@ -1,9 +1,11 @@
 # SPEC-014 — 整體技術架構（Tech Architecture）
 
 > 優先級：跨章節（被多份 SPEC 依賴）
-> 版本：v0.2.0 · 最後更新：2026-05-05
+> 版本：v0.2.1 · 最後更新：2026-05-05
 >
-> **v0.2.0 變更（重大）**：後端語言由 Go 1.22 切換至 **Rust 1.78+ stable**。所有 12 個 service 改以 Rust 實作，HTTP 層採 axum，gRPC 採 tonic，async runtime tokio，DB 採 sqlx（compile-time checked SQL）。撮合引擎不再保留「未來切 Rust」之選項——直接 Rust first。`go.work` → Cargo workspace；`go-sdk/` → `crates/sdk/`；§14 OQ #5「撮合切 Rust」隨之 Resolved。
+> **v0.2.1 變更**：§3.1 補硬性決議 R-1 TLS（rustls 為預設 + rdkafka OpenSSL 例外）、撮合引擎 runtime topology（current_thread + per-market LocalSet + core_affinity）、其餘 service multi-thread runtime、unsafe 全域 forbid + cargo geiger 監測。MSRV 由 1.78 改為 **1.85**（edition 2024）。
+>
+> **v0.2.0 變更（重大）**：後端語言由 Go 1.22 切換至 **Rust 1.85+ stable**（edition 2024）。所有 12 個 service 改以 Rust 實作，HTTP 層採 axum，gRPC 採 tonic，async runtime tokio，DB 採 sqlx（compile-time checked SQL）。撮合引擎不再保留「未來切 Rust」之選項——直接 Rust first。`go.work` → Cargo workspace；`go-sdk/` → `crates/sdk/`；§14 OQ #5「撮合切 Rust」隨之 Resolved。
 >
 > **v0.1.2 變更**：前端框架由 Nuxt 3 (Vue 3) 切換至 Next.js 15 (React 19)，元件庫採用 Cloudflare Kumo（`@cloudflare/kumo`，建立於 Base UI）。狀態管理 Pinia → Zustand；表單 VeeValidate → React Hook Form。理由詳見 `design/COMPONENTS.md`。
 
@@ -87,6 +89,10 @@
 | Logging / Tracing | **tracing + tracing-subscriber + opentelemetry** | log + slog | tokio 生態標準，自帶 span / async context propagation |
 | Serde | **serde / serde_json / rmp-serde**（MessagePack） | — | 標準 |
 | ULID | **`ulid` crate 1.x** | uuid (v7) | 對齊 SPEC-003 §19 OQ #3 |
+| TLS | **rustls** (純 Rust) | OpenSSL / native-tls | 與 Cloudflare webpki 生態一致；Distroless image 無系統相依、binary 體積小；fips 需求未來再評。**例外**：`rdkafka` 透過 librdkafka 綁定 OpenSSL，該 crate feature 採 `cmake-build` + `ssl` 走 OpenSSL，其餘 service（sqlx / fred / reqwest / tonic）皆 `rustls-tls` feature |
+| 撮合引擎 runtime | **`tokio` current_thread** + per-market `tokio::task::LocalSet` + thread pinning（`core_affinity`） | multi-thread runtime | 撮合熱點避免 work-stealing 抖動；P99 對 tail latency 敏感，single-thread reactor 行為可預測 |
+| 其他 service runtime | **`tokio` multi-thread**（預設 worker = CPU 核數） | — | CRUD-style 並發吞吐優先 |
+| Unsafe code | **workspace 全域 `#![forbid(unsafe_code)]`** | — | 撮合 SIMD 等少數例外須單檔放行（`#[allow(unsafe_code)]`）+ ADR 記錄 + 4-eye review；CI 跑 `cargo geiger` 做 unsafe 統計門檻警報 |
 | Event bus | **Kafka (Confluent or self-hosted KRaft)** | NATS JetStream | 業界標準、生態強 |
 | Primary DB | **PostgreSQL 16** | MySQL | ACID + 進階功能 |
 | Cache | **Redis 7 Cluster** | KeyDB | 標準 |

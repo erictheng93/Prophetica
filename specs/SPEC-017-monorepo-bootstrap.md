@@ -1,10 +1,11 @@
 # SPEC-017 — Monorepo Bootstrap & Local Dev Environment
 
 > 優先級：**P0（必須在第一行業務 code 之前完成）**
-> 版本：v0.2.0 · 最後更新：2026-05-05
+> 版本：v0.2.1 · 最後更新：2026-05-05
 > 依賴：SPEC-014（架構定義）
 > 被依賴：所有 SPEC（實作載體）
 
+> **v0.2.1 變更**：新增 §3.3 Rust 工具鏈硬性決議 R-1..R-6（rustls 預設 + rdkafka OpenSSL 例外、edition 2024 / 1.85 MSRV、撮合 current_thread + thread pinning、cargo-mutants nightly 限縮 ledger+撮合、`#![forbid(unsafe_code)]` + cargo geiger gate、`.sqlx/` commit + sqlx prepare --check）；§4.2 Cargo.toml 加 `[workspace.lints]`、rustls feature、core_affinity / async-trait 依賴；§6.1.1 撮合引擎 main 範例；§8 CI 加 sqlx prepare check + cargo geiger + rdkafka 系統依賴；§8.2 nightly mutation testing workflow。
 > **v0.2.0 變更（重大）**：跟隨 SPEC-014 v0.2.0 後端切 Rust，本 SPEC 大幅改寫：(1) §2 service 全標 Rust crate；新增 `crates/sdk/`、`crates/proto/`，移除 `packages/go-sdk/`；mocks 改 Rust；(2) §3 toolchain：Go / sqlc / golangci-lint / go-migrate / gofumpt 全替換為 Rust 1.78+ / clippy / rustfmt / sqlx / sqlx-cli + 新增 sccache / cargo-nextest / cargo-chef / cargo-deny；(3) §4.2 `go.work` → 根 `Cargo.toml` workspace；(4) §4.4 buf.gen.yaml Go plugin → prost/tonic Rust plugin；(5) §4.5 Makefile go 命令 → cargo；(6) §6.1 Rust axum 範例取代原 Echo 範例；(7) §8 CI 改 dtolnay/rust-toolchain action + sccache cache；(8) §11 acceptance / §12 OQ 內文同步。
 
 ---
@@ -111,7 +112,8 @@ prophetica/
 | React / React-DOM | 19.x | 同上 |
 | `@cloudflare/kumo` | latest stable | 同上；私有 registry 須在 `.npmrc` 指向 Cloudflare（見 §3.2） |
 | `@phosphor-icons/react` | 與 Kumo peer 對齊 | 同上 |
-| Rust | 1.78+ stable | `rust-toolchain.toml`（`channel = "1.78"`，鎖 components: rustfmt / clippy / rust-analyzer）|
+| Rust | **1.85+ stable**（edition 2024） | `rust-toolchain.toml`（`channel = "1.85"`，鎖 components: rustfmt / clippy / rust-analyzer）|
+| Rust nightly（CI mutation testing only） | latest nightly | `rust-toolchain-mutants.toml`（CI nightly job 自行 install via `rustup toolchain install nightly`） |
 | Docker | 24+ | `make doctor` 檢查 |
 | Docker Compose | v2（plugin 形式）| 同上 |
 | buf | 1.30+ | `Makefile` install target |
@@ -133,7 +135,20 @@ Kumo 由 Cloudflare 私有 registry 發佈（非 npmjs.com），repo 根目錄 `
 
 `KUMO_NPM_TOKEN` 由 Vault 注入；CI 從 GitHub Actions secret `KUMO_NPM_TOKEN` 取得。本機開發者首次 `make bootstrap` 時 `make doctor` 須檢查此環境變數存在。
 
-### 3.3 Windows 開發者特別說明
+### 3.3 Rust 工具鏈硬性決議（v0.2.0）
+
+> 以下六項為 SPEC-014 v0.2.0 切 Rust 後一併拍板的硬性規範，CI / Cargo.toml / rust-toolchain.toml 已落地對應設定。
+
+| ID | 決議 | 落地位置 |
+|----|------|---------|
+| **R-1 TLS** | **rustls** 為預設；sqlx / fred / reqwest / tonic / opentelemetry 皆 `rustls-tls` feature。`rdkafka` 為唯一例外，沿用 librdkafka OpenSSL（cmake-build + ssl feature）。CI Linux runner 須安裝 `libssl-dev cmake clang lld` | §4.2 `[workspace.dependencies]` 及 §8 CI install step |
+| **R-2 Edition** | Rust **edition 2024** + MSRV **1.85+ stable**。新專案直接採最新 edition，避免日後 migrate 成本 | §4.2 `[workspace.package].edition = "2024"`；§4.2.1 `channel = "1.85"` |
+| **R-3 Runtime topology** | 撮合引擎走 `tokio` **current_thread runtime + per-market `LocalSet` + `core_affinity` thread pinning**；其餘 11 個 service 走預設 multi-thread runtime（`#[tokio::main]`） | §6.1.1 撮合引擎 `main` 範例；SPEC-003 §7 詳述 |
+| **R-4 Mutation testing** | `cargo-mutants` **僅針對核心邏輯 crate**（`crates/sdk/ledger`、`services/wallet-ledger-service/src/ledger`、`services/matching-engine/src/{book,match}`）；走 **Nightly CI**（cron），不阻塞 PR；門檻：caught mutation rate ≥ 75% 否則發 Slack alert | §8.2 nightly workflow |
+| **R-5 Unsafe policy** | workspace 全域 `#![forbid(unsafe_code)]`；例外須 (a) crate-level `#![allow(unsafe_code)]` 屬性、(b) 對應 ADR、(c) SPEC-010 §9 4-eye review。CI 跑 `cargo geiger` 統計 unsafe 行數，新增 unsafe block 觸發 review-required label | §4.2 `[workspace.lints.rust]`；§8 CI cargo geiger gate |
+| **R-6 sqlx offline cache** | `.sqlx/` 目錄 **commit 進 git**；`SQLX_OFFLINE=true` 為 CI 預設，無需 DB 即可編譯。schema drift 由 `make migrate` + sqlx-cli `prepare --check` 在 CI 捕捉 | `.gitignore` 不排除 `.sqlx/`；§8 CI `cargo sqlx prepare --check --workspace` |
+
+### 3.4 Windows 開發者特別說明
 
 prophetica 主要開發機之一為 Windows + PowerShell。為避免每位開發者自行設定：
 
@@ -180,28 +195,43 @@ members = [
 
 [workspace.package]
 version    = "0.1.0"
-edition    = "2021"
-rust-version = "1.78"
+edition    = "2024"
+rust-version = "1.85"
 license    = "Proprietary"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"        # 全 workspace 預設禁 unsafe；例外於 crate-level `#![allow(unsafe_code)]` + ADR
+
+[workspace.lints.clippy]
+all          = { level = "warn", priority = -1 }
+pedantic     = { level = "warn", priority = -1 }
+unwrap_used  = "warn"          # 撮合 / ledger crate 加碼為 "deny"（於 crate root）
+expect_used  = "warn"
 
 [workspace.dependencies]
 tokio        = { version = "1", features = ["full"] }
 axum         = "0.7"
-tonic        = "0.11"
+tower-http   = "0.5"
+tonic        = { version = "0.11", default-features = false, features = ["transport", "tls", "tls-roots", "prost"] }
 prost        = "0.12"
-sqlx         = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros"] }
+# rustls 一律走 webpki-roots；sqlx / fred / reqwest / tonic 全用 rustls-tls
+sqlx         = { version = "0.7", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros"] }
+fred         = { version = "9", default-features = false, features = ["enable-rustls"] }
+reqwest      = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# rdkafka 例外：librdkafka 綁定 OpenSSL（cmake build）；CI 需安裝 libssl-dev / cmake
+rdkafka      = { version = "0.36", default-features = false, features = ["cmake-build", "ssl", "tokio"] }
 serde        = { version = "1", features = ["derive"] }
 serde_json   = "1"
 tracing      = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 opentelemetry = "0.22"
-opentelemetry-otlp = "0.15"
-fred         = "9"
-rdkafka      = "0.36"
+opentelemetry-otlp = { version = "0.15", default-features = false, features = ["grpc-tonic", "tls-roots"] }
 ulid         = "1"
 thiserror    = "1"
 anyhow       = "1"
 dotenvy      = "0.15"
+core_affinity = "0.8"          # 撮合引擎 thread pinning 用
+async-trait  = "0.1"
 
 [profile.release]
 lto         = "thin"
@@ -214,7 +244,7 @@ strip       = "symbols"
 
 ```toml
 [toolchain]
-channel    = "1.78"
+channel    = "1.85"          # edition 2024 之 MSRV
 components = ["rustfmt", "clippy", "rust-analyzer"]
 profile    = "minimal"
 ```
@@ -451,6 +481,43 @@ async fn shutdown_signal() {
 }
 ```
 
+### 6.1.1 撮合引擎 main 範例（`services/matching-engine/src/main.rs`）
+
+> 撮合引擎為**唯一**走 current_thread runtime 的 service（R-3）；每個 market 一個專屬 OS thread，pinned 到固定 CPU core，避免 work-stealing 抖動。
+
+```rust
+use core_affinity::CoreId;
+use tokio::task::LocalSet;
+
+fn main() -> anyhow::Result<()> {
+    tracing_init();   // 同 §6.1
+    let cores = core_affinity::get_core_ids().expect("core affinity");
+    let market_ids = bootstrap::active_markets()?;   // 啟動時從 market-service gRPC 拉取
+
+    // 每個 market 一個 OS thread + current_thread runtime + LocalSet
+    let mut handles = vec![];
+    for (i, market_id) in market_ids.into_iter().enumerate() {
+        let core = cores[i % cores.len()];
+        let h = std::thread::Builder::new()
+            .name(format!("engine-{market_id}"))
+            .spawn(move || {
+                core_affinity::set_for_current(core);   // pin
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("rt");
+                let local = LocalSet::new();
+                local.block_on(&rt, async move {
+                    matching_engine::run_market(market_id).await
+                })
+            })?;
+        handles.push(h);
+    }
+    for h in handles { let _ = h.join(); }
+    Ok(())
+}
+```
+
 ### 6.2 Next.js app 範例（`apps/web/`）
 
 - `app/page.tsx`：顯示 "prophetica web — bootstrapping"
@@ -531,12 +598,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2     # cargo registry / target cache
       - uses: mozilla-actions/sccache-action@v0.0.4
       - uses: bufbuild/buf-setup-action@v1
+      - name: install rdkafka native deps（R-1：rdkafka 例外用 OpenSSL）
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
       - name: install cargo-nextest
         uses: taiki-e/install-action@nextest
-      - name: install sqlx-cli + cargo-deny
+      - name: install sqlx-cli + cargo-deny + cargo-geiger
         run: |
-          cargo install sqlx-cli --no-default-features --features postgres --locked
+          cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
           cargo install cargo-deny --locked
+          cargo install cargo-geiger --locked
 
       - name: pnpm install
         run: pnpm install --frozen-lockfile
@@ -549,12 +619,29 @@ jobs:
       - name: verify generated stubs in sync
         run: git diff --exit-code crates/proto/src/gen packages/proto/gen/ts
 
+      - name: sqlx offline cache up-to-date（R-6）
+        env:
+          SQLX_OFFLINE: 'false'
+          DATABASE_URL: postgres://proph:dev@localhost:5432/prophetica
+        run: |
+          # CI 啟動 ephemeral postgres + run migrations + verify .sqlx/ matches schema
+          docker run -d --rm --name pg -e POSTGRES_USER=proph -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=prophetica -p 5432:5432 postgres:16-alpine
+          for i in {1..20}; do pg_isready -h localhost -U proph && break; sleep 1; done
+          make migrate
+          cargo sqlx prepare --workspace --check -- --tests
+
       - name: lint
         run: make lint
       - name: test
+        env:
+          SQLX_OFFLINE: 'true'
         run: make test
       - name: cargo deny
         run: cargo deny check
+      - name: cargo geiger（R-5 unsafe 行數監測）
+        run: cargo geiger --workspace --output-format Json > geiger.json
+      - name: forbid unsafe regression（新增 unsafe block 須 review）
+        run: ./tools/scripts/check-geiger.sh geiger.json
 
   sentinel-scan:
     runs-on: ubuntu-22.04
@@ -574,18 +661,69 @@ jobs:
 
 > `release.yml`（tag 觸發、build & push image、產 SBOM、ArgoCD sync）之完整內容定義於 [SPEC-013 § 3](./SPEC-013-cicd-release.md)；本 SPEC 不重複規範。Bootstrap 階段僅需在 `.github/workflows/release.yml` 放置一個 `on: push: tags: ['v*']` 的 placeholder workflow（內容為 `echo "release pipeline owned by SPEC-013"`），讓 tag push 不會 404。
 
+### 8.2 Nightly mutation testing（R-4）
+
+`.github/workflows/nightly-mutants.yml`（cron `0 18 * * *` UTC = 02:00 台北）：
+
+```yaml
+name: nightly-mutants
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+jobs:
+  mutants:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: install cargo-mutants
+        uses: taiki-e/install-action@v2
+        with: { tool: cargo-mutants }
+      - name: install rdkafka deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld
+      - name: run mutants on core logic crates only
+        run: |
+          # 範圍精確打擊：撮合 + 帳本核心邏輯
+          cargo mutants \
+            --in-place \
+            --package wallet-ledger-service --package matching-engine --package sdk \
+            --file 'services/wallet-ledger-service/src/ledger/**' \
+            --file 'services/matching-engine/src/{book,match}/**' \
+            --file 'crates/sdk/src/ledger/**' \
+            --minimum-test-timeout 60 \
+            --json > mutants.json
+      - name: enforce caught rate ≥ 75%
+        run: ./tools/scripts/check-mutants.sh mutants.json 75
+      - name: slack alert on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: 'eng-quality'
+          payload: '{"text":"nightly-mutants failed: caught rate < 75%"}'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+```
+
+> 不阻塞 PR merge；caught rate 持續 < 75% 時開 issue 由負責人補測試。範圍刻意限縮在 ledger + 撮合，避免 CRUD service 大量產生意義低的 mutant 拖慢 nightly 跑時。
+
 ### 8.1 必過 gate
 
 | Gate | 阻斷條件 |
 |------|---------|
 | `pnpm install --frozen-lockfile` | pnpm-lock.yaml 不一致 |
 | `cargo build --workspace --locked` | Cargo.lock 不一致 / 編譯錯誤 |
+| `cargo sqlx prepare --check` | `.sqlx/` cache 與 schema drift（R-6） |
 | `buf lint` | proto 違反 lint |
 | `buf breaking` | 對 main 有 breaking change（未經 review）|
 | `verify generated stubs in sync` | .proto 改了但 commit 內 gen/ 未同步 regenerate |
 | `make lint` | clippy `-D warnings` / rustfmt / eslint / prettier 違反 |
 | `make test` | 任一測試 fail（cargo nextest + pnpm turbo test）|
 | `cargo deny check` | 依賴授權 / advisory / banned crate 違反 |
+| `cargo geiger` regression | 新增 unsafe block 未經 ADR + 4-eye review（R-5） |
 | `sentinel-scan` ADR-0001 | 禁字命中 |
 | `sentinel-scan` mocks isolation | production code 引用 `tools/mocks` |
 

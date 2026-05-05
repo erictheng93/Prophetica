@@ -37,8 +37,8 @@ target/
 /dist/
 # sccache local cache（CI 走 mozilla-actions/sccache-action）
 .sccache/
-# sqlx 離線編譯快取（commit 進 git；此處僅排除動態檔案，保留 .sqlx/ 目錄）
-.sqlx/.gitignore-tmp
+# 注意：.sqlx/ 目錄為 sqlx 離線編譯快取，**必須 commit 進 git**（SPEC-017 §3.3 R-6），
+# 此處不排除；CI 跑 `cargo sqlx prepare --check` 確保與 schema 同步。
 
 # ---------------------------------------------------------------
 # Node / Next.js / React
