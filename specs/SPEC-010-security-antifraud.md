@@ -51,11 +51,132 @@
 
 ### 3.1 認證與授權
 
+#### 3.1.1 概要
+
 - 玩家登入：Email/Phone + Password + TOTP（強制）
 - Password：argon2id，min length 12
-- Session：JWT (15 min) + Refresh Token (7 day)，刷新頻繁則延展
+- Session：JWT Access Token (15 min) + Refresh Token (7 day) + rotation
 - 高敏操作 step-up：儲值 > USD 1,000、KYC 升級、自我排除 → 重新 MFA
 - Admin / Compliance 後台：mTLS + Hardware MFA（YubiKey）
+
+#### 3.1.2 JWT Access Token 設計
+
+```
+Algorithm:   EdDSA (Ed25519)
+Issuer:      auth.prophetica
+Lifetime:    15 minutes
+Storage:     HTTP-only Secure SameSite=Lax cookie
+             （SPA 使用時透過 /api/auth/session 取 access token，不直接 expose 給 JS）
+```
+
+Claims（自定義 namespace 用 `proph_` 前綴避免與 RFC 7519 衝突）：
+
+```json
+{
+  "iss": "auth.prophetica",
+  "aud": "api.prophetica",
+  "sub": "42",                            // user_id (string for JWT spec compliance)
+  "iat": 1715731200,
+  "exp": 1715732100,
+  "jti": "01HX...",                       // ULID, 用於 revocation list
+
+  "proph_kyc_tier": 2,                    // 0/1/2/3，呼應 SPEC-005 §2.1
+  "proph_country": "TW",                  // ISO 3166-1，依 KYC 證件
+  "proph_self_excluded": false,
+  "proph_mfa_verified_at": 1715731200,    // unix sec
+  "proph_step_up_until": 0,               // 0 = 未 step-up；> now 表 step-up 有效
+  "proph_session_id": "01HX...",          // ULID, 對應 user_sessions.id
+  "proph_dmm_id": null,                   // 非空表此 token 屬於 DMM 法人帳戶
+  "proph_amr": ["pwd", "totp"]            // RFC 8176 authentication methods reference
+}
+```
+
+#### 3.1.3 Refresh Token 與 Rotation
+
+```
+Type:        Opaque token (32-byte random URL-safe base64)
+Storage:     HTTP-only Secure cookie (path=/api/auth)
+             + 後端 user_sessions 表 hash 對照
+Lifetime:    7 days（每次成功使用後重新發 7 天）
+Rotation:    每次 /api/auth/refresh 必發新 access + 新 refresh
+             舊 refresh token 立即標記為 used
+```
+
+`user_sessions` 表（呼應 SPEC-014 user 服務）：
+
+```sql
+CREATE TABLE user_sessions (
+    id                  VARCHAR(32) PRIMARY KEY,           -- ULID
+    user_id             BIGINT NOT NULL,
+    refresh_token_hash  CHAR(64) NOT NULL,                 -- SHA256(refresh_token)
+    issued_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at          TIMESTAMPTZ NOT NULL,
+    used_at             TIMESTAMPTZ,                        -- 一旦被 rotate 就設定，舊 token 不再可用
+    successor_id        VARCHAR(32) REFERENCES user_sessions(id),  -- 指向 rotation 後的新 session
+    revoked_at          TIMESTAMPTZ,
+    revoke_reason       VARCHAR(64),                        -- 'user_logout' / 'reuse_detected' / 'admin_force' / ...
+    user_agent          TEXT,
+    ip                  INET,
+    UNIQUE (refresh_token_hash)
+);
+CREATE INDEX idx_sessions_user_active ON user_sessions(user_id) WHERE revoked_at IS NULL AND used_at IS NULL;
+```
+
+#### 3.1.4 Refresh Token Reuse Detection（強制）
+
+**Refresh token 必須一次性使用**。若同一 token 被使用第二次：
+
+```
+1. 偵測：refresh_token_hash 命中且 used_at IS NOT NULL
+2. 系統判定為 token 外洩或重放攻擊
+3. 動作：
+   a. 立即拒絕本次 refresh，回 ERROR_CODE_REFRESH_TOKEN_REUSED (errors.proto: 113)
+   b. 撤銷該 user 在所有裝置上的所有 sessions（連鎖 successor 一併撤）
+   c. 玩家 Email + 站內訊息通知「您的帳號可能被盜，請重新登入並改密碼」
+   d. 寫入 SIEM critical event
+   e. 玩家下次登入需通過 step-up MFA
+```
+
+#### 3.1.5 Step-up MFA 機制
+
+對應 SPEC-002 §8 / SPEC-005 / SPEC-006 / SPEC-016 等高敏感操作：
+
+| 操作 | Step-up 觸發條件 | Step-up 有效期 |
+|------|----------------|----------------|
+| 儲值 > USD 1,000 等值 | 必須 | 30 分鐘 |
+| KYC 升級至 Tier 2/3 | 必須 | 完成本次升級即清 |
+| 啟用 / 變更自我排除 | 必須 | 完成本次操作即清 |
+| 30 天無交易後突然儲值 | 必須 | 30 分鐘 |
+| 改密碼 / 改 Email | 必須 | 完成本次操作即清 |
+| Admin / Compliance / Oracle / Adjudicator 操作 | 必須（hardware MFA）| 30 分鐘，每筆操作後重置 |
+
+實作流程：
+
+```
+1. 玩家發起高敏操作 → API 檢查 jwt.proph_step_up_until > now
+2. 不通過 → 回 ERROR_CODE_STEP_UP_REQUIRED (errors.proto: 111)，前端跳 MFA 挑戰
+3. 玩家完成 TOTP 挑戰 → /api/auth/step-up 簽發**新** access token
+   （proph_step_up_until = now + 30min；不延長 access token 整體 exp）
+4. 玩家以新 token 重試原操作
+```
+
+#### 3.1.6 Token 撤銷（Revocation）
+
+JWT 為 stateless，不主動驗證每個請求是否在黑名單。為兼顧效能與可撤銷性：
+
+- **登出**：refresh token 標記 `revoked_at`；access token 自然在 ≤ 15 分鐘內過期
+- **強制全裝置登出**（用於 token reuse、密碼變更）：撤銷該 user 所有 sessions；access token 透過 Redis 短期 deny list（key: `revoked:{jti}`，TTL = access lifetime）
+- **管理員強制下線**：同上 + 寫 audit log
+
+#### 3.1.7 對齊 SPEC-005 KYC tier 之動態 claim 更新
+
+當 KYC tier 升級（如 Tier 1 → Tier 2 通過 SumSub）：
+
+- kyc-service 寫入 `user_kyc_records` + Kafka 發 `kyc.events`
+- user-service 訂閱該 topic，更新該 user 之活躍 sessions 對應 cache
+- 玩家**現有 access token 仍持原 tier**（最多 15 分鐘陳舊）；refresh 時 user-service 簽發含新 tier 的 access token
+- 高敏操作（如 Tier 2 解鎖之高額儲值）若 access token 仍為 Tier 1，回 `ERROR_CODE_KYC_TIER_REQUIRED`，玩家強制 refresh 後成功
 
 ### 3.2 OWASP Top 10 對應
 
