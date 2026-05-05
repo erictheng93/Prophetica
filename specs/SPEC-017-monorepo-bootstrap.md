@@ -490,7 +490,7 @@ make test
 | SPEC-010 §3.4 | 依賴掃描在 bootstrap 後第一個 PR 啟用 |
 | SPEC-007 §3 / §4 | 各服務 stub 必輸出符合命名規範的 metric 與結構化 log |
 | SPEC-002 §4.3 | migration 工具（go-migrate）的腳本位置 |
-| SPEC-017 §4.4 | buf workspace + protobuf 生成（依 packages/proto/v1/）|
+| SPEC-014 §6.3 | protobuf schema 治理（buf lint / breaking）；本 SPEC §4.4 / §8 將 schema gate 落地到 buf workspace 與 CI |
 | ADR-0001 §6 | sentinel scan 在 CI 落地 |
 | ADR-0004 | Next.js 15 + `@cloudflare/kumo` 在 `apps/web/` 落地 |
 
