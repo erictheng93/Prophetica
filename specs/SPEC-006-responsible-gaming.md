@@ -53,21 +53,28 @@
 
 ### 4.1 RG 風險評分（每日計算）
 
+> `declared_monthly_income` 之欄位定義與 fallback 規則見 [SPEC-005 §2.1.1](./SPEC-005-kyc-aml.md)。當玩家未申報（NULL）時，「儲值 / 月收入比」維度視為中性（不加分）。
+
 ```python
 def compute_rg_score(user):
     score = 0
     # 儲值頻率
     if user.deposits_last_7d > 5: score += 20
     if user.deposits_last_24h > 3: score += 30
-    # 儲值金額
-    if user.deposit_30d > user.declared_monthly_income * 0.20: score += 40
+    # 儲值金額（依申報月收入）
+    income = effective_monthly_income(user)  # SPEC-005 §2.1.1
+    if income is not None and income > 0 and user.deposit_30d > income * 0.20:
+        score += 40
+    # 未申報但 30d 儲值 > TWD 30,000 → 不在此公式加分，
+    # 改由 SPEC-005 §2 強制 Tier 2 升級流程間接收斂
     # 連續登入
     if user.consecutive_login_hours > 3: score += 15
     if user.consecutive_login_hours > 5: score += 25
     # 凌晨活躍
     if user.activity_late_night_pct > 0.50: score += 15
     # 大額單筆下注 / 帳戶餘額比
-    if user.max_single_bet / user.peak_balance > 0.50: score += 20
+    if user.peak_balance > 0 and user.max_single_bet / user.peak_balance > 0.50:
+        score += 20
     # 連敗加碼（chasing）
     if user.bet_size_increase_after_loss_pct > 0.30: score += 25
     # 上限調整次數
