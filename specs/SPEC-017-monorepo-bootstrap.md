@@ -566,3 +566,4 @@ make test
 3. mock servers（`tools/mocks/sumsub` / `payment`）是否獨立 repo 或同 monorepo？建議同 monorepo（避免版本同步成本）。
 4. Windows 主機之 host networking 限制如何處理 hostNetwork 撮合引擎部署？本地 dev 不啟用 hostNetwork（僅 prod K8s 啟用），由 SPEC-008 §3 監督。
 5. CI matrix（macOS / Linux / Windows）是否啟用？建議 Linux only（生產環境一致），開發者 Windows 走 WSL2。
+6. §5.2 seed 帳號使用之 `Tier 1 / Tier 2` 命名是否與 SPEC-005 KYC 分層字面一致？需 cross-check SPEC-005 §2 後對齊；若 SPEC-005 採 `LEVEL_1 / LEVEL_2` 或其他命名，本 SPEC §5.2 須同步更新避免 seed 腳本與 user-service enum 字串不符。
