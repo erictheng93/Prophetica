@@ -458,7 +458,9 @@ jobs:
 新進工程師 / Codex 第一次 clone 後執行：
 
 ```bash
-git clone https://github.com/erictheng93/prophetica.git
+# <tech-co-org> 為 ADR-0002 Tech Co. 之 GitHub organization；最終命名以執照地律師
+# 與工商登記決定後填入，過渡期可用個人 fork
+git clone https://github.com/<tech-co-org>/prophetica.git
 cd prophetica
 
 # 1. 檢查工具版本
