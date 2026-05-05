@@ -1,8 +1,8 @@
 # SPEC-002 — 資金安全與虛擬點數帳本
 
-> 優先級：**P0**
-> 版本：v0.1.0 · 最後更新：2026-05-05
-> 依賴：SPEC-001
+> 優先級：**P0**  
+> 版本：v0.1.0 · 最後更新：2026-05-05  
+> 依賴：SPEC-001  
 > 被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011
 
 ---
@@ -13,10 +13,10 @@
 
 ## 2. 資金分層架構
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────────┐
 │ Player                                                              │
-│   ↓ 法幣（TWD / USD / JPY / VND）                                    │
+│   ↓ 法幣（TWD）                                                     │
 │ Payment Gateway (綠界 / 藍新 / Stripe / etc.)                       │
 │   ↓ webhook 確認                                                    │
 │ Operating Co. 託管銀行帳戶 (Segregated Trust Account)               │
@@ -29,17 +29,6 @@
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.1 託管銀行帳戶（Segregated Trust Account）強制要求
-
-| 要求 | 說明 |
-|------|------|
-| 帳戶名義 | `Operating Co. - Player Funds Trust Account`，與營運帳戶分離 |
-| 銀行類別 | Tier-1 國際銀行（DBS / HSBC / Standard Chartered 等執照地分行）|
-| 動用權限 | 只能用於玩家儲值收款、手續費結算劃轉、退費 |
-| 不得動用於 | 行銷、員工薪資、稅費、董監酬金 |
-| 對帳頻率 | 每日 T+1 自動對帳，月度第三方審計 |
-| 餘額警示 | 銀行餘額 < 預期玩家點數負債 95% 即觸發 P0 告警 |
-
 ## 3. 點數計價設計
 
 ### 3.1 計價單位選定
@@ -48,17 +37,31 @@
 
 雖然 1:1 容易與現金混淆，但抽象比例（如 100 點 = TWD 1）會增加用戶心智負擔，且國際市場匯率變動會導致「持有的點數變多變少」的詭異現象。**統一以 TWD 為計算基準，UI 顯示「點」即可，避免 $ 符號**。
 
-替代方案（保留供討論）：
+### 3.2 內部精度與整數化（Tech Invariant）
 
-- 方案 A（推薦）：`1 點 = TWD 1`，國際玩家儲值時依當下牌告匯率換算
-- 方案 B：`1 點 = USD 0.01`，與 Kalshi 接軌，缺點是台灣玩家心智換算
-- 方案 C：完全抽象單位「Prophet Coin」，每月由平台公告匯率，缺點是匯率風險集中於平台
+> 為避免浮點誤差於累加 / 對帳時放大，所有金額在系統內部**一律以整數儲存與運算**。本節是後端工程之硬性約束。
 
-### 3.2 精度
+| 屬性 | 規則 |
+|------|------|
+| 對外顯示最小單位 | `0.01 點`（兩位小數）|
+| 內部儲存型別 | `BIGINT`（PostgreSQL）/ `int64`（Go）|
+| 內部單位 | `1 內部單位 = 0.01 點`（即「點 × 100」）|
+| 顯示換算 | `display_value = internal_value / 100`，UI 層格式化為 `fmt.Sprintf("%.2f 點", ...)` |
+| 手續費 basis points | `1 bp = 0.01%`，計算 `fee = trade_value_internal × fee_bps / 10000`（呼應 SPEC-003 §14.2）|
+| 禁區 | **絕不**使用 `float64` / `decimal` SaaS / 字串相加；任何轉型為浮點之 PR 必須 reject |
 
-- 點數最小單位：`0.01 點`（兩位小數）
-- 系統內部儲存：`BIGINT`，以 `1 點 = 100` 為內部單位（避免浮點誤差）
-- 顯示給用戶：`fmt.Sprintf("%.2f 點", value/100.0)`
+#### 3.2.1 整個系統的單位一致性
+
+| 模組 | 欄位 / 變數 | 單位 |
+|------|-----------|------|
+| `ledger_entries.amount` | 內部點數 × 100 | BIGINT |
+| `ledger_entries.balance_after` | 內部點數 × 100 | BIGINT |
+| `Order.PricePts`（SPEC-003）| 0–100，對應 0.00–1.00（= 機率 × 100）| int64 |
+| `Order.QtyTotal` / `QtyRemaining`（SPEC-003）| 股數 | int64 |
+| Trade Value | `PricePts × Qty`（內部點數 × 100）| int64 |
+| 點數結算 payout | `1.00 × 100 × Qty = 100 × Qty`（每股中獎 1 點）| int64 |
+
+> 此一致性確保 SPEC-002 ledger entry 與 SPEC-003 撮合引擎共用同一套金額算術，無轉型損失。
 
 ## 4. 雙簿記帳本（Double-Entry Ledger）
 
@@ -73,11 +76,9 @@
 
 ### 4.2 帳戶體系（Chart of Accounts）
 
-```
+```text
 資產（Assets）
   └─ Bank.TrustAccount.TWD       託管銀行 TWD 餘額
-  └─ Bank.TrustAccount.USD       託管銀行 USD 餘額
-  └─ Bank.OperatingAccount       營運帳戶（手續費收入轉入）
 
 負債（Liabilities）
   └─ Player.Wallet.{user_id}     對玩家的點數負債（每個玩家一個帳戶）
@@ -168,7 +169,7 @@ FOR EACH ROW EXECUTE FUNCTION fn_ledger_balance_check();
 
 #### 4.4.1 玩家儲值 1000 TWD
 
-```
+```text
 Txn: deposit, idempotency_key='gateway-tx-abc123'
 
   Entry 1: Bank.TrustAccount.TWD                +100,000  (1000 TWD * 100)
@@ -181,7 +182,7 @@ Txn: deposit, idempotency_key='gateway-tx-abc123'
 
 #### 4.4.2 玩家掛單鎖倉 500 點
 
-```
+```text
 Txn: order_lock, idempotency_key='order-789'
 
   Entry 1: Player.Wallet.42                     +50,000  (鎖倉等同於玩家可用負債轉移)
@@ -190,7 +191,7 @@ Txn: order_lock, idempotency_key='order-789'
 
 #### 4.4.3 兩玩家成交（A 買 YES@0.65 × 100，B 賣 YES@0.65 × 100）
 
-```
+```text
 A 買 YES @ 0.65 → A 付 65 點，獲得 100 股 YES
 B 賣 YES @ 0.65 → B 收 65 點，賣出 100 股 YES
 平台手續費：2% of trade value = 1.3 點 × 2 邊 = 2.6 點
@@ -208,34 +209,63 @@ Txn: trade, idempotency_key='trade-001'
 (每筆 entry 借貸總和為 0)
 ```
 
-#### 4.4.4 結算（YES 中獎，A 持 100 股）
+> 註：本節為手續費與鎖倉釋出的**簡化示意**。實際二元市場的 escrow 會依買賣腿與成交價不對稱鎖倉，見 §4.4.4。
 
+#### 4.4.4 結算（YES 中獎，A 持 100 股 YES、B 持 100 股 NO）
+
+本平台採 Kalshi / 標準預測市場的對稱 escrow 設計。當 A 以 0.65 買 YES 100 股、B 以 0.35 買 NO 100 股（亦即 B 以 0.65 賣 YES 100 股）對撮成交時：
+
+- A 在 trade 階段鎖入 `0.65 × 100 = 6,500`（A 的 max loss）。
+- B 在 trade 階段鎖入 `0.35 × 100 = 3,500`（B 的 max loss）。
+- 該配對 escrow 總額為 `10,000`（= 1.00 × 100），必有一方獨拿全額。
+
+結算時，escrow 全額流向勝方，敗方鎖倉**就地清零**（鎖倉直接結束、不退還）。如此**無零金額 entry**，符合 schema `CHECK (amount > 0)`。
+
+YES 中獎時：
+
+```text
+Txn: settle, idempotency_key='market-X-settle:position-A-001'
+
+  Entry 1: Player.Locked.A    +6,500    (A 鎖倉釋出 — 勝方應退還的 escrow)
+  Entry 2: Player.Locked.B    +3,500    (B 鎖倉釋出 — 敗方 escrow 流向勝方)
+  Entry 3: Player.Wallet.A    -10,000   (勝方收下 escrow 總額 = 6,500 + 3,500)
+
+  借貸代數和：6,500 + 3,500 + (-10,000) = 0 ✓
 ```
-Txn: settle, idempotency_key='market-X-settle'
 
-  A 100 股 YES 結算為 100 點:
-  Entry 1: Player.Locked.A    +10,000   (持倉鎖倉釋出)
-  Entry 2: Player.Wallet.A    -10,000   (進入 A 可用餘額)
+NO 中獎時：
 
-  B 100 股 NO 結算為 0:
-  Entry 3: Player.Locked.B    +0        (持倉鎖倉釋出)
-  Entry 4: Player.Wallet.B    -0
-  → B 對應持倉直接歸零，無實質帳本變動，但要記錄 0-amount entry 以供稽核
+```text
+Txn: settle, idempotency_key='market-X-settle:position-B-001:NO'
+
+  Entry 1: Player.Locked.A    +6,500
+  Entry 2: Player.Locked.B    +3,500
+  Entry 3: Player.Wallet.B    -10,000   (NO 勝出，B 收下 escrow 總額)
 ```
 
-> 實作注意：上述「Player.Locked.B 釋出 0」的邏輯中，amount > 0 的約束需處理。建議改為：結算時直接從持倉表扣減，零價值結算不產生 ledger entry，但於 settlement_logs 記錄。
+**實作注意：**
+
+1. 本範例為**單一配對成交（trade pair）**之結算。實務上同一玩家可能持有多筆來自不同對手方的 trade pair；結算批次以 `position_id` 為單位逐筆處理，每筆三條 entry：`Locked.winner` / `Locked.loser` / `Wallet.winner`。`amount > 0` constraint 永遠成立。
+2. 若市場進入 `CANCELLED`（VOID），則退回為「各方退回原 escrow」：每個 position 寫入兩條 entry（`Locked.X +x`、`Wallet.X -x`）。
+3. 對於**同一玩家同時持 YES 與 NO**（hedge）情境，結算批次內仍以 `position_id` 為單位逐筆處理，避免 cross-position 抵銷導致 entry 數量驟減而難以稽核。
+4. `settlement_logs` 額外記錄每筆 settle 的對應 `trade_id` / `position_id` / `oracle_submission_id` 來源，供爭議裁決回溯（呼應 SPEC-004 §6.3）。
+5. §4.4.3 之 trade entry 範例為**簡化版本**（兩邊鎖倉皆顯示 6,500）；實際撮合時鎖倉金額依買賣腿與成交價不對稱，如本節所示。完整 trade 撮合與鎖倉公式詳見 SPEC-003 §14.2 與 SPEC-015 市場生命週期。
 
 ## 5. 不變式（Invariants）
+
+> **單一真相來源**：以下不變式**編號與內容**對齊 [ADR-0003 §5](../docs/architecture/decisions/ADR-0003-double-entry-ledger.md)。任何修改 INV 編號或語意必須先寫一份新 ADR，並標記 ADR-0003 為 Superseded。
 
 系統任何時刻必須維持以下等式：
 
 | ID | 等式 | 檢查頻率 | 違反處理 |
 |----|------|---------|---------|
-| INV-1 | `Σ(Player.Wallet.*) + Σ(Player.Locked.*) = 對玩家負債總額` | 每筆交易後 | 拋例外，rollback |
-| INV-2 | `Bank.TrustAccount + Revenue.PendingPayout = 對玩家負債總額 + 手續費收入` | 每日 T+1 | 凍結出帳，啟動稽核 |
-| INV-3 | `每個 ledger_transaction 的 entries 借貸和為 0` | 每筆 commit | DB trigger 強制 |
-| INV-4 | `每個 Player.Wallet.X 任意時刻 ≥ 0` | 每筆變動 | 拋 INSUFFICIENT_FUNDS |
-| INV-5 | `每個 Player.Locked.X 任意時刻 ≥ 0` | 每筆變動 | 同上 |
+| INV-1 | `每個 ledger_transaction 的 entries 借貸代數和為 0` | 每筆 commit | DB CONSTRAINT TRIGGER 強制（見 §4.3 `fn_ledger_balance_check`）|
+| INV-2 | `Σ(Player.Wallet.*) + Σ(Player.Locked.*) = 平台對玩家負債總額` | 每 5 分鐘對帳腳本 | 拋例外、寫入 Suspense.Reconciliation、P0 告警 |
+| INV-3 | `Bank.TrustAccount + Σ(Revenue.*) − Σ(Expense.*) = 平台對玩家負債總額` | 每日 T+1 對帳 | 凍結出帳、啟動人工稽核 |
+| INV-4 | `每個 Player.Wallet.X 任意時刻 ≥ 0`（chargeback 反沖外） | 每筆變動 | 拋 INSUFFICIENT_FUNDS；chargeback 例外見 §8.2 |
+| INV-5 | `每個 ledger_entry 一旦寫入不可 UPDATE / DELETE` | 持續 | DB role 權限分離（`ledger_app` 僅 INSERT）+ audit |
+
+> **Player.Locked.X ≥ 0**：邏輯上隱含於 INV-1（鎖倉釋出與鎖入必為對沖），由 application 層在下單 / 成交路徑強制檢查。不再單獨列為頂層 INV，避免與 ADR-0003 編號衝突。
 
 ## 6. Idempotency 與重試
 
@@ -274,7 +304,7 @@ CREATE INDEX idx_idempo_expires ON idempotency_records(expires_at);
 
 ### 7.1 多層對帳
 
-```
+```text
 Layer 1 (即時)：每筆 ledger_transaction 借貸和為 0  ← DB trigger
 Layer 2 (5min)：Σ(Wallet) + Σ(Locked) ≈ 對玩家負債帳戶總和
 Layer 3 (1hr) ：Bank.TrustAccount 銀行 API 餘額 vs ledger 預期銀行餘額
@@ -358,17 +388,18 @@ ALTER TABLE ledger_entries
 ## 11. 驗收條件
 
 - [ ] PostgreSQL schema 全部建立並通過 migration 測試
-- [ ] DB trigger 強制 INV-3 通過驗證測試（嘗試插入不平衡 transaction 必須 fail）
+- [ ] DB trigger 強制 INV-1 通過驗證測試（嘗試插入不平衡 transaction 必須 fail）
 - [ ] 模擬 1000 並發儲值，最終 wallet 餘額與 transaction count 完全相符
 - [ ] Idempotency 測試：相同 key 提交 100 次，僅一筆 transaction
 - [ ] 對帳腳本可在 5 分鐘內處理 1M 筆 entries
 - [ ] hash chain 驗證腳本可在 30 分鐘內驗證 30 天歷史
-- [ ] 第三方安全審計通過（Trail of Bits 或同等級）
 
 ## 12. Open Questions
 
-1. 跨幣別處理：玩家以 USD 儲值要不要在 ledger 內以 USD 帳戶記錄，還是入時即轉 PTS？
-2. 託管銀行帳戶可否取得 API？綠界 / 藍新是否提供？
-3. WORM 儲存使用 R2 Object Lock 還是 AWS S3 Glacier？
-4. ledger 是否拆獨立 microservice？還是與 wallet service 同一個？
-5. Player Wallet 帳戶在玩家自我排除（永久封號）後如何處理？
+> 跨檔決策已收斂至 [SPEC-000 §5](./SPEC-000-index.md) 中央追蹤表（含 Q-3 點數計價單位、Q-6 數據主權）。本節僅保留 SPEC-002 自身範圍內議題。
+
+1. **ledger 服務拓撲**：拆獨立 microservice（wallet-ledger-service）vs 與 wallet 同 service 不同 module？追蹤於 [ADR-0003 §11 V-1](../docs/architecture/decisions/ADR-0003-double-entry-ledger.md)。
+2. **`ledger_entries` partition 策略**：每月 / 每週 / 每年？追蹤於 ADR-0003 §11 V-2。
+3. **WORM 儲存**：R2 Object Lock vs AWS S3 Glacier（呼應 SPEC-008 §6.1 已部分定案 R2 + S3 雙寫；本 SPEC §10.2 hash chain 寫入 R2 Object Lock 桶為定案，僅 cold archive 介質保留討論）。
+4. **Player Wallet 帳戶在玩家自我排除（永久封號）後如何處理**：呼應 SPEC-006 §5.2「凍結錢包」概念，但 SPEC-002 §4.2 帳戶清單未列「Frozen.Player.Wallet.X」科目；需決定（a）改 metadata flag、（b）轉 sub-account、（c）維持原 Player.Wallet.X 並由 application freeze。
+5. **客服 compensation transaction 介面**：手動表單 vs Workflow 工具（Temporal / Airflow）？追蹤於 ADR-0003 §11 V-3。
