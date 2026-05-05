@@ -1,9 +1,11 @@
 # SPEC-003 — 撮合引擎詳規（Matching Engine）
 
 > 優先級：**P0**
-> 版本：v0.1.0 · 最後更新：2026-05-05
+> 版本：v0.2.0 · 最後更新：2026-05-05
 > 依賴：SPEC-002
 > 被依賴：SPEC-004, SPEC-007, SPEC-009
+
+> **v0.2.0 變更**：跟隨 SPEC-014 後端切 Rust，本檔之 Go 程式碼示例改寫為 Rust（per-market goroutine → per-market tokio task；`type OrderID = uint64` → 之後直接落地為 ULID `[u8; 16]`，不再經過 PR #1 之 Go→Rust 過渡）。撮合熱路徑在 Rust 下進一步無 GC、無 runtime 抖動，§12 P99 < 5ms SLO 不變但目標達成路徑更直接。
 
 ---
 
@@ -15,8 +17,8 @@
 
 | 原則 | 內涵 |
 |------|------|
-| **單一寫者**（Single Writer） | 每個市場一個 goroutine 獨佔該市場的訂單簿，禁止鎖、禁止並發寫入 |
-| **In-Process Memory** | 訂單簿完全在 Go 進程記憶體，不經 Redis、不經網路 |
+| **單一寫者**（Single Writer） | 每個市場一個專屬 tokio task 獨佔該市場的訂單簿（per-market `mpsc::Receiver` 為唯一輸入），禁止鎖、禁止並發寫入 |
+| **In-Process Memory** | 訂單簿完全在 Rust 進程記憶體，不經 Redis、不經網路 |
 | **Event Sourcing** | 撮合引擎只產生事件，所有下游（帳本、推播、持倉、K 線）由消費者重建 |
 | **WAL + Snapshot** | 寫入 append-only log（磁碟 + Kafka），定期 snapshot，crash recovery 從 snapshot + replay |
 | **確定性**（Deterministic） | 給定相同事件序列，重建出的訂單簿狀態必須 100% 一致 |
@@ -117,31 +119,32 @@ const (
 
 ### 4.3 訂單資料結構
 
-```go
-// Canonical Order ID: ULID (128-bit, 已於 §19 OQ #3 拍板)；本檔案 v0.1 草稿仍以 uint64 示意，
-// PR #1（SPEC-017 bootstrap）落地時改為 [16]byte，並補 ord_<ULID> 字串編碼。
-type OrderID = uint64 // TODO(SPEC-003 §19 OQ#3): switch to [16]byte (ULID)
-type Side    int
+```rust
+// Canonical Order ID: ULID (128-bit, 已於 §19 OQ #3 拍板)
+// Rust 下直接以 [u8; 16] 落地（serde / Display 包裝為 "ord_<ULID>" 字串）
+pub type OrderID = [u8; 16];
 
-const (
-    Bid Side = 1   // 買 YES
-    Ask Side = -1  // 賣 YES
-)
+#[repr(i8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Side {
+    Bid = 1,   // 買 YES
+    Ask = -1,  // 賣 YES
+}
 
-type Order struct {
-    ID             OrderID
-    UserID         uint64
-    MarketID       string
-    Side           Side
-    Type           OrderType        // LIMIT / MARKET / IOC / FOK / POST_ONLY
-    PricePts       int64            // 內部單位（0-100, 對應 0.00 ~ 1.00）
-    QtyTotal       int64            // 原始數量
-    QtyRemaining   int64            // 剩餘未成交
-    Status         OrderStatus
-    SubmittedAt    int64            // unix nano，作為時間優先依據
-    ClientOrderID  string           // 玩家自定義 ID，用於冪等
-    TIF            TimeInForce      // GTC / IOC / FOK / DAY
-    PostOnly       bool
+pub struct Order {
+    pub id:              OrderID,
+    pub user_id:         u64,
+    pub market_id:       String,
+    pub side:            Side,
+    pub kind:            OrderType,       // Limit / Market / IOC / FOK / PostOnly
+    pub price_pts:       i64,             // 內部單位（0-100, 對應 0.00 ~ 1.00）
+    pub qty_total:       i64,             // 原始數量
+    pub qty_remaining:   i64,             // 剩餘未成交
+    pub status:          OrderStatus,
+    pub submitted_at_ns: i64,             // unix nano，作為時間優先依據
+    pub client_order_id: String,          // 玩家自定義 ID，用於冪等
+    pub tif:             TimeInForce,     // GTC / IOC / FOK / DAY
+    pub post_only:       bool,
 }
 ```
 
@@ -151,53 +154,58 @@ type Order struct {
 
 每個 Market 一份訂單簿：
 
-```go
-type OrderBook struct {
-    MarketID  string
+```rust
+use std::collections::{BTreeMap, VecDeque, HashMap};
+use std::cmp::Reverse;
+
+pub struct OrderBook {
+    pub market_id: String,
 
     // 價格 → 該價位的訂單佇列
-    // 採 sorted map (B-tree)，bid 由高到低，ask 由低到高
-    Bids      *btree.BTreeG[*PriceLevel]  // descending
-    Asks      *btree.BTreeG[*PriceLevel]  // ascending
+    // 採 BTreeMap（B-tree based），bid 以 Reverse(price) 為 key 達成由高到低
+    pub bids: BTreeMap<Reverse<i64>, PriceLevel>,
+    pub asks: BTreeMap<i64, PriceLevel>,
 
-    // 訂單 ID → Order 物件，用於 O(1) 撤單
-    OrdersByID map[OrderID]*Order
+    // 訂單 ID → 訂單 handle，用於 O(1) 撤單
+    pub orders_by_id: HashMap<OrderID, OrderHandle>,
 
     // 性能指標
-    LastTradePts  int64
-    BestBidPts    int64
-    BestAskPts    int64
-    SeqNo         uint64  // 嚴格遞增的事件序號
+    pub last_trade_pts: i64,
+    pub best_bid_pts:   i64,
+    pub best_ask_pts:   i64,
+    pub seq_no:         u64,  // 嚴格遞增的事件序號
 }
 
-type PriceLevel struct {
-    PricePts  int64
-    Queue     *list.List   // FIFO，雙向鏈結串列
-    TotalQty  int64        // 該價位累計掛單量（cache）
+pub struct PriceLevel {
+    pub price_pts: i64,
+    pub queue:     VecDeque<OrderID>,  // FIFO；O(1) push_back / pop_front
+    pub total_qty: i64,                // 該價位累計掛單量（cache）
 }
 ```
 
-### 5.2 為何 B-tree 而非 skip list / RB-tree？
+### 5.2 為何 BTreeMap 而非 skip list / RB-tree？
 
 | 結構 | 插入 | 刪除 | 範圍掃描 | 記憶體 | 評價 |
 |------|------|------|---------|-------|------|
-| sorted slice | O(N) | O(N) | O(K) | 最低 | 慢 |
+| sorted Vec | O(N) | O(N) | O(K) | 最低 | 慢 |
 | RB-tree | O(logN) | O(logN) | O(K logN) | 中 | OK |
 | skip list | O(logN) | O(logN) | O(K) | 高 | OK |
-| **B-tree** | O(logN) | O(logN) | O(K) | **低（cache friendly）** | **最佳** |
+| **`std::collections::BTreeMap`** | O(logN) | O(logN) | O(K) | **低（cache friendly）** | **最佳** |
 
-選用 [google/btree](https://github.com/google/btree)，每個節點 32 個 entries，cache line 對齊。
+Rust 標準函式庫 `BTreeMap` 已是 B-tree（每節點多 entries，cache friendly），不需第三方 crate。撤單熱路徑透過 `OrderHandle`（記錄價位 + queue 中位置）達成 O(1)，避免 BTreeMap 重新查找。
 
-### 5.3 為何 list.List（雙向鏈結）而非 slice？
+### 5.3 為何 VecDeque（雙端佇列）而非 Vec？
 
 每個 PriceLevel 內部訂單佇列：
-- **撮合**：總是從 head 取 → O(1)
-- **加入**：append 到 tail → O(1)
-- **撤單**：給定 *list.Element 指針 → O(1) 移除
+- **撮合**：`pop_front()` → O(1)
+- **加入**：`push_back()` → O(1)
+- **撤單**：透過 `OrderHandle{price_pts, queue_index_or_marker}` 找到位置 → O(1) 邏輯刪除（tombstone），下次撮合時跳過
 
-slice 撤單需 O(N)，不可行。
+`Vec` 之中段刪除為 O(N)，不可行；`VecDeque` 之中段刪除亦 O(N)，故撤單採 tombstone 模式。
 
 ## 6. 撮合演算法
+
+> **語言註記（v0.2.0）**：以下 §6 / §7 / §8 / §10 / §11 之 ```go ``` 程式區塊為**演算法說明用的 pseudo-code**，沿用 v0.1 之 Go 風格表述。canonical 型別定義已於 §4.3 改為 Rust（`OrderID = [u8; 16]`、`Order` struct、`Side` enum），實作以 Rust 為準（per-market `tokio::task` 取代 goroutine、`mpsc::Sender` 取代 channel、`BTreeMap` 取代 google/btree）。SPEC-017 之 PR #1 落地時依本節邏輯翻譯為 Rust，演算法本身不變。
 
 ### 6.1 主流程偽碼
 
@@ -341,9 +349,9 @@ func (s *MarketShard) run() {
 不同市場彼此獨立，不同 goroutine 並行運行。
 
 ```
-CPU Core 0: Goroutine for Market A
-CPU Core 1: Goroutine for Market B
-CPU Core 2: Goroutine for Market C
+CPU Core 0: tokio task for Market A（pinned via runtime affinity）
+CPU Core 1: tokio task for Market B
+CPU Core 2: tokio task for Market C
 ...
 ```
 
@@ -516,7 +524,7 @@ ws://api.../ws/me/orders
 
 > **強制紅線**：呼應 [ADR-0001 §6](../docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md)。引擎 `ingressCh` 必須對 incoming order 執行 `order.user_id != PLATFORM_SYSTEM_USER_IDS` 檢查；命中則直接 reject 並寫入 SIEM。任何將平台 / 系統 user_id 加入下單能力之 PR **必須 CI fail + reject**。
 
-#### 12.1.1 常數定義（Go）
+#### 12.1.1 常數定義（Rust）
 
 ```go
 // services/matching-engine/internal/engine/sentinel.go
@@ -788,6 +796,6 @@ Machine 2: markets ['m51', ..., 'm100']
    - **128-bit 無碰撞**：跨 market goroutine 同毫秒生成不會撞，撮合引擎 crash recovery 重啟後 ID 不重複（不像 in-memory uint64 sequence 需從 WAL 還原）。
    - **API / DB / log 一致**：對外 API 已用 `ord_01H...` 字串格式（§9 API 範例），與 ULID Crockford Base32 編碼天然契合。DB 儲 `bytea(16)` 或 PostgreSQL `uuid` 型別（ULID 為 UUID 相容 128-bit）。
    - **撮合 FIFO 優先序仍用 per-market `seq uint64`**：ULID 作為持久 ID 與 idempotency key；撮合引擎內部排序仍以 leader 賦予的 `seq` 為準（呼應 §4.3 `OrderResting{Seq: b.seq}`），兩者並存。
-   - **落地動作**：(a) `packages/proto/v1/engine.proto` 之 `OrderID` 定義為 `bytes order_id = 1` 或 `string order_id = 1`（採前者節省序列化成本）；(b) §4.3 `type OrderID = uint64` 於 PR #1 改為 `type OrderID [16]byte` 並補 String() 方法輸出 `ord_<ULID>` 形式；(c) Go 端採 [`github.com/oklog/ulid/v2`](https://github.com/oklog/ulid)（不引入帶 monotonic source 的 wrapper，由撮合引擎自管 entropy reader）。
+   - **落地動作**：(a) `packages/proto/v1/engine.proto` 之 `OrderID` 定義為 `bytes order_id = 1`（節省序列化成本）；(b) §4.3 `OrderID = [u8; 16]` 為 canonical Rust 型別；Display 包裝輸出 `ord_<ULID>` 字串；(c) Rust 端採 [`ulid` crate 1.x](https://docs.rs/ulid)（撮合引擎自管 entropy source，per-market `Generator` 確保 monotonic）。
 4. 是否支援 stop-limit / trailing-stop 等高階訂單類型（首發版不需要）？
 5. ~~DMM API 是否走獨立 binary protocol（FIX 協議）還是共用 REST？~~（已 Resolved by [SPEC-009 §3.4](./SPEC-009-dmm-liquidity.md)：自建 binary protobuf over TLS）

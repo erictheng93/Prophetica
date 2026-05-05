@@ -26,8 +26,8 @@
 
 ```
 PR opened → run on every push to PR branch:
-  1. Lint (golangci-lint, eslint)
-  2. Format check (gofmt, prettier)
+  1. Lint (cargo clippy `-D warnings`, eslint)
+  2. Format check (cargo fmt --check, prettier)
   3. Unit tests (with coverage > 80%)
   4. SAST (Semgrep)
   5. SCA (Trivy, Snyk)

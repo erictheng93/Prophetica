@@ -85,7 +85,7 @@ Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站�
 
 ## 技術棧（簡）
 
-- **後端**：Go 1.22 · Echo · gRPC · Kafka · PostgreSQL 16 · Redis 7
+- **後端**：Rust 1.78+ · axum · tonic (gRPC) · sqlx · tokio · Kafka · PostgreSQL 16 · Redis 7
 - **前端**：Next.js 15 (App Router, React 19) · TypeScript · `@cloudflare/kumo` · TailwindCSS · Zustand · Lightweight Charts
 - **基礎設施**：Linode LKE (Tokyo Primary) + AWS (Singapore DR) · Cloudflare · ArgoCD
 - **觀測**：Prometheus + Grafana + Loki + Tempo (OpenTelemetry)
@@ -98,8 +98,9 @@ Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站�
 ```
 prophetica/
 ├── apps/                  Next.js 15 前台、後台（React + Kumo）       （規劃中）
-├── services/              Go 後端服務                                  （規劃中）
-├── packages/              共用 protobuf / SDK                          （規劃中）
+├── services/              Rust 後端 service crates                     （規劃中）
+├── crates/                Rust 共用 lib（sdk / proto）                 （規劃中）
+├── packages/              共用 protobuf 來源 / TS SDK                  （規劃中）
 ├── infra/                 Terraform / Helm / ArgoCD                    （規劃中）
 ├── specs/                 規格文件（SPEC-000 ~ 016）                   ✅
 ├── docs/architecture/     ADR / 圖表                                   ✅

@@ -26,17 +26,19 @@ agent.md
 secrets/
 
 # ---------------------------------------------------------------
-# Go
+# Rust / Cargo
 # ---------------------------------------------------------------
+target/
+**/*.rs.bk
+*.pdb
 *.exe
-*.test
 *.prof
-*.out
-vendor/
 /bin/
 /dist/
-/coverage.out
-go.work.sum
+# sccache local cache（CI 走 mozilla-actions/sccache-action）
+.sccache/
+# sqlx 離線編譯快取（commit 進 git；此處僅排除動態檔案，保留 .sqlx/ 目錄）
+.sqlx/.gitignore-tmp
 
 # ---------------------------------------------------------------
 # Node / Next.js / React

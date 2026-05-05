@@ -1,7 +1,9 @@
 # SPEC-014 — 整體技術架構（Tech Architecture）
 
 > 優先級：跨章節（被多份 SPEC 依賴）
-> 版本：v0.1.2 · 最後更新：2026-05-05
+> 版本：v0.2.0 · 最後更新：2026-05-05
+>
+> **v0.2.0 變更（重大）**：後端語言由 Go 1.22 切換至 **Rust 1.78+ stable**。所有 12 個 service 改以 Rust 實作，HTTP 層採 axum，gRPC 採 tonic，async runtime tokio，DB 採 sqlx（compile-time checked SQL）。撮合引擎不再保留「未來切 Rust」之選項——直接 Rust first。`go.work` → Cargo workspace；`go-sdk/` → `crates/sdk/`；§14 OQ #5「撮合切 Rust」隨之 Resolved。
 >
 > **v0.1.2 變更**：前端框架由 Nuxt 3 (Vue 3) 切換至 Next.js 15 (React 19)，元件庫採用 Cloudflare Kumo（`@cloudflare/kumo`，建立於 Base UI）。狀態管理 Pinia → Zustand；表單 VeeValidate → React Hook Form。理由詳見 `design/COMPONENTS.md`。
 
@@ -22,9 +24,9 @@
                        ┌──────────── Cloudflare ────────┼──────────────────┐
                        │ (WAF, CDN, DNS, R2)            │                  │
                        │                                ▼                  │
-   Player Browser ────►│ ── Next.js 15 SSR/RSC ──► API Gateway (Go/Echo) ─►│
+   Player Browser ────►│ ── Next.js 15 SSR/RSC ──► API Gateway (Rust/axum) ►│
                        │                                │                  │
-                       │ ── WS connections ──────────► WS Gateway (Go) ◄───│
+                       │ ── WS connections ──────────► WS Gateway (Rust) ◄─│
                        │                                                   │
                        └───────────────────────────────────────────────────┘
                                                          │
@@ -54,7 +56,7 @@
             ▼                                    ▼
    ┌──────────────────┐                  ┌──────────────────┐
    │ Matching Engine  │                  │ Position Service │
-   │ (Go single-      │                  │ (持倉管理)        │
+   │ (Rust single-    │                  │ (持倉管理)        │
    │  writer per mkt) │                  └──────────────────┘
    │                  │
    │ + WAL local disk │
@@ -74,8 +76,17 @@
 
 | 元件 | 選擇 | 替代 | 理由 |
 |------|------|------|------|
-| Matching Engine | **Go 1.22+** | Rust / C++ | 開發速度 vs 性能平衡 |
-| API Gateway | **Go + Echo** | Gin / Fiber | 標準 |
+| 語言 | **Rust 1.78+ stable** | Go / C++ | 撮合 / ledger 兩大 hot path 全平台受益於 zero-cost abstraction + 無 GC；型別系統（lifetimes / `Send + Sync`）天然鎖死雙簿記 INV 與撮合 single-writer 不變式 |
+| Async Runtime | **tokio 1.x** | async-std / smol | 生態系實質單一選項；axum / tonic / sqlx / fred 全在 tokio 之上 |
+| HTTP framework | **axum 0.7** | actix-web / warp | tower 中介層生態、與 tonic 共用 service trait |
+| gRPC | **tonic 0.11** + prost | grpcio | tokio 原生、prost-build 與 buf 整合佳 |
+| DB driver | **sqlx 0.7**（compile-time checked SQL） | tokio-postgres / sea-orm / diesel | 對齊 Go 時代 sqlc 之 compile-time SQL 驗證精神；不引入 ORM |
+| Migration | **sqlx-cli** | refinery / dbmate | 與 sqlx 同生態 |
+| Redis client | **fred 9.x** | redis-rs | 連線池 + cluster + pubsub 開箱即用 |
+| Kafka client | **rdkafka 0.36**（librdkafka 綁定） | rust-rdkafka 純 Rust | librdkafka 為 Confluent 官方 C 庫，性能與相容性最佳 |
+| Logging / Tracing | **tracing + tracing-subscriber + opentelemetry** | log + slog | tokio 生態標準，自帶 span / async context propagation |
+| Serde | **serde / serde_json / rmp-serde**（MessagePack） | — | 標準 |
+| ULID | **`ulid` crate 1.x** | uuid (v7) | 對齊 SPEC-003 §19 OQ #3 |
 | Event bus | **Kafka (Confluent or self-hosted KRaft)** | NATS JetStream | 業界標準、生態強 |
 | Primary DB | **PostgreSQL 16** | MySQL | ACID + 進階功能 |
 | Cache | **Redis 7 Cluster** | KeyDB | 標準 |
@@ -86,6 +97,11 @@
 | Secrets | **HashiCorp Vault** | AWS Secrets | 標準 |
 | Email | **SendGrid** | AWS SES | 簡單 |
 | SMS | **Twilio** | Vonage | 標準 |
+
+> **為何全 Rust 而非「Rust hot path + Go 其餘」混搭**：
+> - **單語言內部 RPC 與 SDK**：12 個 service 之間共用 `crates/sdk/`（observability / errors / proto-gen / ledger client）；混語言要寫兩套 SDK + 兩套 OTel 對接，維運成本高於語言收益。
+> - **編譯時間可接受**：sccache + Cargo workspace incremental build，CI 暖快取下單服務 < 90s；Distroless `FROM rust AS builder` + cargo-chef 分層快取使 image build < 5 min。
+> - **學習曲線**：CRUD-style service（user / kyc / notification）用 axum + sqlx 程式量與 Go 相當，借助 `?` 運算子甚至更短；borrow checker 對非熱點服務之主要成本為前 2 週適應期。
 
 ### 3.2 前端
 
@@ -122,24 +138,24 @@
 
 | Service | 語言 | 職責 | 部署規模 |
 |---------|------|------|---------|
-| `api-gateway` | Go | 邊緣 API、認證、路由 | 3+ replicas |
-| `ws-gateway` | Go | WebSocket 連線、推播扇出 | 5+ replicas |
-| `user-service` | Go | 註冊、登入、profile、TOTP | 3+ replicas |
-| `kyc-service` | Go | KYC 流程編排、SaaS 整合、webhook | 2+ replicas |
-| `wallet-ledger-service` | Go | 雙簿記帳本、idempotency | 3+ replicas + leader |
-| `market-service` | Go | 市場 CRUD、Oracle、結算狀態 | 2+ replicas |
-| `matching-engine` | Go | 撮合引擎（per-market goroutine）| DaemonSet, hostNetwork |
-| `position-service` | Go | 持倉聚合 | 3+ replicas |
-| `settlement-worker` | Go | 結算批次處理 | 1 active + standby |
-| `risk-antifraud-service` | Go | 風控規則、行為分析 | 2+ replicas |
-| `referral-service` | Go | 推薦關係、佣金計算 | 1+ replica |
-| `notification-service` | Go | Email / SMS / Push / 站內訊息 | 2+ replicas |
+| `api-gateway` | Rust (axum) | 邊緣 API、認證、路由 | 3+ replicas |
+| `ws-gateway` | Rust (axum + tokio-tungstenite) | WebSocket 連線、推播扇出 | 5+ replicas |
+| `user-service` | Rust (axum + sqlx) | 註冊、登入、profile、TOTP | 3+ replicas |
+| `kyc-service` | Rust | KYC 流程編排、SaaS 整合、webhook | 2+ replicas |
+| `wallet-ledger-service` | Rust (tonic + sqlx) | 雙簿記帳本、idempotency | 3+ replicas + leader |
+| `market-service` | Rust | 市場 CRUD、Oracle、結算狀態 | 2+ replicas |
+| `matching-engine` | Rust (per-market task on tokio runtime) | 撮合引擎（per-market async task）| DaemonSet, hostNetwork |
+| `position-service` | Rust | 持倉聚合 | 3+ replicas |
+| `settlement-worker` | Rust | 結算批次處理 | 1 active + standby |
+| `risk-antifraud-service` | Rust | 風控規則、行為分析 | 2+ replicas |
+| `referral-service` | Rust | 推薦關係、佣金計算 | 1+ replica |
+| `notification-service` | Rust | Email / SMS / Push / 站內訊息 | 2+ replicas |
 | `web-app` | Next.js 15 (React 19) | 玩家前台 | Cloudflare Pages（`@cloudflare/next-on-pages`） |
 | `admin-app` | Next.js 15 (React 19) | 內部後台 | 私網 + mTLS |
 
 ## 5. Repository 結構（Monorepo）
 
-採用 **Turborepo + pnpm workspaces** + **Go workspace（go.work）**
+採用 **Turborepo + pnpm workspaces** + **Cargo workspace（root `Cargo.toml`）**
 
 > 此處為**規範來源（normative）**；SPEC-017 §2 為 bootstrap 後的實際 file tree，必須與本節一致。
 
@@ -150,21 +166,23 @@ prophetica/
 │   ├── admin/                  內部後台
 │   └── liff/                   LINE LIFF mini app
 ├── services/
-│   ├── api-gateway/            Go
-│   ├── ws-gateway/             Go
-│   ├── user-service/           Go
-│   ├── kyc-service/            Go
-│   ├── wallet-ledger-service/  Go
-│   ├── market-service/         Go
-│   ├── matching-engine/        Go
-│   ├── position-service/       Go
-│   ├── settlement-worker/      Go
-│   ├── risk-antifraud-service/ Go
-│   ├── referral-service/       Go
-│   └── notification-service/   Go
+│   ├── api-gateway/            Rust crate（axum）
+│   ├── ws-gateway/             Rust crate
+│   ├── user-service/           Rust crate
+│   ├── kyc-service/            Rust crate
+│   ├── wallet-ledger-service/  Rust crate
+│   ├── market-service/         Rust crate
+│   ├── matching-engine/        Rust crate
+│   ├── position-service/       Rust crate
+│   ├── settlement-worker/      Rust crate
+│   ├── risk-antifraud-service/ Rust crate
+│   ├── referral-service/       Rust crate
+│   └── notification-service/   Rust crate
+├── crates/
+│   ├── sdk/                    Rust 內部共用 lib（observability / errors / config / ledger client）
+│   └── proto/                  prost / tonic 產出之 Rust stub（與 packages/proto 來源同步）
 ├── packages/
-│   ├── proto/                  buf workspace + .proto + generated stubs（v1/）
-│   ├── go-sdk/                 Go 內部共用程式庫
+│   ├── proto/                  buf workspace + .proto + generated stubs（v1/）— 包含 ts/ 與 rust/ 兩個輸出
 │   └── ts-sdk/                 TypeScript 客戶端（給 web/admin）
 ├── infra/
 │   ├── docker-compose.local.yaml   本地 dev 環境（SPEC-017 §5）
@@ -184,7 +202,9 @@ prophetica/
 │   └── load-test/              k6 / Vegeta 壓測
 ├── .github/
 │   └── workflows/              CI（ci.yml / release.yml）
-├── go.work
+├── Cargo.toml                  ← workspace root（[workspace] members = ["services/*", "crates/*"]）
+├── Cargo.lock
+├── rust-toolchain.toml         ← 鎖定 Rust 1.78+ stable
 ├── pnpm-workspace.yaml
 ├── turbo.json
 ├── Makefile
@@ -269,56 +289,49 @@ postgres://...
 
 ## 8. Code Style 範例
 
-### 8.1 Go
+### 8.1 Rust
 
-```go
-// services/wallet-ledger-service/internal/ledger/ledger.go
+```rust
+// services/wallet-ledger-service/src/ledger.rs
 
-package ledger
+use sqlx::{PgPool, Postgres, Transaction};
+use thiserror::Error;
+use tracing::instrument;
 
-import (
-    "context"
-    "errors"
+use crate::domain::{LedgerTxn, IdempotencyKey};
 
-    "github.com/jackc/pgx/v5"
-    "go.opentelemetry.io/otel/trace"
-)
-
-var ErrInsufficientFunds = errors.New("insufficient funds")
-
-type Service struct {
-    db     *pgx.Conn
-    tracer trace.Tracer
+#[derive(Debug, Error)]
+pub enum LedgerError {
+    #[error("insufficient funds")]
+    InsufficientFunds,
+    #[error("idempotency key already used")]
+    DuplicateIdempotencyKey,
+    #[error(transparent)]
+    Db(#[from] sqlx::Error),
+    #[error("entries do not balance to zero")]
+    Unbalanced,
 }
 
-// PostTransaction posts a balanced double-entry transaction.
-// All entries within a transaction must net to zero or it errors.
-func (s *Service) PostTransaction(ctx context.Context, txn *Transaction) error {
-    ctx, span := s.tracer.Start(ctx, "ledger.PostTransaction")
-    defer span.End()
+pub struct LedgerService {
+    pool: PgPool,
+}
 
-    if err := txn.Validate(); err != nil {
-        return err
-    }
+impl LedgerService {
+    /// Posts a balanced double-entry transaction.
+    /// All entries within a transaction must net to zero or it errors.
+    #[instrument(skip(self, txn), fields(idempotency_key = %txn.idempotency_key))]
+    pub async fn post_transaction(&self, txn: LedgerTxn) -> Result<(), LedgerError> {
+        txn.validate().map_err(|_| LedgerError::Unbalanced)?;
 
-    tx, err := s.db.Begin(ctx)
-    if err != nil {
-        return err
-    }
-    defer tx.Rollback(ctx)
+        let mut tx: Transaction<'_, Postgres> = self.pool.begin().await?;
 
-    if err := s.checkIdempotency(ctx, tx, txn.IdempotencyKey); err != nil {
-        return err
-    }
+        self.check_idempotency(&mut tx, &txn.idempotency_key).await?;
+        self.insert_txn(&mut tx, &txn).await?;
+        self.insert_entries(&mut tx, &txn).await?;
 
-    if err := s.insertTxn(ctx, tx, txn); err != nil {
-        return err
+        tx.commit().await?;
+        Ok(())
     }
-    if err := s.insertEntries(ctx, tx, txn); err != nil {
-        return err
-    }
-
-    return tx.Commit(ctx)
 }
 ```
 
@@ -358,10 +371,12 @@ export function MarketCard({ marketId }: Props) {
 
 | 類別 | 規則 | 範例 |
 |------|------|------|
-| Go package | snake_case 單字 | `ledger`, `engine` |
-| Go file | snake_case | `order_book.go` |
-| Go type | PascalCase | `OrderBook` |
-| Go func | PascalCase（exported）| `MatchOrder` |
+| Rust crate | kebab-case | `wallet-ledger-service`, `sdk` |
+| Rust module | snake_case | `ledger`, `engine`, `order_book` |
+| Rust file | snake_case | `order_book.rs` |
+| Rust type | PascalCase | `OrderBook`, `LedgerService` |
+| Rust function / method | snake_case | `match_order`, `post_transaction` |
+| Rust constant | SCREAMING_SNAKE_CASE | `MAX_PRICE_PTS` |
 | React component | PascalCase, `.tsx` | `MarketCard.tsx` |
 | React hook | `use{Name}`, `.ts` | `useMarket.ts` |
 | Next.js route segment | kebab-case 目錄 | `app/markets/[id]/page.tsx` |
@@ -375,12 +390,16 @@ export function MarketCard({ marketId }: Props) {
 ## 10. 開發者必裝工具
 
 ```
-gopls            # Go LSP
-golangci-lint    # Go lint
-gofumpt          # Go format strict
+rustup           # Rust toolchain manager（rust-toolchain.toml 自動鎖定 channel/version）
+rust-analyzer    # Rust LSP
+clippy           # Rust lint（rustup component add clippy）
+rustfmt          # Rust format（rustup component add rustfmt）
+sccache          # 編譯快取（極大幅縮短 incremental build）
+cargo-nextest    # 平行測試 runner（取代 cargo test，更快、更好的 UI）
+cargo-deny       # 依賴審查（授權 / advisory / 重複版本）
+cargo-chef       # Docker layer caching for Cargo
+sqlx-cli         # DB migration + offline query metadata
 buf              # protobuf 工具
-sqlc             # SQL → Go 自動產生
-go-migrate       # DB migration
 pnpm             # Node 包管理
 playwright       # E2E
 docker-compose   # local infra
@@ -409,7 +428,9 @@ docker-compose   # local infra
 | SumSub 不可用 | KYC 流程中斷 | 備援 Onfido |
 | Kafka 故障 | 撮合事件流中斷 | 本地 WAL + Kafka 重啟可重 replay |
 | PostgreSQL primary 故障 | 寫入中斷 | DR + auto-failover |
-| Go runtime GC 抖動 | 撮合延遲 | 監控 GC 時間，必要時 rust 重寫 hot path |
+| Rust 編譯時間 | 開發迴圈 / CI 慢 | sccache 共享快取、cargo-chef 分層 Docker、開發者本機用 cargo-watch + 增量編譯；CI 暖快取下單服務 < 90s |
+| tokio runtime 阻塞 | 撮合延遲尖刺 | 撮合熱路徑禁止呼叫阻塞 syscall（DB / 檔案）；用 `spawn_blocking` 隔離；CI 加 lint rule（tokio-console + 自訂 clippy lint） |
+| 團隊 Rust 經驗曲線 | 早期 PR 速度慢 | 前 4 週 pair programming + code review 嚴格把關 unwrap / unsafe；定期內部讀書會（async-book / The Rustonomicon hot path 章節） |
 
 ## 13. 驗收條件
 
@@ -427,4 +448,4 @@ docker-compose   # local infra
 2. ClickHouse 還是 TimescaleDB？
 3. Argo CD 還是 Flux？
 4. Service Mesh 永遠不啟用？還是規模大後再評估 Linkerd？
-5. 撮合引擎是否全留 Go？或核心切到 Rust？
+5. ~~撮合引擎是否全留 Go？或核心切到 Rust？~~ ✅ **Resolved 2026-05-05（v0.2.0）**：全平台採 Rust，本議題隨之吸收。

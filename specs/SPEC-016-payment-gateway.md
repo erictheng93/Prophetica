@@ -173,25 +173,33 @@ provider webhook (HTTPS POST)
 - 主流程僅 deposit `settled_twd` 到 `Bank.TrustAccount.TWD`，原幣別僅作 audit 紀錄
 - `fx_rate` 字串保留小數精度（如 `"31.5"`），不轉 float
 
-#### 5.5.4 Driver 必含介面（Go）
+#### 5.5.4 Driver 必含介面（Rust）
 
-```go
-// services/payment-service/internal/providers/provider.go
-package providers
+```rust
+// services/payment-service/src/providers/mod.rs
 
-type Driver interface {
-    // VerifyAndDecode 驗證 HMAC、replay window、IP 白名單，並 decode 為統一 envelope。
-    // 失敗回傳 ErrorCode（呼應 errors.proto）。
-    VerifyAndDecode(ctx context.Context, req *http.Request) (*v1.ProviderWebhookEnvelope, error)
+use async_trait::async_trait;
+use axum::http::Request;
+use axum::body::Bytes;
+use crate::proto::proph::v1::ProviderWebhookEnvelope;
 
-    // CreateIntent 創建支付意圖（玩家發起儲值入口）。
-    CreateIntent(ctx context.Context, req CreateIntentInput) (CreateIntentOutput, error)
+#[async_trait]
+pub trait Driver: Send + Sync {
+    /// 驗證 HMAC、replay window、IP 白名單，並 decode 為統一 envelope。
+    /// 失敗回傳 ErrorCode（呼應 errors.proto）。
+    async fn verify_and_decode(&self, req: Request<Bytes>)
+        -> Result<ProviderWebhookEnvelope, ProviderError>;
 
-    // IssueRefund 對通路發出退款。
-    IssueRefund(ctx context.Context, req IssueRefundInput) (IssueRefundOutput, error)
+    /// 創建支付意圖（玩家發起儲值入口）。
+    async fn create_intent(&self, input: CreateIntentInput)
+        -> Result<CreateIntentOutput, ProviderError>;
 
-    // Health 通路健康檢查（用於 §9 多通路備援）。
-    Health(ctx context.Context) HealthStatus
+    /// 對通路發出退款。
+    async fn issue_refund(&self, input: IssueRefundInput)
+        -> Result<IssueRefundOutput, ProviderError>;
+
+    /// 通路健康檢查（用於 §9 多通路備援）。
+    async fn health(&self) -> HealthStatus;
 }
 ```
 

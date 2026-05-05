@@ -1,7 +1,7 @@
 # SPEC-000 — 規格總索引（Master Index）
 
 > **prophetica** — 趣味預測娛樂遊戲平台
-> 文件版本：v0.1.7 · 最後更新：2026-05-05 · 維護人：Tech Lead
+> 文件版本：v0.2.0 · 最後更新：2026-05-05 · 維護人：Tech Lead
 
 ---
 
@@ -34,12 +34,12 @@
 | ID | 標題 | 摘要 | 狀態 |
 |----|------|------|------|
 | [SPEC-001](./SPEC-001-legal-compliance.md) | 法律合規與司法管轄框架 | 合規三原則、Geo-block、VPN 政策、ToS、監管稽核資料、隱私與 AML | 🟢 v0.1.1 |
-| [SPEC-002](./SPEC-002-funds-safety.md) | 資金安全與虛擬點數帳本 | 雙簿記、隔離帳戶、對帳機制、Frozen 子科目 | 🟢 v0.1.1 |
-| [SPEC-003](./SPEC-003-matching-engine.md) | 撮合引擎詳規 | Order Book 資料結構、訂單類型、撮合演算法、API、SLO | 🟢 v0.1 |
+| [SPEC-002](./SPEC-002-funds-safety.md) | 資金安全與虛擬點數帳本 | 雙簿記、隔離帳戶、對帳機制、Frozen 子科目 | 🟢 v0.1.3 |
+| [SPEC-003](./SPEC-003-matching-engine.md) | 撮合引擎詳規 | Order Book 資料結構、訂單類型、撮合演算法、API、SLO | 🟢 v0.2.0（Rust） |
 | [SPEC-004](./SPEC-004-settlement-dispute.md) | 結算與爭議處理 | Oracle、結算狀態機、申訴窗口 | 🟢 v0.1 |
 | [SPEC-015](./SPEC-015-market-lifecycle.md) | 市場生命週期管理 | 市場創建、上架審查、內容紅線、開盤排程、強制下架 | 🟢 v0.1 |
 | [SPEC-016](./SPEC-016-payment-gateway.md) | 支付通路整合 | 通路選型、Webhook、Chargeback、跨幣別、PCI 範圍 | 🟢 v0.1 |
-| [SPEC-017](./SPEC-017-monorepo-bootstrap.md) | Monorepo Bootstrap & Local Dev | Repo 骨架、Docker Compose、Makefile、CI bootstrap、首次設定流程 | 🟢 v0.1 |
+| [SPEC-017](./SPEC-017-monorepo-bootstrap.md) | Monorepo Bootstrap & Local Dev | Repo 骨架（Cargo workspace）、Docker Compose、Makefile、CI bootstrap | 🟢 v0.2.0（Rust） |
 
 ### P1 — 必須在公開 Beta 之前完成
 
@@ -64,7 +64,7 @@
 
 | ID | 標題 | 摘要 | 狀態 |
 |----|------|------|------|
-| [SPEC-014](./SPEC-014-tech-architecture.md) | 整體技術架構 | 服務拓撲、技術棧、Repo 結構 | 🟢 v0.1 |
+| [SPEC-014](./SPEC-014-tech-architecture.md) | 整體技術架構 | 服務拓撲、技術棧（Rust）、Repo 結構 | 🟢 v0.2.0 |
 
 ## 3. 全域名詞表（Glossary）
 
@@ -87,6 +87,7 @@
 
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
+| 2026-05-05 | v0.2.0 | Tech Lead | **後端語言由 Go 切換至 Rust（重大）**：(1) SPEC-014 v0.2.0 改寫 §3.1 後端技術棧（Rust 1.78+ / axum / tonic / sqlx / tokio / sccache / cargo-nextest / rdkafka / fred / tracing / dotenvy / ulid），§4 service 表全標 Rust，§5 monorepo 結構新增 `crates/sdk/` + `crates/proto/`、移除 `packages/go-sdk/`，§6 / §8 / §9 / §10 / §12 / §14 同步；§14 OQ #5「撮合切 Rust」隨之 Resolved；(2) SPEC-017 v0.2.0：§2 file tree、§3 toolchain（Rust 1.78+ / clippy / rustfmt / sqlx-cli + sccache + cargo-nextest + cargo-chef + cargo-deny）、§4.2 Cargo workspace 取代 go.work、§4.4 prost/tonic 取代 protoc-gen-go、§4.5 Makefile cargo 命令、§6.1 Rust axum stub 範例、§8 CI 改 dtolnay/rust-toolchain + sccache + Swatinem/rust-cache、§11 / §12 同步；(3) SPEC-003 v0.2.0：§1 in-process memory 改 Rust、§4.3 `OrderID = [u8; 16]` Rust canonical、§5 OrderBook 改 BTreeMap + VecDeque、§6 開頭加 pseudocode 註記、§19 OQ #3 落地動作對齊 ulid crate；(4) SPEC-002 v0.1.3：§3.2 內部型別 int64 → i64；(5) SPEC-013 / 016 / README / ADR-0004 / .gitignore / packages/proto/README + common.proto / CLAUDE.md 同步；(6) packages/proto/v1/common.proto 之 `OrderID` 由 uint64 改為 `bytes`（16 bytes ULID）對齊 SPEC-003 §19。 |
 | 2026-05-05 | v0.1.7 | Tech Lead | Codex 動工前 OQ 收尾 round 2：(1) SPEC-017 §12 OQ #3 mock servers 同 monorepo Resolved（含 production binary 隔離 build tag）；(2) SPEC-002 §12 OQ #2 `ledger_entries` Phase 1 不分區，明列分區觸發門檻與 monthly partition 為未來方案；(3) SPEC-003 §19 OQ #3 訂單 ID 採 ULID（保留 per-market `seq uint64` 為撮合 FIFO 排序），§4.3 加 TODO 標記 PR #1 改 [16]byte；(4) SPEC-016 §7 Phase 2 多幣別觸發條件由「Q-3 拍板」改為業務驅動（Op Co. 國際版本 / FX 對沖），明示**目前無啟用計畫**；SPEC-002 §3.1 國際化說明同步收斂。 |
 | 2026-05-05 | v0.1.6 | Tech Lead | Codex 動工前 deal-breaker 收尾：(1) Q-3 點數計價 1 點 = TWD 1 由暫定改為 ✅ Resolved（業主拍板），SPEC-002 §3.1 同步；(2) Q-6 數據主權暫定 Cloudflare R2 ✅ Resolved；(3) SPEC-005 §2.1 釘住 KYC tier canonical enum `TIER_0/1/2/3`，SPEC-017 §5.2 同步；(4) SPEC-017 §12 OQ #1 / #2 / #5 全部 Resolved（commit gen/、env_file、Linux PR gate + macOS nightly）；(5) SPEC-002 §12 OQ #1 ledger 拆獨立 service Resolved，§4.2.1 新增 `Player.Frozen.{user_id}` 子科目，INV-2 同步擴展；(6) SPEC-002 §12 OQ #4 自我排除錢包處理 Resolved。 |
 | 2026-05-05 | v0.1.5 | Tech Lead | Codex 動工前置補強：(1) 新增 SPEC-017 monorepo bootstrap & local dev（P0）；(2) 建立 packages/proto/v1/ 共 6 份 .proto（errors / common / ledger / engine / market / kyc / payment）；(3) SPEC-002 §4.4.3 trade entry 改寫對齊 §4.4.4 不對稱 escrow，移除「兩邊皆鎖 6,500」之簡化；(4) SPEC-015 §6 補 outcomes / oracle_submissions / disputes / dispute_resolutions / positions 五張 schema，SPEC-004 §6.3 改為呼應引用；(5) SPEC-016 §5.5 補通路 webhook payload 對映表（綠界 / Stripe / 藍新 / PayMongo / MoMo / VNPay 6 家）；(6) SPEC-010 §3.1 補 JWT claims schema、refresh token rotation、reuse detection、step-up MFA 細節。 |

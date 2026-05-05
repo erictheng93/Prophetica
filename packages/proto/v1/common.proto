@@ -24,10 +24,10 @@ message Money {
 }
 
 // MarketID / OrderID / UserID 等強型別 wrapper，避免欄位互換錯誤。
-// （Go 在解出 stub 後可加 type alias 強化。）
+// Rust 在 prost stub 之上以 `pub struct OrderID(pub [u8; 16]);` newtype 強化型別安全。
 message MarketID { string value = 1; }
 message UserID { uint64 value = 1; }
-message OrderID { uint64 value = 1; }
+message OrderID { bytes value = 1; }       // 16 bytes (ULID)；對齊 SPEC-003 §19 OQ #3
 message TradeID { uint64 value = 1; }
 message PositionID { string value = 1; }   // ULID-like
 message TxnID { uint64 value = 1; }

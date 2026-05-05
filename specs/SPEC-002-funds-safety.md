@@ -1,10 +1,11 @@
 # SPEC-002 — 資金安全與虛擬點數帳本
 
 > 優先級：**P0**  
-> 版本：v0.1.2 · 最後更新：2026-05-05  
+> 版本：v0.1.3 · 最後更新：2026-05-05  
 > 依賴：SPEC-001  
 > 被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011
 
+> **v0.1.3 變更**：§3.2 內部儲存型別由 Go `int64` 同步為 Rust `i64`（語意等同）；對齊 SPEC-014 v0.2.0 後端切 Rust。
 > **v0.1.2 變更**：§12 OQ #2 `ledger_entries` partition 策略 Resolved（Phase 1 不分區 + 觸發門檻 + monthly partition 為未來方案）；§3.1 國際化說明明示永遠單幣別 TWD，多幣別已無啟用計畫。
 > **v0.1.1 變更**：(1) §3.1 點數計價 1 點 = TWD 1 由暫定改正式定案；(2) §4.2 帳戶體系新增 `Player.Frozen.{user_id}`；(3) §4.2.1 新章節定義凍結子科目流程；(4) §5 INV-2 公式擴展含 Frozen；(5) §12 OQ #1（ledger 獨立 service）與 OQ #4（凍結處理）Resolved。
 
@@ -49,7 +50,7 @@
 | 屬性 | 規則 |
 |------|------|
 | 對外顯示最小單位 | `0.01 點`（兩位小數）|
-| 內部儲存型別 | `BIGINT`（PostgreSQL）/ `int64`（Go）|
+| 內部儲存型別 | `BIGINT`（PostgreSQL）/ `i64`（Rust）|
 | 內部單位 | `1 內部單位 = 0.01 點`（即「點 × 100」）|
 | 顯示換算 | `display_value = internal_value / 100`，UI 層格式化為 `fmt.Sprintf("%.2f 點", ...)` |
 | 手續費 basis points | `1 bp = 0.01%`，計算 `fee = trade_value_internal × fee_bps / 10000`（呼應 SPEC-003 §14.2）|

@@ -165,7 +165,7 @@ E 推翻「採用元件庫」這個前提。本 ADR 的範圍是接受業主指�
 1. **無障礙合規免費獲得**：Base UI 處理 ARIA / focus / 鍵盤，SPEC-001 / SPEC-006 的可及性要求 day-1 達標
 2. **Cloudflare 生態一致性**：前端 (Pages) + 元件庫 (Kumo) + Object Store (R2) + WAF / CDN 全在同一供應商，故障排查 / billing / 支援單一窗口
 3. **設計 token 易切換**：三個 design 候選（Apple / Airbnb / Lamborghini）對 Kumo 而言只是 `theme.css` 的差異，不需動元件原始碼
-4. **TypeScript 與後端 schema 共用**：Zod schema 可在 React Hook Form 與 Go protobuf-gen-zod 之間共用（packages/ts-sdk）
+4. **TypeScript 與後端 schema 共用**：Zod schema 可由 protobuf 經 protoc-gen-zod 產出，前端 React Hook Form 與後端 Rust（serde + validator）皆消費同一份 .proto 為 source of truth（packages/ts-sdk）
 5. **RSC 對 SEO 與初載速度有利**：landing page / 市場列表頁可用 RSC，撮合頁面降到 'use client'
 6. **招募親和度高**：Taiwan React 工程師供給遠大於 Vue 3 + Nuxt 3
 7. **與 SPEC-014 §9 命名規範一致**：PascalCase `.tsx` + `use{Name}.ts` 為 React 標準，無需發明專案內部命名
