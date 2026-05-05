@@ -100,6 +100,10 @@ prophetica/
 |------|------|---------|
 | Node.js | 20 LTS | `.nvmrc` |
 | pnpm | 9.x | `package.json#packageManager` |
+| Next.js | 15.x | `apps/*/package.json` peer 鎖 |
+| React / React-DOM | 19.x | 同上 |
+| `@cloudflare/kumo` | latest stable | 同上；私有 registry 須在 `.npmrc` 指向 Cloudflare（見 §3.2） |
+| `@phosphor-icons/react` | 與 Kumo peer 對齊 | 同上 |
 | Go | 1.22+ | `go.work` + `go.mod` go directive |
 | Docker | 24+ | `make doctor` 檢查 |
 | Docker Compose | v2（plugin 形式）| 同上 |
@@ -110,7 +114,18 @@ prophetica/
 | go-migrate | v4 | 同上 |
 | make | 任意（Linux）/ Make for Windows / WSL2 | 文件提示 |
 
-### 3.1 Windows 開發者特別說明
+### 3.2 `@cloudflare/kumo` registry 配置
+
+Kumo 由 Cloudflare 私有 registry 發佈（非 npmjs.com），repo 根目錄 `.npmrc` 須包含：
+
+```
+@cloudflare:registry=https://npm.cloudflare.com
+//npm.cloudflare.com/:_authToken=${KUMO_NPM_TOKEN}
+```
+
+`KUMO_NPM_TOKEN` 由 Vault 注入；CI 從 GitHub Actions secret `KUMO_NPM_TOKEN` 取得。本機開發者首次 `make bootstrap` 時 `make doctor` 須檢查此環境變數存在。
+
+### 3.3 Windows 開發者特別說明
 
 prophetica 主要開發機之一為 Windows + PowerShell。為避免每位開發者自行設定：
 
