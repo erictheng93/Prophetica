@@ -1,0 +1,6 @@
+packages:
+  - "apps/*"
+  - "packages/design-tokens"
+  - "packages/ui"
+  - "packages/ts-sdk"
+  - "packages/proto"

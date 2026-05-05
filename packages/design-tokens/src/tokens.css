@@ -1,0 +1,80 @@
+/*
+ * DESIGN.md tokens as CSS custom properties.
+ * Imported by apps/web/app/globals.css. Mirrors src/{colors,spacing,rounded}.ts
+ * verbatim — keep in sync; mismatches between TS and CSS sides indicate drift.
+ */
+:root {
+  /* Colors — brand & accent */
+  --proph-color-primary: #0066cc;
+  --proph-color-primary-focus: #0071e3;
+  --proph-color-primary-on-dark: #2997ff;
+
+  /* Colors — text */
+  --proph-color-ink: #1d1d1f;
+  --proph-color-body: #1d1d1f;
+  --proph-color-body-on-dark: #ffffff;
+  --proph-color-body-muted: #cccccc;
+  --proph-color-ink-muted-80: #333333;
+  --proph-color-ink-muted-48: #7a7a7a;
+
+  /* Colors — hairlines */
+  --proph-color-divider-soft: #f0f0f0;
+  --proph-color-hairline: #e0e0e0;
+
+  /* Colors — surface */
+  --proph-color-canvas: #ffffff;
+  --proph-color-canvas-parchment: #f5f5f7;
+  --proph-color-surface-pearl: #fafafc;
+  --proph-color-surface-tile-1: #272729;
+  --proph-color-surface-tile-2: #2a2a2c;
+  --proph-color-surface-tile-3: #252527;
+  --proph-color-surface-black: #000000;
+  --proph-color-surface-chip-translucent: rgba(210, 210, 215, 0.64);
+
+  /* Colors — on-color */
+  --proph-color-on-primary: #ffffff;
+  --proph-color-on-dark: #ffffff;
+
+  /* Spacing */
+  --proph-space-xxs: 4px;
+  --proph-space-xs: 8px;
+  --proph-space-sm: 12px;
+  --proph-space-md: 17px;
+  --proph-space-lg: 24px;
+  --proph-space-xl: 32px;
+  --proph-space-xxl: 48px;
+  --proph-space-section: 80px;
+
+  /* Radii */
+  --proph-radius-none: 0px;
+  --proph-radius-xs: 5px;
+  --proph-radius-sm: 8px;
+  --proph-radius-md: 11px;
+  --proph-radius-lg: 18px;
+  --proph-radius-pill: 9999px;
+  --proph-radius-full: 9999px;
+
+  /* Elevation — exactly one drop-shadow exists */
+  --proph-shadow-product: rgba(0, 0, 0, 0.22) 3px 5px 30px 0;
+
+  /* Frosted glass */
+  --proph-backdrop-filter: saturate(180%) blur(20px);
+
+  /* Font stacks (DESIGN.md §"Note on Font Substitutes" — Inter as fallback) */
+  --proph-font-display: "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, Inter, sans-serif;
+  --proph-font-text: "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, Inter, sans-serif;
+
+  /*
+   * Kumo CSS variable bridge (ADR-0004 §6 #5 — theming via CSS vars, never !important).
+   * Maps DESIGN.md tokens to Kumo's `--kumo-*` namespace so Kumo's own primitives
+   * (Button, Dialog, etc.) inherit the Apple-style theme out-of-box once installed.
+   *
+   * NOTE: exact `--kumo-*` names depend on Kumo's published theme contract;
+   * verify against `@cloudflare/kumo` before relying in production (ADR-0004 §10 V-3).
+   */
+  --kumo-color-primary: var(--proph-color-primary);
+  --kumo-color-on-primary: var(--proph-color-on-primary);
+  --kumo-color-text: var(--proph-color-ink);
+  --kumo-color-background: var(--proph-color-canvas);
+  --kumo-radius-pill: var(--proph-radius-pill);
+}

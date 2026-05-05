@@ -1,0 +1,52 @@
+@import "@prophetica/design-tokens/css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    background-color: var(--proph-color-canvas);
+    color: var(--proph-color-ink);
+    font-family: var(--proph-font-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /*
+   * Body copy at 17px / 1.47 / -0.374px — the brand reading pace
+   * (DESIGN.md §Typography "Body copy at 17px, not 16px").
+   */
+  body {
+    font-size: 17px;
+    line-height: 1.47;
+    letter-spacing: -0.374px;
+  }
+
+  /* Display headlines default to SF Pro Display */
+  h1, h2, h3 {
+    font-family: var(--proph-font-display);
+  }
+
+  /* Apple-tight link grammar — Action Blue, no underline by default */
+  a {
+    color: var(--proph-color-primary);
+  }
+}
+
+@layer utilities {
+  /*
+   * The single drop-shadow legal in the design system (DESIGN.md §"Elevation").
+   * Apply ONLY to product imagery resting on a surface — never on cards, buttons, or text.
+   */
+  .proph-product-shadow {
+    filter: drop-shadow(var(--proph-shadow-product));
+  }
+
+  /* Frosted-glass surfaces (sub-nav, floating sticky bar) */
+  .proph-frosted {
+    backdrop-filter: var(--proph-backdrop-filter);
+    -webkit-backdrop-filter: var(--proph-backdrop-filter);
+  }
+}
