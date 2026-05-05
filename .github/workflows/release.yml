@@ -1,0 +1,12 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-22.04
+    steps:
+      - run: echo "release pipeline owned by SPEC-013"

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
 
 // Landing page — DESIGN.md (Apple-style) integration test.
@@ -83,9 +84,9 @@ export default function LandingPage() {
        */}
       <ProphSubNav
         category={
-          <a href="/" className="text-proph-ink hover:opacity-80">
+          <Link href="/" className="text-proph-ink hover:opacity-80">
             prophetica
-          </a>
+          </Link>
         }
         links={navLinks.map((l) => (
           <a

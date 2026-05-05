@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
 
 // Reusable placeholder for routes that exist in the IA but lack real content.
@@ -75,9 +76,9 @@ export function StubPage({ kicker, headline, tagline, backHref = "/", backLabel 
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav
         category={
-          <a href="/" className="text-proph-ink hover:opacity-80">
+          <Link href="/" className="text-proph-ink hover:opacity-80">
             prophetica
-          </a>
+          </Link>
         }
         links={navLinks.map((l) => (
           <a

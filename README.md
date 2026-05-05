@@ -128,3 +128,23 @@ make dev
 ## 維護人
 
 Tech Lead · 由 Operating Co. 簽派
+# SPEC-017 Bootstrap
+
+This repository now uses the SPEC-017 monorepo scaffold:
+
+- Rust 1.85 / edition 2024 Cargo workspace for service stubs and shared crates.
+- pnpm 9 + Turborepo for `apps/*` and `packages/*`.
+- `buf.yaml` and `buf.gen.yaml` consume `packages/proto/v1/*.proto` and emit committed Rust and TypeScript stubs.
+- `infra/docker-compose.local.yaml` provides the local bootstrap stack.
+
+Common commands:
+
+```bash
+make doctor
+make bootstrap
+make dev
+make test
+make lint
+```
+
+The first PR intentionally contains only bootstrap stubs. Business logic remains out of scope for SPEC-017.

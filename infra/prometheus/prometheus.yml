@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "prophetica-bootstrap"
+    static_configs:
+      - targets:
+          - "mock-sumsub:8081"
+          - "mock-payment:8082"

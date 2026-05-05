@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { ProphFooter, ProphLinkButton, ProphSubNav } from "@prophetica/ui";
 
 // SPEC-005 §8 KYC user UX — shared chrome for /kyc/*.
@@ -80,9 +81,9 @@ export default function KYCLayout({ children }: { children: ReactNode }) {
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav
         category={
-          <a href="/" className="text-proph-ink hover:opacity-80">
+          <Link href="/" className="text-proph-ink hover:opacity-80">
             prophetica
-          </a>
+          </Link>
         }
         links={navLinks.map((l) => (
           <a

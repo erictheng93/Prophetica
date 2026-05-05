@@ -1,0 +1,47 @@
+name: nightly-mutants
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+jobs:
+  mutants:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: install cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-mutants
+      - name: install rdkafka deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
+      - name: run mutants on core logic crates only
+        run: |
+          cargo mutants \
+            --in-place \
+            --package wallet-ledger-service --package matching-engine --package sdk \
+            --file 'services/wallet-ledger-service/src/ledger/**' \
+            --file 'services/matching-engine/src/{book,match}/**' \
+            --file 'crates/sdk/src/ledger/**' \
+            --minimum-test-timeout 60 \
+            --json > mutants.json
+      - name: enforce caught rate
+        run: ./tools/scripts/check-mutants.sh mutants.json 75
+      - name: upload mutants artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants
+          path: mutants.json
+          retention-days: 30
+      - name: slack alert on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          channel-id: eng-quality
+          payload: '{"text":"nightly-mutants failed for SPEC-017 scope"}'
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}

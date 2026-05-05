@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "services/api-gateway",
+    "services/ws-gateway",
+    "services/user-service",
+    "services/kyc-service",
+    "services/wallet-ledger-service",
+    "services/market-service",
+    "services/matching-engine",
+    "services/position-service",
+    "services/settlement-worker",
+    "services/risk-antifraud-service",
+    "services/referral-service",
+    "services/notification-service",
+    "crates/sdk",
+    "crates/proto",
+    "tools/mocks/sumsub",
+    "tools/mocks/payment",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Proprietary"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+
+[workspace.dependencies]
+anyhow = "1"
+async-trait = "0.1"
+axum = "0.7"
+core_affinity = "0.8"
+dotenvy = "0.15"
+fred = { version = "9", default-features = false, features = ["enable-rustls"] }
+opentelemetry = "0.22"
+opentelemetry-otlp = { version = "0.15", default-features = false, features = ["grpc-tonic", "tls-roots"] }
+prost = "0.12"
+rdkafka = { version = "0.36", default-features = false, features = ["cmake-build", "ssl", "tokio"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros"] }
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+tonic = { version = "0.11", default-features = false, features = ["transport", "tls", "tls-roots", "prost"] }
+tower-http = { version = "0.5", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+ulid = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

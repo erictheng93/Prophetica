@@ -8,6 +8,7 @@ package proph.v1;
 
 import "google/protobuf/timestamp.proto";
 import "v1/common.proto";
+import "v1/errors.proto";
 
 option go_package = "github.com/erictheng93/prophetica/packages/proto/gen/go/v1;protov1";
 

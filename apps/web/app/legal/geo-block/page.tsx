@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
 
 // SPEC-001 §2 — Geo-block user-facing screen.
@@ -52,9 +53,9 @@ export default function GeoBlockPage() {
        */}
       <ProphSubNav
         category={
-          <a href="/" className="text-proph-ink hover:opacity-80">
+          <Link href="/" className="text-proph-ink hover:opacity-80">
             prophetica
-          </a>
+          </Link>
         }
         cta={
           <a

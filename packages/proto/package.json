@@ -1,0 +1,14 @@
+{
+  "name": "@prophetica/proto",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node -e \"console.log('proto package build placeholder')\"",
+    "lint": "buf lint",
+    "test": "node -e \"console.log('proto bootstrap test ok')\""
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.69.0"
+  }
+}

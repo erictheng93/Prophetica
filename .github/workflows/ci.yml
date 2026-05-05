@@ -1,0 +1,106 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: proph
+          POSTGRES_PASSWORD: dev
+          POSTGRES_DB: prophetica
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U proph -d prophetica"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - uses: mozilla-actions/sccache-action@v0.0.6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: install native rdkafka deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
+      - name: install buf
+        uses: bufbuild/buf-setup-action@v1
+      - name: install cargo-nextest
+        uses: taiki-e/install-action@nextest
+      - name: install sqlx-cli, cargo-deny, cargo-geiger
+        run: |
+          cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
+          cargo install cargo-deny --locked
+          cargo install cargo-geiger --locked
+      - name: pnpm install
+        env:
+          KUMO_NPM_TOKEN: ${{ secrets.KUMO_NPM_TOKEN }}
+        run: pnpm install --frozen-lockfile
+      - name: buf generate
+        run: buf generate
+      - name: buf lint
+        run: buf lint
+      - name: buf breaking
+        run: buf breaking --against '.git#branch=main'
+      - name: verify generated stubs in sync
+        run: git diff --exit-code crates/proto/src/gen packages/proto/gen/ts
+      - name: sqlx offline cache up-to-date
+        env:
+          SQLX_OFFLINE: "false"
+          DATABASE_URL: postgres://proph:dev@localhost:5432/prophetica
+        run: |
+          make migrate
+          cargo sqlx prepare --workspace --check -- --tests
+      - name: lint
+        run: make lint
+      - name: test
+        env:
+          SQLX_OFFLINE: "true"
+        run: make test
+      - name: cargo deny
+        run: cargo deny check
+      - name: cargo geiger
+        run: cargo geiger --workspace --output-format Json > geiger.json
+      - name: forbid unsafe regression
+        run: ./tools/scripts/check-geiger.sh geiger.json
+      - name: upload geiger artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: geiger
+          path: geiger.json
+          retention-days: 30
+
+  sentinel-scan:
+    runs-on: ubuntu-22.04
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: ADR-0001 forbidden words
+        run: |
+          if grep -rn -E 'auto_quote|market_balancer|house_book|probability_symmetry|auto_hedge' --include='*.rs' services/ crates/ ; then
+            echo "::error::ADR-0001 forbidden words detected"; exit 1; fi
+      - name: production binary must not depend on tools/mocks
+        run: |
+          if grep -rn 'tools/mocks' services/ crates/sdk/ ; then
+            echo "::error::tools/mocks referenced from production code"; exit 1; fi
+      - name: no hardcoded secret fallback
+        run: |
+          if grep -rn -E 'unwrap_or\("dev-|password|secret|token' --include='*.rs' services/ crates/ ; then
+            echo "::error::hardcoded secret-like fallback detected"; exit 1; fi
+      - name: no prohibited frontend stack
+        run: |
+          if grep -R -E '"(vue|nuxt|pinia|vee-validate|@vue/)' --include='package.json' apps packages package.json ; then
+            echo "::error::ADR-0004 prohibited frontend dependency detected"; exit 1; fi
