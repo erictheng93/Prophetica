@@ -118,7 +118,9 @@ const (
 ### 4.3 訂單資料結構
 
 ```go
-type OrderID = uint64
+// Canonical Order ID: ULID (128-bit, 已於 §19 OQ #3 拍板)；本檔案 v0.1 草稿仍以 uint64 示意，
+// PR #1（SPEC-017 bootstrap）落地時改為 [16]byte，並補 ord_<ULID> 字串編碼。
+type OrderID = uint64 // TODO(SPEC-003 §19 OQ#3): switch to [16]byte (ULID)
 type Side    int
 
 const (
@@ -780,6 +782,12 @@ Machine 2: markets ['m51', ..., 'm100']
 
 1. WAL 是否需要 mmap 加速？或直接 buffered write 已足夠？
 2. Snapshot 序列化格式：protobuf vs MessagePack vs custom binary？
-3. 訂單 ID 生成策略：snowflake vs ULID vs DB sequence？
+3. ~~訂單 ID 生成策略：snowflake vs ULID vs DB sequence？~~ ✅ **Resolved 2026-05-05**：採 **ULID** 為 canonical Order.ID。理由：
+   - **無需協調**：snowflake 需 worker ID 分配（撮合引擎為 per-market goroutine，DaemonSet 部署時 worker ID 配置成本高）；DB sequence 在撮合熱路徑要往返 Postgres（破壞 single-writer in-memory 性能）。ULID 由撮合引擎本地生成，zero-coordination。
+   - **時序友善**：ULID 前 48 bit 為毫秒 timestamp，字典序自然遞增，方便 log / debug / 範圍查詢；同毫秒內 monotonic flag 確保唯一順序。
+   - **128-bit 無碰撞**：跨 market goroutine 同毫秒生成不會撞，撮合引擎 crash recovery 重啟後 ID 不重複（不像 in-memory uint64 sequence 需從 WAL 還原）。
+   - **API / DB / log 一致**：對外 API 已用 `ord_01H...` 字串格式（§9 API 範例），與 ULID Crockford Base32 編碼天然契合。DB 儲 `bytea(16)` 或 PostgreSQL `uuid` 型別（ULID 為 UUID 相容 128-bit）。
+   - **撮合 FIFO 優先序仍用 per-market `seq uint64`**：ULID 作為持久 ID 與 idempotency key；撮合引擎內部排序仍以 leader 賦予的 `seq` 為準（呼應 §4.3 `OrderResting{Seq: b.seq}`），兩者並存。
+   - **落地動作**：(a) `packages/proto/v1/engine.proto` 之 `OrderID` 定義為 `bytes order_id = 1` 或 `string order_id = 1`（採前者節省序列化成本）；(b) §4.3 `type OrderID = uint64` 於 PR #1 改為 `type OrderID [16]byte` 並補 String() 方法輸出 `ord_<ULID>` 形式；(c) Go 端採 [`github.com/oklog/ulid/v2`](https://github.com/oklog/ulid)（不引入帶 monotonic source 的 wrapper，由撮合引擎自管 entropy reader）。
 4. 是否支援 stop-limit / trailing-stop 等高階訂單類型（首發版不需要）？
 5. ~~DMM API 是否走獨立 binary protocol（FIX 協議）還是共用 REST？~~（已 Resolved by [SPEC-009 §3.4](./SPEC-009-dmm-liquidity.md)：自建 binary protobuf over TLS）

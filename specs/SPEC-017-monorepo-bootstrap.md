@@ -311,7 +311,7 @@ grafana:
 `make dev` 之後自動跑 `tools/scripts/seed.sh`：
 
 - 建立 PG schema（執行 SPEC-002 / SPEC-015 migrations）
-- 載入測試帳號 3 個：`alice`（Tier 2）、`bob`（Tier 1）、`dmm-001`（DMM 法人帳戶）
+- 載入測試帳號 3 個：`alice`（kyc_tier=`TIER_2`）、`bob`（kyc_tier=`TIER_1`）、`dmm-001`（DMM 法人帳戶，kyc_tier=`TIER_2`）；enum 字面以 SPEC-005 §2.1 canonical identifier 為準
 - 載入 1 個測試市場 `mkt_dev_demo`
 - 不建立 `PLATFORM_SYSTEM_USER_IDS` 之 user 紀錄（呼應 SPEC-003 §12.1）
 
@@ -561,9 +561,23 @@ make test
 
 ## 12. Open Questions
 
-1. `packages/proto/gen/` 是否 commit 進 git？選項：(a) commit 確保跨機器一致；(b) `.gitignore` 並由 CI 重產。建議 (a)，避免本地未跑 `buf generate` 導致 import error。
-2. `.env` 配置注入採 `direnv` vs `docker-compose env_file` vs `dotenv-cli`？三者皆可，需選一以避免分歧。
-3. mock servers（`tools/mocks/sumsub` / `payment`）是否獨立 repo 或同 monorepo？建議同 monorepo（避免版本同步成本）。
+1. ~~`packages/proto/gen/` 是否 commit 進 git？~~ ✅ **Resolved 2026-05-05**：**commit 進 git**。理由：(a) 跨機器（macOS / Windows / Linux CI）import path 一致，IDE 立即可解析；(b) 新人首次 clone 即可 `make test`，不必先跑 `buf generate`；(c) PR diff 會明確顯示 schema 變更對 stub 的影響，作為 schema 評審輔證；(d) CI 仍須跑 `buf generate --check` gate 確保 .proto 與 gen/ 同步（不一致則 CI fail）。落地動作：`packages/proto/gen/` 不加入 `.gitignore`；新增 `make proto` target 規範 regenerate 流程。
+2. ~~`.env` 配置注入採 `direnv` vs `docker-compose env_file` vs `dotenv-cli`？~~ ✅ **Resolved 2026-05-05**：採 **`docker-compose env_file`** 為主，理由與落地：
+   - direnv 在 PowerShell / Windows 原生支援差，本團隊 macOS + Windows 雙平台 → 排除
+   - dotenv-cli 多一層 npm wrapper，Go service 仍要自己讀 env，價值有限 → 排除
+   - **`docker-compose env_file: .env`** 為事實標準、跨平台、與 §5 docker stack 天然契合 → 採用
+   - 直接跑 `go run ./cmd/...` 之開發者：Go side 統一用 [`github.com/joho/godotenv/autoload`](https://github.com/joho/godotenv) 載入 repo 根 `.env`；Next.js side 走內建 `.env.local`（apps/web/）
+   - 範本檔：repo 根 `.env.example`（已知 key + 註解 + 安全預設值），`make bootstrap` 首次執行時 copy 為 `.env` 若不存在
+   - **嚴格禁止** 將 `.env` commit 進 git（已加入 `.gitignore`）；secrets 載入 prod 走 SPEC-010 §6 secret manager
+3. ~~mock servers（`tools/mocks/sumsub` / `payment`）是否獨立 repo 或同 monorepo？~~ ✅ **Resolved 2026-05-05**：**同 monorepo**（路徑 `tools/mocks/{sumsub,payment}/`）。理由：
+   - **版本同步零成本**：mock 必須與 SPEC-005 KYC webhook payload schema、SPEC-016 §5.5 6 家通路 webhook 對映表、`packages/proto/v1/kyc.proto` / `payment.proto` 同步演化。獨立 repo 會造成 schema drift，CI 無法在同一 PR 跨 repo 驗證。
+   - **新人 onboarding 簡化**：`make dev` 一次拉起含 mocks 的完整 stack，不必額外 clone repo / 設 token。
+   - **CI 共享 cache**：Go 與 protobuf stub 已在 monorepo 編譯，mocks 共用 build cache。
+   - **嚴格隔離**：mocks 僅在 `make dev` / `make test` 啟用；`tools/mocks/` 透過 `.dockerignore` 與 build tag `//go:build mock` 確保**絕無**進入 production binary 之路徑（在 §8 CI 加 grep gate：production image build 不得引用 `tools/mocks`）。
 4. Windows 主機之 host networking 限制如何處理 hostNetwork 撮合引擎部署？本地 dev 不啟用 hostNetwork（僅 prod K8s 啟用），由 SPEC-008 §3 監督。
-5. CI matrix（macOS / Linux / Windows）是否啟用？建議 Linux only（生產環境一致），開發者 Windows 走 WSL2。
-6. §5.2 seed 帳號使用之 `Tier 1 / Tier 2` 命名是否與 SPEC-005 KYC 分層字面一致？需 cross-check SPEC-005 §2 後對齊；若 SPEC-005 採 `LEVEL_1 / LEVEL_2` 或其他命名，本 SPEC §5.2 須同步更新避免 seed 腳本與 user-service enum 字串不符。
+5. ~~CI matrix（macOS / Linux / Windows）是否啟用？~~ ✅ **Resolved 2026-05-05**：採 **「Linux 主 gate + macOS nightly + 不跑 Windows runner」** 三層策略：
+   - **PR gate（每次 push）**：`ubuntu-latest` only — lint / test / build / sentinel-scan / `buf generate --check`。生產環境為 Linux，主 gate 必須與 prod 一致。
+   - **Nightly（cron）**：`macos-latest` 跑全套 unit test + `make doctor`。理由：團隊有 macOS 開發者，需早期捕捉路徑分隔符 / 檔名大小寫敏感性 / Apple Silicon 之 Go cross-compile 差異。Nightly 失敗發 Slack alert 但不阻塞 PR merge（單列 issue tracking）。
+   - **不跑 Windows runner**：Windows 開發者統一走 **WSL2 + Docker Desktop**（執行時等同 Linux），CI 加 Windows runner 成本高（GitHub Actions Windows runner 計價 2x、Docker-in-Docker 困難），ROI 低。
+   - 開發者本機行為：macOS / WSL2 直接 `make dev`；Windows 原生（非 WSL2）僅支援 `make dev-host`（純 Go 啟動，不含 docker stack），明列於 §9 setup 文件。
+6. ~~§5.2 seed 帳號使用之 `Tier 1 / Tier 2` 命名是否與 SPEC-005 KYC 分層字面一致？~~（已 Resolved 2026-05-05：SPEC-005 §2.1 釘住 canonical enum `TIER_0 / TIER_1 / TIER_2 / TIER_3`，本 SPEC §5.2 已同步。）

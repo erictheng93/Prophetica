@@ -234,9 +234,9 @@ type Driver interface {
 
 ## 7. 跨幣別與匯率
 
-> **Phase 1 設計假設（與 SPEC-002 §3.1 / §4.2 對齊）**：站內點數計價為 TWD 1:1，ledger 僅維持 `Bank.TrustAccount.TWD` 一個資產帳戶。國際玩家以非 TWD 法幣儲值時，**由通路在 webhook 中換算為 TWD 後入帳**，平台 ledger 永遠以 TWD 計價。
+> **Phase 1 — 永遠單幣別 TWD**（呼應 [SPEC-002 §3.1](./SPEC-002-funds-safety.md) 已 Resolved 之 1 點 = TWD 1）。ledger 僅維持 `Bank.TrustAccount.TWD` 一個資產帳戶；國際玩家以非 TWD 法幣儲值時，**由通路在 webhook 中換算為 TWD 後入帳**，平台 ledger 永遠以 TWD 計價，**任何幣別皆於通路端完成換算**。
 >
-> Phase 2（多幣別）為延伸設計，**Phase 1 不啟用**；待 SPEC-002 §3.1 / SPEC-000 §5 Q-3 拍板支援多幣別後，本節 §7.4 之 FX 帳戶體系才落地。
+> Phase 2（多幣別）保留設計但**目前無啟用計畫**。Q-3 已 Resolved 為 TWD 1:1，Phase 2 不再被 Q-3 阻塞；觸發條件改為**業務驅動**：(a) Op Co. 開立非 TWD 計價之國際版本（例如 USD ledger）、或 (b) 平台需主動承擔 FX 對沖（例如向 DMM 結算非 TWD 點數）。在無上述業務需求前，§7.4 之多幣別 schema 不實作。
 
 ### 7.1 Phase 1 — 單幣別（TWD）入帳路徑
 
@@ -282,9 +282,9 @@ Phase 1 平台不承擔 FX 風險（換算發生於通路端）。通路收取�
 - 入帳完成後，玩家錢包與儲值紀錄統一以 TWD 點數呈現
 - 退款比照 §6.3 「原路返回」原則，TWD 對原幣金額之精算差額由通路端處理
 
-### 7.4 Phase 2（保留設計）— 多幣別 ledger
+### 7.4 Phase 2（保留設計，目前無啟用計畫）— 多幣別 ledger
 
-> 以下為延伸設計，待 SPEC-000 §5 Q-3 / SPEC-002 §3.1 拍板支援多幣別 / 對沖需求後啟用。Phase 1 不實作此 schema，但保留設計以避免未來大規模 migration。
+> 以下為延伸設計，**目前無啟用計畫**。觸發條件為業務驅動（見 §7 開頭）：Op Co. 開非 TWD 計價國際版本、或平台主動承擔 FX 對沖。Phase 1 不實作此 schema，僅保留設計以避免未來大規模 migration。
 
 ```
 資產：Bank.TrustAccount.{TWD,USD,JPY,VND,...}     ← 多幣別託管

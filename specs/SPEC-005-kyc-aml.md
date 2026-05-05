@@ -22,6 +22,8 @@
 | **Tier 2** 標準 | 累計儲值達 Tier 1 上限或自願升級 | 證件 OCR + 自拍人臉比對 + Liveness Detection + 地址證明 | **可選申報**（鼓勵以解鎖更高上限） | 累計儲值 < TWD 300,000 / 月（已申報）；TWD 100,000 / 月（未申報）|
 | **Tier 3** 強化（EDD）| Tier 2 上限 / 高風險訊號 / 平台主動觸發 | 收入來源證明、銀行對帳單、視訊驗證、PEP/Sanctions 篩查 | **必填**並核對證明文件 | 個案核定（依執照地法規）|
 
+> **Canonical enum identifier**：跨服務（user-service / kyc-service / DB enum / protobuf / seed scripts / 前端）統一使用大寫 underscored 字面 **`TIER_0` / `TIER_1` / `TIER_2` / `TIER_3`**。中文「Tier 0/1/2/3 基礎/標準/強化」僅為 UI 顯示用語。任何 SPEC、ADR、seed、code 不得使用 `LEVEL_*`、`tier1`、`Tier1` 等變體。
+
 ### 2.1.1 月收入申報設計（declared_monthly_income）
 
 | 欄位 | 規則 |

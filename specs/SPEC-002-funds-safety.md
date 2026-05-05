@@ -1,9 +1,12 @@
 # SPEC-002 — 資金安全與虛擬點數帳本
 
 > 優先級：**P0**  
-> 版本：v0.1.0 · 最後更新：2026-05-05  
+> 版本：v0.1.2 · 最後更新：2026-05-05  
 > 依賴：SPEC-001  
 > 被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011
+
+> **v0.1.2 變更**：§12 OQ #2 `ledger_entries` partition 策略 Resolved（Phase 1 不分區 + 觸發門檻 + monthly partition 為未來方案）；§3.1 國際化說明明示永遠單幣別 TWD，多幣別已無啟用計畫。
+> **v0.1.1 變更**：(1) §3.1 點數計價 1 點 = TWD 1 由暫定改正式定案；(2) §4.2 帳戶體系新增 `Player.Frozen.{user_id}`；(3) §4.2.1 新章節定義凍結子科目流程；(4) §5 INV-2 公式擴展含 Frozen；(5) §12 OQ #1（ledger 獨立 service）與 OQ #4（凍結處理）Resolved。
 
 ---
 
@@ -33,9 +36,11 @@
 
 ### 3.1 計價單位選定
 
-> 決策：**1 點 = TWD 1 等值（依儲值當下匯率鎖定）**
+> 決策：**1 點 = TWD 1 等值（依儲值當下匯率鎖定）** — ✅ **正式定案 2026-05-05（業主拍板）**，此前為暫定方案；對應 [SPEC-000 §5 Q-3](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) 已 Resolved。
 
 雖然 1:1 容易與現金混淆，但抽象比例（如 100 點 = TWD 1）會增加用戶心智負擔，且國際市場匯率變動會導致「持有的點數變多變少」的詭異現象。**統一以 TWD 為計算基準，UI 顯示「點」即可，避免 $ 符號**。
+
+> 國際化考量：當前**永遠以 TWD 為唯一計價幣別**；國際玩家以非 TWD 儲值時於**通路端**換算為 TWD 後入帳，平台 ledger 不持非 TWD 資產。多幣別 ledger（SPEC-016 §7 Phase 2）為保留設計，**目前無啟用計畫**，僅在業務需要（Op Co. 開非 TWD 計價國際版本 / 主動承擔 FX 對沖）時才啟動 schema migration。
 
 ### 3.2 內部精度與整數化（Tech Invariant）
 
@@ -83,6 +88,7 @@
 負債（Liabilities）
   └─ Player.Wallet.{user_id}     對玩家的點數負債（每個玩家一個帳戶）
   └─ Player.Locked.{user_id}     鎖倉中（掛單未成交、結算中）
+  └─ Player.Frozen.{user_id}     已凍結（責任博弈自我排除 / Compliance 凍結 / EDD 待審）— 詳見 §4.2.1
 
 收入（Revenue）
   └─ Revenue.TradingFee          交易手續費收入
@@ -96,6 +102,41 @@
 特殊
   └─ Suspense.Reconciliation     對帳暫掛（差異追查中）
 ```
+
+### 4.2.1 凍結子科目（Player.Frozen.{user_id}）
+
+> 決議 2026-05-05：採 **(b) 帳本層轉子科目** 而非 metadata flag 或純 application freeze。理由：
+
+- **Audit Trail（SPEC-001 §1.1 ③）**：永久封號 / 自我排除為不可逆事件，必須在帳本留下明確 entry，metadata flag 無法滿足「不可竄改事件流」要求。
+- **隔離 INV-1 / INV-2 計算**：凍結資產仍是平台對玩家之負債（不能歸 0），但不應出現在「可用餘額」對帳；以子科目分流可避免日常 wallet 查詢誤觸。
+- **可逆操作**：若凍結觸發條件解除（例如自我排除期滿、Compliance 釋出），由反向 entry 從 `Player.Frozen.{user_id}` 轉回 `Player.Wallet.{user_id}`，全程留痕。
+
+#### 凍結流程分錄
+
+```text
+觸發：玩家 42 自我排除 / Compliance 凍結 / EDD 待審
+凍結金額 = Player.Wallet.42 + Player.Locked.42（先撤掉所有掛單，鎖倉退回 wallet 後再轉凍結）
+
+  Entry 1: Player.Wallet.42       +X       (負債從 wallet 減少 X)
+  Entry 2: Player.Frozen.42       -X       (負債轉到 frozen 子科目)
+  metadata: { reason: 'self_exclusion' | 'compliance_freeze' | 'edd_pending', triggered_by, ref_id }
+```
+
+#### 解凍流程
+
+```text
+  Entry 1: Player.Frozen.42       +X
+  Entry 2: Player.Wallet.42       -X
+  metadata: { reason: 'self_exclusion_expired' | 'compliance_cleared', approved_by, ref_id }
+```
+
+> Compliance 凍結 / EDD 凍結之解凍須走 SPEC-010 §9 4-eye review；自我排除期滿解凍由 SPEC-006 §5 排程自動觸發但仍寫入 `approved_by = 'system:rg-scheduler'`。
+
+#### INV 影響
+
+- **INV-2**：「平台對玩家負債總額」公式擴展為 `Σ(Player.Wallet.*) + Σ(Player.Locked.*) + Σ(Player.Frozen.*)`，§5 與 §11 對帳腳本須同步更新。
+- **INV-4**：`Player.Frozen.X` 同樣強制 ≥ 0。
+- **凍結帳戶不可下單**：matching-engine 撤單流程（SPEC-003）須檢查 user 凍結狀態，禁止任何 `Player.Wallet → Player.Locked` 之 entry。
 
 ### 4.3 帳本表結構（PostgreSQL）
 
@@ -274,7 +315,7 @@ Txn: settle, idempotency_key='market-X-settle:position-B-001:NO'
 | ID | 等式 | 檢查頻率 | 違反處理 |
 |----|------|---------|---------|
 | INV-1 | `每個 ledger_transaction 的 entries 借貸代數和為 0` | 每筆 commit | DB CONSTRAINT TRIGGER 強制（見 §4.3 `fn_ledger_balance_check`）|
-| INV-2 | `Σ(Player.Wallet.*) + Σ(Player.Locked.*) = 平台對玩家負債總額` | 每 5 分鐘對帳腳本 | 拋例外、寫入 Suspense.Reconciliation、P0 告警 |
+| INV-2 | `Σ(Player.Wallet.*) + Σ(Player.Locked.*) + Σ(Player.Frozen.*) = 平台對玩家負債總額` | 每 5 分鐘對帳腳本 | 拋例外、寫入 Suspense.Reconciliation、P0 告警 |
 | INV-3 | `Bank.TrustAccount + Σ(Revenue.*) − Σ(Expense.*) = 平台對玩家負債總額` | 每日 T+1 對帳 | 凍結出帳、啟動人工稽核 |
 | INV-4 | `每個 Player.Wallet.X 任意時刻 ≥ 0`（chargeback 反沖外） | 每筆變動 | 拋 INSUFFICIENT_FUNDS；chargeback 例外見 §8.2 |
 | INV-5 | `每個 ledger_entry 一旦寫入不可 UPDATE / DELETE` | 持續 | DB role 權限分離（`ledger_app` 僅 INSERT）+ audit |
@@ -412,8 +453,18 @@ ALTER TABLE ledger_entries
 
 > 跨檔決策已收斂至 [SPEC-000 §5](./SPEC-000-index.md) 中央追蹤表（含 Q-3 點數計價單位、Q-6 數據主權）。本節僅保留 SPEC-002 自身範圍內議題。
 
-1. **ledger 服務拓撲**：拆獨立 microservice（wallet-ledger-service）vs 與 wallet 同 service 不同 module？追蹤於 [ADR-0003 §11 V-1](../docs/architecture/decisions/ADR-0003-double-entry-ledger.md)。
-2. **`ledger_entries` partition 策略**：每月 / 每週 / 每年？追蹤於 ADR-0003 §11 V-2。
+1. ~~**ledger 服務拓撲**：拆獨立 microservice（wallet-ledger-service）vs 與 wallet 同 service 不同 module？~~ ✅ **Resolved 2026-05-05**：**拆為獨立 microservice `wallet-ledger-service`**（呼應 SPEC-014 §4.1 之「3+ replicas + leader」）。理由：
+   - **Single-writer leader 模式**：雙簿記 INV-1 / INV-2 / hash chain 需要單寫者保證順序，獨立 service 可清楚劃出 leader 邊界（透過 Postgres advisory lock 或 etcd lease），與 user-service 的多寫者模式不同。
+   - **Idempotency 中央化**：所有需要寫帳本的操作（user-service 儲值、matching-engine 鎖倉/成交、settlement-worker 結算、payment-service webhook）統一走 `wallet-ledger-service` 之 idempotency key，符合 SPEC-002 §6。
+   - **攻擊面隔離**：帳本是平台金流核心，與認證 / KYC / 通知等 lower-trust 邏輯共處同一 binary 會放大攻擊面（SPEC-010 §9 4-eye review 對 ledger 變動要求高於 user CRUD）。
+   - **獨立擴容**：對帳腳本（§11）與 hash chain 驗證對 IO 與 CPU 需求顯著高於 user-service。
+   - 落地：服務名 `wallet-ledger-service`，binary 位於 `services/wallet-ledger-service/`（已在 SPEC-014 §4.2 monorepo 結構落地）；對外僅暴露 gRPC（PostTransaction / GetBalance / Reconcile / GetEntries），不開 public REST。
+   - 同步更新 [ADR-0003 §11 V-1](../docs/architecture/decisions/ADR-0003-double-entry-ledger.md) 為 Resolved。
+2. ~~**`ledger_entries` partition 策略**：每月 / 每週 / 每年？~~ ✅ **Resolved 2026-05-05**：**Phase 1 不分區**，待量達門檻再以 declarative monthly partition 切換。具體規則：
+   - **不分區門檻內條件**（任一觸及即啟動 partition migration）：(a) `ledger_entries` 行數 > 100M、(b) 單表大小 > 200 GB、(c) 月成長率 > 20M 行、(d) 對帳腳本（§11 每 5 分鐘對帳）執行時間 P95 > 60 秒、(e) hash chain 驗證（§10）30 天驗證 > 30 分鐘。任一觸發 → 開 PR 切 monthly partition。
+   - **Phase 1 預埋**：建表時 `ledger_entries.created_at` 加 `BRIN` index（為 partition pruning 鋪路）；schema migration 採 `pg_partman`-friendly 命名（避免未來 rename 痛點）。
+   - **未來分區策略確定**：採 **monthly range partition by `created_at`**（非 weekly：保留視窗管理成本太高；非 yearly：對帳腳本 hot partition 太大）。冷分區（> 12 個月）轉 R2 Object Lock + Postgres foreign table，呼應 SPEC-008 §6.1 雙寫策略。
+   - 同步更新 [ADR-0003 §11 V-2](../docs/architecture/decisions/ADR-0003-double-entry-ledger.md) 為 Resolved。
 3. **WORM 儲存**：R2 Object Lock vs AWS S3 Glacier（呼應 SPEC-008 §6.1 已部分定案 R2 + S3 雙寫；本 SPEC §10.2 hash chain 寫入 R2 Object Lock 桶為定案，僅 cold archive 介質保留討論）。
-4. **Player Wallet 帳戶在玩家自我排除（永久封號）後如何處理**：呼應 SPEC-006 §5.2「凍結錢包」概念，但 SPEC-002 §4.2 帳戶清單未列「Frozen.Player.Wallet.X」科目；需決定（a）改 metadata flag、（b）轉 sub-account、（c）維持原 Player.Wallet.X 並由 application freeze。
+4. ~~**Player Wallet 帳戶在玩家自我排除（永久封號）後如何處理**~~ ✅ **Resolved 2026-05-05**：採 **(b) 轉 sub-account**，新增 `Player.Frozen.{user_id}` 子科目，詳見 §4.2.1；INV-2 / INV-4 同步擴展。
 5. **客服 compensation transaction 介面**：手動表單 vs Workflow 工具（Temporal / Airflow）？追蹤於 ADR-0003 §11 V-3。
