@@ -1,0 +1,121 @@
+# ---------------------------------------------------------------
+# AI agent local memory — DO NOT commit
+# ---------------------------------------------------------------
+CLAUDE.md
+claude.md
+AGENTS.md
+agents.md
+AGENT.md
+agent.md
+.claude/
+.codex/
+.cursorrules
+.aider*
+
+# ---------------------------------------------------------------
+# Secrets & local environment
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+.vault-token
+secrets/
+
+# ---------------------------------------------------------------
+# Go
+# ---------------------------------------------------------------
+*.exe
+*.test
+*.prof
+*.out
+vendor/
+/bin/
+/dist/
+/coverage.out
+go.work.sum
+
+# ---------------------------------------------------------------
+# Node / Nuxt / Vue
+# ---------------------------------------------------------------
+node_modules/
+.nuxt/
+.output/
+.nitro/
+.cache/
+.turbo/
+.pnpm-store/
+dist/
+.DS_Store
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# ---------------------------------------------------------------
+# IDE / editor
+# ---------------------------------------------------------------
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+*.swp
+*.swo
+*~
+
+# ---------------------------------------------------------------
+# OS
+# ---------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.AppleDouble
+.LSOverride
+
+# ---------------------------------------------------------------
+# Containers & infra local state
+# ---------------------------------------------------------------
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+*.tfvars
+!example.tfvars
+kubeconfig
+*.kubeconfig
+
+# ---------------------------------------------------------------
+# Local databases / dumps
+# ---------------------------------------------------------------
+*.sqlite
+*.sqlite3
+*.db
+pg_data/
+redis_data/
+kafka_data/
+local-dumps/
+
+# ---------------------------------------------------------------
+# Test artifacts
+# ---------------------------------------------------------------
+playwright-report/
+test-results/
+coverage/
+.nyc_output/
+junit.xml
+
+# ---------------------------------------------------------------
+# Build artifacts not in /dist
+# ---------------------------------------------------------------
+tmp/
+.tmp/
+build/
+
+# ---------------------------------------------------------------
+# Loadtest output
+# ---------------------------------------------------------------
+tools/load-test/results/
+*.csv.gz
