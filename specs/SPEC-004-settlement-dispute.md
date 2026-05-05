@@ -175,20 +175,16 @@ Response 201:
 
 ### 6.3 紀錄要求
 
-每筆裁決寫入 `dispute_resolutions` 表：
+每筆裁決寫入 `dispute_resolutions` 表，schema 集中定義於 [SPEC-015 §6.5](./SPEC-015-market-lifecycle.md)（呼應 SDD 之「single source of truth」原則，避免兩份 SPEC 同表）。
 
-```sql
-CREATE TABLE dispute_resolutions (
-    id              BIGSERIAL PRIMARY KEY,
-    market_id       VARCHAR(64) NOT NULL,
-    decision        VARCHAR(32) NOT NULL,
-    voted_by        JSONB NOT NULL,         -- [{user_id, vote, reason, ts}]
-    voted_at        TIMESTAMPTZ NOT NULL,
-    final_signoff_by BIGINT,                -- Compliance Officer
-    final_signoff_at TIMESTAMPTZ,
-    audit_hash      CHAR(64) NOT NULL       -- 不可竄改 hash
-);
-```
+關鍵欄位：
+
+| 欄位 | 用途 |
+|------|------|
+| `decision` | uphold_initial / overturn / void_market / extend |
+| `votes` | JSONB 陣列，每筆 `{user_id, vote, reason, ts}`，3 名 Adjudicator |
+| `final_signoff_by` / `_at` | Compliance Officer 最終簽核（投票分歧時） |
+| `audit_hash` | 對 votes + decision 做 SHA256，作為不可竄改稽核 |
 
 ## 7. 結算執行（SETTLING）
 

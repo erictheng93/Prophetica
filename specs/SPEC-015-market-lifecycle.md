@@ -183,7 +183,102 @@ CREATE TABLE market_audit_logs (
     user_agent      TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- §6.2 結果腿（outcomes）
+-- 二元市場每筆 markets 對應兩列（YES / NO）。設計成獨立表而非 hardcode，
+-- 是為了未來 N 元市場擴展不必 schema migration。
+CREATE TABLE market_outcomes (
+    id              VARCHAR(80) PRIMARY KEY,               -- 'mkt_X:YES' / 'mkt_X:NO'
+    market_id       VARCHAR(64) NOT NULL REFERENCES markets(id) ON DELETE RESTRICT,
+    outcome         VARCHAR(8) NOT NULL,                   -- 'YES' / 'NO' / (未來) 多元值
+    label           TEXT NOT NULL,                         -- UI 顯示用，如「主隊勝」
+    sort_order      SMALLINT NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (market_id, outcome)
+);
+CREATE INDEX idx_market_outcomes_market ON market_outcomes(market_id);
+
+-- §6.3 Oracle 提交（SPEC-004 §4.2 schema 集中於此）
+-- 兩位 Operator 獨立寫入；market-service 比對 outcome_result 一致才推進至 PENDING。
+CREATE TABLE oracle_submissions (
+    id                  VARCHAR(64) PRIMARY KEY,
+    market_id           VARCHAR(64) NOT NULL REFERENCES markets(id),
+    outcome_result      VARCHAR(8) NOT NULL,               -- 'YES' / 'NO' / 'VOID'
+    submitted_by        BIGINT NOT NULL,
+    submitted_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    evidence_urls       JSONB NOT NULL,                    -- ['https://...', ...]
+    evidence_hash       CHAR(64) NOT NULL,                 -- R2 manifest SHA256
+    notes               TEXT,
+    signature           BYTEA NOT NULL,                    -- operator 數位簽章
+    UNIQUE (market_id, submitted_by)                       -- 同 operator 同市場僅一筆
+);
+CREATE INDEX idx_oracle_submissions_market ON oracle_submissions(market_id);
+
+-- §6.4 申訴（SPEC-004 §5）
+CREATE TABLE disputes (
+    id                  VARCHAR(64) PRIMARY KEY,
+    market_id           VARCHAR(64) NOT NULL REFERENCES markets(id),
+    user_id             BIGINT NOT NULL,
+    reason              TEXT NOT NULL,
+    evidence_urls       JSONB NOT NULL,
+    claimed_outcome     VARCHAR(8) NOT NULL,
+    status              VARCHAR(32) NOT NULL DEFAULT 'pending_review',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (market_id, user_id)                            -- 同玩家同市場僅一次申訴
+);
+CREATE INDEX idx_disputes_market_status ON disputes(market_id, status);
+
+-- §6.5 爭議裁決（SPEC-004 §6.3 schema 集中於此）
+-- 3 名 Adjudicator 合議制；votes JSONB 內含 [{user_id, vote, reason, ts}]。
+CREATE TABLE dispute_resolutions (
+    id                  VARCHAR(64) PRIMARY KEY,
+    market_id           VARCHAR(64) NOT NULL REFERENCES markets(id),
+    decision            VARCHAR(32) NOT NULL,              -- uphold_initial/overturn/void_market/extend
+    votes               JSONB NOT NULL,                    -- [{user_id, vote, reason, ts}, ...]
+    voted_at            TIMESTAMPTZ NOT NULL,
+    final_signoff_by    BIGINT,                            -- Compliance Officer
+    final_signoff_at    TIMESTAMPTZ,
+    audit_hash          CHAR(64) NOT NULL                  -- 內容 hash，不可竄改稽核
+);
+CREATE INDEX idx_dispute_resolutions_market ON dispute_resolutions(market_id);
+
+-- §6.6 玩家持倉（per market_outcome）
+-- 一個 trade pair 產生兩筆 positions（買 YES 一筆、買 NO 一筆）。
+-- locked_amount 對應該 position 在 escrow 中的鎖倉（內部單位 × 100）。
+-- 結算時逐 position 處理（呼應 SPEC-002 §4.4.4 NOTE 1）。
+CREATE TABLE positions (
+    id                  VARCHAR(64) PRIMARY KEY,           -- ULID
+    user_id             BIGINT NOT NULL,
+    market_id           VARCHAR(64) NOT NULL REFERENCES markets(id),
+    outcome             VARCHAR(8) NOT NULL,
+    qty                 BIGINT NOT NULL CHECK (qty > 0),
+    avg_price_pts       INT NOT NULL CHECK (avg_price_pts BETWEEN 1 AND 99),
+    locked_amount       BIGINT NOT NULL CHECK (locked_amount > 0),
+    opened_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    closed_at           TIMESTAMPTZ,                       -- 結算或對沖平倉後
+    settle_txn_id       BIGINT,                            -- 結算對應 ledger_transactions.id
+    metadata            JSONB NOT NULL DEFAULT '{}'
+);
+CREATE INDEX idx_positions_user ON positions(user_id, market_id);
+CREATE INDEX idx_positions_market_outcome ON positions(market_id, outcome) WHERE closed_at IS NULL;
 ```
+
+### 6.7 表間關係簡圖
+
+```
+markets ──┬──< market_outcomes
+          ├──< market_reviews
+          ├──< market_audit_logs
+          ├──< oracle_submissions
+          ├──< disputes
+          ├──< dispute_resolutions
+          └──< positions ──> ledger_transactions (settle)
+```
+
+> **Schema 真相來源規則**：
+> - 上述 6 張表為 SPEC-015 唯一 schema 定義來源。
+> - SPEC-004 §6.3 之 `dispute_resolutions` 表結構**已遷移至本 SPEC**，SPEC-004 將以「呼應 SPEC-015 §6.5」方式引用。
+> - 任何欄位變更必須更新 `packages/proto/v1/market.proto` 對應 message。
 
 ## 7. 上架審查流程（DRAFT → REVIEW → SCHEDULED）
 
