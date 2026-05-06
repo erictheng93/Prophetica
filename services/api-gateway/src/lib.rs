@@ -3,10 +3,10 @@ use std::{env, sync::Arc};
 use async_trait::async_trait;
 use axum::{
     Json, Router,
-    extract::{FromRequestParts, Query, State},
+    extract::{FromRequestParts, Path, Query, State},
     http::{StatusCode, header::HeaderName, request::Parts},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{delete, get, post},
 };
 use reqwest::Url;
 use sdk::{config::ServiceConfig, observability, service_stub};
@@ -27,6 +27,22 @@ impl<C> AppState<C> {
     #[must_use]
     pub const fn new(wallet_ledger: C) -> Self {
         Self { wallet_ledger }
+    }
+}
+
+#[derive(Clone)]
+pub struct AppStateWithEngine<W, E> {
+    wallet_ledger: W,
+    engine: E,
+}
+
+impl<W, E> AppStateWithEngine<W, E> {
+    #[must_use]
+    pub const fn new(wallet_ledger: W, engine: E) -> Self {
+        Self {
+            wallet_ledger,
+            engine,
+        }
     }
 }
 
@@ -89,6 +105,14 @@ impl ApiError {
             message: message.into(),
         }
     }
+
+    fn matching_engine(status: StatusCode, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            error: "matching_engine_error",
+            message: message.into(),
+        }
+    }
 }
 
 impl IntoResponse for ApiError {
@@ -132,6 +156,45 @@ pub struct LedgerEntriesResponse {
     pub entries: Vec<LedgerEntry>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlaceOrderRequest {
+    pub side: String,
+    pub outcome: String,
+    #[serde(rename = "type")]
+    pub order_type: String,
+    pub price_pts: i32,
+    pub quantity: i64,
+    pub time_in_force: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderActionResponse {
+    pub order_id: String,
+    pub status: String,
+    pub filled_qty: i64,
+    pub avg_price_pts: i32,
+    pub remaining_qty: i64,
+    pub fee_pts: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookLevel {
+    pub price_pts: u64,
+    pub qty: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookSnapshotResponse {
+    pub market_id: String,
+    pub bids: Vec<BookLevel>,
+    pub asks: Vec<BookLevel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct BookSnapshotQuery {
+    pub depth: Option<usize>,
+}
+
 #[async_trait]
 pub trait WalletLedgerClient {
     async fn get_wallet_balance(&self, user_id: &str) -> Result<WalletBalance, ApiError>;
@@ -143,10 +206,63 @@ pub trait WalletLedgerClient {
     ) -> Result<Vec<LedgerEntry>, ApiError>;
 }
 
+#[async_trait]
+pub trait MatchingEngineClient {
+    async fn place_order(
+        &self,
+        user_id: &str,
+        market_id: &str,
+        request: &PlaceOrderRequest,
+    ) -> Result<OrderActionResponse, ApiError>;
+
+    async fn cancel_order(
+        &self,
+        user_id: &str,
+        order_id: &str,
+    ) -> Result<OrderActionResponse, ApiError>;
+
+    async fn get_book_snapshot(
+        &self,
+        market_id: &str,
+        depth: usize,
+    ) -> Result<BookSnapshotResponse, ApiError>;
+}
+
 #[derive(Debug, Clone)]
 pub struct HttpWalletLedgerClient {
     base_url: Url,
     client: reqwest::Client,
+}
+
+#[derive(Debug, Clone)]
+pub struct HttpMatchingEngineClient {
+    base_url: Url,
+    client: reqwest::Client,
+}
+
+impl HttpMatchingEngineClient {
+    /// Creates an HTTP client for the internal matching-engine service.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `base_url` is not a valid URL.
+    pub fn new(base_url: &str) -> anyhow::Result<Self> {
+        Ok(Self {
+            base_url: Url::parse(base_url)?,
+            client: reqwest::Client::new(),
+        })
+    }
+
+    /// Creates a client from `MATCHING_ENGINE_BASE_URL`, defaulting to localhost.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configured URL is invalid.
+    pub fn from_env() -> anyhow::Result<Self> {
+        let base_url = env::var("MATCHING_ENGINE_BASE_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:8088".to_owned());
+        Self::new(&base_url)
+    }
 }
 
 impl HttpWalletLedgerClient {
@@ -226,6 +342,102 @@ impl WalletLedgerClient for HttpWalletLedgerClient {
     }
 }
 
+#[async_trait]
+impl MatchingEngineClient for HttpMatchingEngineClient {
+    async fn place_order(
+        &self,
+        user_id: &str,
+        market_id: &str,
+        request: &PlaceOrderRequest,
+    ) -> Result<OrderActionResponse, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/api/v1/markets/{market_id}/orders"))
+            .map_err(|error| {
+                ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string())
+            })?;
+        let response = self
+            .client
+            .post(url)
+            .header(USER_ID_HEADER.as_str(), user_id)
+            .json(request)
+            .send()
+            .await
+            .map_err(|error| {
+                ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string())
+            })?;
+
+        decode_engine_response(response).await
+    }
+
+    async fn cancel_order(
+        &self,
+        user_id: &str,
+        order_id: &str,
+    ) -> Result<OrderActionResponse, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/api/v1/orders/{order_id}"))
+            .map_err(|error| {
+                ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string())
+            })?;
+        let response = self
+            .client
+            .delete(url)
+            .header(USER_ID_HEADER.as_str(), user_id)
+            .send()
+            .await
+            .map_err(|error| {
+                ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string())
+            })?;
+
+        decode_engine_response(response).await
+    }
+
+    async fn get_book_snapshot(
+        &self,
+        market_id: &str,
+        depth: usize,
+    ) -> Result<BookSnapshotResponse, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/api/v1/markets/{market_id}/book"))
+            .map_err(|error| {
+                ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string())
+            })?;
+        let response = self
+            .client
+            .get(url)
+            .query(&[("depth", depth.to_string())])
+            .send()
+            .await
+            .map_err(|error| {
+                ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string())
+            })?;
+
+        decode_engine_response(response).await
+    }
+}
+
+async fn decode_engine_response<T>(response: reqwest::Response) -> Result<T, ApiError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let status = response.status();
+    if !status.is_success() {
+        let message = response
+            .text()
+            .await
+            .unwrap_or_else(|error| error.to_string());
+        return Err(ApiError::matching_engine(status, message));
+    }
+
+    response
+        .json::<T>()
+        .await
+        .map_err(|error| ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string()))
+}
+
 pub fn router<C>(wallet_ledger: C) -> Router
 where
     C: WalletLedgerClient + Clone + Send + Sync + 'static,
@@ -236,12 +448,50 @@ where
         .with_state(Arc::new(AppState::new(wallet_ledger)))
 }
 
+pub fn router_with_engine<W, E>(wallet_ledger: W, engine: E) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route(
+            "/v1/me/wallet/balance",
+            get(get_my_wallet_balance_with_engine::<W, E>),
+        )
+        .route(
+            "/v1/ledger/entries",
+            get(list_ledger_entries_with_engine::<W, E>),
+        )
+        .route("/v1/markets/:market_id/orders", post(place_order::<W, E>))
+        .route("/v1/orders/:order_id", delete(cancel_order::<W, E>))
+        .route(
+            "/v1/markets/:market_id/book",
+            get(get_book_snapshot::<W, E>),
+        )
+        .with_state(Arc::new(AppStateWithEngine::new(wallet_ledger, engine)))
+}
+
 async fn get_my_wallet_balance<C>(
     State(state): State<Arc<AppState<C>>>,
     auth: AuthContext,
 ) -> Result<Json<WalletBalance>, ApiError>
 where
     C: WalletLedgerClient + Send + Sync,
+{
+    let balance = state
+        .wallet_ledger
+        .get_wallet_balance(&auth.user_id)
+        .await?;
+    Ok(Json(balance))
+}
+
+async fn get_my_wallet_balance_with_engine<W, E>(
+    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+    auth: AuthContext,
+) -> Result<Json<WalletBalance>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
 {
     let balance = state
         .wallet_ledger
@@ -266,6 +516,67 @@ where
     Ok(Json(LedgerEntriesResponse { entries }))
 }
 
+async fn list_ledger_entries_with_engine<W, E>(
+    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+    _auth: AuthContext,
+    Query(query): Query<LedgerEntriesQuery>,
+) -> Result<Json<LedgerEntriesResponse>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+{
+    let limit = query.limit.unwrap_or(100).clamp(1, 500);
+    let entries = state
+        .wallet_ledger
+        .list_entries(&query.account_code, limit)
+        .await?;
+    Ok(Json(LedgerEntriesResponse { entries }))
+}
+
+async fn place_order<W, E>(
+    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+    auth: AuthContext,
+    Path(market_id): Path<String>,
+    Json(request): Json<PlaceOrderRequest>,
+) -> Result<Json<OrderActionResponse>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+{
+    let response = state
+        .engine
+        .place_order(&auth.user_id, &market_id, &request)
+        .await?;
+    Ok(Json(response))
+}
+
+async fn cancel_order<W, E>(
+    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+    auth: AuthContext,
+    Path(order_id): Path<String>,
+) -> Result<Json<OrderActionResponse>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+{
+    let response = state.engine.cancel_order(&auth.user_id, &order_id).await?;
+    Ok(Json(response))
+}
+
+async fn get_book_snapshot<W, E>(
+    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+    Path(market_id): Path<String>,
+    Query(query): Query<BookSnapshotQuery>,
+) -> Result<Json<BookSnapshotResponse>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+{
+    let depth = query.depth.unwrap_or(10).clamp(1, 100);
+    let response = state.engine.get_book_snapshot(&market_id, depth).await?;
+    Ok(Json(response))
+}
+
 /// Runs the API gateway HTTP server.
 ///
 /// # Errors
@@ -274,7 +585,10 @@ where
 pub async fn run_http() -> anyhow::Result<()> {
     observability::init_json_tracing(SERVICE_NAME);
     let config = ServiceConfig::from_env(SERVICE_NAME, DEFAULT_PORT)?;
-    let app = service_stub::router(&config).merge(router(HttpWalletLedgerClient::from_env()?));
+    let app = service_stub::router(&config).merge(router_with_engine(
+        HttpWalletLedgerClient::from_env()?,
+        HttpMatchingEngineClient::from_env()?,
+    ));
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "api gateway listening");
 
@@ -303,7 +617,11 @@ mod tests {
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
-    use super::{ApiError, LedgerEntry, WalletBalance, WalletLedgerClient, router};
+    use super::{
+        ApiError, BookLevel, BookSnapshotResponse, LedgerEntry, MatchingEngineClient,
+        OrderActionResponse, PlaceOrderRequest, WalletBalance, WalletLedgerClient, router,
+        router_with_engine,
+    };
 
     #[tokio::test]
     async fn wallet_balance_requires_auth_context() {
@@ -366,6 +684,102 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn place_order_forwards_authenticated_user_to_matching_engine() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/markets/mkt-election/orders")
+                    .header("x-user-id", "10")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "side": "sell",
+                            "outcome": "YES",
+                            "type": "LIMIT",
+                            "price_pts": 55,
+                            "quantity": 3,
+                            "time_in_force": "GTC"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["order_id"], json!("ord_01HZ0000000000000000000000"));
+        assert_eq!(
+            engine.place_requests(),
+            vec![(
+                "10".to_owned(),
+                "mkt-election".to_owned(),
+                PlaceOrderRequest {
+                    side: "sell".to_owned(),
+                    outcome: "YES".to_owned(),
+                    order_type: "LIMIT".to_owned(),
+                    price_pts: 55,
+                    quantity: 3,
+                    time_in_force: "GTC".to_owned(),
+                },
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_order_forwards_authenticated_user_to_matching_engine() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/orders/ord_01HZ0000000000000000000000")
+                    .header("x-user-id", "10")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["status"], json!("CANCELLED"));
+        assert_eq!(
+            engine.cancel_requests(),
+            vec![("10".to_owned(), "ord_01HZ0000000000000000000000".to_owned())]
+        );
+    }
+
+    #[tokio::test]
+    async fn book_snapshot_proxy_clamps_depth_for_matching_engine() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/markets/mkt-election/book?depth=999")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["asks"], json!([{ "price_pts": 55, "qty": 3 }]));
+        assert_eq!(
+            engine.snapshot_requests(),
+            vec![("mkt-election".to_owned(), 100)]
+        );
+    }
+
     fn empty_get(uri: &str) -> Request<Body> {
         Request::builder()
             .method("GET")
@@ -388,6 +802,36 @@ mod tests {
     struct InMemoryWalletLedgerClient {
         requested_user_ids: Arc<Mutex<Vec<String>>>,
         entry_requests: Arc<Mutex<Vec<(String, i64)>>>,
+    }
+
+    #[derive(Clone, Default)]
+    struct InMemoryMatchingEngineClient {
+        placed_orders: Arc<Mutex<Vec<(String, String, PlaceOrderRequest)>>>,
+        canceled_orders: Arc<Mutex<Vec<(String, String)>>>,
+        snapshot_reads: Arc<Mutex<Vec<(String, usize)>>>,
+    }
+
+    impl InMemoryMatchingEngineClient {
+        fn place_requests(&self) -> Vec<(String, String, PlaceOrderRequest)> {
+            self.placed_orders
+                .lock()
+                .unwrap_or_else(|error| panic!("place requests lock should not poison: {error}"))
+                .clone()
+        }
+
+        fn cancel_requests(&self) -> Vec<(String, String)> {
+            self.canceled_orders
+                .lock()
+                .unwrap_or_else(|error| panic!("cancel requests lock should not poison: {error}"))
+                .clone()
+        }
+
+        fn snapshot_requests(&self) -> Vec<(String, usize)> {
+            self.snapshot_reads
+                .lock()
+                .unwrap_or_else(|error| panic!("snapshot requests lock should not poison: {error}"))
+                .clone()
+        }
     }
 
     impl InMemoryWalletLedgerClient {
@@ -439,6 +883,70 @@ mod tests {
                 amount_minor_units: 10_000,
                 balance_after_minor_units: -10_000,
             }])
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MatchingEngineClient for InMemoryMatchingEngineClient {
+        async fn place_order(
+            &self,
+            user_id: &str,
+            market_id: &str,
+            request: &PlaceOrderRequest,
+        ) -> Result<OrderActionResponse, ApiError> {
+            self.placed_orders
+                .lock()
+                .unwrap_or_else(|error| panic!("place requests lock should not poison: {error}"))
+                .push((user_id.to_owned(), market_id.to_owned(), request.clone()));
+
+            Ok(OrderActionResponse {
+                order_id: "ord_01HZ0000000000000000000000".to_owned(),
+                status: "ACTIVE".to_owned(),
+                filled_qty: 0,
+                avg_price_pts: 0,
+                remaining_qty: 3,
+                fee_pts: 0,
+            })
+        }
+
+        async fn cancel_order(
+            &self,
+            user_id: &str,
+            order_id: &str,
+        ) -> Result<OrderActionResponse, ApiError> {
+            self.canceled_orders
+                .lock()
+                .unwrap_or_else(|error| panic!("cancel requests lock should not poison: {error}"))
+                .push((user_id.to_owned(), order_id.to_owned()));
+
+            Ok(OrderActionResponse {
+                order_id: order_id.to_owned(),
+                status: "CANCELLED".to_owned(),
+                filled_qty: 0,
+                avg_price_pts: 0,
+                remaining_qty: 0,
+                fee_pts: 0,
+            })
+        }
+
+        async fn get_book_snapshot(
+            &self,
+            market_id: &str,
+            depth: usize,
+        ) -> Result<BookSnapshotResponse, ApiError> {
+            self.snapshot_reads
+                .lock()
+                .unwrap_or_else(|error| panic!("snapshot requests lock should not poison: {error}"))
+                .push((market_id.to_owned(), depth));
+
+            Ok(BookSnapshotResponse {
+                market_id: market_id.to_owned(),
+                bids: Vec::new(),
+                asks: vec![BookLevel {
+                    price_pts: 55,
+                    qty: 3,
+                }],
+            })
         }
     }
 }
