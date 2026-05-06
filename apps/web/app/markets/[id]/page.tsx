@@ -1,13 +1,20 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ProphLinkButton, ProphTile } from "@prophetica/ui";
+import { ProphTile } from "@prophetica/ui";
 import { ProbabilityBar } from "@/components/probability-bar";
+import { ProbabilityChart } from "@/components/probability-chart";
+import { TradePanel } from "@/components/trade-panel";
 import {
   categoryLabel,
   formatCloseAt,
   formatPoints,
+  getChartSeries,
   getMarketById,
+  getOrderBookSnapshot,
+  getRecentTrades,
   type Market,
+  type OrderBookSnapshot,
+  type RecentTrade,
   statusLabel,
 } from "@/lib/mock-markets";
 
@@ -24,37 +31,6 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: `${market.title} — prophetica`,
     description: market.brief,
   };
-}
-
-// Deterministic order-book preview derived from the market's quoted bid/ask.
-// Replaces real depth data once SPEC-003 wire-up lands; identical price-grid
-// math so the visual rhythm carries over.
-function makeOrderBook(yesBidCents: number, yesAskCents: number) {
-  const baseQty = [1840, 2310, 980, 1520, 740];
-  const askQty = [2050, 1670, 1130, 880, 1240];
-  return {
-    bids: baseQty.map((qty, i) => ({ price: yesBidCents - i, qty })).filter((r) => r.price > 0),
-    asks: askQty.map((qty, i) => ({ price: yesAskCents + i, qty })).filter((r) => r.price < 100),
-  };
-}
-
-interface MockTrade {
-  side: "YES" | "NO";
-  priceCents: number;
-  qty: number;
-  ago: string;
-}
-
-function makeRecentTrades(market: Market): MockTrade[] {
-  const y = market.yesPriceCents;
-  return [
-    { side: "YES", priceCents: y, qty: 120, ago: "12 秒前" },
-    { side: "NO", priceCents: 100 - y - 1, qty: 80, ago: "48 秒前" },
-    { side: "YES", priceCents: y - 1, qty: 240, ago: "1 分鐘前" },
-    { side: "NO", priceCents: 100 - y, qty: 50, ago: "3 分鐘前" },
-    { side: "YES", priceCents: y + 1, qty: 60, ago: "5 分鐘前" },
-    { side: "YES", priceCents: y, qty: 320, ago: "12 分鐘前" },
-  ];
 }
 
 export default async function MarketDetailPage({ params }: PageProps) {
@@ -90,10 +66,33 @@ export default async function MarketDetailPage({ params }: PageProps) {
         </div>
       </section>
 
+      <ChartSection market={market} />
+
       {isOpen ? <OpenMarketBody market={market} /> : null}
 
       <MarketInfoBlock market={market} />
     </>
+  );
+}
+
+function ChartSection({ market }: { market: Market }) {
+  const data = getChartSeries(market);
+  return (
+    <section className="bg-proph-canvas">
+      <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
+        <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+          <header className="mb-4 flex items-baseline justify-between">
+            <div>
+              <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">YES 價格走勢</h2>
+              <p className="mt-1 font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
+                過去 30 天，每日收盤價（單位：cent）。資料目前為示意；後端時間序列就緒後即時更新。
+              </p>
+            </div>
+          </header>
+          <ProbabilityChart data={data} />
+        </article>
+      </div>
+    </section>
   );
 }
 
@@ -121,12 +120,12 @@ function ResolvedBanner({ market }: { market: Market }) {
 }
 
 function OpenMarketBody({ market }: { market: Market }) {
-  const book = makeOrderBook(market.yesBidCents, market.yesAskCents);
-  const trades = makeRecentTrades(market);
+  const book = getOrderBookSnapshot(market);
+  const trades = getRecentTrades(market);
 
   return (
     <section className="bg-proph-canvas">
-      <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
+      <div className="mx-auto max-w-proph px-6 pb-24 md:px-10 lg:pb-16">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
           <div className="space-y-8">
             <OrderBookTable book={book} />
@@ -139,7 +138,7 @@ function OpenMarketBody({ market }: { market: Market }) {
   );
 }
 
-function OrderBookTable({ book }: { book: ReturnType<typeof makeOrderBook> }) {
+function OrderBookTable({ book }: { book: OrderBookSnapshot }) {
   return (
     <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
       <header className="border-b border-proph-divider-soft px-6 py-4">
@@ -163,8 +162,8 @@ function OrderBookTable({ book }: { book: ReturnType<typeof makeOrderBook> }) {
             </thead>
             <tbody>
               {book.bids.map((row) => (
-                <tr key={`bid-${row.price}`} className="border-b border-proph-divider-soft last:border-0">
-                  <td className="py-2 text-proph-primary">{row.price}¢</td>
+                <tr key={`bid-${row.priceCents}`} className="border-b border-proph-divider-soft last:border-0">
+                  <td className="py-2 text-proph-primary">{row.priceCents}¢</td>
                   <td className="py-2 text-right text-proph-ink-muted-80">{row.qty.toLocaleString()}</td>
                 </tr>
               ))}
@@ -185,8 +184,8 @@ function OrderBookTable({ book }: { book: ReturnType<typeof makeOrderBook> }) {
             </thead>
             <tbody>
               {book.asks.map((row) => (
-                <tr key={`ask-${row.price}`} className="border-b border-proph-divider-soft last:border-0">
-                  <td className="py-2 text-proph-ink">{row.price}¢</td>
+                <tr key={`ask-${row.priceCents}`} className="border-b border-proph-divider-soft last:border-0">
+                  <td className="py-2 text-proph-ink">{row.priceCents}¢</td>
                   <td className="py-2 text-right text-proph-ink-muted-80">{row.qty.toLocaleString()}</td>
                 </tr>
               ))}
@@ -198,7 +197,7 @@ function OrderBookTable({ book }: { book: ReturnType<typeof makeOrderBook> }) {
   );
 }
 
-function RecentTradesTable({ trades }: { trades: MockTrade[] }) {
+function RecentTradesTable({ trades }: { trades: RecentTrade[] }) {
   return (
     <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
       <header className="border-b border-proph-divider-soft px-6 py-4">
@@ -227,100 +226,6 @@ function RecentTradesTable({ trades }: { trades: MockTrade[] }) {
         </tbody>
       </table>
     </article>
-  );
-}
-
-function TradePanel({ market }: { market: Market }) {
-  return (
-    <aside
-      aria-label="下單面板"
-      className="self-start rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 lg:sticky lg:top-[140px]"
-    >
-      <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">下單</h2>
-      <p className="mt-1 font-text text-[12px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-48">
-        SPEC-003 撮合送單前須通過責任博弈評分（SPEC-006 §4）與 KYC 層級檢查。
-      </p>
-
-      <form action="#" aria-disabled="true" className="mt-5 space-y-5">
-        <fieldset>
-          <legend className="sr-only">選擇方向</legend>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="cursor-pointer rounded-proph-md border border-proph-hairline bg-proph-canvas p-4 has-[:checked]:border-proph-primary has-[:checked]:bg-proph-canvas-parchment">
-              <input type="radio" name="side" value="YES" defaultChecked className="sr-only" />
-              <span className="block font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-                BUY
-              </span>
-              <span className="mt-1 block font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-primary">
-                YES
-              </span>
-              <span className="mt-1 block font-mono text-[14px] tabular-nums text-proph-ink-muted-80">
-                {market.yesAskCents}¢
-              </span>
-            </label>
-            <label className="cursor-pointer rounded-proph-md border border-proph-hairline bg-proph-canvas p-4 has-[:checked]:border-proph-primary has-[:checked]:bg-proph-canvas-parchment">
-              <input type="radio" name="side" value="NO" className="sr-only" />
-              <span className="block font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-                BUY
-              </span>
-              <span className="mt-1 block font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-ink">
-                NO
-              </span>
-              <span className="mt-1 block font-mono text-[14px] tabular-nums text-proph-ink-muted-80">
-                {100 - market.yesBidCents}¢
-              </span>
-            </label>
-          </div>
-        </fieldset>
-
-        <label className="block">
-          <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-            價格（cent）
-          </span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={99}
-            defaultValue={market.yesAskCents}
-            className="mt-1 w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
-          />
-        </label>
-
-        <label className="block">
-          <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-            數量（股）
-          </span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            defaultValue={10}
-            className="mt-1 w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
-          />
-        </label>
-
-        <div className="flex items-baseline justify-between border-t border-proph-divider-soft pt-4">
-          <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-            最大成本
-          </span>
-          <span className="font-mono text-[21px] font-semibold tabular-nums text-proph-ink">
-            {(market.yesAskCents * 10) / 100} 點
-          </span>
-        </div>
-
-        <button
-          type="submit"
-          disabled
-          className="w-full inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
-        >
-          送出訂單（後端待接）
-        </button>
-
-        <p className="font-text text-[12px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-48">
-          下單前請確認你已完成 KYC 層級驗證、設定月儲值上限。違反者由 SPEC-003 撮合層直接拒收。
-        </p>
-      </form>
-    </aside>
   );
 }
 

@@ -207,3 +207,111 @@ export function formatCloseAt(iso: string): string {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
+
+// =========================================================================
+// Adapter surface — order-book / recent-trades / chart series.
+// These are deterministic mocks today. When packages/proto/v1/market.proto
+// lands and market-service exposes RPC, replace each function body with a
+// `ts-sdk` call; signatures should remain stable so consumers don't change.
+// =========================================================================
+
+export interface OrderBookLevel {
+  priceCents: number;
+  qty: number;
+}
+
+export interface OrderBookSnapshot {
+  bids: OrderBookLevel[];
+  asks: OrderBookLevel[];
+}
+
+const BID_DEPTH = [1840, 2310, 980, 1520, 740];
+const ASK_DEPTH = [2050, 1670, 1130, 880, 1240];
+
+export function getOrderBookSnapshot(market: Market): OrderBookSnapshot {
+  return {
+    bids: BID_DEPTH.map((qty, i) => ({ priceCents: market.yesBidCents - i, qty })).filter(
+      (r) => r.priceCents > 0,
+    ),
+    asks: ASK_DEPTH.map((qty, i) => ({ priceCents: market.yesAskCents + i, qty })).filter(
+      (r) => r.priceCents < 100,
+    ),
+  };
+}
+
+export interface RecentTrade {
+  side: "YES" | "NO";
+  priceCents: number;
+  qty: number;
+  ago: string;
+}
+
+export function getRecentTrades(market: Market): RecentTrade[] {
+  const y = market.yesPriceCents;
+  return [
+    { side: "YES", priceCents: y, qty: 120, ago: "12 秒前" },
+    { side: "NO", priceCents: 100 - y - 1, qty: 80, ago: "48 秒前" },
+    { side: "YES", priceCents: y - 1, qty: 240, ago: "1 分鐘前" },
+    { side: "NO", priceCents: 100 - y, qty: 50, ago: "3 分鐘前" },
+    { side: "YES", priceCents: y + 1, qty: 60, ago: "5 分鐘前" },
+    { side: "YES", priceCents: y, qty: 320, ago: "12 分鐘前" },
+  ];
+}
+
+export interface ProbabilityPoint {
+  /** YYYY-MM-DD; Lightweight Charts UTCTimestamp / business-day format. */
+  time: string;
+  /** YES price in cents (0–100). */
+  value: number;
+}
+
+/**
+ * Deterministic per-market price history (last 30 trading days).
+ *
+ * Seeded from `market.id` so the chart re-renders identically across SSR /
+ * client hydration / browser refresh. The walk algorithm trends the historical
+ * value back from the current `yesPriceCents` with bounded daily deltas.
+ *
+ * Replace with the real time-series RPC once SPEC-003 §17 (or successor)
+ * exposes a candle / line endpoint.
+ */
+export function getChartSeries(market: Market): ProbabilityPoint[] {
+  const days = 30;
+  const rng = seededRng(market.id);
+  const trail: number[] = [market.yesPriceCents];
+  let value = market.yesPriceCents;
+  for (let i = 0; i < days - 1; i++) {
+    const delta = Math.round((rng() - 0.5) * 6);
+    value = Math.max(5, Math.min(95, value + delta));
+    trail.push(value);
+  }
+  trail.reverse();
+
+  const endTimeMs =
+    market.status === "settled" && market.resolvedAt
+      ? new Date(market.resolvedAt).getTime()
+      : Date.now();
+
+  return trail.map((v, i) => {
+    const d = new Date(endTimeMs - (days - 1 - i) * 86_400_000);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return { time: `${yyyy}-${mm}-${dd}`, value: v };
+  });
+}
+
+// FNV-1a 32-bit hash + xorshift — small deterministic RNG for stable mocks.
+function seededRng(seed: string): () => number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return () => {
+    h ^= h << 13;
+    h ^= h >>> 17;
+    h ^= h << 5;
+    return ((h >>> 0) % 1_000_000) / 1_000_000;
+  };
+}

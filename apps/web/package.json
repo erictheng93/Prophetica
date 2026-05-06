@@ -13,12 +13,16 @@
   "dependencies": {
     "@cloudflare/kumo": "latest",
     "@cloudflare/next-on-pages": "^1.13.8",
+    "@hookform/resolvers": "^5.2.2",
     "@phosphor-icons/react": "^2.1.7",
     "@prophetica/design-tokens": "workspace:*",
     "@prophetica/ui": "workspace:*",
+    "lightweight-charts": "^5.2.0",
     "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.75.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
