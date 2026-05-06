@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { redirect } from "next/navigation";
 import { ProphTile } from "@prophetica/ui";
+import { startKycUpgrade } from "@/lib/kyc-api";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("kyc.tier3.metadata");
@@ -31,6 +33,15 @@ const requirementKeys = [
 const timelineKeys = ["documents", "video", "review", "notification"] as const;
 
 type Tier3Copy = Awaited<ReturnType<typeof getTranslations<"kyc.tier3">>>;
+
+async function startTierThreeAction() {
+  "use server";
+
+  await startKycUpgrade({
+    targetTier: "TIER_3",
+  });
+  redirect("/kyc/status");
+}
 
 function WhyHere({ t }: { t: Tier3Copy }) {
   return (
@@ -101,7 +112,10 @@ function StartFlow({ t }: { t: Tier3Copy }) {
           </p>
         </header>
 
-        <div className="rounded-proph-lg border border-proph-primary/30 bg-proph-canvas p-8">
+        <form
+          action={startTierThreeAction}
+          className="rounded-proph-lg border border-proph-primary/30 bg-proph-canvas p-8"
+        >
           <h3 className="font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
             {t("start.timelineHeading")}
           </h3>
@@ -126,13 +140,12 @@ function StartFlow({ t }: { t: Tier3Copy }) {
             </p>
             <button
               type="button"
-              disabled
-              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
+              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary"
             >
               {t("start.submit")}
             </button>
           </div>
-        </div>
+        </form>
       </div>
     </section>
   );

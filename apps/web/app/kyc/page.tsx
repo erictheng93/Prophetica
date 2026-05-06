@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { ProphLinkButton, ProphTile } from "@prophetica/ui";
 import { TierStepper } from "@/components/tier-stepper";
+import { fetchKycOverview, type KycOverview } from "@/lib/kyc-api";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("kyc.overview.metadata");
@@ -10,14 +11,6 @@ export async function generateMetadata(): Promise<Metadata> {
     description: t("description"),
   };
 }
-
-// Mock current state — real data from user-service / kyc-service via packages/ts-sdk.
-const mockUser = {
-  currentTier: 1 as const,
-  thisMonthDeposit: 8400,
-  monthlyLimit: 30000,
-  declaredMonthlyIncome: null as number | null, // Tier 1 不申報
-};
 
 interface TierCardData {
   tier: 0 | 1 | 2 | 3;
@@ -53,10 +46,18 @@ type KycOverviewCopy = Awaited<
   ReturnType<typeof getTranslations<"kyc.overview">>
 >;
 
-function CurrentStatusBlock({ t }: { t: KycOverviewCopy }) {
+function CurrentStatusBlock({
+  t,
+  overview,
+}: {
+  t: KycOverviewCopy;
+  overview: KycOverview;
+}) {
+  const thisMonthDeposit = 0;
+  const monthlyLimit = overview.monthlyLimitPoints ?? 0;
   const usagePct = Math.min(
     100,
-    (mockUser.thisMonthDeposit / mockUser.monthlyLimit) * 100,
+    monthlyLimit === 0 ? 0 : (thisMonthDeposit / monthlyLimit) * 100,
   );
 
   return (
@@ -71,15 +72,17 @@ function CurrentStatusBlock({ t }: { t: KycOverviewCopy }) {
           </h2>
         </header>
 
-        <TierStepper currentTier={mockUser.currentTier} />
+        <TierStepper currentTier={overview.currentTierNumber} />
 
         <article className="mt-8 rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
           <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
             {t("current.depositLabel")}
           </div>
           <div className="mt-2 font-display text-[34px] font-semibold leading-none tracking-[-0.374px]">
-            {formatPoints(mockUser.thisMonthDeposit)} /{" "}
-            {formatPoints(mockUser.monthlyLimit)}
+            {formatPoints(thisMonthDeposit)} /{" "}
+            {overview.monthlyLimitPoints === null
+              ? t("current.individualLimit")
+              : formatPoints(monthlyLimit)}
           </div>
           <div className="mt-4 h-2 w-full overflow-hidden rounded-proph-pill bg-proph-divider-soft">
             <div
@@ -96,7 +99,13 @@ function CurrentStatusBlock({ t }: { t: KycOverviewCopy }) {
   );
 }
 
-function TierCards({ t }: { t: KycOverviewCopy }) {
+function TierCards({
+  t,
+  overview,
+}: {
+  t: KycOverviewCopy;
+  overview: KycOverview;
+}) {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
@@ -105,7 +114,7 @@ function TierCards({ t }: { t: KycOverviewCopy }) {
         </h2>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {tierCards.map((card) => {
-            const isPast = card.tier <= mockUser.currentTier;
+            const isPast = card.tier <= overview.currentTierNumber;
             return (
               <article
                 key={card.tier}
@@ -128,7 +137,7 @@ function TierCards({ t }: { t: KycOverviewCopy }) {
                   {Array.from({ length: card.requirementCount }, (_, idx) =>
                     t(`tiers.cards.${card.key}.requirements.${idx}`),
                   ).map((r) => (
-                    <li key={r}>· {r}</li>
+                    <li key={r}>- {r}</li>
                   ))}
                 </ul>
 
@@ -159,7 +168,10 @@ function TierCards({ t }: { t: KycOverviewCopy }) {
 }
 
 export default async function KYCOverviewPage() {
-  const t = await getTranslations("kyc.overview");
+  const [t, overview] = await Promise.all([
+    getTranslations("kyc.overview"),
+    fetchKycOverview(),
+  ]);
 
   return (
     <>
@@ -169,8 +181,8 @@ export default async function KYCOverviewPage() {
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
-      <CurrentStatusBlock t={t} />
-      <TierCards t={t} />
+      <CurrentStatusBlock t={t} overview={overview} />
+      <TierCards t={t} overview={overview} />
     </>
   );
 }

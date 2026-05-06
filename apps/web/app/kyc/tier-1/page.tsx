@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { redirect } from "next/navigation";
 import { ProphTile } from "@prophetica/ui";
+import { submitTierOneVerification } from "@/lib/kyc-api";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("kyc.tier1.metadata");
@@ -28,6 +30,19 @@ const countries: CountrySpec[] = [
 ];
 
 type Tier1Copy = Awaited<ReturnType<typeof getTranslations<"kyc.tier1">>>;
+
+async function submitTierOneAction(formData: FormData) {
+  "use server";
+
+  await submitTierOneVerification({
+    legalName: readFormValue(formData, "legalName"),
+    birthday: readFormValue(formData, "birthday"),
+    country: readFormValue(formData, "country"),
+    documentId: readFormValue(formData, "documentId"),
+    consent: formData.get("consent") === "on",
+  });
+  redirect("/kyc/status");
+}
 
 function PrivacyReminder({ t }: { t: Tier1Copy }) {
   return (
@@ -138,8 +153,8 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
           </p>
         </header>
 
-        <form action="#">
-          <fieldset disabled className="space-y-6">
+        <form action={submitTierOneAction}>
+          <fieldset className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-2">
                 <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
@@ -203,9 +218,10 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
             </div>
 
             <label className="flex items-start gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-              <input
-                type="checkbox"
-                required
+                <input
+                  type="checkbox"
+                  name="consent"
+                  required
                 className="mt-1 h-4 w-4 accent-proph-primary"
               />
               <span>
@@ -236,8 +252,7 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
               </p>
               <button
                 type="submit"
-                disabled
-                className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
+                className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary"
               >
                 {t("form.submit")}
               </button>
@@ -265,4 +280,9 @@ export default async function Tier1Page() {
       <Tier1Form t={t} />
     </>
   );
+}
+
+function readFormValue(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
 }

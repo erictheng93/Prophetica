@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { redirect } from "next/navigation";
 import { ProphTile } from "@prophetica/ui";
+import { startKycUpgrade } from "@/lib/kyc-api";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("kyc.tier2.metadata");
@@ -24,6 +26,18 @@ const incomeBuckets = [
 const requirementKeys = ["document", "camera", "address"] as const;
 
 type Tier2Copy = Awaited<ReturnType<typeof getTranslations<"kyc.tier2">>>;
+
+async function startTierTwoAction(formData: FormData) {
+  "use server";
+
+  await startKycUpgrade({
+    targetTier: "TIER_2",
+    declaredMonthlyIncome: incomeBucketToMinorUnits(
+      readFormValue(formData, "incomeBucket"),
+    ),
+  });
+  redirect("/kyc/status");
+}
 
 function RequirementsBlock({ t }: { t: Tier2Copy }) {
   return (
@@ -84,8 +98,7 @@ function SDKPlaceholder({ t }: { t: Tier2Copy }) {
           </span>
           <button
             type="button"
-            disabled
-            className="mt-2 inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
+            className="mt-2 inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary"
           >
             {t("sumsub.submit")}
           </button>
@@ -117,8 +130,8 @@ function IncomeDeclaration({ t }: { t: Tier2Copy }) {
           </p>
         </header>
 
-        <form action="#">
-          <fieldset disabled className="space-y-6">
+        <form action={startTierTwoAction}>
+          <fieldset className="space-y-6">
             <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <legend className="sr-only">{t("income.legend")}</legend>
               {incomeBuckets.map((b) => (
@@ -156,8 +169,7 @@ function IncomeDeclaration({ t }: { t: Tier2Copy }) {
             <div className="flex justify-end">
               <button
                 type="submit"
-                disabled
-                className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
+                className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary"
               >
                 {t("income.submit")}
               </button>
@@ -185,4 +197,24 @@ export default async function Tier2Page() {
       <IncomeDeclaration t={t} />
     </>
   );
+}
+
+function readFormValue(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
+}
+
+function incomeBucketToMinorUnits(bucket: string): number | null {
+  switch (bucket) {
+    case "lt_30k":
+      return 3_000_000;
+    case "30k_60k":
+      return 6_000_000;
+    case "60k_100k":
+      return 10_000_000;
+    case "gt_100k":
+      return 10_000_001;
+    default:
+      return null;
+  }
 }

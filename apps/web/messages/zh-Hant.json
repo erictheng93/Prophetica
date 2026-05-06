@@ -494,6 +494,7 @@
           "categoryOption": "{label}（{priority}）",
           "marketId": "相關市場 ID（如有）",
           "marketIdHint": "結算 / 交易爭議請務必填寫，可在市場頁網址列複製。",
+          "claimedOutcome": "你認為應判定的結果",
           "body": "詳細說明",
           "bodyPlaceholder": "請描述發生時間、預期行為、實際行為、你已嘗試的步驟。",
           "attachments": "附件（截圖、PDF；單檔 ≤ 10 MB）",
@@ -501,7 +502,7 @@
         },
         "consent": "我了解工單範圍內的查詢會被記錄於 audit_logs，並接受<privacyLink>隱私政策</privacyLink>對申訴資料的處理規範。",
         "footnote": "送出後將顯示工單 ID。請保留以便追蹤進度。",
-        "submit": "送出申訴（後端待接）"
+        "submit": "送出申訴"
       }
     }
   },
@@ -1407,6 +1408,7 @@
         "kicker": "目前狀態",
         "heading": "你目前是 Tier 1 基礎驗證玩家",
         "depositLabel": "本月儲值用量",
+        "individualLimit": "個案核定",
         "nearLimit": "你即將用完本月 Tier 1 額度。升級至 Tier 2 可解鎖更高上限。",
         "upgradeHint": "升級下一層級可解鎖更高的月儲值與單筆上限。"
       },

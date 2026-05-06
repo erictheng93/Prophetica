@@ -13,6 +13,10 @@
     "./wallet": {
       "types": "./src/wallet/index.ts",
       "import": "./src/wallet/index.ts"
+    },
+    "./kyc": {
+      "types": "./src/kyc/index.ts",
+      "import": "./src/kyc/index.ts"
     }
   },
   "scripts": {
