@@ -123,6 +123,26 @@ pub struct KycMonthlyReport {
     pub open_sar_candidates: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct ScreeningMatchDraft {
+    pub user_id: String,
+    pub match_type: ScreeningMatchType,
+    pub list_name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScreeningMatchType {
+    Sanction,
+    Pep,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScreeningRescanOutcome {
+    pub scanned_matches: usize,
+    pub frozen_users: Vec<String>,
+    pub edd_users: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReviewAnswer {
     Green,
@@ -130,10 +150,12 @@ pub enum ReviewAnswer {
     Yellow,
 }
 
-#[derive(Debug, Clone, Copy, thiserror::Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum KycStoreError {
     #[error("kyc store is unavailable")]
     Unavailable,
+    #[error("document hash is already associated with another user")]
+    DuplicateDocument,
 }
 
 #[async_trait]
@@ -156,6 +178,11 @@ pub trait KycStore: Clone + Send + Sync + 'static {
     ) -> Result<AmlEventOutcome, KycStoreError>;
 
     async fn monthly_report(&self, month: String) -> Result<KycMonthlyReport, KycStoreError>;
+
+    async fn apply_screening_rescan(
+        &self,
+        matches: Vec<ScreeningMatchDraft>,
+    ) -> Result<ScreeningRescanOutcome, KycStoreError>;
 
     async fn start_upgrade(
         &self,
@@ -204,6 +231,23 @@ impl KycStore for InMemoryKycStore {
             });
         }
 
+        let document_id_hash = hash_document_id(&draft.country, &draft.document_id);
+        {
+            let records = self
+                .records
+                .lock()
+                .map_err(|_| KycStoreError::Unavailable)?;
+            if records.iter().any(|record| {
+                record.user_id != draft.user_id
+                    && record
+                        .document_id_hash
+                        .as_ref()
+                        .is_some_and(|stored| stored == &document_id_hash)
+            }) {
+                return Err(KycStoreError::DuplicateDocument);
+            }
+        }
+
         let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
         let record = KycRecord {
             id,
@@ -212,7 +256,7 @@ impl KycStore for InMemoryKycStore {
             status: KycStatus::Passed,
             provider: provider_for(KycTier::Tier1).to_owned(),
             provider_applicant_id: None,
-            document_id_hash: Some(hash_document_id(&draft.country, &draft.document_id)),
+            document_id_hash: Some(document_id_hash),
             country: Some(draft.country),
             declared_monthly_income: None,
             submitted_at: iso_like_now(),
@@ -346,6 +390,67 @@ impl KycStore for InMemoryKycStore {
             by_tier,
             by_status,
             open_sar_candidates,
+        })
+    }
+
+    async fn apply_screening_rescan(
+        &self,
+        matches: Vec<ScreeningMatchDraft>,
+    ) -> Result<ScreeningRescanOutcome, KycStoreError> {
+        let mut frozen_users = Vec::new();
+        let mut edd_users = Vec::new();
+        let mut records = self
+            .records
+            .lock()
+            .map_err(|_| KycStoreError::Unavailable)?;
+
+        for screening_match in &matches {
+            match screening_match.match_type {
+                ScreeningMatchType::Sanction => {
+                    if let Some(record) = records
+                        .iter_mut()
+                        .filter(|record| record.user_id == screening_match.user_id)
+                        .max_by_key(|record| (record.tier.rank(), record.id))
+                    {
+                        record.status = KycStatus::Frozen;
+                        record.reviewed_at = Some(iso_like_now());
+                        frozen_users.push(screening_match.user_id.clone());
+                    }
+                }
+                ScreeningMatchType::Pep => {
+                    let already_tier_three = records.iter().any(|record| {
+                        record.user_id == screening_match.user_id && record.tier == KycTier::Tier3
+                    });
+                    if !already_tier_three {
+                        let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
+                        records.push(KycRecord {
+                            id,
+                            user_id: screening_match.user_id.clone(),
+                            tier: KycTier::Tier3,
+                            status: KycStatus::Pending,
+                            provider: "manual".to_owned(),
+                            provider_applicant_id: None,
+                            document_id_hash: None,
+                            country: None,
+                            declared_monthly_income: None,
+                            submitted_at: iso_like_now(),
+                            reviewed_at: None,
+                            expires_at: None,
+                            idempotency_key: format!(
+                                "screening:pep:{}:{id}",
+                                screening_match.user_id
+                            ),
+                        });
+                    }
+                    edd_users.push(screening_match.user_id.clone());
+                }
+            }
+        }
+
+        Ok(ScreeningRescanOutcome {
+            scanned_matches: matches.len(),
+            frozen_users,
+            edd_users,
         })
     }
 

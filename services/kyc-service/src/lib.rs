@@ -111,6 +111,45 @@ mod api_contract_tests {
     }
 
     #[tokio::test]
+    async fn tier_one_rejects_duplicate_document_hash_for_different_user() {
+        let store = crate::kyc::InMemoryKycStore::default();
+        let first = crate::api::router(store.clone())
+            .oneshot(json_post(
+                "/api/v1/kyc/users/user_dup_01/tier-1",
+                &json!({
+                    "idempotency_key": "kyc:user_dup_01:tier1:001",
+                    "legal_name": "First User",
+                    "birthday": "1990-01-02",
+                    "country": "TW",
+                    "document_id": "A123456789",
+                    "consent": true
+                }),
+            ))
+            .await
+            .expect("first request should be handled");
+        assert_eq!(first.status(), StatusCode::CREATED);
+
+        let duplicate = crate::api::router(store)
+            .oneshot(json_post(
+                "/api/v1/kyc/users/user_dup_02/tier-1",
+                &json!({
+                    "idempotency_key": "kyc:user_dup_02:tier1:001",
+                    "legal_name": "Second User",
+                    "birthday": "1990-01-02",
+                    "country": "TW",
+                    "document_id": "A123456789",
+                    "consent": true
+                }),
+            ))
+            .await
+            .expect("duplicate request should be handled");
+
+        assert_eq!(duplicate.status(), StatusCode::CONFLICT);
+        let body = response_json(duplicate).await;
+        assert_eq!(body["error"], json!("duplicate_document"));
+    }
+
+    #[tokio::test]
     async fn sumsub_webhook_requires_hmac_and_updates_pending_upgrade() {
         let store = crate::kyc::InMemoryKycStore::default();
         let app = crate::api::router(store.clone());
@@ -235,6 +274,67 @@ mod api_contract_tests {
         assert_eq!(body["by_tier"]["TIER_1"], json!(1));
         assert_eq!(body["by_status"]["passed"], json!(1));
         assert_eq!(body["open_sar_candidates"], json!(1));
+    }
+
+    #[tokio::test]
+    async fn sanctions_rescan_freezes_sanction_hits_and_routes_pep_to_tier_three() {
+        let store = crate::kyc::InMemoryKycStore::default();
+        let _ = crate::api::router(store.clone())
+            .oneshot(json_post(
+                "/api/v1/kyc/users/user_sdn/upgrades",
+                &json!({
+                    "target_tier": "TIER_2",
+                    "idempotency_key": "kyc:user_sdn:tier2:001"
+                }),
+            ))
+            .await
+            .expect("sdn upgrade should be handled");
+        let _ = crate::api::router(store.clone())
+            .oneshot(json_post(
+                "/api/v1/kyc/users/user_pep/upgrades",
+                &json!({
+                    "target_tier": "TIER_2",
+                    "idempotency_key": "kyc:user_pep:tier2:001"
+                }),
+            ))
+            .await
+            .expect("pep upgrade should be handled");
+
+        let rescan = crate::api::router(store.clone())
+            .oneshot(json_post(
+                "/internal/screening/rescans",
+                &json!({
+                    "matches": [
+                        { "user_id": "user_sdn", "match_type": "sanction", "list_name": "OFAC SDN" },
+                        { "user_id": "user_pep", "match_type": "pep", "list_name": "PEP" }
+                    ]
+                }),
+            ))
+            .await
+            .expect("rescan request should be handled");
+
+        assert_eq!(rescan.status(), StatusCode::OK);
+        let body = response_json(rescan).await;
+        assert_eq!(body["scanned_matches"], json!(2));
+        assert_eq!(body["frozen_users"], json!(["user_sdn"]));
+        assert_eq!(body["edd_users"], json!(["user_pep"]));
+
+        let frozen_status = crate::api::router(store.clone())
+            .oneshot(empty_get("/api/v1/kyc/users/user_sdn/status"))
+            .await
+            .expect("frozen status request should be handled");
+        assert_eq!(
+            response_json(frozen_status).await["status"],
+            json!("frozen")
+        );
+
+        let pep_status = crate::api::router(store)
+            .oneshot(empty_get("/api/v1/kyc/users/user_pep/status"))
+            .await
+            .expect("pep status request should be handled");
+        let pep_body = response_json(pep_status).await;
+        assert_eq!(pep_body["current_tier"], json!("TIER_3"));
+        assert_eq!(pep_body["status"], json!("pending"));
     }
 
     fn json_post(uri: &str, body: &Value) -> Request<Body> {

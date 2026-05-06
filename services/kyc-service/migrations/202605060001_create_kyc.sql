@@ -22,6 +22,8 @@ CREATE INDEX idx_kyc_user ON user_kyc_records(user_id, tier);
 CREATE INDEX idx_kyc_expires ON user_kyc_records(expires_at) WHERE expires_at IS NOT NULL;
 CREATE INDEX idx_kyc_provider_applicant ON user_kyc_records(provider, provider_applicant_id)
     WHERE provider_applicant_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_kyc_document_hash_unique ON user_kyc_records(document_id_hash)
+    WHERE document_id_hash IS NOT NULL;
 
 CREATE TABLE kyc_webhook_events (
     id BIGSERIAL PRIMARY KEY,
@@ -62,3 +64,14 @@ CREATE TABLE sar_candidates (
 );
 
 CREATE INDEX idx_sar_candidates_status_created ON sar_candidates(status, created_at DESC);
+
+CREATE TABLE screening_rescan_events (
+    id BIGSERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    match_type VARCHAR(32) NOT NULL,
+    list_name VARCHAR(128) NOT NULL,
+    action VARCHAR(32) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_screening_rescan_user_created ON screening_rescan_events(user_id, created_at DESC);

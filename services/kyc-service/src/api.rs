@@ -12,8 +12,8 @@ use sha2::{Digest, Sha256};
 
 use crate::kyc::{
     AmlEventDraft, KycRecord, KycStatus, KycStore, KycStoreError, KycTier, ReviewAnswer,
-    StartUpgradeDraft, SumsubWebhookDraft, TierOneVerificationDraft,
-    is_supported_tier_one_document,
+    ScreeningMatchDraft, ScreeningMatchType, StartUpgradeDraft, SumsubWebhookDraft,
+    TierOneVerificationDraft, is_supported_tier_one_document,
 };
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +68,19 @@ pub struct AmlEventRequest {
 #[derive(Debug, Deserialize)]
 pub struct MonthlyReportQuery {
     pub month: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ScreeningRescanRequest {
+    #[serde(default)]
+    pub matches: Vec<ScreeningMatchRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ScreeningMatchRequest {
+    pub user_id: String,
+    pub match_type: String,
+    pub list_name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,6 +145,13 @@ pub struct MonthlyKycReportResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ScreeningRescanResponse {
+    pub scanned_matches: usize,
+    pub frozen_users: Vec<String>,
+    pub edd_users: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ApiErrorResponse {
     pub error: &'static str,
     pub message: String,
@@ -153,6 +173,7 @@ where
         )
         .route("/api/internal/webhooks/sumsub", post(sumsub_webhook::<S>))
         .route("/internal/aml/events", post(record_aml_event::<S>))
+        .route("/internal/screening/rescans", post(screening_rescan::<S>))
         .route("/internal/reports/kyc/monthly", get(monthly_report::<S>))
         .with_state(store)
 }
@@ -349,6 +370,30 @@ where
     }))
 }
 
+async fn screening_rescan<S>(
+    State(store): State<S>,
+    Json(request): Json<ScreeningRescanRequest>,
+) -> Result<Json<ScreeningRescanResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: KycStore,
+{
+    let matches = request
+        .matches
+        .into_iter()
+        .map(screening_match_draft)
+        .collect::<Result<Vec<_>, _>>()?;
+    let outcome = store
+        .apply_screening_rescan(matches)
+        .await
+        .map_err(store_error)?;
+
+    Ok(Json(ScreeningRescanResponse {
+        scanned_matches: outcome.scanned_matches,
+        frozen_users: outcome.frozen_users,
+        edd_users: outcome.edd_users,
+    }))
+}
+
 fn validate_tier_one(
     request: &TierOneVerificationRequest,
 ) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
@@ -372,6 +417,24 @@ fn validate_tier_one(
         ));
     }
     Ok(())
+}
+
+fn screening_match_draft(
+    request: ScreeningMatchRequest,
+) -> Result<ScreeningMatchDraft, (StatusCode, Json<ApiErrorResponse>)> {
+    if request.user_id.trim().is_empty() {
+        return Err(validation_error("user_id is required"));
+    }
+    let match_type = match request.match_type.as_str() {
+        "sanction" => ScreeningMatchType::Sanction,
+        "pep" => ScreeningMatchType::Pep,
+        _ => return Err(validation_error("match_type must be sanction or pep")),
+    };
+    Ok(ScreeningMatchDraft {
+        user_id: request.user_id,
+        match_type,
+        list_name: request.list_name,
+    })
 }
 
 fn validate_aml_event(
@@ -488,11 +551,18 @@ fn status_response(user_id: &str, record: Option<&KycRecord>) -> KycStatusRespon
 }
 
 fn store_error(error: KycStoreError) -> (StatusCode, Json<ApiErrorResponse>) {
-    api_error(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "kyc_store_unavailable",
-        error.to_string(),
-    )
+    match error {
+        KycStoreError::Unavailable => api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "kyc_store_unavailable",
+            error.to_string(),
+        ),
+        KycStoreError::DuplicateDocument => api_error(
+            StatusCode::CONFLICT,
+            "duplicate_document",
+            error.to_string(),
+        ),
+    }
 }
 
 fn validation_error(message: impl Into<String>) -> (StatusCode, Json<ApiErrorResponse>) {

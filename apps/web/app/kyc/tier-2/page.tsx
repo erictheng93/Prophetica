@@ -66,7 +66,7 @@ function RequirementsBlock({ t }: { t: Tier2Copy }) {
   );
 }
 
-function SDKPlaceholder({ t }: { t: Tier2Copy }) {
+function SumsubLaunchPanel({ t }: { t: Tier2Copy }) {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
@@ -79,22 +79,12 @@ function SDKPlaceholder({ t }: { t: Tier2Copy }) {
           </p>
         </header>
 
-        {/*
-         * Placeholder for the SumSub Web SDK iframe (SPEC-005 §3.2). Real
-         * integration requires:
-         *   1. Backend kyc-service exchanges short-lived applicant token via
-         *      SumSub API and returns to the client.
-         *   2. <SumsubWebSdk accessToken={...} onMessage={...} /> mounts here.
-         *   3. webhook /api/internal/webhooks/sumsub flips DB tier on review
-         *      result (§3.3).
-         * Frontend integration tracked under ADR-0004 §10 V-1.
-         */}
         <div className="flex h-[480px] flex-col items-center justify-center gap-3 rounded-proph-lg border-2 border-dashed border-proph-hairline bg-proph-canvas-parchment text-center">
           <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-            {t("sumsub.placeholderKicker")}
+            {t("sumsub.launchKicker")}
           </span>
           <span className="font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px] text-proph-ink-muted-80">
-            {t("sumsub.placeholderTitle")}
+            {t("sumsub.launchTitle")}
           </span>
           <button
             type="button"
@@ -193,7 +183,7 @@ export default async function Tier2Page() {
         tagline={t("hero.tagline")}
       />
       <RequirementsBlock t={t} />
-      <SDKPlaceholder t={t} />
+      <SumsubLaunchPanel t={t} />
       <IncomeDeclaration t={t} />
     </>
   );

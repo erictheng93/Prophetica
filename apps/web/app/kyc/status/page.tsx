@@ -8,6 +8,7 @@ import {
   XCircle,
 } from "@phosphor-icons/react/dist/ssr";
 import { ProphLinkButton, ProphTile } from "@prophetica/ui";
+import { fetchKycOverview, type KycOverview } from "@/lib/kyc-api";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("kyc.status.metadata");
@@ -18,7 +19,6 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-// Mock review state. Real timeline comes from kyc-service via packages/ts-sdk.
 type StepState = "done" | "current" | "pending" | "failed";
 
 interface TimelineStep {
@@ -26,14 +26,6 @@ interface TimelineStep {
   state: StepState;
   timestamp?: string;
 }
-
-const mockTimeline: TimelineStep[] = [
-  { key: "tier1", state: "done", timestamp: "2026-04-12 14:21" },
-  { key: "tier2", state: "done", timestamp: "2026-05-04 09:08" },
-  { key: "sumsub", state: "current", timestamp: "2026-05-04 09:09" },
-  { key: "notification", state: "pending" },
-  { key: "tierUpdate", state: "pending" },
-];
 
 const stateColor: Record<StepState, string> = {
   done: "border-proph-ink-muted-80 bg-proph-canvas",
@@ -60,7 +52,13 @@ const nextStepKeys = ["markets", "disputes"] as const;
 
 type StatusCopy = Awaited<ReturnType<typeof getTranslations<"kyc.status">>>;
 
-function Timeline({ t }: { t: StatusCopy }) {
+function Timeline({
+  t,
+  timeline,
+}: {
+  t: StatusCopy;
+  timeline: TimelineStep[];
+}) {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
@@ -69,7 +67,7 @@ function Timeline({ t }: { t: StatusCopy }) {
         </h2>
 
         <ol className="space-y-3">
-          {mockTimeline.map((step, idx) => {
+          {timeline.map((step, idx) => {
             const Icon = stateIcon[step.state];
             return (
               <li
@@ -146,7 +144,11 @@ function NextSteps({ t }: { t: StatusCopy }) {
 }
 
 export default async function StatusPage() {
-  const t = await getTranslations("kyc.status");
+  const [t, overview] = await Promise.all([
+    getTranslations("kyc.status"),
+    fetchKycOverview(),
+  ]);
+  const timeline = buildTimeline(overview);
 
   return (
     <>
@@ -156,8 +158,44 @@ export default async function StatusPage() {
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
-      <Timeline t={t} />
+      <Timeline t={t} timeline={timeline} />
       <NextSteps t={t} />
     </>
   );
+}
+
+function buildTimeline(overview: KycOverview): TimelineStep[] {
+  const tier1Done = overview.currentTierNumber >= 1;
+  const tier2Done = overview.currentTierNumber >= 2 && overview.status === "passed";
+  const tier2Current =
+    overview.currentTier === "TIER_2" && overview.status === "pending";
+  const failed = overview.status === "rejected" || overview.status === "frozen";
+
+  return [
+    {
+      key: "tier1",
+      state: failed && !tier1Done ? "failed" : tier1Done ? "done" : "pending",
+      timestamp: tier1Done ? overview.submittedAt ?? undefined : undefined,
+    },
+    {
+      key: "tier2",
+      state: tier2Done ? "done" : tier2Current ? "current" : failed ? "failed" : "pending",
+      timestamp: overview.currentTierNumber >= 2 ? overview.submittedAt ?? undefined : undefined,
+    },
+    {
+      key: "sumsub",
+      state: tier2Done ? "done" : tier2Current ? "current" : failed ? "failed" : "pending",
+      timestamp: overview.provider === "sumsub" ? overview.submittedAt ?? undefined : undefined,
+    },
+    {
+      key: "notification",
+      state: overview.reviewedAt ? "done" : tier2Current ? "pending" : failed ? "failed" : "pending",
+      timestamp: overview.reviewedAt ?? undefined,
+    },
+    {
+      key: "tierUpdate",
+      state: overview.status === "passed" ? "done" : tier2Current ? "pending" : failed ? "failed" : "pending",
+      timestamp: overview.reviewedAt ?? undefined,
+    },
+  ];
 }

@@ -1528,7 +1528,7 @@
         },
         "consent": "我已閱讀<privacyLink>KYC 隱私說明</privacyLink>與<termsLink>服務條款</termsLink>，並同意 prophetica 依據說明處理我提交的資料。",
         "footnote": "送出後 24 小時內最多嘗試 5 次。連續失敗將導入 Tier 2 流程。",
-        "submit": "送出基礎驗證（後端待接）"
+        "submit": "送出基礎驗證"
       }
     },
     "tier2": {
@@ -1560,10 +1560,10 @@
       },
       "sumsub": {
         "heading": "啟動 SumSub 驗證",
-        "intro": "點擊下方開始後，將載入 SumSub Web SDK iframe。流程包含證件拍攝 → 自拍 → Liveness 偵測 → 地址證明上傳。",
-        "placeholderKicker": "SumSub Web SDK iframe 載入位置",
-        "placeholderTitle": "後端串接後 SDK 將在此渲染",
-        "submit": "開始 SumSub 流程（後端待接）"
+        "intro": "點擊下方開始後，系統會向 kyc-service 建立 SumSub 申請並回到審核狀態頁。實際文件拍攝、自拍、Liveness 與地址證明由 SumSub 流程承接。",
+        "launchKicker": "SumSub 申請啟動",
+        "launchTitle": "建立短效審核工作階段",
+        "submit": "開始 SumSub 流程"
       },
       "income": {
         "kicker": "可選",
@@ -1578,7 +1578,7 @@
         },
         "skipLabel": "不申報",
         "skipHint": "月儲值上限維持 TWD 100,000",
-        "submit": "儲存（後端待接）"
+        "submit": "儲存並啟動審核"
       }
     },
     "tier3": {
@@ -1638,7 +1638,7 @@
           "notification": "結果通知：站內訊息 + Email"
         },
         "supportNote": "審核期間若有疑問，可由<supportLink>客服管道</supportLink>聯繫專屬 Compliance 窗口。",
-        "submit": "建立 Compliance 工單（後端待接）"
+        "submit": "建立 Compliance 工單"
       }
     },
     "privacyNotice": {
