@@ -103,6 +103,304 @@
       "contact": "聯絡我們"
     }
   },
+  "about": {
+    "metadata": {
+      "title": "關於 prophetica — 中立的趣味預測娛樂平台",
+      "description": "prophetica 不持倉、不下場，只做撮合與結算。三條法律邊界、三公司架構、為什麼是娛樂遊戲不是博弈。"
+    },
+    "hero": {
+      "kicker": "關於 prophetica",
+      "headline": "我們做撮合與結算，平台不下場。",
+      "tagline": "prophetica 是趣味預測娛樂遊戲。我們把玩家的「我認為會發生」變成可以撮合的訂單，做為對局的中立中間人。手續費是我們唯一的收入。",
+      "ctaPrimary": "看玩法說明",
+      "ctaSecondary": "瀏覽市場"
+    },
+    "principles": {
+      "heading": "三條法律邊界",
+      "intro": "這些不是我們宣稱的「企業價值」。它們是 prophetica 存在的前提：違反任一條等同關站，創辦人負刑責。我們把這三條寫進系統設計、客服培訓、合規稽核，每一行 production code 都受其約束。",
+      "items": {
+        "noCashout": {
+          "kicker": "原則一",
+          "title": "點數不可兌回",
+          "body": "永遠不可兌回現金、虛擬貨幣或實體商品。"
+        },
+        "noHouse": {
+          "kicker": "原則二",
+          "title": "平台不下場",
+          "body": "不持倉、不對賭、不從輸贏抽成。"
+        },
+        "auditTrail": {
+          "kicker": "原則三",
+          "title": "全程稽核留痕",
+          "body": "金流 / 撮合 / 結算 / 判定皆寫入不可竄改事件流，保存 7 年以上。"
+        }
+      }
+    },
+    "neutrality": {
+      "kicker": "中立的承諾",
+      "headline": "手續費不靠玩家輸贏。",
+      "lead": "我們依交易量收手續費，不論玩家輸或贏。這個結構讓 prophetica 有動機讓<highlight>市場活絡</highlight>，而不是<highlight>玩家輸錢</highlight>。",
+      "items": {
+        "oracle": {
+          "title": "Oracle 來源透明",
+          "body": "每個市場上架時就指定明確判定來源。沒有「平台覺得」這種判定。"
+        },
+        "platformBan": {
+          "title": "禁止平台帳戶下單",
+          "body": "後端強制白名單；任何 PLATFORM_SYSTEM_USER_IDS 不能成為訂單簿掛單者。"
+        },
+        "auditable": {
+          "title": "結算可追溯",
+          "body": "從 Oracle 提交到玩家錢包入帳，每一步寫入事件流，可被監管稽核。"
+        }
+      }
+    },
+    "structure": {
+      "heading": "三公司架構",
+      "intro": "把監管、營運、技術三件事放在不同實體，是業界最佳實踐。它讓營運責任、玩家資金、技術開發各有所屬。細節可參考 <adrLink>ADR-0002</adrLink> 三公司架構文件。",
+      "companies": {
+        "holding": {
+          "name": "Holding Co.",
+          "location": "BVI",
+          "role": "控股實體",
+          "body": "持有 Op Co. 與 Tech Co. 股權；不直接面對玩家或執照地監管。"
+        },
+        "op": {
+          "name": "Op Co.",
+          "location": "執照地（Malta / Curaçao / Isle of Man 評估中）",
+          "role": "營運主體",
+          "body": "與玩家簽約、收受儲值、處理 KYC 與結算。受執照地金融 / 博弈監管。"
+        },
+        "tech": {
+          "name": "Tech Co.",
+          "location": "技術中心（待定）",
+          "role": "技術開發",
+          "body": "撮合引擎、ledger、SDK 等核心系統；不持有玩家資金，不收儲值。"
+        }
+      }
+    },
+    "notGambling": {
+      "heading": "為什麼說「娛樂遊戲」不是「博弈」？",
+      "intro": "差別不在玩家體驗，而在法律結構。下面三項共同構成「娛樂遊戲」的合規身份；缺一條就會被認定為博弈服務。",
+      "items": {
+        "noCashValue": {
+          "title": "點數無現金價值",
+          "body": "無回兌通道。儲值是「購買遊戲服務」，不是「下注」。"
+        },
+        "noHouse": {
+          "title": "平台不持倉",
+          "body": "平台不參與輸贏。玩家對玩家，不是玩家對莊家。"
+        },
+        "auditable": {
+          "title": "完整可稽核",
+          "body": "監管可隨時調閱完整資金流與決策軌跡，無黑箱。"
+        }
+      },
+      "footer": "這三點同時成立才能避開博弈法律。任何「未來會做的功能」如果違反其一，prophetica 不會做。"
+    },
+    "contact": {
+      "kicker": "聯繫",
+      "headline": "想合作、加入或舉報？",
+      "tagline": "一般客服走支援頁；商務 / 媒體 / 加入請走聯絡管道。Compliance 緊急事件 4 小時內回應。",
+      "ctaPrimary": "聯絡管道",
+      "ctaSecondary": "代理計畫"
+    }
+  },
+  "settlement": {
+    "metadata": {
+      "title": "結算與爭議 — prophetica",
+      "description": "Oracle 結算流程、24 小時申訴窗口、Compliance 升級條件與多人申訴處理。"
+    },
+    "hero": {
+      "kicker": "結算與爭議",
+      "headline": "公平結算，透明爭議。",
+      "tagline": "從市場關盤到玩家錢包入帳的每一步都記錄在事件流上。我們公開 Oracle 來源、保留 24 小時申訴窗口、把申訴升級條件寫進 SPEC。",
+      "ctaPrimary": "看已結算市場",
+      "ctaSecondary": "申訴流程"
+    },
+    "stateMachine": {
+      "heading": "結算狀態機",
+      "intro": "SPEC-004 §2 規定的狀態流。每一次狀態轉換寫入事件流，可在市場頁顯示時間軸。",
+      "states": {
+        "CLOSED": {
+          "label": "市場關盤",
+          "body": "達到 ClosesAt 時間，撮合引擎停止接受新訂單；既有訂單照常處理至 in-flight 全數結束。"
+        },
+        "PENDING": {
+          "label": "PENDING — 24 小時申訴窗口",
+          "body": "Oracle 提交初判結果。系統公告「初判為 YES / NO」並開放 24 小時申訴。期間玩家可開申訴工單質疑判定。"
+        },
+        "SETTLING": {
+          "label": "SETTLING — 結算流水線",
+          "body": "申訴窗口結束後，系統進入結算流水線：每位持倉者的部位計算為 點 入帳。"
+        },
+        "SETTLED": {
+          "label": "SETTLED — 結算完成",
+          "body": "玩家錢包已入帳，市場頁顯示最終結果與結算時間。狀態為終態，不再轉換。"
+        },
+        "CANCELLED": {
+          "label": "CANCELLED — 取消結算",
+          "body": "Oracle 來源失效或申訴成立 → 市場取消。所有持倉以儲值原價退回，玩家不賺不賠。"
+        }
+      }
+    },
+    "oracle": {
+      "heading": "Oracle 來源透明",
+      "intro": "每個市場上架時就在頁面明確列出 oracle source。判定不能依「我們覺得」做出。",
+      "items": {
+        "single": {
+          "title": "單一權威來源",
+          "body": "中央氣象署、選舉委員會、聯邦準備銀行、頒獎機構等。對應市場類別已在 SPEC-015 §5.1 列舉。"
+        },
+        "dual": {
+          "title": "雙來源交叉",
+          "body": "高金額或高敏感市場走「主來源 + 二手媒體」交叉比對；不一致則進入 PENDING 額外審查。"
+        },
+        "median": {
+          "title": "金融指標走中位",
+          "body": "BTC / 股價類市場採三家獨立交易所中位，避免單一來源被操縱。"
+        },
+        "unknowable": {
+          "title": "結果不可判定",
+          "body": "Oracle 來源失效 / 事件未實際發生 → 進入 CANCELLED，所有持倉以儲值原價退回。"
+        }
+      }
+    },
+    "dispute": {
+      "heading": "24 小時申訴窗口",
+      "intro": "初判公告後開放 24 小時。所有申訴都會收到狀態回覆（即使尚未裁決）。",
+      "standard": {
+        "title": "標準申訴",
+        "body": "T2 Compliance 客服處理。24 小時內首次回應、48 小時內裁決。裁決結果為最終，可申請進一步審查（升級 T3）。"
+      },
+      "escalate": {
+        "title": "直接升級 T3 的條件",
+        "items": {
+          "amount": "案件涉及金額 > USD 1,000",
+          "multiple": "多人申訴同一市場",
+          "undecidable": "T2 無法判定",
+          "oracleDisputed": "Oracle 來源本身有爭議"
+        }
+      },
+      "cta": "提交申訴"
+    },
+    "neutralityReminder": {
+      "kicker": "底線",
+      "headline": "結算的目標是準確，不是讓平台賺錢。",
+      "body": "因為平台不持倉、不從輸贏抽成，我們沒有動機把任何一筆判定向「讓更多玩家輸」的方向偏。錯的判定會傷害品牌、引發監管查核、推高客服成本 — 三條都對 prophetica 有害。這不是道德承諾，是利益對齊。"
+    }
+  },
+  "affiliate": {
+    "metadata": {
+      "title": "代理計畫 — prophetica",
+      "description": "單層介紹費 + 12 個月交易佣金。不是 MLM，不是多層代理。所有佣金可被稽核、稅務透明。"
+    },
+    "hero": {
+      "kicker": "代理計畫",
+      "headline": "單層介紹費 + 12 個月交易佣金。",
+      "tagline": "prophetica 不採傳統多層代理（MLM）架構。介紹一位玩家，你拿一次註冊獎金與 12 個月內的交易手續費分潤；不會有「下線的下線」結構。",
+      "cta": "申請成為代理"
+    },
+    "commission": {
+      "heading": "兩種佣金",
+      "intro": "不重複計算、不疊加層級。所有佣金來自平台手續費，與玩家輸贏無關。",
+      "signup": {
+        "kicker": "一次性",
+        "title": "註冊獎金",
+        "body": "被推薦人完成 KYC Tier 1 + 首次儲值 ≥ TWD 500 → 你拿 TWD 200 等值點數。一個被推薦人只計算一次，避免重複註冊套利。"
+      },
+      "trading": {
+        "kicker": "持續 12 個月",
+        "title": "交易佣金",
+        "body": "被推薦人下單後，平台從手續費中抽 20% 給你。期限為被推薦人註冊後 12 個月，到期自動停止。重點：佣金來自手續費，不是玩家本金或輸贏。"
+      }
+    },
+    "workedExample": {
+      "heading": "具體例子",
+      "intro": "假設你介紹了一位玩家，他註冊後 6 個月內：",
+      "scenario": {
+        "kyc": "完成 KYC Tier 1 + 首次儲值 TWD 1,000",
+        "volume": "6 個月內累計成交量 TWD 50,000，平台收取手續費約 TWD 1,000（雙邊各 1%）"
+      },
+      "cards": {
+        "signup": {
+          "label": "註冊獎金",
+          "amount": "TWD 200",
+          "note": "一次性，KYC + 首儲後入帳"
+        },
+        "trading": {
+          "label": "交易佣金 6 個月",
+          "amount": "TWD 200",
+          "note": "1,000 × 20% = 200，每月入帳"
+        },
+        "total": {
+          "label": "合計",
+          "amount": "TWD 400",
+          "note": "依被推薦人活躍度浮動；上限為其 12 個月手續費 × 20%"
+        }
+      },
+      "privacy": "被推薦人不知道你拿了多少 — 這是隱私設計。你也看不到對方的詳細交易，只看到聚合的「本月成交量 / 你的佣金」。"
+    },
+    "reversals": {
+      "heading": "反沖規則",
+      "intro": "佣金不是「保證收益」。下列情境會反沖已發放的佣金，避免誘因被濫用。",
+      "items": {
+        "chargeback": {
+          "title": "被推薦人 chargeback / 退款",
+          "body": "對應交易的佣金反沖。如果代理帳戶餘額不足，從未來佣金扣抵。"
+        },
+        "wash": {
+          "title": "被推薦人觸發洗售 / 多帳號偵測",
+          "body": "佣金凍結至調查結束。經 Compliance 確認違規 → 全額反沖 + 代理帳戶 review。"
+        },
+        "selfAnomaly": {
+          "title": "代理本人觸發異常",
+          "body": "你自己的帳戶被標記 RG 高風險或 KYC 異常 → 佣金凍結至釐清。期間既有佣金照常計算但暫不發放。"
+        },
+        "selfReferral": {
+          "title": "自我推薦",
+          "body": "用同一裝置 / 同一 KYC hash 推薦自己 → 取消代理資格、所有佣金反沖、永久不再發放。"
+        }
+      }
+    },
+    "tax": {
+      "heading": "稅務處理",
+      "intro": "代理佣金為應稅所得。我們按執照地與你的居住地法規處理扣繳；不會讓你「以為是免稅獎金」。",
+      "individual": {
+        "title": "個人代理",
+        "items": {
+          "tw": "台灣居住者：依執行業務所得 10% 預扣",
+          "threshold": "年度 > TWD 200,000 → 開立扣繳憑單",
+          "crossBorder": "跨境居住者依雙邊租稅協定處理"
+        }
+      },
+      "corporate": {
+        "title": "公司代理",
+        "items": {
+          "registration": "須提供統一編號 + 公司登記文件",
+          "noWithhold": "平台依發票金額入帳，不預扣",
+          "crossBorder": "跨境付款依執照地會計報表"
+        }
+      },
+      "footer": "稅務細節請以執照地與你的所在地當期法規為準。我們會在每年 1 月寄出前一年的扣繳憑單。"
+    },
+    "notMlm": {
+      "kicker": "法律邊界",
+      "headline": "這不是多層次傳銷（MLM）。",
+      "body": "我們刻意避開「下線的下線也分潤」結構。介紹是一層，沒有第二層。如果你看到任何聲稱「prophetica 多層代理 / 鑽石經理 / 招募下線」之類的廣告，那是詐騙，不是我們。",
+      "redFlags": {
+        "fees": "沒有「招募費」、沒有「升級階級」、沒有「保證收益」",
+        "source": "佣金來自平台手續費，不是被推薦人本金",
+        "expiry": "12 個月期限到自動停止，沒有「終身分潤」"
+      }
+    },
+    "closing": {
+      "kicker": "想開始？",
+      "headline": "申請代理資格只需登入後填寫一份表單。",
+      "tagline": "申請後由 Compliance 簡單審核（KYC 通過 + 無違規紀錄即可）。通過後取得專屬推薦連結。",
+      "cta": "申請代理"
+    }
+  },
   "landing": {
     "hero": {
       "kicker": "趣味預測娛樂",
