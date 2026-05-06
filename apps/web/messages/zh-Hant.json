@@ -968,6 +968,411 @@
         "external": "撥打外部援助專線完全免費，且<strong>不會與 prophetica 交換任何資訊</strong>。我們不會知道你聯絡了哪些機構、討論了什麼。",
         "internal": "如果你選擇透過站內客服求助，溝通紀錄將依<privacyLink>隱私政策</privacyLink>處理，僅授權給通過 RG 培訓的客服人員存取。"
       }
+    },
+    "tier1": {
+      "metadata": {
+        "title": "Tier 1 基礎驗證 — KYC — prophetica",
+        "description": "首發 5 國對應證件的隱式驗證。10 秒完成，無需上傳證件影像。"
+      },
+      "hero": {
+        "kicker": "KYC / Tier 1 基礎",
+        "headline": "10 秒完成最低必要驗證。",
+        "tagline": "姓名、生日、國家與證件號碼。我們在後端用對應國的 checksum / format 規則驗證真偽，不上傳任何證件影像。"
+      },
+      "privacy": {
+        "heading": "送出前請先確認",
+        "body": "填寫此表前請先閱讀<privacyLink>KYC 隱私說明</privacyLink>，了解 prophetica 收集哪些欄位、為什麼收集、保存多久、由誰存取。Tier 1 的證件號碼一律<strong>只存雜湊</strong>，原始值不入庫。"
+      },
+      "countries": {
+        "heading": "首發 5 國的證件規格",
+        "intro": "選擇你的國家後，在下方表單依對應格式輸入。不在這 5 國的玩家，請先閱讀<geoBlockLink>服務地區限制</geoBlockLink>。",
+        "documentLabel": "證件",
+        "formatLabel": "格式",
+        "items": {
+          "tw": {
+            "name": "台灣",
+            "document": "身份證號",
+            "format": "1 字母 + 9 碼數字（10 位）",
+            "notes": "Checksum 驗證。我們只儲存雜湊（SHA256），不存原始號碼。"
+          },
+          "jp": {
+            "name": "日本",
+            "document": "個人番号（マイナンバー）",
+            "format": "12 碼數字",
+            "notes": "不收マイナンバーカード影像。額外要求姓名（ローマ字）+ 生日 + 居住都道府縣。"
+          },
+          "kr": {
+            "name": "韓國",
+            "document": "주민등록번호",
+            "format": "13 碼數字（YYMMDD-XXXXXXX）",
+            "notes": "依韓國法規，本欄位完全不入庫。我們只生成雜湊做唯一性比對，提交後立即丟棄原值。"
+          },
+          "vn": {
+            "name": "越南",
+            "document": "公民身份證 CCCD",
+            "format": "12 碼（舊版 CMND 9 碼亦支援）",
+            "notes": "舊版紙本式樣多元；若 OCR 不過將自動引導至 Tier 2 流程。"
+          },
+          "my": {
+            "name": "馬來西亞",
+            "document": "NRIC / MyKad",
+            "format": "12 碼（YYMMDD-PB-XXXG）",
+            "notes": "中段 6 碼為 YYMMDD，內含年齡可直接驗證 ≥ 18。"
+          }
+        }
+      },
+      "form": {
+        "heading": "提交基礎驗證",
+        "intro": "驗證在後端完成，<strong>不</strong>需要上傳證件影像。送出後即時通過或拒絕。",
+        "fields": {
+          "legalName": "姓名（與證件一致）",
+          "legalNamePlaceholder": "王小明",
+          "birthday": "生日",
+          "country": "國家",
+          "countryPlaceholder": "— 請選擇 —",
+          "countryOption": "{country}（{document}）",
+          "documentId": "證件號碼",
+          "documentIdPlaceholder": "請依上方對應格式輸入"
+        },
+        "consent": "我已閱讀<privacyLink>KYC 隱私說明</privacyLink>與<termsLink>服務條款</termsLink>，並同意 prophetica 依據說明處理我提交的資料。",
+        "footnote": "送出後 24 小時內最多嘗試 5 次。連續失敗將導入 Tier 2 流程。",
+        "submit": "送出基礎驗證（後端待接）"
+      }
+    },
+    "tier2": {
+      "metadata": {
+        "title": "Tier 2 標準驗證 — KYC — prophetica",
+        "description": "證件 OCR + 人臉比對 + Liveness。透過 SumSub Web SDK 完成，2-15 分鐘審核。"
+      },
+      "hero": {
+        "kicker": "KYC / Tier 2 標準",
+        "headline": "證件 + 自拍 + Liveness，2-15 分鐘審核。",
+        "tagline": "本層級透過 SumSub Web SDK 完成。流程在獨立 iframe 內進行，prophetica 不接觸你的證件影像；審核結果以 webhook 回傳後端，並更新你的帳戶層級。"
+      },
+      "requirements": {
+        "heading": "你需要準備",
+        "items": {
+          "document": {
+            "title": "一張有效證件",
+            "body": "護照、駕照或國民身份證。請確認證件未過期。"
+          },
+          "camera": {
+            "title": "可以拍照的鏡頭",
+            "body": "桌機 webcam、筆電前鏡頭或手機鏡頭皆可。Liveness 偵測會請你眨眼或轉頭。"
+          },
+          "address": {
+            "title": "地址證明（一張）",
+            "body": "近 3 個月內的水電 / 銀行 / 政府文件。檔案格式 PDF 或 JPG，大小 < 10 MB。"
+          }
+        }
+      },
+      "sumsub": {
+        "heading": "啟動 SumSub 驗證",
+        "intro": "點擊下方開始後，將載入 SumSub Web SDK iframe。流程包含證件拍攝 → 自拍 → Liveness 偵測 → 地址證明上傳。",
+        "placeholderKicker": "SumSub Web SDK iframe 載入位置",
+        "placeholderTitle": "後端串接後 SDK 將在此渲染",
+        "submit": "開始 SumSub 流程（後端待接）"
+      },
+      "income": {
+        "kicker": "可選",
+        "heading": "月收入申報",
+        "intro": "申報後可解鎖更高的月儲值上限（TWD 300,000）。<strong>不申報也可以使用 Tier 2</strong>，但月儲值上限維持 TWD 100,000。申報資料視為敏感個資，僅供責任博弈評分使用，客服只看區間不看精確值。",
+        "legend": "月收入區間",
+        "buckets": {
+          "lt30k": "< TWD 30,000",
+          "30k60k": "TWD 30,000 – 60,000",
+          "60k100k": "TWD 60,000 – 100,000",
+          "gt100k": "> TWD 100,000"
+        },
+        "skipLabel": "不申報",
+        "skipHint": "月儲值上限維持 TWD 100,000",
+        "submit": "儲存（後端待接）"
+      }
+    },
+    "tier3": {
+      "metadata": {
+        "title": "Tier 3 強化驗證 — KYC — prophetica",
+        "description": "高活動量帳戶的 EDD（Enhanced Due Diligence）。需提交收入證明、銀行對帳單、視訊驗證。"
+      },
+      "hero": {
+        "kicker": "KYC / Tier 3 強化",
+        "headline": "高活動量需要更深一層的驗證。",
+        "tagline": "Tier 3 適用於月活動量超過 Tier 2 上限的玩家、或受平台 Compliance 主動觸發的個案。流程比較長，但你的帳戶在審核期間保持可用。"
+      },
+      "why": {
+        "heading": "為什麼會走到這一層？",
+        "intro": "下列任一情況都會讓你進入 Tier 3 流程：",
+        "reasons": {
+          "monthlyLimit": "月儲值已達 Tier 2 上限（TWD 300,000），需要更高額度",
+          "singleDeposit": "單筆儲值超過 USD 10,000 等值",
+          "screening": "制裁名單 / PEP 比對命中（依當地法規處理）",
+          "compliance": "Compliance 發起的個案審核",
+          "voluntary": "玩家主動申請以解鎖更高活動空間"
+        }
+      },
+      "requirements": {
+        "heading": "需要提交的文件",
+        "items": {
+          "sourceOfFunds": {
+            "kicker": "必填",
+            "title": "收入來源證明",
+            "body": "薪資單、扣繳憑單、租金 / 投資收入紀錄。文件須涵蓋過去 3 個月，金額需與申報之月收入一致（誤差 ±15%）。"
+          },
+          "bankStatement": {
+            "kicker": "必填",
+            "title": "銀行對帳單",
+            "body": "近 3 個月主要往來帳戶。可遮蔽帳號末 4 碼以外的所有數字，但日期、金額、餘額不得遮蔽。"
+          },
+          "video": {
+            "kicker": "必填",
+            "title": "視訊驗證",
+            "body": "由 iProov 提供的 1 對 1 視訊驗證，3-5 分鐘。預約時段後會收到加密連結。視訊不留存影像，僅留存通過 / 未通過判定。"
+          },
+          "pep": {
+            "kicker": "選填",
+            "title": "PEP / 制裁名單聲明",
+            "body": "若你或近親為政治公眾人物（PEP），請主動聲明以加速 Compliance 審核。系統亦會自動比對 OFAC / UN / EU / OFSI 等名單。"
+          }
+        }
+      },
+      "start": {
+        "heading": "啟動 Tier 3 流程",
+        "intro": "按下開始後，系統將為你建立 Compliance 工單並寄送加密文件上傳連結到帳號 Email。審核期間你的帳戶<strong>不會</strong>被凍結，可繼續以目前 Tier 2 上限進行交易。",
+        "timelineHeading": "審核時程預估",
+        "timeline": {
+          "documents": "文件提交：你的時程",
+          "video": "視訊預約：1-3 個工作天",
+          "review": "Compliance 審核：5-10 個工作天",
+          "notification": "結果通知：站內訊息 + Email"
+        },
+        "supportNote": "審核期間若有疑問，可由<supportLink>客服管道</supportLink>聯繫專屬 Compliance 窗口。",
+        "submit": "建立 Compliance 工單（後端待接）"
+      }
+    },
+    "privacyNotice": {
+      "metadata": {
+        "title": "KYC 隱私說明 — prophetica",
+        "description": "我們收哪些 KYC 欄位、為什麼收、保存多久、誰可以存取。"
+      },
+      "hero": {
+        "kicker": "KYC 隱私說明",
+        "headline": "先告訴你我們收什麼、為什麼、保存多久。",
+        "tagline": "這份說明是依 SPEC-005 §8.1 設計：在你提交任何 KYC 資料之前，先把流程透明攤開。每個欄位的目的、保存期限、存取者一覽。"
+      },
+      "matrix": {
+        "heading": "逐欄說明",
+        "labels": {
+          "purpose": "為什麼",
+          "retention": "保存多久",
+          "access": "誰可以存取"
+        },
+        "rows": {
+          "legalName": {
+            "field": "姓名（與證件一致）",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "建立法律意義上的帳戶身份；制裁名單比對；結算憑證。",
+            "retention": "帳戶生命週期 + 7 年（依 SPEC-001 §1.1 ③ 稽核留痕要求）。",
+            "access": "你本人 + 通過合規培訓的客服 + Compliance Officer + 受監管稽核機構。"
+          },
+          "birthday": {
+            "field": "生日",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "驗證 ≥ 18 歲（SPEC-006 §6 未成年保護）。",
+            "retention": "同帳戶生命週期 + 7 年。",
+            "access": "同上。"
+          },
+          "documentId": {
+            "field": "證件號碼",
+            "collected": "Tier 1（隱式驗證）/ Tier 2 / 3",
+            "purpose": "唯一性比對、制裁名單比對、self-exclusion 名單比對（SPEC-006 §5.4）。",
+            "retention": "<strong>只儲存 SHA256 雜湊</strong>，原始號碼不入庫，提交後立即丟棄。雜湊保存同帳戶生命週期 + 7 年。",
+            "access": "後端 kyc-service（只能比對，不能還原原始號碼）。"
+          },
+          "documentImage": {
+            "field": "證件影像",
+            "collected": "Tier 2 / 3（透過 SumSub）",
+            "purpose": "OCR 抽取資訊；審核時的真偽判定。",
+            "retention": "SumSub Cloud（EU region）+ 我方 R2（EU）每日批次副本，AES-256 at-rest 加密，Object Lock 7 年。",
+            "access": "Compliance Officer + SumSub 審核員 + 受監管稽核機構。客服無法直接存取原始影像。"
+          },
+          "selfie": {
+            "field": "自拍 + Liveness",
+            "collected": "Tier 2 / 3",
+            "purpose": "與證件影像比對人臉一致性。Liveness 防止以照片冒充本人。",
+            "retention": "同證件影像。",
+            "access": "同證件影像。"
+          },
+          "address": {
+            "field": "地址證明",
+            "collected": "Tier 2 / 3",
+            "purpose": "驗證居住地與聲明地一致；地理風險評估。",
+            "retention": "同證件影像。",
+            "access": "同證件影像。"
+          },
+          "income": {
+            "field": "月收入（區間）",
+            "collected": "Tier 2 自願 / Tier 3 必填",
+            "purpose": "責任博弈評分（SPEC-006 §4.1）；解鎖更高儲值上限。",
+            "retention": "同帳戶生命週期；12 個月未更新自動標記過時。",
+            "access": "你本人 + Compliance Officer。<strong>客服只看區間，不看精確值</strong>。"
+          },
+          "funds": {
+            "field": "收入來源證明 / 銀行對帳單",
+            "collected": "Tier 3",
+            "purpose": "驗證申報月收入；AML 規則引擎。",
+            "retention": "R2 加密儲存 7 年。",
+            "access": "Compliance Officer + 受監管稽核機構。"
+          }
+        }
+      },
+      "rights": {
+        "heading": "你的權利",
+        "intro": "完整的個資權利說明在<privacyLink>隱私政策</privacyLink>。摘要如下：",
+        "items": {
+          "query": "<strong>查詢權</strong>：可隨時匯出所有 KYC 欄位（24 小時內生成 zip）",
+          "rectify": "<strong>更正權</strong>：姓名、地址等可申請更正；敏感欄位（生日 / 證件號）需重新 KYC",
+          "delete": "<strong>刪除權</strong>：軟刪除帳戶；KYC 紀錄依法律要求最少保留 7 年",
+          "portability": "<strong>攜帶權</strong>：匯出格式為 JSON，可攜至其他服務",
+          "object": "<strong>反對權</strong>：行銷推播 opt-out；KYC 處理為履約必要，無法反對"
+        }
+      }
+    },
+    "status": {
+      "metadata": {
+        "title": "審核狀態 — KYC — prophetica",
+        "description": "查看你的 KYC 提交與審核進度。"
+      },
+      "hero": {
+        "kicker": "KYC / 審核狀態",
+        "headline": "你的審核進度，一目了然。",
+        "tagline": "所有 KYC 提交與審核步驟在這裡公開追蹤。SumSub 通常 2-15 分鐘完成；完成時會發 Email + 站內訊息，不需停留在這頁等。"
+      },
+      "timeline": {
+        "heading": "最近一次審核",
+        "stepLabel": "步驟 {step} · {state}",
+        "states": {
+          "done": "完成",
+          "current": "進行中",
+          "pending": "等待中",
+          "failed": "失敗"
+        },
+        "steps": {
+          "tier1": {
+            "label": "Tier 1 提交",
+            "detail": "證件號碼隱式驗證通過"
+          },
+          "tier2": {
+            "label": "Tier 2 提交",
+            "detail": "已上傳證件 + 自拍 + 地址證明"
+          },
+          "sumsub": {
+            "label": "SumSub 審核中",
+            "detail": "預估完成時間 5-15 分鐘"
+          },
+          "notification": {
+            "label": "結果通知",
+            "detail": "Email + 站內訊息"
+          },
+          "tierUpdate": {
+            "label": "帳戶層級更新",
+            "detail": "通過後將自動升級至 Tier 2"
+          }
+        }
+      },
+      "next": {
+        "heading": "你可以做什麼",
+        "items": {
+          "markets": {
+            "title": "繼續以目前 Tier 1 玩",
+            "body": "審核期間 Tier 1 額度仍可使用：月 TWD 30,000、單筆 TWD 5,000。",
+            "cta": "瀏覽市場"
+          },
+          "disputes": {
+            "title": "遇到問題？",
+            "body": "審核超過 30 分鐘未完成、或收到 RED 結果不理解，可申訴或聯繫客服。",
+            "cta": "申訴流程"
+          }
+        }
+      }
+    },
+    "layout": {
+      "sectionNav": {
+        "ariaLabel": "KYC 區段導覽",
+        "status": "審核狀態"
+      }
+    }
+  },
+  "kyc": {
+    "tierStepper": {
+      "ariaLabel": "KYC 等級進度",
+      "currentSuffix": "（目前）",
+      "passedSuffix": "（已通過）",
+      "tiers": {
+        "tier0": "訪客",
+        "tier1": "基礎",
+        "tier2": "標準",
+        "tier3": "強化"
+      }
+    },
+    "overview": {
+      "metadata": {
+        "title": "身份驗證 — prophetica",
+        "description": "TIER_0 到 TIER_3 的分層身份驗證。完成升級以解鎖更高儲值上限。"
+      },
+      "hero": {
+        "kicker": "身份驗證",
+        "headline": "完成驗證才能開始遊戲。",
+        "tagline": "prophetica 採分層 KYC 設計：基礎驗證 10 秒完成、標準驗證解鎖更高上限、強化驗證適用於高活動量。每一層只收必要資訊。"
+      },
+      "current": {
+        "kicker": "目前狀態",
+        "heading": "你目前是 Tier 1 基礎驗證玩家",
+        "depositLabel": "本月儲值用量",
+        "nearLimit": "你即將用完本月 Tier 1 額度。升級至 Tier 2 可解鎖更高上限。",
+        "upgradeHint": "升級下一層級可解鎖更高的月儲值與單筆上限。"
+      },
+      "tiers": {
+        "heading": "下一個層級",
+        "requirementsLabel": "需要",
+        "unlocksLabel": "解鎖",
+        "pastCta": "查看細節",
+        "cards": {
+          "tier1": {
+            "title": "Tier 1 基礎",
+            "bullet": "註冊 + 首次儲值",
+            "requirements": {
+              "0": "Email + 手機 OTP",
+              "1": "生日 ≥ 18 歲",
+              "2": "首發 5 國對應證件號（隱式驗證，不需上傳影像）"
+            },
+            "unlocks": "月儲值 < TWD 30,000；單筆 < TWD 5,000",
+            "ctaLabel": "完成 Tier 1"
+          },
+          "tier2": {
+            "title": "Tier 2 標準",
+            "bullet": "通過 SumSub 證件驗證",
+            "requirements": {
+              "0": "證件 OCR + 自拍人臉比對",
+              "1": "Liveness Detection（眨眼 / 轉頭）",
+              "2": "地址證明（水電帳單 / 銀行對帳單）"
+            },
+            "unlocks": "月儲值 < TWD 300,000（已申報月收入）；TWD 100,000（未申報）",
+            "ctaLabel": "升級 Tier 2"
+          },
+          "tier3": {
+            "title": "Tier 3 強化（EDD）",
+            "bullet": "高活動量或平台主動觸發",
+            "requirements": {
+              "0": "收入來源證明",
+              "1": "銀行對帳單",
+              "2": "視訊驗證",
+              "3": "PEP / 制裁名單篩查"
+            },
+            "unlocks": "個案核定，依執照地法規",
+            "ctaLabel": "申請 Tier 3"
+          }
+        }
+      }
     }
   },
   "landing": {

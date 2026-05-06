@@ -15,10 +15,16 @@ import {
 // Single primary nav + inline KYC section chip row + standard footer.
 // (No mandatory help-line strip here — that's SPEC-006 RG-specific.)
 
-function KYCSectionNav({ links }: { links: SiteNavLink[] }) {
+function KYCSectionNav({
+  links,
+  ariaLabel,
+}: {
+  links: SiteNavLink[];
+  ariaLabel: string;
+}) {
   return (
     <nav
-      aria-label="KYC 區段導覽"
+      aria-label={ariaLabel}
       className="border-b border-proph-divider-soft bg-proph-canvas-parchment"
     >
       <div className="mx-auto max-w-proph overflow-x-auto px-6 md:px-10">
@@ -46,19 +52,26 @@ export default async function KYCLayout({ children }: { children: ReactNode }) {
   const [kycCol, footerColumns, tItems] = await Promise.all([
     getFooterColumn("kyc"),
     getFooterColumns(["kyc", "legal", "support"]),
-    getTranslations("common.footer.columns.kyc.items"),
+    getTranslations("kyc.layout"),
   ]);
 
   const sectionLinks: SiteNavLink[] = [
     ...kycCol.links,
-    { label: tItems("status"), href: "/kyc/status" },
+    { label: tItems("sectionNav.status"), href: "/kyc/status" },
   ];
 
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
-      <KYCSectionNav links={sectionLinks} />
+      <KYCSectionNav
+        links={sectionLinks}
+        ariaLabel={tItems("sectionNav.ariaLabel")}
+      />
 
       {children}
 

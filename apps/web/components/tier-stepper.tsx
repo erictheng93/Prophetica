@@ -1,4 +1,5 @@
 import { Check } from "@phosphor-icons/react/dist/ssr";
+import { getTranslations } from "next-intl/server";
 
 // Visual indicator of the 4 KYC tiers (TIER_0 → TIER_3).
 // SPEC-005 §2.1 canonical identifiers — UI labels in 中文 only, never the
@@ -6,24 +7,29 @@ import { Check } from "@phosphor-icons/react/dist/ssr";
 
 interface Tier {
   id: 0 | 1 | 2 | 3;
-  label: string;
+  key: "tier0" | "tier1" | "tier2" | "tier3";
   shortName: string;
 }
 
 const tiers: Tier[] = [
-  { id: 0, label: "訪客", shortName: "Tier 0" },
-  { id: 1, label: "基礎", shortName: "Tier 1" },
-  { id: 2, label: "標準", shortName: "Tier 2" },
-  { id: 3, label: "強化", shortName: "Tier 3" },
+  { id: 0, key: "tier0", shortName: "Tier 0" },
+  { id: 1, key: "tier1", shortName: "Tier 1" },
+  { id: 2, key: "tier2", shortName: "Tier 2" },
+  { id: 3, key: "tier3", shortName: "Tier 3" },
 ];
 
 export interface TierStepperProps {
   currentTier: 0 | 1 | 2 | 3;
 }
 
-export function TierStepper({ currentTier }: TierStepperProps) {
+export async function TierStepper({ currentTier }: TierStepperProps) {
+  const t = await getTranslations("kyc.tierStepper");
+
   return (
-    <ol className="flex w-full items-stretch overflow-x-auto" aria-label="KYC 等級進度">
+    <ol
+      className="flex w-full items-stretch overflow-x-auto"
+      aria-label={t("ariaLabel")}
+    >
       {tiers.map((tier, idx) => {
         const isCurrent = tier.id === currentTier;
         const isPast = tier.id < currentTier;
@@ -37,8 +43,8 @@ export function TierStepper({ currentTier }: TierStepperProps) {
                 (isCurrent
                   ? "border-proph-primary bg-proph-canvas-parchment"
                   : isPast
-                  ? "border-proph-ink-muted-48 bg-proph-canvas"
-                  : "border-proph-divider-soft bg-proph-canvas")
+                    ? "border-proph-ink-muted-48 bg-proph-canvas"
+                    : "border-proph-divider-soft bg-proph-canvas")
               }
               aria-current={isCurrent ? "step" : undefined}
             >
@@ -49,10 +55,18 @@ export function TierStepper({ currentTier }: TierStepperProps) {
                 }
               >
                 {isPast ? (
-                  <Check weight="bold" className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <Check
+                    weight="bold"
+                    className="h-3 w-3 shrink-0"
+                    aria-hidden="true"
+                  />
                 ) : null}
                 {tier.shortName}
-                {isCurrent ? "（目前）" : isPast ? "（已通過）" : ""}
+                {isCurrent
+                  ? t("currentSuffix")
+                  : isPast
+                    ? t("passedSuffix")
+                    : ""}
               </span>
               <span
                 className={
@@ -60,10 +74,12 @@ export function TierStepper({ currentTier }: TierStepperProps) {
                   (isFuture ? "text-proph-ink-muted-48" : "text-proph-ink")
                 }
               >
-                {tier.label}
+                {t(`tiers.${tier.key}`)}
               </span>
             </div>
-            {idx < tiers.length - 1 ? <div className="w-0" aria-hidden="true" /> : null}
+            {idx < tiers.length - 1 ? (
+              <div className="w-0" aria-hidden="true" />
+            ) : null}
           </li>
         );
       })}
