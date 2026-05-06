@@ -1094,6 +1094,8 @@ dependencies = [
  "anyhow",
  "core_affinity",
  "sdk",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
 ]
