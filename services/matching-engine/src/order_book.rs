@@ -29,11 +29,21 @@ pub enum OrderSide {
     Sell,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderType {
+    Limit,
+    ImmediateOrCancel,
+    FillOrKill,
+    PostOnly,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewOrder {
     pub order_id: OrderId,
+    pub user_id: u64,
     pub symbol: Symbol,
     pub side: OrderSide,
+    pub order_type: OrderType,
     pub price: Price,
     pub quantity: Quantity,
 }
@@ -44,6 +54,8 @@ pub struct TradeEvent {
     pub symbol: Symbol,
     pub maker_order_id: OrderId,
     pub taker_order_id: OrderId,
+    pub maker_user_id: u64,
+    pub taker_user_id: u64,
     pub aggressor_side: OrderSide,
     pub price: Price,
     pub quantity: Quantity,
@@ -68,13 +80,18 @@ pub enum OrderBookError {
     DuplicateOrderId(OrderId),
     SymbolMismatch { expected: Symbol, actual: Symbol },
     ZeroPrice,
+    PriceOutOfRange,
     ZeroQuantity,
     UnknownOrder(OrderId),
+    FillOrKillWouldNotFill,
+    PostOnlyWouldCross,
+    SelfTradePrevented,
 }
 
 #[derive(Debug, Clone)]
 struct RestingOrder {
     order_id: OrderId,
+    user_id: u64,
     quantity: Quantity,
 }
 
@@ -115,18 +132,31 @@ impl OrderBook {
     pub fn add_order(&mut self, order: NewOrder) -> Result<AddOrderResult, OrderBookError> {
         self.validate_new_order(&order)?;
 
+        if order.order_type == OrderType::PostOnly && self.would_cross(&order) {
+            return Err(OrderBookError::PostOnlyWouldCross);
+        }
+
+        if self.would_self_trade(&order) {
+            return Err(OrderBookError::SelfTradePrevented);
+        }
+
+        if order.order_type == OrderType::FillOrKill && !self.can_fill_completely(&order) {
+            return Err(OrderBookError::FillOrKillWouldNotFill);
+        }
+
         let mut remaining_quantity = order.quantity;
         let trades = match order.side {
             OrderSide::Buy => self.match_buy(&order, &mut remaining_quantity),
             OrderSide::Sell => self.match_sell(&order, &mut remaining_quantity),
         };
 
-        let rested = remaining_quantity > 0;
+        let rested = remaining_quantity > 0 && order.order_type == OrderType::Limit;
         if rested {
             self.rest_order(
                 order.side,
                 order.price,
                 order.order_id.clone(),
+                order.user_id,
                 remaining_quantity,
             );
         }
@@ -217,6 +247,10 @@ impl OrderBook {
             return Err(OrderBookError::ZeroPrice);
         }
 
+        if order.price >= 100 {
+            return Err(OrderBookError::PriceOutOfRange);
+        }
+
         if order.quantity == 0 {
             return Err(OrderBookError::ZeroQuantity);
         }
@@ -228,9 +262,80 @@ impl OrderBook {
         Ok(())
     }
 
-    fn rest_order(&mut self, side: OrderSide, price: Price, order_id: OrderId, quantity: Quantity) {
+    fn would_cross(&self, order: &NewOrder) -> bool {
+        match order.side {
+            OrderSide::Buy => self
+                .asks
+                .keys()
+                .next()
+                .is_some_and(|best_ask| *best_ask <= order.price),
+            OrderSide::Sell => self
+                .bids
+                .keys()
+                .next()
+                .is_some_and(|Reverse(best_bid)| *best_bid >= order.price),
+        }
+    }
+
+    fn can_fill_completely(&self, order: &NewOrder) -> bool {
+        let mut fillable_quantity = 0;
+
+        match order.side {
+            OrderSide::Buy => {
+                for (price, level) in &self.asks {
+                    if *price > order.price {
+                        break;
+                    }
+                    fillable_quantity += level.iter().map(|resting| resting.quantity).sum::<u64>();
+                    if fillable_quantity >= order.quantity {
+                        return true;
+                    }
+                }
+            }
+            OrderSide::Sell => {
+                for (Reverse(price), level) in &self.bids {
+                    if *price < order.price {
+                        break;
+                    }
+                    fillable_quantity += level.iter().map(|resting| resting.quantity).sum::<u64>();
+                    if fillable_quantity >= order.quantity {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    fn would_self_trade(&self, order: &NewOrder) -> bool {
+        match order.side {
+            OrderSide::Buy => self
+                .asks
+                .iter()
+                .take_while(|(price, _)| **price <= order.price)
+                .filter_map(|(_, level)| level.front())
+                .any(|maker| maker.user_id == order.user_id),
+            OrderSide::Sell => self
+                .bids
+                .iter()
+                .take_while(|(Reverse(price), _)| *price >= order.price)
+                .filter_map(|(_, level)| level.front())
+                .any(|maker| maker.user_id == order.user_id),
+        }
+    }
+
+    fn rest_order(
+        &mut self,
+        side: OrderSide,
+        price: Price,
+        order_id: OrderId,
+        user_id: u64,
+        quantity: Quantity,
+    ) {
         let resting = RestingOrder {
             order_id: order_id.clone(),
+            user_id,
             quantity,
         };
 
@@ -301,6 +406,7 @@ impl OrderBook {
         trades: &mut Vec<TradeEvent>,
     ) {
         let maker_order_id;
+        let maker_user_id;
         let fill_quantity;
         let remove_level;
 
@@ -314,6 +420,7 @@ impl OrderBook {
             };
             fill_quantity = (*remaining_quantity).min(maker.quantity);
             maker_order_id = maker.order_id.clone();
+            maker_user_id = maker.user_id;
 
             maker.quantity -= fill_quantity;
             *remaining_quantity -= fill_quantity;
@@ -331,7 +438,7 @@ impl OrderBook {
             self.asks.remove(&price);
         }
 
-        trades.push(self.trade_event(order, &maker_order_id, price, fill_quantity));
+        trades.push(self.trade_event(order, &maker_order_id, maker_user_id, price, fill_quantity));
     }
 
     fn match_at_bid_price(
@@ -342,6 +449,7 @@ impl OrderBook {
         trades: &mut Vec<TradeEvent>,
     ) {
         let maker_order_id;
+        let maker_user_id;
         let fill_quantity;
         let remove_level;
 
@@ -355,6 +463,7 @@ impl OrderBook {
             };
             fill_quantity = (*remaining_quantity).min(maker.quantity);
             maker_order_id = maker.order_id.clone();
+            maker_user_id = maker.user_id;
 
             maker.quantity -= fill_quantity;
             *remaining_quantity -= fill_quantity;
@@ -372,13 +481,14 @@ impl OrderBook {
             self.bids.remove(&Reverse(price));
         }
 
-        trades.push(self.trade_event(order, &maker_order_id, price, fill_quantity));
+        trades.push(self.trade_event(order, &maker_order_id, maker_user_id, price, fill_quantity));
     }
 
     fn trade_event(
         &mut self,
         taker: &NewOrder,
         maker_order_id: &OrderId,
+        maker_user_id: u64,
         price: Price,
         quantity: Quantity,
     ) -> TradeEvent {
@@ -387,6 +497,8 @@ impl OrderBook {
             symbol: self.symbol.clone(),
             maker_order_id: maker_order_id.clone(),
             taker_order_id: taker.order_id.clone(),
+            maker_user_id,
+            taker_user_id: taker.user_id,
             aggressor_side: taker.side,
             price,
             quantity,
@@ -421,10 +533,47 @@ mod tests {
     }
 
     fn order(order_id: &str, side: OrderSide, price: Price, quantity: Quantity) -> NewOrder {
+        let user_id = match side {
+            OrderSide::Buy => 101,
+            OrderSide::Sell => 202,
+        };
+        user_order(order_id, user_id, side, price, quantity)
+    }
+
+    fn user_order(
+        order_id: &str,
+        user_id: u64,
+        side: OrderSide,
+        price: Price,
+        quantity: Quantity,
+    ) -> NewOrder {
         NewOrder {
             order_id: id(order_id),
+            user_id,
             symbol: symbol(),
             side,
+            order_type: OrderType::Limit,
+            price,
+            quantity,
+        }
+    }
+
+    fn typed_order(
+        order_id: &str,
+        side: OrderSide,
+        order_type: OrderType,
+        price: Price,
+        quantity: Quantity,
+    ) -> NewOrder {
+        NewOrder {
+            order_id: id(order_id),
+            user_id: match side {
+                OrderSide::Buy => 101,
+                OrderSide::Sell => 202,
+            },
+            symbol: symbol(),
+            side,
+            order_type,
             price,
             quantity,
         }
@@ -435,7 +584,7 @@ mod tests {
         let mut book = OrderBook::new(symbol());
 
         let result = book
-            .add_order(order("buy-1", OrderSide::Buy, 100, 7))
+            .add_order(order("buy-1", OrderSide::Buy, 50, 7))
             .expect("order should be accepted");
 
         assert_eq!(result.order_id, id("buy-1"));
@@ -450,7 +599,7 @@ mod tests {
         let mut book = OrderBook::new(symbol());
 
         let result = book
-            .add_order(order("sell-1", OrderSide::Sell, 110, 4))
+            .add_order(order("sell-1", OrderSide::Sell, 60, 4))
             .expect("order should be accepted");
 
         assert_eq!(result.order_id, id("sell-1"));
@@ -464,11 +613,11 @@ mod tests {
     fn duplicate_order_id_is_rejected_while_order_is_resting() {
         let mut book = OrderBook::new(symbol());
 
-        book.add_order(order("dup", OrderSide::Buy, 100, 1))
+        book.add_order(order("dup", OrderSide::Buy, 50, 1))
             .expect("first order should be accepted");
 
         let error = book
-            .add_order(order("dup", OrderSide::Sell, 101, 1))
+            .add_order(order("dup", OrderSide::Sell, 51, 1))
             .expect_err("duplicate order id should be rejected");
 
         assert_eq!(error, OrderBookError::DuplicateOrderId(id("dup")));
@@ -486,11 +635,26 @@ mod tests {
     }
 
     #[test]
+    fn price_at_or_above_settlement_value_is_rejected() {
+        let mut book = OrderBook::new(symbol());
+
+        let at_settlement = book
+            .add_order(order("price-100", OrderSide::Buy, 100, 1))
+            .expect_err("price at settlement value should be rejected");
+        let above_settlement = book
+            .add_order(order("price-101", OrderSide::Buy, 101, 1))
+            .expect_err("price above settlement value should be rejected");
+
+        assert_eq!(at_settlement, OrderBookError::PriceOutOfRange);
+        assert_eq!(above_settlement, OrderBookError::PriceOutOfRange);
+    }
+
+    #[test]
     fn zero_quantity_is_rejected() {
         let mut book = OrderBook::new(symbol());
 
         let error = book
-            .add_order(order("bad-qty", OrderSide::Buy, 100, 0))
+            .add_order(order("bad-qty", OrderSide::Buy, 50, 0))
             .expect_err("zero quantity should be rejected");
 
         assert_eq!(error, OrderBookError::ZeroQuantity);
@@ -499,7 +663,7 @@ mod tests {
     #[test]
     fn symbol_mismatch_is_rejected() {
         let mut book = OrderBook::new(symbol());
-        let mut wrong_symbol = order("wrong-symbol", OrderSide::Buy, 100, 1);
+        let mut wrong_symbol = order("wrong-symbol", OrderSide::Buy, 50, 1);
         wrong_symbol.symbol = Symbol::new("ETH-USD");
 
         let error = book
@@ -518,11 +682,11 @@ mod tests {
     #[test]
     fn crossing_buy_trades_at_resting_ask_price() {
         let mut book = OrderBook::new(symbol());
-        book.add_order(order("maker-sell", OrderSide::Sell, 105, 3))
+        book.add_order(order("maker-sell", OrderSide::Sell, 55, 3))
             .expect("maker should rest");
 
         let result = book
-            .add_order(order("taker-buy", OrderSide::Buy, 110, 2))
+            .add_order(order("taker-buy", OrderSide::Buy, 60, 2))
             .expect("taker should match");
 
         assert_eq!(
@@ -532,8 +696,10 @@ mod tests {
                 symbol: symbol(),
                 maker_order_id: id("maker-sell"),
                 taker_order_id: id("taker-buy"),
+                maker_user_id: 202,
+                taker_user_id: 101,
                 aggressor_side: OrderSide::Buy,
-                price: 105,
+                price: 55,
                 quantity: 2,
             }]
         );
@@ -546,11 +712,11 @@ mod tests {
     #[test]
     fn crossing_sell_trades_at_resting_bid_price() {
         let mut book = OrderBook::new(symbol());
-        book.add_order(order("maker-buy", OrderSide::Buy, 100, 5))
+        book.add_order(order("maker-buy", OrderSide::Buy, 50, 5))
             .expect("maker should rest");
 
         let result = book
-            .add_order(order("taker-sell", OrderSide::Sell, 95, 4))
+            .add_order(order("taker-sell", OrderSide::Sell, 45, 4))
             .expect("taker should match");
 
         assert_eq!(
@@ -560,8 +726,10 @@ mod tests {
                 symbol: symbol(),
                 maker_order_id: id("maker-buy"),
                 taker_order_id: id("taker-sell"),
+                maker_user_id: 101,
+                taker_user_id: 202,
                 aggressor_side: OrderSide::Sell,
-                price: 100,
+                price: 50,
                 quantity: 4,
             }]
         );
@@ -574,31 +742,31 @@ mod tests {
     #[test]
     fn better_price_matches_before_older_worse_price() {
         let mut book = OrderBook::new(symbol());
-        book.add_order(order("older-worse", OrderSide::Sell, 105, 1))
+        book.add_order(order("older-worse", OrderSide::Sell, 55, 1))
             .expect("older worse ask should rest");
-        book.add_order(order("newer-better", OrderSide::Sell, 101, 1))
+        book.add_order(order("newer-better", OrderSide::Sell, 51, 1))
             .expect("newer better ask should rest");
 
         let result = book
-            .add_order(order("buyer", OrderSide::Buy, 110, 2))
+            .add_order(order("buyer", OrderSide::Buy, 60, 2))
             .expect("buyer should match both asks");
 
         assert_eq!(result.trades[0].maker_order_id, id("newer-better"));
-        assert_eq!(result.trades[0].price, 101);
+        assert_eq!(result.trades[0].price, 51);
         assert_eq!(result.trades[1].maker_order_id, id("older-worse"));
-        assert_eq!(result.trades[1].price, 105);
+        assert_eq!(result.trades[1].price, 55);
     }
 
     #[test]
     fn same_price_matches_fifo() {
         let mut book = OrderBook::new(symbol());
-        book.add_order(order("first", OrderSide::Sell, 105, 1))
+        book.add_order(order("first", OrderSide::Sell, 55, 1))
             .expect("first ask should rest");
-        book.add_order(order("second", OrderSide::Sell, 105, 1))
+        book.add_order(order("second", OrderSide::Sell, 55, 1))
             .expect("second ask should rest");
 
         let result = book
-            .add_order(order("buyer", OrderSide::Buy, 105, 2))
+            .add_order(order("buyer", OrderSide::Buy, 55, 2))
             .expect("buyer should match both asks");
 
         assert_eq!(result.trades[0].maker_order_id, id("first"));
@@ -608,11 +776,11 @@ mod tests {
     #[test]
     fn partial_fill_leaves_maker_remainder_in_place() {
         let mut book = OrderBook::new(symbol());
-        book.add_order(order("maker", OrderSide::Sell, 105, 10))
+        book.add_order(order("maker", OrderSide::Sell, 55, 10))
             .expect("maker should rest");
 
         let result = book
-            .add_order(order("buyer", OrderSide::Buy, 105, 4))
+            .add_order(order("buyer", OrderSide::Buy, 55, 4))
             .expect("buyer should partially fill maker");
 
         assert_eq!(result.trades.len(), 1);
@@ -623,11 +791,11 @@ mod tests {
     #[test]
     fn partial_taker_remainder_rests_when_no_more_crossing_liquidity_exists() {
         let mut book = OrderBook::new(symbol());
-        book.add_order(order("maker", OrderSide::Sell, 105, 2))
+        book.add_order(order("maker", OrderSide::Sell, 55, 2))
             .expect("maker should rest");
 
         let result = book
-            .add_order(order("buyer", OrderSide::Buy, 105, 5))
+            .add_order(order("buyer", OrderSide::Buy, 55, 5))
             .expect("buyer should partially match then rest");
 
         assert_eq!(result.trades.len(), 1);
@@ -639,9 +807,108 @@ mod tests {
     }
 
     #[test]
+    fn ioc_cancels_unfilled_remainder_without_resting() {
+        let mut book = OrderBook::new(symbol());
+        book.add_order(order("maker", OrderSide::Sell, 55, 2))
+            .expect("maker should rest");
+
+        let result = book
+            .add_order(typed_order(
+                "ioc-buyer",
+                OrderSide::Buy,
+                OrderType::ImmediateOrCancel,
+                55,
+                5,
+            ))
+            .expect("ioc order should be accepted");
+
+        assert_eq!(result.trades.len(), 1);
+        assert_eq!(result.trades[0].quantity, 2);
+        assert_eq!(result.remaining_quantity, 3);
+        assert!(!result.rested);
+        assert_eq!(book.remaining_quantity(&id("ioc-buyer")), None);
+    }
+
+    #[test]
+    fn fok_rejects_when_full_quantity_cannot_fill() {
+        let mut book = OrderBook::new(symbol());
+        book.add_order(order("maker", OrderSide::Sell, 55, 2))
+            .expect("maker should rest");
+
+        let result = book.add_order(typed_order(
+            "fok-buyer",
+            OrderSide::Buy,
+            OrderType::FillOrKill,
+            55,
+            5,
+        ));
+
+        assert_eq!(result, Err(OrderBookError::FillOrKillWouldNotFill));
+        assert_eq!(book.remaining_quantity(&id("maker")), Some(2));
+        assert_eq!(book.remaining_quantity(&id("fok-buyer")), None);
+    }
+
+    #[test]
+    fn fok_fills_when_full_quantity_is_available() {
+        let mut book = OrderBook::new(symbol());
+        book.add_order(order("maker-a", OrderSide::Sell, 54, 2))
+            .expect("first maker should rest");
+        book.add_order(order("maker-b", OrderSide::Sell, 55, 3))
+            .expect("second maker should rest");
+
+        let result = book
+            .add_order(typed_order(
+                "fok-buyer",
+                OrderSide::Buy,
+                OrderType::FillOrKill,
+                55,
+                5,
+            ))
+            .expect("fok should fill");
+
+        assert_eq!(result.trades.len(), 2);
+        assert_eq!(result.remaining_quantity, 0);
+        assert!(!result.rested);
+        assert_eq!(book.remaining_quantity(&id("maker-a")), None);
+        assert_eq!(book.remaining_quantity(&id("maker-b")), None);
+    }
+
+    #[test]
+    fn post_only_rejects_when_order_would_cross() {
+        let mut book = OrderBook::new(symbol());
+        book.add_order(order("maker", OrderSide::Sell, 55, 2))
+            .expect("maker should rest");
+
+        let result = book.add_order(typed_order(
+            "post-only-buyer",
+            OrderSide::Buy,
+            OrderType::PostOnly,
+            55,
+            1,
+        ));
+
+        assert_eq!(result, Err(OrderBookError::PostOnlyWouldCross));
+        assert_eq!(book.remaining_quantity(&id("maker")), Some(2));
+        assert_eq!(book.remaining_quantity(&id("post-only-buyer")), None);
+    }
+
+    #[test]
+    fn self_trade_prevention_rejects_incoming_order_without_touching_maker() {
+        let mut book = OrderBook::new(symbol());
+        book.add_order(user_order("maker", 7, OrderSide::Sell, 55, 2))
+            .expect("maker should rest");
+
+        let result = book.add_order(user_order("same-user-buyer", 7, OrderSide::Buy, 55, 1));
+
+        assert_eq!(result, Err(OrderBookError::SelfTradePrevented));
+        assert_eq!(book.remaining_quantity(&id("maker")), Some(2));
+        assert_eq!(book.remaining_quantity(&id("same-user-buyer")), None);
+    }
+
+    #[test]
     fn cancel_removes_resting_order_and_prevents_future_matching() {
         let mut book = OrderBook::new(symbol());
-        book.add_order(order("seller", OrderSide::Sell, 105, 3))
+        book.add_order(order("seller", OrderSide::Sell, 55, 3))
             .expect("seller should rest");
 
         let cancel = book
@@ -658,7 +925,7 @@ mod tests {
         assert_eq!(book.remaining_quantity(&id("seller")), None);
 
         let result = book
-            .add_order(order("buyer", OrderSide::Buy, 110, 3))
+            .add_order(order("buyer", OrderSide::Buy, 60, 3))
             .expect("buyer should rest because seller was canceled");
 
         assert!(result.trades.is_empty());
