@@ -216,9 +216,11 @@ async fn service_subscribers_receive_ordered_market_events() {
 
     let accepted = events.recv().await.expect("accepted event should publish");
     assert_eq!(accepted.market_id, "mkt-election");
+    assert_eq!(accepted.sequence, 1);
     assert!(matches!(accepted.event, MarketEvent::OrderAccepted { .. }));
 
     let resting = events.recv().await.expect("resting event should publish");
     assert_eq!(resting.market_id, "mkt-election");
+    assert_eq!(resting.sequence, 2);
     assert!(matches!(resting.event, MarketEvent::OrderResting { .. }));
 }

@@ -21,6 +21,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineEvent {
     pub market_id: String,
+    pub sequence: u64,
     pub event: MarketEvent,
 }
 
@@ -209,11 +210,14 @@ impl InMemoryEngineService {
         let event_broadcast = self.events.clone();
         let event_market_id = market_id.to_string();
         tokio::spawn(async move {
+            let mut sequence = 1;
             while let Some(event) = event_rx.recv().await {
                 let _ = event_broadcast.send(EngineEvent {
                     market_id: event_market_id.clone(),
+                    sequence,
                     event,
                 });
+                sequence += 1;
             }
         });
         let shard = MarketShard::new(Symbol::new(market_id.to_string()));
