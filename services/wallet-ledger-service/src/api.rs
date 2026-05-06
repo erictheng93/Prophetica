@@ -249,8 +249,8 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::ledger::{
-        AccountBalance, CommittedLedgerTransaction, LedgerEntryView, LedgerStore,
-        LedgerStoreError, PostTransactionDraft,
+        AccountBalance, CommittedLedgerTransaction, LedgerEntryView, LedgerStore, LedgerStoreError,
+        PostTransactionDraft,
     };
 
     #[tokio::test]
@@ -513,9 +513,7 @@ mod tests {
                         let current_balance = entries
                             .iter()
                             .filter(|stored| stored.account_code == entry.account_code())
-                            .map(|stored| {
-                                i64::from(stored.direction) * stored.amount_minor_units
-                            })
+                            .map(|stored| i64::from(stored.direction) * stored.amount_minor_units)
                             .sum::<i64>();
                         entries.push(LedgerEntryView {
                             txn_id: transaction.id,
