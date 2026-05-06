@@ -207,6 +207,7 @@ impl PostEntryRequest {
 fn api_error(error: PostTransactionError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
         PostTransactionError::Validation(error) => validation_error(error.to_string()),
+        PostTransactionError::InsufficientFunds { .. } => validation_error(error.to_string()),
         PostTransactionError::Store(error) => store_error(error),
     }
 }

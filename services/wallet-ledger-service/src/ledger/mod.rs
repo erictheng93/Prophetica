@@ -14,6 +14,56 @@ pub struct PostTransactionDraft {
     pub entries: Vec<LedgerEntryDraft>,
 }
 
+impl PostTransactionDraft {
+    #[must_use]
+    pub fn freeze_player_funds(
+        user_id: &str,
+        amount_minor_units: i64,
+        idempotency_key: impl Into<String>,
+    ) -> Self {
+        Self {
+            txn_type: "freeze".to_owned(),
+            idempotency_key: idempotency_key.into(),
+            correlation_id: None,
+            description: Some("freeze player funds".to_owned()),
+            entries: vec![
+                LedgerEntryDraft::new(
+                    format!("Player.Wallet.{user_id}"),
+                    sdk::ledger::LedgerAmount::from_minor_units(amount_minor_units),
+                ),
+                LedgerEntryDraft::new(
+                    format!("Player.Frozen.{user_id}"),
+                    sdk::ledger::LedgerAmount::from_minor_units(-amount_minor_units),
+                ),
+            ],
+        }
+    }
+
+    #[must_use]
+    pub fn unfreeze_player_funds(
+        user_id: &str,
+        amount_minor_units: i64,
+        idempotency_key: impl Into<String>,
+    ) -> Self {
+        Self {
+            txn_type: "unfreeze".to_owned(),
+            idempotency_key: idempotency_key.into(),
+            correlation_id: None,
+            description: Some("unfreeze player funds".to_owned()),
+            entries: vec![
+                LedgerEntryDraft::new(
+                    format!("Player.Frozen.{user_id}"),
+                    sdk::ledger::LedgerAmount::from_minor_units(amount_minor_units),
+                ),
+                LedgerEntryDraft::new(
+                    format!("Player.Wallet.{user_id}"),
+                    sdk::ledger::LedgerAmount::from_minor_units(-amount_minor_units),
+                ),
+            ],
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommittedLedgerTransaction {
     pub id: i64,
@@ -40,6 +90,13 @@ pub struct LedgerEntryView {
 pub enum PostTransactionError {
     #[error(transparent)]
     Validation(#[from] LedgerValidationError),
+    #[error(
+        "insufficient funds for {account_code}: projected balance {balance_after_minor_units} minor units"
+    )]
+    InsufficientFunds {
+        account_code: String,
+        balance_after_minor_units: i64,
+    },
     #[error(transparent)]
     Store(#[from] LedgerStoreError),
 }
@@ -122,6 +179,7 @@ where
     ) -> Result<CommittedLedgerTransaction, PostTransactionError> {
         let transaction = LedgerTransactionDraft::new(draft.entries.clone());
         transaction.validate_balanced()?;
+        self.validate_player_liability_bounds(&draft).await?;
 
         if let Some(existing) = self
             .store
@@ -138,6 +196,37 @@ where
             .commit_new_transaction(&draft)
             .await
             .map_err(PostTransactionError::from)
+    }
+
+    async fn validate_player_liability_bounds(
+        &self,
+        draft: &PostTransactionDraft,
+    ) -> Result<(), PostTransactionError> {
+        if draft.txn_type == "chargeback" {
+            return Ok(());
+        }
+
+        for entry in &draft.entries {
+            if !is_player_liability_account(entry.account_code()) {
+                continue;
+            }
+
+            let current = self
+                .store
+                .get_account_balance(entry.account_code())
+                .await?
+                .balance_minor_units;
+            let balance_after = current + entry.amount().minor_units();
+
+            if balance_after > 0 {
+                return Err(PostTransactionError::InsufficientFunds {
+                    account_code: entry.account_code().to_owned(),
+                    balance_after_minor_units: balance_after,
+                });
+            }
+        }
+
+        Ok(())
     }
 
     /// Returns the current balance for an account code.
@@ -384,6 +473,12 @@ fn infer_account_type(account_code: &str) -> &'static str {
     }
 }
 
+fn is_player_liability_account(account_code: &str) -> bool {
+    account_code.starts_with("Player.Wallet.")
+        || account_code.starts_with("Player.Locked.")
+        || account_code.starts_with("Player.Frozen.")
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{
@@ -477,6 +572,90 @@ mod tests {
 
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].amount_minor_units, 10_000);
+    }
+
+    #[tokio::test]
+    async fn rejects_wallet_debit_that_exceeds_available_balance() {
+        let store = InMemoryLedgerStore::default();
+        let service = LedgerService::new(store.clone());
+        let draft = PostTransactionDraft {
+            txn_type: "order_lock".to_owned(),
+            idempotency_key: "order:insufficient".to_owned(),
+            correlation_id: None,
+            description: None,
+            entries: vec![
+                LedgerEntryDraft::new(
+                    "Player.Wallet.user_01",
+                    LedgerAmount::from_minor_units(1),
+                ),
+                LedgerEntryDraft::new(
+                    "Player.Locked.user_01",
+                    LedgerAmount::from_minor_units(-1),
+                ),
+            ],
+        };
+
+        let error = match service.post_transaction(draft).await {
+            Ok(_) => panic!("wallet debit should be rejected"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "insufficient funds for Player.Wallet.user_01: projected balance 1 minor units"
+        );
+        assert_eq!(store.commit_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn chargeback_can_project_wallet_above_zero() {
+        let store = InMemoryLedgerStore::default();
+        let service = LedgerService::new(store.clone());
+        let draft = PostTransactionDraft {
+            txn_type: "chargeback".to_owned(),
+            idempotency_key: "chargeback:exception".to_owned(),
+            correlation_id: None,
+            description: None,
+            entries: vec![
+                LedgerEntryDraft::new(
+                    "Player.Wallet.user_01",
+                    LedgerAmount::from_minor_units(1),
+                ),
+                LedgerEntryDraft::new(
+                    "Bank.TrustAccount.TWD",
+                    LedgerAmount::from_minor_units(-1),
+                ),
+            ],
+        };
+
+        match service.post_transaction(draft).await {
+            Ok(transaction) => assert_eq!(transaction.id, 1),
+            Err(error) => panic!("chargeback exception should commit: {error}"),
+        }
+    }
+
+    #[test]
+    fn freeze_player_funds_builds_balanced_wallet_to_frozen_draft() {
+        let draft =
+            PostTransactionDraft::freeze_player_funds("user_01", 10_000, "freeze:user_01:001");
+
+        assert_eq!(draft.txn_type, "freeze");
+        assert_eq!(draft.entries[0].account_code(), "Player.Wallet.user_01");
+        assert_eq!(draft.entries[0].amount().minor_units(), 10_000);
+        assert_eq!(draft.entries[1].account_code(), "Player.Frozen.user_01");
+        assert_eq!(draft.entries[1].amount().minor_units(), -10_000);
+    }
+
+    #[test]
+    fn unfreeze_player_funds_builds_balanced_frozen_to_wallet_draft() {
+        let draft =
+            PostTransactionDraft::unfreeze_player_funds("user_01", 10_000, "unfreeze:user_01:001");
+
+        assert_eq!(draft.txn_type, "unfreeze");
+        assert_eq!(draft.entries[0].account_code(), "Player.Frozen.user_01");
+        assert_eq!(draft.entries[0].amount().minor_units(), 10_000);
+        assert_eq!(draft.entries[1].account_code(), "Player.Wallet.user_01");
+        assert_eq!(draft.entries[1].amount().minor_units(), -10_000);
     }
 
     #[tokio::test]
