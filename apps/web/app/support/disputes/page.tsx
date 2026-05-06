@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { ArrowUpRight, Warning } from "@phosphor-icons/react/dist/ssr";
 import { ProphLinkButton, ProphTile } from "@prophetica/ui";
+import { submitMarketDispute } from "@/lib/settlement-api";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("support.disputes.metadata");
@@ -43,6 +44,34 @@ const hiddenListKeys = [
   "password",
   "external",
 ] as const;
+
+async function submitDisputeAction(formData: FormData) {
+  "use server";
+
+  const category = String(formData.get("category") ?? "");
+  if (category !== "settlement") {
+    return;
+  }
+
+  const marketId = String(formData.get("marketId") ?? "").trim();
+  const reason = String(formData.get("body") ?? "").trim();
+  const claimedOutcome = String(formData.get("claimedOutcome") ?? "NO");
+  if (!marketId || !reason || !["YES", "NO", "VOID"].includes(claimedOutcome)) {
+    return;
+  }
+
+  const evidenceUrls = reason
+    .split(/\s+/)
+    .filter((token) => token.startsWith("https://") || token.startsWith("http://"));
+
+  await submitMarketDispute({
+    marketId,
+    userId: "user_01",
+    reason,
+    evidenceUrls,
+    claimedOutcome: claimedOutcome as "YES" | "NO" | "VOID",
+  });
+}
 
 type DisputesCopy = Awaited<
   ReturnType<typeof getTranslations<"support.disputes">>
@@ -220,7 +249,7 @@ function SubmissionForm({ t }: { t: DisputesCopy }) {
           </p>
         </header>
 
-        <form action="#" className="space-y-6">
+        <form action={submitDisputeAction} className="space-y-6">
           <label className="block">
             <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
               {t("form.fields.category")}
@@ -254,6 +283,21 @@ function SubmissionForm({ t }: { t: DisputesCopy }) {
             <span className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
               {t("form.fields.marketIdHint")}
             </span>
+          </label>
+
+          <label className="block">
+            <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+              你認為應判定的結果
+            </span>
+            <select
+              name="claimedOutcome"
+              defaultValue="NO"
+              className="mt-1 w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
+            >
+              <option value="YES">YES</option>
+              <option value="NO">NO</option>
+              <option value="VOID">VOID</option>
+            </select>
           </label>
 
           <label className="block">
@@ -309,7 +353,6 @@ function SubmissionForm({ t }: { t: DisputesCopy }) {
             </p>
             <button
               type="submit"
-              disabled
               className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
             >
               {t("form.submit")}
