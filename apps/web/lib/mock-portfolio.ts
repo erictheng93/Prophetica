@@ -1,4 +1,4 @@
-import { getMarketById, type Market } from "./mock-markets";
+import { getMarketById, type Market } from "./mock-markets.js";
 
 // Mock-only player portfolio. Replaced by position-service / wallet-ledger
 // snapshot via packages/ts-sdk once the proto + RPC land.

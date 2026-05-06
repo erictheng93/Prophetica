@@ -15,12 +15,11 @@ import {
 } from "@/lib/mock-markets";
 import {
   formatPointsSigned,
-  listActivePositions,
-  listSettledPositions,
+  type PortfolioSummary,
   type ResolvedPosition,
-  summarizePortfolio,
 } from "@/lib/mock-portfolio";
 import { fetchWalletOverview, type WalletOverview } from "@/lib/api-gateway";
+import { fetchPortfolioPositions } from "@/lib/position-api";
 
 export const metadata: Metadata = {
   title: "個人持倉 — prophetica",
@@ -31,9 +30,8 @@ export const metadata: Metadata = {
 export default async function PortfolioPage() {
   const sectionFooterColumns = await getFooterColumns(["markets", "legal", "support"]);
   const walletOverview = await fetchWalletOverview();
-  const summary = summarizePortfolio();
-  const active = listActivePositions();
-  const settled = listSettledPositions();
+  const portfolio = await fetchPortfolioPositions();
+  const { active, settled, summary } = portfolio;
 
   return (
     <main className="min-h-screen bg-proph-canvas">
@@ -78,7 +76,7 @@ function SummaryCards({
   summary,
   walletOverview,
 }: {
-  summary: ReturnType<typeof summarizePortfolio>;
+  summary: PortfolioSummary;
   walletOverview: WalletOverview;
 }) {
   const cards = [
