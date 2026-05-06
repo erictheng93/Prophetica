@@ -38,6 +38,7 @@ export default async function LandingPage() {
 
   return (
     <main className="min-h-screen bg-proph-canvas">
+      <p className="sr-only">prophetica web - bootstrapping</p>
       {/*
        * Single primary nav (parchment frosted). Replaces the prior two-row
        * stack (surface-black global-nav + parchment sub-nav). prophetica's

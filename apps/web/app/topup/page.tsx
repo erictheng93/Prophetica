@@ -243,7 +243,7 @@ function AmountSection({
           </p>
         </header>
 
-        <form action="#" aria-disabled="true" className="space-y-6">
+        <form action="#" className="space-y-6">
           <fieldset className={"space-y-3 " + (atLimit ? "opacity-50 pointer-events-none" : "")}>
             <legend className="sr-only">選擇儲值金額</legend>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">

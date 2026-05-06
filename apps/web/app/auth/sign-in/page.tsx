@@ -124,7 +124,7 @@ function SigninForm() {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
-        <form action="#" aria-disabled="true" className="space-y-6">
+        <form action="#" className="space-y-6">
           <label className="block">
             <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
               Email
@@ -203,7 +203,7 @@ function SignupForm() {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
-        <form action="#" aria-disabled="true" className="space-y-6">
+        <form action="#" className="space-y-6">
           <label className="block">
             <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
               Email

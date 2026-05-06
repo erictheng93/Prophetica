@@ -51,6 +51,7 @@ out/
 .turbo/
 .pnpm-store/
 .swc/
+.wrangler/
 next-env.d.ts
 *.tsbuildinfo
 dist/

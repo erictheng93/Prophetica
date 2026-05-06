@@ -104,7 +104,7 @@ function GeneralForm() {
           </p>
         </header>
 
-        <form action="#" aria-disabled="true" className="space-y-6">
+        <form action="#" className="space-y-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="block">
               <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">

@@ -196,7 +196,7 @@ function SubmissionForm() {
           </p>
         </header>
 
-        <form action="#" aria-disabled="true" className="space-y-6">
+        <form action="#" className="space-y-6">
           <label className="block">
             <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
               分類
