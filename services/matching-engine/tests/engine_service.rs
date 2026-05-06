@@ -15,6 +15,7 @@ use proto::proph::v1::{
     PlaceOrderRequest, Side, TimeInForce, UserId, engine_service_client::EngineServiceClient,
     engine_service_server::EngineService,
 };
+use std::time::Instant;
 use tokio::sync::oneshot;
 
 fn market_id() -> MarketId {
@@ -356,7 +357,7 @@ async fn service_recovers_from_snapshot_then_replays_remaining_wal() {
     let wal_path = wal_dir.join("mkt-election.wal.jsonl");
 
     let first_ulid = ulid::Ulid::new();
-    let first = internal_order(first_ulid, "snapshot-maker", 55, 3);
+    let first = internal_order(first_ulid, 55, 3);
     append_record(&wal_path, &WalRecord::PlaceOrder(first.clone())).expect("first wal append");
     let mut book = OrderBook::new(Symbol::new("mkt-election"));
     book.add_order(first).expect("first order should rest");
@@ -372,7 +373,7 @@ async fn service_recovers_from_snapshot_then_replays_remaining_wal() {
     let second_ulid = ulid::Ulid::new();
     append_record(
         &wal_path,
-        &WalRecord::PlaceOrder(internal_order(second_ulid, "wal-maker", 56, 2)),
+        &WalRecord::PlaceOrder(internal_order(second_ulid, 56, 2)),
     )
     .expect("second wal append");
 
@@ -409,6 +410,56 @@ async fn service_recovers_from_snapshot_then_replays_remaining_wal() {
         .expect("snapshot-restored owner route should cancel");
 }
 
+#[tokio::test]
+async fn snapshot_and_wal_recovery_completes_within_crash_recovery_slo() {
+    let wal_dir = unique_wal_dir();
+    let snapshot_dir = unique_wal_dir();
+    std::fs::create_dir_all(&wal_dir).expect("wal dir should be created");
+    std::fs::create_dir_all(&snapshot_dir).expect("snapshot dir should be created");
+    let wal_path = wal_dir.join("mkt-election.wal.jsonl");
+    let mut book = OrderBook::new(Symbol::new("mkt-election"));
+
+    for index in 0..1_000 {
+        let order = internal_order(ulid::Ulid::new(), 55, 1);
+        append_record(&wal_path, &WalRecord::PlaceOrder(order.clone())).expect("wal append");
+        book.add_order(order).expect("order should rest");
+        if index == 499 {
+            write_persisted_snapshot(
+                &snapshot_dir.join("mkt-election.snapshot.json"),
+                &PersistedOrderBookSnapshot {
+                    records_applied: 500,
+                    book: book.snapshot(),
+                },
+            )
+            .expect("snapshot should write");
+        }
+    }
+
+    let started_at = Instant::now();
+    let recovered = InMemoryEngineService::recover_from_snapshot_and_wal_dirs(
+        wal_dir,
+        snapshot_dir,
+        ["mkt-election".to_string()],
+    )
+    .expect("service should recover from snapshot and wal");
+    let elapsed = started_at.elapsed();
+    let snapshot = recovered
+        .get_book_snapshot(tonic::Request::new(GetBookSnapshotRequest {
+            market_id: Some(market_id()),
+            depth: 10,
+        }))
+        .await
+        .expect("snapshot should recover")
+        .into_inner();
+
+    assert_eq!(snapshot.asks.len(), 1);
+    assert_eq!(snapshot.asks[0].qty, 1_000);
+    assert!(
+        elapsed.as_secs() < 30,
+        "crash recovery must complete within 30 seconds, elapsed={elapsed:?}"
+    );
+}
+
 fn unique_wal_dir() -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
         "prophetica-engine-service-wal-{}",
@@ -416,8 +467,7 @@ fn unique_wal_dir() -> std::path::PathBuf {
     ))
 }
 
-fn internal_order(ulid: ulid::Ulid, client_order_id: &str, price: u64, quantity: u64) -> NewOrder {
-    let _ = client_order_id;
+fn internal_order(ulid: ulid::Ulid, price: u64, quantity: u64) -> NewOrder {
     NewOrder {
         order_id: InternalOrderId::new(ulid.to_string()),
         user_id: 10,
