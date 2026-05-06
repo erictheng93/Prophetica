@@ -79,6 +79,8 @@ fn projects_trade_events_for_trade_streams() {
         event: MarketEvent::Trade {
             maker_order_id: id("maker"),
             taker_order_id: id("taker"),
+            maker_user_id: 10,
+            taker_user_id: 20,
             sequence: 3,
             price: 56,
             quantity: 4,
@@ -92,6 +94,8 @@ fn projects_trade_events_for_trade_streams() {
             seq_no: 8,
             maker_order_id: "maker".to_string(),
             taker_order_id: "taker".to_string(),
+            maker_user_id: 10,
+            taker_user_id: 20,
             trade_sequence: 3,
             price_pts: 56,
             quantity: 4,
@@ -106,6 +110,7 @@ fn projects_status_events_for_order_update_streams() {
         sequence: 9,
         event: MarketEvent::OrderCancelled {
             order_id: id("ioc-taker"),
+            user_id: Some(20),
             canceled_quantity: 3,
         },
     });
@@ -115,6 +120,7 @@ fn projects_status_events_for_order_update_streams() {
         vec![ProjectionEvent::OrderUpdate {
             market_id: "mkt-election".to_string(),
             seq_no: 9,
+            user_id: 20,
             order_id: "ioc-taker".to_string(),
             status: OrderProjectionStatus::Cancelled,
             filled_qty: 0,
@@ -149,6 +155,8 @@ fn projection_publisher_sends_topic_key_and_payload() {
         seq_no: 13,
         maker_order_id: "maker".to_string(),
         taker_order_id: "taker".to_string(),
+        maker_user_id: 10,
+        taker_user_id: 20,
         trade_sequence: 4,
         price_pts: 58,
         quantity: 2,
@@ -173,6 +181,8 @@ fn book_stream_message_filters_market_book_deltas() {
         seq_no: 1,
         maker_order_id: "maker".to_string(),
         taker_order_id: "taker".to_string(),
+        maker_user_id: 10,
+        taker_user_id: 20,
         trade_sequence: 1,
         price_pts: 55,
         quantity: 2,

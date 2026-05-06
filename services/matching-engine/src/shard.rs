@@ -29,19 +29,25 @@ pub enum MarketCommand {
 pub enum MarketEvent {
     OrderAccepted {
         order_id: OrderId,
+        user_id: u64,
     },
     OrderResting {
         order_id: OrderId,
+        user_id: u64,
+        remaining: Quantity,
     },
     Trade {
         maker_order_id: OrderId,
         taker_order_id: OrderId,
+        maker_user_id: u64,
+        taker_user_id: u64,
         sequence: Sequence,
         price: Price,
         quantity: Quantity,
     },
     OrderCancelled {
         order_id: OrderId,
+        user_id: Option<u64>,
         canceled_quantity: Quantity,
     },
     BookDelta {
@@ -51,10 +57,12 @@ pub enum MarketEvent {
     },
     OrderFilled {
         order_id: OrderId,
+        user_id: u64,
         total_filled: Quantity,
     },
     OrderPartiallyFilled {
         order_id: OrderId,
+        user_id: u64,
         filled_now: Quantity,
         remaining: Quantity,
     },
@@ -95,7 +103,7 @@ impl MarketShard {
                 MarketCommand::CancelOrder { order_id, reply_to } => {
                     let result = self.book.cancel_order(&order_id);
                     if let Ok(cancel_order_result) = &result {
-                        publish_cancel_order_event(cancel_order_result, &events).await;
+                        publish_cancel_order_event(cancel_order_result, None, &events).await;
                     }
                     let _ = reply_to.send(result);
                 }
@@ -106,7 +114,8 @@ impl MarketShard {
                 } => {
                     let result = self.book.cancel_order_for_user(&order_id, user_id);
                     if let Ok(cancel_order_result) = &result {
-                        publish_cancel_order_event(cancel_order_result, &events).await;
+                        publish_cancel_order_event(cancel_order_result, Some(user_id), &events)
+                            .await;
                     }
                     let _ = reply_to.send(result);
                 }
@@ -126,6 +135,7 @@ async fn publish_add_order_events(
     if events
         .send(MarketEvent::OrderAccepted {
             order_id: result.order_id.clone(),
+            user_id: order.user_id,
         })
         .await
         .is_err()
@@ -143,6 +153,8 @@ async fn publish_add_order_events(
         let event = MarketEvent::Trade {
             maker_order_id: trade.maker_order_id.clone(),
             taker_order_id: trade.taker_order_id.clone(),
+            maker_user_id: trade.maker_user_id,
+            taker_user_id: trade.taker_user_id,
             sequence: trade.sequence,
             price: trade.price,
             quantity: trade.quantity,
@@ -167,6 +179,7 @@ async fn publish_add_order_events(
         let _ = events
             .send(MarketEvent::OrderFilled {
                 order_id: result.order_id.clone(),
+                user_id: order.user_id,
                 total_filled: filled_quantity,
             })
             .await;
@@ -177,6 +190,7 @@ async fn publish_add_order_events(
         && events
             .send(MarketEvent::OrderPartiallyFilled {
                 order_id: result.order_id.clone(),
+                user_id: order.user_id,
                 filled_now: filled_quantity,
                 remaining: result.remaining_quantity,
             })
@@ -190,6 +204,8 @@ async fn publish_add_order_events(
         if events
             .send(MarketEvent::OrderResting {
                 order_id: result.order_id.clone(),
+                user_id: order.user_id,
+                remaining: result.remaining_quantity,
             })
             .await
             .is_err()
@@ -207,6 +223,7 @@ async fn publish_add_order_events(
         && events
             .send(MarketEvent::OrderCancelled {
                 order_id: result.order_id.clone(),
+                user_id: Some(order.user_id),
                 canceled_quantity: result.remaining_quantity,
             })
             .await
@@ -218,11 +235,13 @@ async fn publish_add_order_events(
 
 async fn publish_cancel_order_event(
     result: &CancelOrderResult,
+    user_id: Option<u64>,
     events: &mpsc::Sender<MarketEvent>,
 ) {
     let _ = events
         .send(MarketEvent::OrderCancelled {
             order_id: result.order_id.clone(),
+            user_id,
             canceled_quantity: result.canceled_quantity,
         })
         .await;

@@ -31,6 +31,8 @@ pub enum ProjectionEvent {
         seq_no: Sequence,
         maker_order_id: String,
         taker_order_id: String,
+        maker_user_id: u64,
+        taker_user_id: u64,
         trade_sequence: Sequence,
         price_pts: Price,
         quantity: Quantity,
@@ -38,6 +40,7 @@ pub enum ProjectionEvent {
     OrderUpdate {
         market_id: String,
         seq_no: Sequence,
+        user_id: u64,
         order_id: String,
         status: OrderProjectionStatus,
         filled_qty: Quantity,
@@ -64,9 +67,24 @@ struct TradeMessage<'a> {
     seq: Sequence,
     maker_order_id: &'a str,
     taker_order_id: &'a str,
+    maker_user_id: u64,
+    taker_user_id: u64,
     trade_seq: Sequence,
     price_pts: Price,
     qty: Quantity,
+}
+
+#[derive(Serialize)]
+struct OrderUpdateMessage<'a> {
+    #[serde(rename = "type")]
+    message_type: &'static str,
+    market_id: &'a str,
+    seq: Sequence,
+    user_id: u64,
+    order_id: &'a str,
+    status: OrderProjectionStatus,
+    filled_qty: Quantity,
+    remaining_qty: Quantity,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,6 +211,8 @@ pub fn trade_stream_message(market: &str, event: &ProjectionEvent) -> Option<Str
         seq_no,
         maker_order_id,
         taker_order_id,
+        maker_user_id,
+        taker_user_id,
         trade_sequence,
         price_pts,
         quantity,
@@ -210,9 +230,42 @@ pub fn trade_stream_message(market: &str, event: &ProjectionEvent) -> Option<Str
         seq: *seq_no,
         maker_order_id,
         taker_order_id,
+        maker_user_id: *maker_user_id,
+        taker_user_id: *taker_user_id,
         trade_seq: *trade_sequence,
         price_pts: *price_pts,
         qty: *quantity,
+    })
+    .ok()
+}
+
+#[must_use]
+pub fn order_update_stream_message(user: u64, event: &ProjectionEvent) -> Option<String> {
+    let ProjectionEvent::OrderUpdate {
+        market_id,
+        seq_no,
+        user_id,
+        order_id,
+        status,
+        filled_qty,
+        remaining_qty,
+    } = event
+    else {
+        return None;
+    };
+    if *user_id != user {
+        return None;
+    }
+
+    serde_json::to_string(&OrderUpdateMessage {
+        message_type: "order_update",
+        market_id,
+        seq: *seq_no,
+        user_id: *user_id,
+        order_id,
+        status: *status,
+        filled_qty: *filled_qty,
+        remaining_qty: *remaining_qty,
     })
     .ok()
 }
@@ -243,6 +296,8 @@ pub fn serialize_projection_event(event: &ProjectionEvent) -> serde_json::Result
     struct TradePayload<'a> {
         maker_order_id: &'a str,
         taker_order_id: &'a str,
+        maker_user_id: u64,
+        taker_user_id: u64,
         trade_sequence: Sequence,
         price_pts: Price,
         quantity: Quantity,
@@ -279,6 +334,8 @@ pub fn serialize_projection_event(event: &ProjectionEvent) -> serde_json::Result
             seq_no,
             maker_order_id,
             taker_order_id,
+            maker_user_id,
+            taker_user_id,
             trade_sequence,
             price_pts,
             quantity,
@@ -290,6 +347,8 @@ pub fn serialize_projection_event(event: &ProjectionEvent) -> serde_json::Result
             payload: TradePayload {
                 maker_order_id,
                 taker_order_id,
+                maker_user_id: *maker_user_id,
+                taker_user_id: *taker_user_id,
                 trade_sequence: *trade_sequence,
                 price_pts: *price_pts,
                 quantity: *quantity,
@@ -298,6 +357,7 @@ pub fn serialize_projection_event(event: &ProjectionEvent) -> serde_json::Result
         ProjectionEvent::OrderUpdate {
             market_id,
             seq_no,
+            user_id: _,
             order_id,
             status,
             filled_qty,
@@ -355,17 +415,24 @@ impl ProjectionBroadcaster {
 pub fn project_engine_event(envelope: EngineEvent) -> Vec<ProjectionEvent> {
     match envelope.event {
         MarketEvent::OrderAccepted { .. } => Vec::new(),
-        MarketEvent::OrderResting { order_id } => vec![ProjectionEvent::OrderUpdate {
+        MarketEvent::OrderResting {
+            order_id,
+            user_id,
+            remaining,
+        } => vec![ProjectionEvent::OrderUpdate {
             market_id: envelope.market_id,
             seq_no: envelope.sequence,
+            user_id,
             order_id: order_id.as_str().to_string(),
             status: OrderProjectionStatus::Active,
             filled_qty: 0,
-            remaining_qty: 0,
+            remaining_qty: remaining,
         }],
         MarketEvent::Trade {
             maker_order_id,
             taker_order_id,
+            maker_user_id,
+            taker_user_id,
             sequence,
             price,
             quantity,
@@ -374,21 +441,27 @@ pub fn project_engine_event(envelope: EngineEvent) -> Vec<ProjectionEvent> {
             seq_no: envelope.sequence,
             maker_order_id: maker_order_id.as_str().to_string(),
             taker_order_id: taker_order_id.as_str().to_string(),
+            maker_user_id,
+            taker_user_id,
             trade_sequence: sequence,
             price_pts: price,
             quantity,
         }],
         MarketEvent::OrderCancelled {
             order_id,
+            user_id,
             canceled_quantity: _,
-        } => vec![ProjectionEvent::OrderUpdate {
-            market_id: envelope.market_id,
-            seq_no: envelope.sequence,
-            order_id: order_id.as_str().to_string(),
-            status: OrderProjectionStatus::Cancelled,
-            filled_qty: 0,
-            remaining_qty: 0,
-        }],
+        } => user_id.map_or_else(Vec::new, |user_id| {
+            vec![ProjectionEvent::OrderUpdate {
+                market_id: envelope.market_id,
+                seq_no: envelope.sequence,
+                user_id,
+                order_id: order_id.as_str().to_string(),
+                status: OrderProjectionStatus::Cancelled,
+                filled_qty: 0,
+                remaining_qty: 0,
+            }]
+        }),
         MarketEvent::BookDelta {
             side,
             price,
@@ -402,10 +475,12 @@ pub fn project_engine_event(envelope: EngineEvent) -> Vec<ProjectionEvent> {
         }],
         MarketEvent::OrderFilled {
             order_id,
+            user_id,
             total_filled,
         } => vec![ProjectionEvent::OrderUpdate {
             market_id: envelope.market_id,
             seq_no: envelope.sequence,
+            user_id,
             order_id: order_id.as_str().to_string(),
             status: OrderProjectionStatus::Filled,
             filled_qty: total_filled,
@@ -413,11 +488,13 @@ pub fn project_engine_event(envelope: EngineEvent) -> Vec<ProjectionEvent> {
         }],
         MarketEvent::OrderPartiallyFilled {
             order_id,
+            user_id,
             filled_now,
             remaining,
         } => vec![ProjectionEvent::OrderUpdate {
             market_id: envelope.market_id,
             seq_no: envelope.sequence,
+            user_id,
             order_id: order_id.as_str().to_string(),
             status: OrderProjectionStatus::Partial,
             filled_qty: filled_now,

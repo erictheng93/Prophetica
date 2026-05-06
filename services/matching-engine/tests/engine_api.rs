@@ -249,6 +249,50 @@ async fn trade_websocket_streams_market_trades() {
     server.abort();
 }
 
+#[tokio::test]
+async fn user_order_websocket_streams_order_updates() {
+    let service = InMemoryEngineService::default();
+    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .expect("listener should bind");
+    let addr = listener.local_addr().expect("listener should have addr");
+    let app = service_router(service.clone());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server should run");
+    });
+
+    let (mut socket, _response) = connect_async(format!("ws://{addr}/ws/users/20/orders"))
+        .await
+        .expect("websocket should connect");
+
+    service
+        .place_order(tonic::Request::new(place_order_proto(
+            20,
+            Side::Ask,
+            55,
+            3,
+            "maker",
+        )))
+        .await
+        .expect("order should rest");
+
+    let message = tokio::time::timeout(Duration::from_secs(1), socket.next())
+        .await
+        .expect("order update should be streamed")
+        .expect("socket should stay open")
+        .expect("message should be valid");
+    let body: Value = serde_json::from_str(message.to_text().expect("order update should be text"))
+        .expect("order update should be json");
+
+    assert_eq!(body["type"], json!("order_update"));
+    assert_eq!(body["user_id"], json!(20));
+    assert_eq!(body["market_id"], json!("mkt-election"));
+    assert_eq!(body["status"], json!("Active"));
+    assert_eq!(body["remaining_qty"], json!(3));
+
+    server.abort();
+}
+
 fn order(order_id: &str, user_id: u64, side: OrderSide, price: u64, quantity: u64) -> NewOrder {
     NewOrder {
         order_id: OrderId::new(order_id),

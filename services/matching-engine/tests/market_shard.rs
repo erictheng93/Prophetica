@@ -73,6 +73,7 @@ async fn shard_processes_cancel_orders_through_same_command_queue() {
         cancel_event,
         MarketEvent::OrderCancelled {
             order_id: id("maker"),
+            user_id: None,
             canceled_quantity: 2,
         }
     );
@@ -163,7 +164,8 @@ async fn shard_processes_place_orders_in_command_order() {
     assert_eq!(
         first_event,
         MarketEvent::OrderAccepted {
-            order_id: id("maker")
+            order_id: id("maker"),
+            user_id: 10,
         }
     );
     let second_event = event_rx
@@ -173,7 +175,9 @@ async fn shard_processes_place_orders_in_command_order() {
     assert_eq!(
         second_event,
         MarketEvent::OrderResting {
-            order_id: id("maker")
+            order_id: id("maker"),
+            user_id: 10,
+            remaining: 2,
         }
     );
     let maker_delta = event_rx
@@ -213,7 +217,8 @@ async fn shard_processes_place_orders_in_command_order() {
     assert_eq!(
         accepted_event,
         MarketEvent::OrderAccepted {
-            order_id: id("taker")
+            order_id: id("taker"),
+            user_id: 20,
         }
     );
 
@@ -226,6 +231,8 @@ async fn shard_processes_place_orders_in_command_order() {
         MarketEvent::Trade {
             maker_order_id: id("maker"),
             taker_order_id: id("taker"),
+            maker_user_id: 10,
+            taker_user_id: 20,
             sequence: 1,
             price: 55,
             quantity: 2,
@@ -250,6 +257,7 @@ async fn shard_processes_place_orders_in_command_order() {
         filled_event,
         MarketEvent::OrderFilled {
             order_id: id("taker"),
+            user_id: 20,
             total_filled: 2,
         }
     );
@@ -313,7 +321,8 @@ async fn shard_publishes_partial_and_ioc_cancel_status_events() {
             .await
             .expect("accepted event should publish"),
         MarketEvent::OrderAccepted {
-            order_id: id("ioc-taker")
+            order_id: id("ioc-taker"),
+            user_id: 20,
         }
     );
     assert_eq!(
@@ -321,6 +330,8 @@ async fn shard_publishes_partial_and_ioc_cancel_status_events() {
         MarketEvent::Trade {
             maker_order_id: id("maker"),
             taker_order_id: id("ioc-taker"),
+            maker_user_id: 10,
+            taker_user_id: 20,
             sequence: 1,
             price: 55,
             quantity: 2,
@@ -341,6 +352,7 @@ async fn shard_publishes_partial_and_ioc_cancel_status_events() {
         event_rx.recv().await.expect("partial event should publish"),
         MarketEvent::OrderPartiallyFilled {
             order_id: id("ioc-taker"),
+            user_id: 20,
             filled_now: 2,
             remaining: 3,
         }
@@ -349,6 +361,7 @@ async fn shard_publishes_partial_and_ioc_cancel_status_events() {
         event_rx.recv().await.expect("cancel event should publish"),
         MarketEvent::OrderCancelled {
             order_id: id("ioc-taker"),
+            user_id: Some(20),
             canceled_quantity: 3,
         }
     );

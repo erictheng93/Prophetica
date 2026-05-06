@@ -27,7 +27,10 @@ use ulid::Ulid;
 
 use crate::{
     order_book::{OrderBook, Price, Quantity, SnapshotRestingOrder},
-    projection::{book_stream_message, project_engine_event, trade_stream_message},
+    projection::{
+        book_stream_message, order_update_stream_message, project_engine_event,
+        trade_stream_message,
+    },
     service::InMemoryEngineService,
 };
 
@@ -118,6 +121,7 @@ pub fn service_router(service: InMemoryEngineService) -> Router {
         )
         .route("/ws/markets/:market_id/book", get(book_websocket))
         .route("/ws/markets/:market_id/trades", get(trade_websocket))
+        .route("/ws/users/:user_id/orders", get(order_websocket))
         .with_state(ServiceState { service })
 }
 
@@ -344,6 +348,14 @@ async fn trade_websocket(
     ws.on_upgrade(move |socket| stream_trades(socket, state.service, market_id))
 }
 
+async fn order_websocket(
+    State(state): State<ServiceState>,
+    Path(user_id): Path<u64>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| stream_order_updates(socket, state.service, user_id))
+}
+
 async fn stream_book_deltas(
     mut socket: WebSocket,
     service: InMemoryEngineService,
@@ -382,6 +394,24 @@ async fn stream_trades(mut socket: WebSocket, service: InMemoryEngineService, ma
 
         for projected in project_engine_event(event) {
             if let Some(message) = trade_stream_message(&market_id, &projected) {
+                if socket.send(Message::Text(message)).await.is_err() {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+async fn stream_order_updates(mut socket: WebSocket, service: InMemoryEngineService, user_id: u64) {
+    let mut events = service.subscribe_events();
+
+    loop {
+        let Ok(event) = events.recv().await else {
+            break;
+        };
+
+        for projected in project_engine_event(event) {
+            if let Some(message) = order_update_stream_message(user_id, &projected) {
                 if socket.send(Message::Text(message)).await.is_err() {
                     return;
                 }
