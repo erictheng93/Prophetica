@@ -1,11 +1,31 @@
 # SPEC-005 — KYC / AML 整合
 
 > 優先級：**P1**
-> 版本：v0.1.1 · 最後更新：2026-05-05
+> 版本：v0.1.2 · 最後更新：2026-05-06
 > 依賴：SPEC-001
 > 被依賴：SPEC-006, SPEC-010, SPEC-011
+> 實作狀態：✅ 可視為完成（工程驗證通過，2026-05-06）
 
 ---
+
+## 0. Implementation Status
+
+**Status: ✅ Complete / 可視為完成（2026-05-06）**
+
+SPEC-005 的工程實作已落地於 `kyc-service`、`mock-sumsub`、`packages/ts-sdk`、`apps/web` 與 `tools/scripts/seed.sh`。目前覆蓋 Tier 1 本地證件 hash / duplicate check、Tier 2/3 upgrade、SumSub webhook HMAC + idempotency、sanctions / PEP rescan、AML / SAR candidate、monthly report、前端 KYC status / submission flow，以及對應 SDK 與 mock webhook。
+
+完成驗證：
+
+- `rtk cargo test -p kyc-service --locked`
+- `rtk cargo clippy -p kyc-service --all-targets --locked -- -D warnings`
+- `rtk cargo test -p mock-sumsub --locked`
+- `rtk cargo clippy -p mock-sumsub --all-targets --locked -- -D warnings`
+- `rtk pnpm --filter @prophetica/ts-sdk test`
+- `rtk pnpm --filter @prophetica/ts-sdk lint`
+- `rtk pnpm --filter @prophetica/web test`
+- `rtk pnpm --filter @prophetica/web lint`
+
+外部供應商合約、真實 SumSub / Onfido sandbox 帳號、監管報表提交管道與 Compliance Officer 實際作業配置屬營運啟用項；不阻塞本 SPEC 於目前 codebase 中被視為工程完成。
 
 ## 1. Objective
 
