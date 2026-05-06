@@ -116,6 +116,18 @@ async fn rest_order_flow_uses_matching_engine_service_state() {
     assert_eq!(body["remaining_qty"], json!(0));
 }
 
+#[tokio::test]
+async fn book_websocket_route_is_registered() {
+    let app = service_router(InMemoryEngineService::default());
+
+    let response = app
+        .oneshot(empty_get("/ws/markets/mkt-election/book"))
+        .await
+        .expect("request should be handled");
+
+    assert_ne!(response.status(), StatusCode::NOT_FOUND);
+}
+
 fn order(order_id: &str, user_id: u64, side: OrderSide, price: u64, quantity: u64) -> NewOrder {
     NewOrder {
         order_id: OrderId::new(order_id),

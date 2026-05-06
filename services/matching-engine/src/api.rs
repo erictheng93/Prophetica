@@ -7,8 +7,12 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{
+        Path, Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
+    },
     http::{HeaderMap, StatusCode},
+    response::IntoResponse,
     routing::{delete, get, post},
 };
 use proto::proph::v1::{
@@ -23,6 +27,7 @@ use ulid::Ulid;
 
 use crate::{
     order_book::{OrderBook, Price, Quantity, SnapshotRestingOrder},
+    projection::{book_stream_message, project_engine_event},
     service::InMemoryEngineService,
 };
 
@@ -101,6 +106,7 @@ pub fn service_router(service: InMemoryEngineService) -> Router {
             "/api/v1/markets/:market_id/book",
             get(get_service_book_snapshot),
         )
+        .route("/ws/markets/:market_id/book", get(book_websocket))
         .with_state(ServiceState { service })
 }
 
@@ -309,6 +315,36 @@ async fn get_service_book_snapshot(
         bids: proto_levels(snapshot.bids),
         asks: proto_levels(snapshot.asks),
     }))
+}
+
+async fn book_websocket(
+    State(state): State<ServiceState>,
+    Path(market_id): Path<String>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| stream_book_deltas(socket, state.service, market_id))
+}
+
+async fn stream_book_deltas(
+    mut socket: WebSocket,
+    service: InMemoryEngineService,
+    market_id: String,
+) {
+    let mut events = service.subscribe_events();
+
+    loop {
+        let Ok(event) = events.recv().await else {
+            break;
+        };
+
+        for projected in project_engine_event(event) {
+            if let Some(message) = book_stream_message(&market_id, &projected) {
+                if socket.send(Message::Text(message)).await.is_err() {
+                    return;
+                }
+            }
+        }
+    }
 }
 
 fn aggregate_levels(
