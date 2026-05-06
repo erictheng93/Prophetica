@@ -16,10 +16,11 @@ use ulid::Ulid;
 
 use crate::{
     order_book::{
-        AddOrderResult, NewOrder, OrderBookError, OrderBookSnapshot, OrderId, OrderSide, OrderType,
-        Price, Quantity, SnapshotRestingOrder, Symbol,
+        AddOrderResult, NewOrder, OrderBook, OrderBookError, OrderBookSnapshot, OrderId, OrderSide,
+        OrderType, Price, Quantity, SnapshotRestingOrder, Symbol,
     },
     shard::{MarketCommand, MarketEvent, MarketShard},
+    snapshot::read_persisted_snapshot,
     wal::{self, WalRecord},
 };
 
@@ -232,6 +233,24 @@ impl InMemoryEngineService {
         Ok(service)
     }
 
+    /// Recovers configured markets from snapshots and then replays unapplied WAL records.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when snapshot or WAL files cannot be read or replayed.
+    pub fn recover_from_snapshot_and_wal_dirs(
+        wal_dir: PathBuf,
+        snapshot_dir: impl AsRef<Path>,
+        market_ids: impl IntoIterator<Item = String>,
+    ) -> anyhow::Result<Self> {
+        let service = Self::with_wal_dir(wal_dir);
+        for market_id in market_ids {
+            service.recover_market_from_snapshot_and_wal(snapshot_dir.as_ref(), &market_id)?;
+        }
+
+        Ok(service)
+    }
+
     #[must_use]
     pub fn subscribe_events(&self) -> broadcast::Receiver<EngineEvent> {
         self.events.subscribe()
@@ -325,6 +344,67 @@ impl InMemoryEngineService {
         Ok(())
     }
 
+    fn recover_market_from_snapshot_and_wal(
+        &self,
+        snapshot_dir: &Path,
+        market_id: &str,
+    ) -> anyhow::Result<()> {
+        let Some(wal_dir) = &self.wal_dir else {
+            return Ok(());
+        };
+        let path = market_wal_path(wal_dir, market_id);
+        let records = if path.exists() {
+            wal::read_records(&path)?
+        } else {
+            Vec::new()
+        };
+        let snapshot_path = market_snapshot_path(snapshot_dir, market_id);
+        let book = if snapshot_path.exists() {
+            let snapshot = read_persisted_snapshot(&snapshot_path)?;
+            let applied = snapshot.records_applied.min(records.len());
+            let book = OrderBook::from_snapshot(snapshot.book);
+            wal::replay_records_into(book, records.into_iter().skip(applied))
+        } else {
+            wal::replay_records(Symbol::new(market_id.to_string()), records)
+        }
+        .map_err(|error| anyhow::anyhow!("failed to replay market wal: {error:?}"))?;
+        let routes = routes_from_snapshot(market_id, &book.snapshot());
+        self.start_recovered_market(market_id, book, routes);
+
+        Ok(())
+    }
+
+    fn start_recovered_market(
+        &self,
+        market_id: &str,
+        book: OrderBook,
+        routes: HashMap<Vec<u8>, OrderRoute>,
+    ) {
+        let (command_tx, command_rx) = mpsc::channel(1024);
+        let (event_tx, mut event_rx) = mpsc::channel(1024);
+        let event_broadcast = self.events.clone();
+        let event_market_id = market_id.to_string();
+        tokio::spawn(async move {
+            let mut sequence = 1;
+            while let Some(event) = event_rx.recv().await {
+                let _ = event_broadcast.send(EngineEvent {
+                    market_id: event_market_id.clone(),
+                    sequence,
+                    event,
+                });
+                sequence += 1;
+            }
+        });
+        tokio::spawn(MarketShard::from_book(book).run(command_rx, event_tx));
+
+        if let Ok(mut shards) = self.shards.try_lock() {
+            shards.insert(market_id.to_string(), command_tx);
+        }
+        if let Ok(mut order_routes) = self.order_routes.try_lock() {
+            order_routes.extend(routes);
+        }
+    }
+
     fn append_wal_record(&self, market_id: &str, record: &WalRecord) -> Result<(), Status> {
         let Some(wal_dir) = &self.wal_dir else {
             return Ok(());
@@ -338,6 +418,35 @@ impl InMemoryEngineService {
 
 fn market_wal_path(wal_dir: &Path, market_id: &str) -> PathBuf {
     wal_dir.join(format!("{}.wal.jsonl", market_id.replace(['/', '\\'], "_")))
+}
+
+fn market_snapshot_path(snapshot_dir: &Path, market_id: &str) -> PathBuf {
+    snapshot_dir.join(format!(
+        "{}.snapshot.json",
+        market_id.replace(['/', '\\'], "_")
+    ))
+}
+
+fn routes_from_snapshot(
+    market_id: &str,
+    snapshot: &OrderBookSnapshot,
+) -> HashMap<Vec<u8>, OrderRoute> {
+    snapshot
+        .bids
+        .iter()
+        .chain(snapshot.asks.iter())
+        .filter_map(|order| {
+            proto_order_key(&order.order_id).map(|order_key| {
+                (
+                    order_key,
+                    OrderRoute {
+                        market_id: market_id.to_string(),
+                        internal_order_id: order.order_id.clone(),
+                    },
+                )
+            })
+        })
+        .collect()
 }
 
 fn proto_order_key(order_id: &OrderId) -> Option<Vec<u8>> {

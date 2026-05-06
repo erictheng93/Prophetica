@@ -64,8 +64,19 @@ pub fn replay_records(
     symbol: Symbol,
     records: impl IntoIterator<Item = WalRecord>,
 ) -> Result<OrderBook, OrderBookError> {
-    let mut book = OrderBook::new(symbol);
+    replay_records_into(OrderBook::new(symbol), records)
+}
 
+/// Replays WAL records into an existing order book, typically restored from a snapshot.
+///
+/// # Errors
+///
+/// Returns an [`OrderBookError`] when a recorded command is invalid for the
+/// reconstructed book state.
+pub fn replay_records_into(
+    mut book: OrderBook,
+    records: impl IntoIterator<Item = WalRecord>,
+) -> Result<OrderBook, OrderBookError> {
     for record in records {
         match record {
             WalRecord::PlaceOrder(order) => {

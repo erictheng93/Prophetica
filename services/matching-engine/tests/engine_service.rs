@@ -1,7 +1,15 @@
 #![allow(clippy::expect_used)]
 
-use matching_engine::service::InMemoryEngineService;
 use matching_engine::shard::MarketEvent;
+use matching_engine::{
+    order_book::{
+        NewOrder, OrderBook, OrderId as InternalOrderId, OrderSide, OrderType as InternalOrderType,
+        Symbol,
+    },
+    service::InMemoryEngineService,
+    snapshot::{PersistedOrderBookSnapshot, write_persisted_snapshot},
+    wal::{WalRecord, append_record},
+};
 use proto::proph::v1::{
     AuditMeta, CancelOrderRequest, GetBookSnapshotRequest, MarketId, OrderId, OrderType,
     PlaceOrderRequest, Side, TimeInForce, UserId, engine_service_client::EngineServiceClient,
@@ -339,9 +347,84 @@ async fn service_recovers_book_and_cancel_routes_from_market_wal() {
         .expect("recovered owner route should cancel");
 }
 
+#[tokio::test]
+async fn service_recovers_from_snapshot_then_replays_remaining_wal() {
+    let wal_dir = unique_wal_dir();
+    let snapshot_dir = unique_wal_dir();
+    std::fs::create_dir_all(&wal_dir).expect("wal dir should be created");
+    std::fs::create_dir_all(&snapshot_dir).expect("snapshot dir should be created");
+    let wal_path = wal_dir.join("mkt-election.wal.jsonl");
+
+    let first_ulid = ulid::Ulid::new();
+    let first = internal_order(first_ulid, "snapshot-maker", 55, 3);
+    append_record(&wal_path, &WalRecord::PlaceOrder(first.clone())).expect("first wal append");
+    let mut book = OrderBook::new(Symbol::new("mkt-election"));
+    book.add_order(first).expect("first order should rest");
+    write_persisted_snapshot(
+        &snapshot_dir.join("mkt-election.snapshot.json"),
+        &PersistedOrderBookSnapshot {
+            records_applied: 1,
+            book: book.snapshot(),
+        },
+    )
+    .expect("snapshot should write");
+
+    let second_ulid = ulid::Ulid::new();
+    append_record(
+        &wal_path,
+        &WalRecord::PlaceOrder(internal_order(second_ulid, "wal-maker", 56, 2)),
+    )
+    .expect("second wal append");
+
+    let recovered = InMemoryEngineService::recover_from_snapshot_and_wal_dirs(
+        wal_dir,
+        snapshot_dir,
+        ["mkt-election".to_string()],
+    )
+    .expect("service should recover from snapshot and wal");
+    let snapshot = recovered
+        .get_book_snapshot(tonic::Request::new(GetBookSnapshotRequest {
+            market_id: Some(market_id()),
+            depth: 10,
+        }))
+        .await
+        .expect("snapshot should recover")
+        .into_inner();
+
+    assert_eq!(snapshot.asks.len(), 2);
+    assert_eq!(snapshot.asks[0].price_pts, 55);
+    assert_eq!(snapshot.asks[0].qty, 3);
+    assert_eq!(snapshot.asks[1].price_pts, 56);
+    assert_eq!(snapshot.asks[1].qty, 2);
+
+    recovered
+        .cancel_order(tonic::Request::new(CancelOrderRequest {
+            audit: None,
+            order_id: Some(OrderId {
+                value: first_ulid.to_bytes().to_vec(),
+            }),
+            user_id: Some(UserId { value: 10 }),
+        }))
+        .await
+        .expect("snapshot-restored owner route should cancel");
+}
+
 fn unique_wal_dir() -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
         "prophetica-engine-service-wal-{}",
         ulid::Ulid::new()
     ))
+}
+
+fn internal_order(ulid: ulid::Ulid, client_order_id: &str, price: u64, quantity: u64) -> NewOrder {
+    let _ = client_order_id;
+    NewOrder {
+        order_id: InternalOrderId::new(ulid.to_string()),
+        user_id: 10,
+        symbol: Symbol::new("mkt-election"),
+        side: OrderSide::Sell,
+        order_type: InternalOrderType::Limit,
+        price,
+        quantity,
+    }
 }
