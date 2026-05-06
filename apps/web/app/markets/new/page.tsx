@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { ProphTile } from "@prophetica/ui";
 import { MarketCard } from "@/components/market-card";
-import { listNewest } from "@/lib/mock-markets";
+import { fetchNewestMarkets } from "@/lib/market-api";
 
 export const metadata: Metadata = {
   title: "新上架 — prophetica",
   description: "最近開盤的預測市場。",
 };
 
-export default function MarketsNewPage() {
-  const markets = listNewest();
+export default async function MarketsNewPage() {
+  const { markets } = await fetchNewestMarkets();
 
   return (
     <>

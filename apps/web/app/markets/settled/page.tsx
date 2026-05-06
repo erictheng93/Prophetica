@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { ProphTile } from "@prophetica/ui";
 import { MarketCard } from "@/components/market-card";
-import { listSettled } from "@/lib/mock-markets";
+import { fetchSettledMarkets } from "@/lib/market-api";
 
 export const metadata: Metadata = {
   title: "已結算 — prophetica",
   description: "近期完成 Oracle 結算的市場。",
 };
 
-export default function MarketsSettledPage() {
-  const markets = listSettled();
+export default async function MarketsSettledPage() {
+  const { markets } = await fetchSettledMarkets();
 
   return (
     <>

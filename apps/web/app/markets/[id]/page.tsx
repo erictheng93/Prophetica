@@ -9,13 +9,13 @@ import {
   formatCloseAt,
   formatPoints,
   getChartSeries,
-  getMarketById,
   getRecentTrades,
   type Market,
   type RecentTrade,
   statusLabel,
 } from "@/lib/mock-markets";
 import { fetchOrderBookSnapshot, type EngineOrderBookSnapshot } from "@/lib/engine-api";
+import { fetchMarketById } from "@/lib/market-api";
 
 interface PageProps {
   // Next.js 15: params is a Promise.
@@ -24,7 +24,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const market = getMarketById(id);
+  const { market } = await fetchMarketById(id);
   if (!market) return { title: "找不到市場 — prophetica" };
   return {
     title: `${market.title} — prophetica`,
@@ -34,7 +34,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function MarketDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const market = getMarketById(id);
+  const { market } = await fetchMarketById(id);
   if (!market) notFound();
 
   const isSettled = market.status === "settled";

@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { ProphTile } from "@prophetica/ui";
 import { MarketCard } from "@/components/market-card";
-import { listTrending } from "@/lib/mock-markets";
+import { fetchTrendingMarkets } from "@/lib/market-api";
 
 export const metadata: Metadata = {
   title: "熱門市場 — prophetica",
   description: "依 24 小時成交量排序的熱門對局。",
 };
 
-export default function MarketsTrendingPage() {
-  const markets = listTrending();
+export default async function MarketsTrendingPage() {
+  const { markets } = await fetchTrendingMarkets();
 
   return (
     <>

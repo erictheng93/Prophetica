@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import { ProphTile } from "@prophetica/ui";
 import { MarketCard } from "@/components/market-card";
-import { listOpenMarkets } from "@/lib/mock-markets";
+import { fetchOpenMarkets } from "@/lib/market-api";
 
 export const metadata: Metadata = {
   title: "全部市場 — prophetica",
   description: "瀏覽所有開放中的預測市場。",
 };
 
-export default function MarketsAllPage() {
-  const markets = listOpenMarkets();
+export default async function MarketsAllPage() {
+  const { markets } = await fetchOpenMarkets();
 
   return (
     <>
