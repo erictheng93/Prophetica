@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used)]
 
 use matching_engine::service::InMemoryEngineService;
+use matching_engine::shard::MarketEvent;
 use proto::proph::v1::{
     AuditMeta, CancelOrderRequest, GetBookSnapshotRequest, MarketId, OrderId, OrderType,
     PlaceOrderRequest, Side, TimeInForce, UserId, engine_service_client::EngineServiceClient,
@@ -194,4 +195,31 @@ async fn connect_engine_client(
     }
 
     panic!("grpc client should connect: {last_error:?}");
+}
+
+#[tokio::test]
+async fn service_subscribers_receive_ordered_market_events() {
+    let service = InMemoryEngineService::default();
+    let mut events = service.subscribe_events();
+
+    service
+        .place_order(tonic::Request::new(place_order_request(
+            10,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "client-maker",
+        )))
+        .await
+        .expect("place order should succeed");
+
+    assert!(matches!(
+        events.recv().await.expect("accepted event should publish"),
+        MarketEvent::OrderAccepted { .. }
+    ));
+    assert!(matches!(
+        events.recv().await.expect("resting event should publish"),
+        MarketEvent::OrderResting { .. }
+    ));
 }

@@ -6,7 +6,7 @@ use proto::proph::v1::{
     PlaceOrderRequest, PlaceOrderResponse, Side as ProtoSide, TimeInForce, UserId,
     engine_service_server::EngineService,
 };
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tonic::{Request, Response, Status};
 use ulid::Ulid;
 
@@ -15,13 +15,25 @@ use crate::{
         AddOrderResult, NewOrder, OrderBookError, OrderBookSnapshot, OrderId, OrderSide, OrderType,
         Price, Quantity, SnapshotRestingOrder, Symbol,
     },
-    shard::{MarketCommand, MarketShard},
+    shard::{MarketCommand, MarketEvent, MarketShard},
 };
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct InMemoryEngineService {
     shards: Arc<Mutex<HashMap<String, mpsc::Sender<MarketCommand>>>>,
     order_routes: Arc<Mutex<HashMap<Vec<u8>, OrderRoute>>>,
+    events: broadcast::Sender<MarketEvent>,
+}
+
+impl Default for InMemoryEngineService {
+    fn default() -> Self {
+        let (events, _event_rx) = broadcast::channel(1024);
+        Self {
+            shards: Arc::default(),
+            order_routes: Arc::default(),
+            events,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -175,6 +187,11 @@ impl EngineService for InMemoryEngineService {
 }
 
 impl InMemoryEngineService {
+    #[must_use]
+    pub fn subscribe_events(&self) -> broadcast::Receiver<MarketEvent> {
+        self.events.subscribe()
+    }
+
     async fn sender_for_market(&self, market_id: &str) -> mpsc::Sender<MarketCommand> {
         let mut shards = self.shards.lock().await;
         if let Some(sender) = shards.get(market_id) {
@@ -182,7 +199,13 @@ impl InMemoryEngineService {
         }
 
         let (command_tx, command_rx) = mpsc::channel(1024);
-        let (event_tx, _event_rx) = mpsc::channel(1024);
+        let (event_tx, mut event_rx) = mpsc::channel(1024);
+        let event_broadcast = self.events.clone();
+        tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                let _ = event_broadcast.send(event);
+            }
+        });
         let shard = MarketShard::new(Symbol::new(market_id.to_string()));
         tokio::spawn(shard.run(command_rx, event_tx));
         shards.insert(market_id.to_string(), command_tx.clone());
