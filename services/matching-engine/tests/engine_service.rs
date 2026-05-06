@@ -3,8 +3,10 @@
 use matching_engine::service::InMemoryEngineService;
 use proto::proph::v1::{
     AuditMeta, CancelOrderRequest, GetBookSnapshotRequest, MarketId, OrderId, OrderType,
-    PlaceOrderRequest, Side, TimeInForce, UserId, engine_service_server::EngineService,
+    PlaceOrderRequest, Side, TimeInForce, UserId, engine_service_client::EngineServiceClient,
+    engine_service_server::EngineService,
 };
+use tokio::sync::oneshot;
 
 fn market_id() -> MarketId {
     MarketId {
@@ -116,4 +118,80 @@ async fn cancel_order_rejects_non_owner_and_allows_owner() {
         .into_inner();
     let cancelled = owner.order.expect("response should include order");
     assert_eq!(cancelled.qty_remaining, 0);
+}
+
+#[tokio::test]
+async fn grpc_server_serves_engine_service_requests() {
+    let addr = free_loopback_addr();
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    let server = tokio::spawn(async move {
+        matching_engine::api::run_grpc_on_addr(addr, async {
+            let _ = shutdown_rx.await;
+        })
+        .await
+    });
+
+    let mut client = connect_engine_client(addr).await;
+    let response = client
+        .place_order(place_order_request(
+            10,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "client-maker",
+        ))
+        .await
+        .expect("place order should succeed over grpc")
+        .into_inner();
+    assert_eq!(
+        response
+            .order
+            .expect("response should include order")
+            .qty_remaining,
+        3
+    );
+
+    let snapshot = client
+        .get_book_snapshot(GetBookSnapshotRequest {
+            market_id: Some(market_id()),
+            depth: 10,
+        })
+        .await
+        .expect("snapshot should succeed over grpc")
+        .into_inner();
+    assert_eq!(snapshot.asks.len(), 1);
+    assert_eq!(snapshot.asks[0].qty, 3);
+
+    shutdown_tx.send(()).expect("shutdown signal should send");
+    server
+        .await
+        .expect("server task should join")
+        .expect("server should stop cleanly");
+}
+
+fn free_loopback_addr() -> std::net::SocketAddr {
+    let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .expect("ephemeral listener should bind");
+    listener
+        .local_addr()
+        .expect("ephemeral listener should expose local addr")
+}
+
+async fn connect_engine_client(
+    addr: std::net::SocketAddr,
+) -> EngineServiceClient<tonic::transport::Channel> {
+    let endpoint = format!("http://{addr}");
+    let mut last_error = None;
+    for _ in 0..20 {
+        match EngineServiceClient::connect(endpoint.clone()).await {
+            Ok(client) => return client,
+            Err(error) => {
+                last_error = Some(error);
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+        }
+    }
+
+    panic!("grpc client should connect: {last_error:?}");
 }

@@ -1,5 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    future::Future,
+    net::SocketAddr,
     sync::Arc,
 };
 
@@ -10,8 +12,14 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, signal};
+use tonic::transport::Server;
 
-use crate::order_book::{OrderBook, Price, Quantity, SnapshotRestingOrder};
+use proto::proph::v1::engine_service_server::EngineServiceServer;
+
+use crate::{
+    order_book::{OrderBook, Price, Quantity, SnapshotRestingOrder},
+    service::InMemoryEngineService,
+};
 
 #[derive(Debug, Clone)]
 struct AppState {
@@ -49,6 +57,16 @@ pub fn router(books: impl IntoIterator<Item = (String, OrderBook)>) -> Router {
         .with_state(state)
 }
 
+/// Runs all matching-engine transport surfaces.
+///
+/// # Errors
+///
+/// Returns an error when either HTTP or gRPC serving fails.
+pub async fn run() -> anyhow::Result<()> {
+    let ((), ()) = tokio::try_join!(run_http(), run_grpc())?;
+    Ok(())
+}
+
 /// Runs the matching-engine HTTP server with SPEC-003 read facade routes.
 ///
 /// # Errors
@@ -64,6 +82,34 @@ pub async fn run_http() -> anyhow::Result<()> {
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    Ok(())
+}
+
+/// Runs the matching-engine gRPC server with SPEC-003 command routes.
+///
+/// # Errors
+///
+/// Returns an error when socket binding or serving fails.
+pub async fn run_grpc() -> anyhow::Result<()> {
+    let bind_addr = grpc_bind_addr_from_env();
+    tracing::info!(addr = %bind_addr, "matching engine grpc listening");
+    run_grpc_on_addr(bind_addr, shutdown_signal()).await
+}
+
+/// Runs the matching-engine gRPC server on a concrete address.
+///
+/// # Errors
+///
+/// Returns an error when tonic fails to serve the gRPC endpoint.
+pub async fn run_grpc_on_addr(
+    bind_addr: SocketAddr,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> anyhow::Result<()> {
+    Server::builder()
+        .add_service(EngineServiceServer::new(InMemoryEngineService::default()))
+        .serve_with_shutdown(bind_addr, shutdown)
         .await?;
 
     Ok(())
@@ -115,6 +161,14 @@ fn aggregate_levels(
             .map(|(price_pts, qty)| BookLevelResponse { price_pts, qty })
             .collect()
     }
+}
+
+fn grpc_bind_addr_from_env() -> SocketAddr {
+    let port = std::env::var("MATCHING_ENGINE_GRPC_PORT")
+        .ok()
+        .and_then(|raw| raw.parse::<u16>().ok())
+        .unwrap_or(crate::DEFAULT_GRPC_PORT);
+    SocketAddr::from(([0, 0, 0, 0], port))
 }
 
 async fn shutdown_signal() {

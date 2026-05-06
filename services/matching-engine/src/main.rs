@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
                 .map_err(anyhow::Error::from)?;
             let local = LocalSet::new();
 
-            local.block_on(&runtime, async { matching_engine::api::run_http().await })
+            local.block_on(&runtime, async { matching_engine::api::run().await })
         })?
         .join()
         .map_err(|_| anyhow::anyhow!("matching-engine runtime thread panicked"))?
