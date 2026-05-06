@@ -19,10 +19,16 @@ const sectionItems = [
   { key: "contact", href: "/support/contact" },
 ];
 
-function SupportSectionNav({ links }: { links: SiteNavLink[] }) {
+function SupportSectionNav({
+  links,
+  ariaLabel,
+}: {
+  links: SiteNavLink[];
+  ariaLabel: string;
+}) {
   return (
     <nav
-      aria-label="客服 區段導覽"
+      aria-label={ariaLabel}
       className="border-b border-proph-divider-soft bg-proph-canvas-parchment"
     >
       <div className="mx-auto max-w-proph overflow-x-auto px-6 md:px-10">
@@ -43,7 +49,11 @@ function SupportSectionNav({ links }: { links: SiteNavLink[] }) {
   );
 }
 
-export default async function SupportLayout({ children }: { children: ReactNode }) {
+export default async function SupportLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const [tNav, footerColumns] = await Promise.all([
     getTranslations("sectionNav.support"),
     getFooterColumns(["support", "legal"]),
@@ -55,8 +65,12 @@ export default async function SupportLayout({ children }: { children: ReactNode 
 
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
-      <SupportSectionNav links={sectionLinks} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
+      <SupportSectionNav links={sectionLinks} ariaLabel={tNav("ariaLabel")} />
       {children}
       <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
     </main>

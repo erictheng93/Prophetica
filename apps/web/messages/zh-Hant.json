@@ -97,10 +97,412 @@
       "settled": "已結算"
     },
     "support": {
+      "ariaLabel": "客服 區段導覽",
       "overview": "概覽",
       "faq": "常見問題",
       "disputes": "申訴流程",
       "contact": "聯絡我們"
+    }
+  },
+  "support": {
+    "overview": {
+      "metadata": {
+        "title": "客服中心 — prophetica",
+        "description": "24/7 客服體系。一般查詢、儲值、KYC、結算、責任博弈、安全事件。"
+      },
+      "hero": {
+        "kicker": "客服中心",
+        "headline": "找對人，問對問題。",
+        "tagline": "我們把所有客服管道與常見議題整理在這裡。複雜個案會由受過合規培訓的 T2 / T3 客服接手；責任博弈與 Compliance 案件優先處理。"
+      },
+      "channels": {
+        "heading": "服務管道",
+        "intro": "依問題性質選擇最快的管道。RG 與 Compliance 個案由受過認證的客服處理。",
+        "items": {
+          "ticket": {
+            "label": "站內工單",
+            "sla": "24 小時內首次回應",
+            "desc": "適用所有帳號 / 結算 / 一般爭議。中文 / 英文。",
+            "hours": "全時段"
+          },
+          "email": {
+            "label": "Email",
+            "sla": "48 小時內首次回應",
+            "desc": "service@（執照地確認後公告）。可附文件。",
+            "hours": "全時段"
+          },
+          "chat": {
+            "label": "Live Chat",
+            "sla": "5 分鐘內回應",
+            "desc": "限已登入用戶。中文 / 英文 / 日文。",
+            "hours": "24/7"
+          },
+          "phone": {
+            "label": "電話客服",
+            "sla": "4 小時內回撥",
+            "desc": "限 RG 高風險、Compliance、紛爭升級個案。",
+            "hours": "辦公時間"
+          }
+        }
+      },
+      "categories": {
+        "heading": "依主題分流",
+        "items": {
+          "account": {
+            "kicker": "帳號",
+            "title": "登入 / 註冊 / 兩步驗證",
+            "body": "找不到驗證碼、密碼重設、帳戶被鎖定。"
+          },
+          "topup": {
+            "kicker": "儲值",
+            "title": "金流問題",
+            "body": "點數未入帳、支付失敗、月儲值上限。"
+          },
+          "kyc": {
+            "kicker": "KYC",
+            "title": "身份驗證",
+            "body": "Tier 升級失敗、SumSub 流程、證件保存疑問。"
+          },
+          "settlement": {
+            "kicker": "結算",
+            "title": "Oracle 與爭議",
+            "body": "對結算結果有疑問、24 小時申訴。"
+          },
+          "security": {
+            "kicker": "安全",
+            "title": "帳戶被盜",
+            "body": "立即聯繫客服，4 小時內優先回應。"
+          },
+          "rg": {
+            "kicker": "責任博弈",
+            "title": "我玩太多了",
+            "body": "限額、冷靜期、自我排除、外部援助。"
+          }
+        }
+      },
+      "rgCallout": {
+        "kicker": "責任博弈優先",
+        "headline": "如果你或身邊的人覺得遊戲已失去掌控，這條入口優先於所有其他協助。",
+        "body": "我們有受過認證的責任博弈客服、限額 / 冷靜期 / 自我排除工具，以及獨立於 prophetica 之外的外部專業資源。撥打援助專線完全免費，且不會與 prophetica 交換任何資訊。",
+        "cta": "了解責任博弈工具",
+        "helplineLabel": "衛福部安心專線 · 24 小時"
+      }
+    },
+    "faq": {
+      "metadata": {
+        "title": "常見問題 — prophetica",
+        "description": "帳號、儲值、KYC、結算、責任博弈、安全等常見問題與解答。"
+      },
+      "hero": {
+        "kicker": "客服 / 常見問題",
+        "headline": "先看這裡，多半能解決。",
+        "tagline": "我們收集了過去半年最常被問的問題。沒找到答案？開工單或前往聯絡頁。"
+      },
+      "sections": {
+        "account": {
+          "title": "帳號",
+          "items": {
+            "forgotPassword": {
+              "q": "我忘記密碼怎麼辦？",
+              "a": "在登入頁點「忘記密碼」，系統會將重設連結寄至註冊 Email。連結 24 小時內有效。"
+            },
+            "verificationCode": {
+              "q": "收不到驗證碼？",
+              "a": "檢查垃圾郵件夾，確認 Email 拼寫無誤；仍未收到請開工單。"
+            },
+            "frozen": {
+              "q": "為什麼帳戶被凍結？",
+              "a": "凍結原因會以 Email 與站內訊息通知。常見原因：KYC 重啟、自我排除生效、可疑活動偵測。可透過工單申請審核。"
+            },
+            "multiAccount": {
+              "q": "可以同時擁有多個帳號嗎？",
+              "a": "不可。SPEC-001 ToS-007 規定洗售 / 多帳號 / 操縱行為將永久停權。"
+            }
+          }
+        },
+        "topup": {
+          "title": "儲值",
+          "items": {
+            "missingPoints": {
+              "q": "儲值後點數沒入帳？",
+              "a": "通常 5 分鐘內入帳。超過 30 分鐘請附訂單編號開工單，金流組會優先處理。"
+            },
+            "cashout": {
+              "q": "點數可以兌回現金嗎？",
+              "a": "<strong>不可。</strong> 站內點數僅限站內使用，不可兌回現金、虛擬貨幣或實體商品。這是 prophetica 的法律邊界（SPEC-001 §1.1 三原則之一）。"
+            },
+            "monthlyLimit": {
+              "q": "為什麼有月儲值上限？",
+              "a": "責任博弈機制（SPEC-006 §3.1）的強制保護。Tier 1 為 TWD 30,000；升級 Tier 2 / 3 可解鎖更高上限。"
+            },
+            "raiseLimit": {
+              "q": "降低儲值上限後可以馬上提高嗎？",
+              "a": "降低立即生效；提高需 24 小時冷卻期，且過去 30 日無風險訊號才會核准。"
+            }
+          }
+        },
+        "kyc": {
+          "title": "身份驗證 KYC",
+          "items": {
+            "whyKyc": {
+              "q": "為什麼要做 KYC？",
+              "a": "合規與反洗錢要求。我們採分層 KYC，Tier 1 最低層級只需姓名 / 生日 / 國家 / 證件號（不需上傳影像，10 秒完成）。"
+            },
+            "failed": {
+              "q": "KYC 失敗了怎麼辦？",
+              "a": "24 小時內最多 5 次嘗試。多次失敗會自動引導至 Tier 2 SumSub 完整流程；仍無法通過請聯繫客服。"
+            },
+            "documentImages": {
+              "q": "我的證件影像如何處理？",
+              "a": "由 SumSub Cloud（EU region）與 Cloudflare R2（EU region）Object Lock 加密儲存。<strong>客服無法直接讀取證件影像</strong>，只有 Compliance Officer 在通過簽核後可申請查閱。完整說明見 <kycPrivacyLink>KYC 隱私說明</kycPrivacyLink>。"
+            }
+          }
+        },
+        "settlement": {
+          "title": "結算與市場",
+          "items": {
+            "oracle": {
+              "q": "結算結果如何判定？",
+              "a": "由 SPEC-004 規定的 Oracle 來源判定。每個市場頁面會明確列出 oracle source（例如：中央氣象署官網、Federal Reserve 官方公告）。"
+            },
+            "dispute": {
+              "q": "對結算結果有疑問？",
+              "a": "24 小時申訴窗口開放，可在<disputesLink>申訴流程</disputesLink>提交。所有申訴 24 小時內會收到狀態回覆（即使尚未裁決）。"
+            },
+            "delist": {
+              "q": "市場可以提前下架嗎？",
+              "a": "可以。SPEC-015 §4 賦予 Compliance Officer 緊急下架權，任何狀態皆可強制下架（記錄理由）。下架後既有持倉照常結算。"
+            }
+          }
+        },
+        "rg": {
+          "title": "責任博弈",
+          "items": {
+            "tooMuch": {
+              "q": "我覺得自己玩太多了，怎麼辦？",
+              "a": "馬上前往<rgLink>責任博弈</rgLink>設定限額或啟動冷靜期。外部援助專線 <helplineLink>1925</helplineLink>（衛福部安心專線）24 小時免費，且不會與 prophetica 交換任何資訊。"
+            },
+            "selfExclusion": {
+              "q": "自我排除可以解除嗎？",
+              "a": "Time-out（6 個月 / 1 年）到期後可申請解除，並有 14 天延長冷靜期。永久排除無法解除。"
+            },
+            "thirdParty": {
+              "q": "親友可以代為申請停權嗎？",
+              "a": "我們接受第三方通報，但不會直接以親友通報為據停權；通報觸發系統 review，可能聯繫玩家邀請其自我排除（SPEC-006 §5.4）。"
+            }
+          }
+        },
+        "security": {
+          "title": "安全",
+          "items": {
+            "stolen": {
+              "q": "帳戶被盜怎麼辦？",
+              "a": "立即聯繫客服（緊急 — 4 小時優先回應）。我們會凍結帳戶並啟動 Security 團隊審查。建議完成 KYC 後立即啟動兩步驗證。"
+            },
+            "mfa": {
+              "q": "我可以開啟兩步驗證嗎？",
+              "a": "可以。建議使用 TOTP（Google Authenticator / 1Password / Authy）。SMS OTP 為 fallback；高活動量帳戶會被要求升級 step-up MFA。"
+            }
+          }
+        }
+      },
+      "notFound": {
+        "heading": "沒找到答案？",
+        "body": "開工單，平均 24 小時內首次回應。緊急安全事件 4 小時內優先處理。",
+        "contactCta": "聯絡我們",
+        "disputesCta": "申訴流程"
+      }
+    },
+    "contact": {
+      "metadata": {
+        "title": "聯絡我們 — prophetica",
+        "description": "客服管道、SLA 與服務時段。"
+      },
+      "hero": {
+        "kicker": "客服 / 聯絡我們",
+        "headline": "找最合適的管道，最快得到回應。",
+        "tagline": "不同問題走不同管道。已登入用戶建議走站內工單與 Live Chat；未登入或一般詢問走下方表單與 Email。"
+      },
+      "channels": {
+        "heading": "服務管道",
+        "intro": "依問題性質選最合適的管道。緊急狀況一律走 Live Chat，受過認證的客服優先接案。",
+        "slaLabel": "SLA",
+        "hoursLabel": "時段",
+        "items": {
+          "ticket": {
+            "label": "站內工單",
+            "detail": "登入後在帳號頁建立工單；可附截圖 / PDF。",
+            "sla": "24 小時內首次回應",
+            "hours": "全時段（系統收件）",
+            "bestFor": "帳號 / 結算 / 一般爭議"
+          },
+          "email": {
+            "label": "Email",
+            "detail": "service@（執照地確認後公告完整 email）",
+            "sla": "48 小時內首次回應",
+            "hours": "全時段（系統收件）",
+            "bestFor": "可附較長文件、不急的詢問"
+          },
+          "chat": {
+            "label": "Live Chat",
+            "detail": "右下角浮動視窗，須登入。中文 / 英文 / 日文。",
+            "sla": "5 分鐘內回應",
+            "hours": "24 / 7",
+            "bestFor": "已登入用戶緊急狀況"
+          },
+          "phone": {
+            "label": "電話客服",
+            "detail": "限 Compliance 與紛爭升級個案；不接受一般查詢。",
+            "sla": "4 小時內回撥",
+            "hours": "週一至週五 09:00–18:00（執照地時區）",
+            "bestFor": "RG 高風險、Compliance 升級"
+          }
+        }
+      },
+      "form": {
+        "heading": "一般詢問",
+        "intro": "非帳號相關詢問可在這裡留言。需要查帳號或交易紀錄請直接登入後開工單，會更快。",
+        "fields": {
+          "name": "你的稱呼",
+          "namePlaceholder": "王小明",
+          "email": "聯絡 Email",
+          "subject": "主旨",
+          "subjectPlaceholder": "一句話描述你想問的事",
+          "body": "訊息內容",
+          "bodyPlaceholder": "請說明你的問題與你已嘗試的步驟。"
+        },
+        "privacyNote": "提交即代表你同意我們依<privacyLink>隱私政策</privacyLink>處理你提供的聯絡資料。我們不會把你的 Email 用於行銷推播。",
+        "submit": "送出（後端待接）"
+      }
+    },
+    "disputes": {
+      "metadata": {
+        "title": "申訴流程 — prophetica",
+        "description": "結算爭議、KYC 異議、安全事件、技術故障的申訴流程與時程。"
+      },
+      "hero": {
+        "kicker": "客服 / 申訴流程",
+        "headline": "說清楚問題，我們會處理。",
+        "tagline": "所有申訴 24 小時內收到狀態回覆（即使尚未裁決）。結算爭議與安全事件由 T2 / T3 客服優先處理。",
+        "faqCta": "先看常見問題"
+      },
+      "priority": {
+        "urgent": "緊急",
+        "high": "高",
+        "standard": "標準"
+      },
+      "categories": {
+        "heading": "分類與優先級",
+        "intro": "分類影響工單路由與 SLA。安全事件最優先；結算 / 儲值 / RG 為高優先；其餘為標準。",
+        "items": {
+          "settlement": {
+            "label": "結算爭議",
+            "sla": "24 小時內首次回應",
+            "body": "對某個市場的 Oracle 判定有疑問。請附市場 ID 與你認為應為的結果。SPEC-004 §5 規定 24 小時申訴窗口；逾期受理但裁決機率降低。"
+          },
+          "kyc": {
+            "label": "KYC 異議",
+            "sla": "24 小時內首次回應",
+            "body": "Tier 升級被拒、SumSub 流程多次失敗、證件被誤判。客服會在審核後安排重啟流程或人工 review。"
+          },
+          "topup": {
+            "label": "儲值問題",
+            "sla": "24 小時內首次回應",
+            "body": "點數未入帳、支付被拒、月儲值上限相關問題。請附訂單編號與支付通路。"
+          },
+          "security": {
+            "label": "安全事件",
+            "sla": "4 小時內優先回應",
+            "body": "帳號被盜、可疑登入、SMS 被攔截。客服會立即凍結帳戶並啟動 Security 審查。"
+          },
+          "technical": {
+            "label": "技術故障",
+            "sla": "24 小時內首次回應",
+            "body": "頁面錯誤、API 失敗、資料顯示異常。請描述重現步驟與時間。"
+          },
+          "rg": {
+            "label": "責任博弈個案",
+            "sla": "4 小時內回撥（電話）",
+            "body": "玩家或親友覺得遊戲節奏失控。受過認證的 RG 客服處理；不會以親友通報為據強制停權。"
+          }
+        }
+      },
+      "flow": {
+        "heading": "工單會經過什麼？",
+        "intro": "SPEC-012 §3.2 工單狀態機。每次狀態變動會在工單留言串通知你。",
+        "steps": {
+          "new": {
+            "state": "NEW",
+            "label": "工單建立",
+            "body": "你提交後立即進入 NEW 狀態，系統自動分配工單 ID。"
+          },
+          "assigned": {
+            "state": "ASSIGNED",
+            "label": "已分派",
+            "body": "T1 / T2 / T3 客服依分類接案，通常 1 小時內。"
+          },
+          "inProgress": {
+            "state": "IN_PROGRESS",
+            "label": "處理中",
+            "body": "客服查證中。期間可能在工單留言請你補件。"
+          },
+          "awaitingUser": {
+            "state": "AWAITING_USER",
+            "label": "等你回覆",
+            "body": "客服需要你提供更多資訊；逾期未回應工單會自動關閉。"
+          },
+          "resolved": {
+            "state": "RESOLVED",
+            "label": "已解決",
+            "body": "客服認定問題已處理，等你 confirm。"
+          },
+          "closed": {
+            "state": "CLOSED",
+            "label": "已結案",
+            "body": "你 confirm 或自動 7 日後關閉。後續若有相同問題請新開工單。"
+          }
+        }
+      },
+      "privacy": {
+        "heading": "客服在你提交申訴後看得到什麼？",
+        "visible": {
+          "heading": "客服可查",
+          "items": {
+            "content": "你提交的工單內容、附件、時間戳",
+            "profile": "你的 KYC tier、最近 30 日工單、儲值 / 交易紀錄",
+            "hash": "證件號碼<strong>末 4 碼 hash</strong>（用於唯一性比對，無法還原）",
+            "rg": "你的 RG 評分歷史"
+          }
+        },
+        "hidden": {
+          "heading": "客服不可查",
+          "items": {
+            "documentImages": "你的證件影像（須 Compliance 簽核）",
+            "ids": "你的完整身份證號 / 信用卡號",
+            "password": "你的密碼（任何形式）",
+            "external": "你與其他平台的活動"
+          }
+        },
+        "auditNote": "每筆客服查詢都會寫入 audit_logs，包含操作員 ID、時間、動作類型，可被合規與監管稽核。"
+      },
+      "form": {
+        "heading": "提交申訴",
+        "intro": "送出後即時收到工單 ID。同個案件請使用同一工單追蹤，避免重複建立。",
+        "fields": {
+          "category": "分類",
+          "categoryPlaceholder": "— 請選擇分類 —",
+          "categoryOption": "{label}（{priority}）",
+          "marketId": "相關市場 ID（如有）",
+          "marketIdHint": "結算 / 交易爭議請務必填寫，可在市場頁網址列複製。",
+          "body": "詳細說明",
+          "bodyPlaceholder": "請描述發生時間、預期行為、實際行為、你已嘗試的步驟。",
+          "attachments": "附件（截圖、PDF；單檔 ≤ 10 MB）",
+          "attachmentsHint": "請勿上傳證件影像。客服在工單範圍內無法存取證件，亦不會主動要求。"
+        },
+        "consent": "我了解工單範圍內的查詢會被記錄於 audit_logs，並接受<privacyLink>隱私政策</privacyLink>對申訴資料的處理規範。",
+        "footnote": "送出後將顯示工單 ID。請保留以便追蹤進度。",
+        "submit": "送出申訴（後端待接）"
+      }
     }
   },
   "about": {
