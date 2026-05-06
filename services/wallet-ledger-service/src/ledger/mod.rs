@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use sdk::ledger::{LedgerEntryDraft, LedgerTransactionDraft, LedgerValidationError};
+use serde_json::json;
 use sqlx::{PgPool, Postgres, Transaction};
 use thiserror::Error;
 
@@ -274,7 +275,10 @@ impl LedgerStore for PostgresLedgerStore {
         idempotency_key: &str,
     ) -> Result<Option<CommittedLedgerTransaction>, LedgerStoreError> {
         let row = sqlx::query_as::<_, (i64, String)>(
-            "SELECT id, idempotency_key FROM ledger_transactions WHERE idempotency_key = $1",
+            "SELECT txn.id, txn.idempotency_key \
+             FROM ledger_transactions txn \
+             LEFT JOIN idempotency_records idem ON idem.txn_id = txn.id \
+             WHERE idem.key = $1 OR txn.idempotency_key = $1",
         )
         .bind(idempotency_key)
         .fetch_optional(&self.pool)
@@ -328,6 +332,7 @@ impl LedgerStore for PostgresLedgerStore {
             .await?;
         }
 
+        persist_idempotency_record(&mut tx, txn_id, &idempotency_key).await?;
         tx.commit().await?;
 
         Ok(CommittedLedgerTransaction {
@@ -415,6 +420,31 @@ async fn insert_ledger_transaction(
     .bind(draft.description.as_deref())
     .fetch_optional(&mut **tx)
     .await
+}
+
+async fn persist_idempotency_record(
+    tx: &mut Transaction<'_, Postgres>,
+    txn_id: i64,
+    idempotency_key: &str,
+) -> Result<(), sqlx::Error> {
+    let response = json!({
+        "txn_id": txn_id,
+        "idempotency_key": idempotency_key,
+        "replayed": false,
+    });
+
+    sqlx::query(
+        "INSERT INTO idempotency_records (key, txn_id, response, status_code, expires_at) \
+         VALUES ($1, $2, $3, 200, NOW() + INTERVAL '7 days') \
+         ON CONFLICT (key) DO NOTHING",
+    )
+    .bind(idempotency_key)
+    .bind(txn_id)
+    .bind(response)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
 }
 
 async fn ensure_account(
