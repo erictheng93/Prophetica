@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { TrendDown, TrendUp } from "@phosphor-icons/react/dist/ssr";
+import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
 import {
   AuthCta,
@@ -21,16 +22,43 @@ import {
 import { fetchWalletOverview, type WalletOverview } from "@/lib/api-gateway";
 import { fetchPortfolioPositions } from "@/lib/position-api";
 
-export const metadata: Metadata = {
-  title: "個人持倉 — prophetica",
-  description: "查看你的進行中與已結算持倉，以及整體損益快照。",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("portfolio.metadata");
+  return {
+    title: t("title"),
+    description: t("description"),
+    robots: { index: false, follow: false },
+  };
+}
+
+type Tone = "neutral" | "positive" | "negative";
+
+function pickTone(value: number): Tone {
+  if (value > 0) return "positive";
+  if (value < 0) return "negative";
+  return "neutral";
+}
+
+function toneClass(tone: Tone): string {
+  switch (tone) {
+    case "positive":
+      return "text-proph-feedback-success";
+    case "negative":
+      return "text-proph-feedback-error";
+    default:
+      return "text-proph-ink";
+  }
+}
+
+type PortfolioCopy = Awaited<ReturnType<typeof getTranslations<"portfolio">>>;
 
 export default async function PortfolioPage() {
-  const sectionFooterColumns = await getFooterColumns(["markets", "legal", "support"]);
-  const walletOverview = await fetchWalletOverview();
-  const portfolio = await fetchPortfolioPositions();
+  const [t, sectionFooterColumns, walletOverview, portfolio] = await Promise.all([
+    getTranslations("portfolio"),
+    getFooterColumns(["markets", "legal", "support"]),
+    fetchWalletOverview(),
+    fetchPortfolioPositions(),
+  ]);
   const { active, settled, summary } = portfolio;
 
   return (
@@ -39,83 +67,78 @@ export default async function PortfolioPage() {
 
       <ProphTile
         surface="light"
-        kicker="個人持倉"
-        headline="你目前的對局組合。"
-        tagline="進行中持倉以最後成交價即時計價，已結算持倉顯示實際損益。所有金額以站內點數表示，不可兌回現金。"
+        kicker={t("hero.kicker")}
+        headline={t("hero.headline")}
+        tagline={t("hero.tagline")}
       />
 
-      <DemoBanner />
+      <section className="bg-proph-canvas-parchment">
+        <div className="mx-auto max-w-proph px-6 py-6 md:px-10">
+          <p className="rounded-proph-md border border-proph-primary/30 bg-proph-canvas px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+            <strong className="font-semibold text-proph-ink">{t("demoBanner.label")}</strong>{" "}
+            {t("demoBanner.body")}
+          </p>
+        </div>
+      </section>
 
-      <SummaryCards summary={summary} walletOverview={walletOverview} />
+      <SummaryCards t={t} summary={summary} walletOverview={walletOverview} />
 
-      <LedgerActivitySection walletOverview={walletOverview} />
+      <LedgerActivitySection t={t} walletOverview={walletOverview} />
 
-      <PositionsSection title="進行中" subtitle="跟著市場波動的持倉，價格採用最後成交價。" positions={active} variant="active" />
-
-      <PositionsSection title="已結算" subtitle="Oracle 已判定、結果已入帳。" positions={settled} variant="settled" />
+      <PositionsSection t={t} positions={active} variant="active" />
+      <PositionsSection t={t} positions={settled} variant="settled" />
 
       <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
     </main>
   );
 }
 
-function DemoBanner() {
-  return (
-    <section className="bg-proph-canvas-parchment">
-      <div className="mx-auto max-w-proph px-6 py-6 md:px-10">
-        <p className="rounded-proph-md border border-proph-primary/30 bg-proph-canvas px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-          <strong className="font-semibold text-proph-ink">示意數據。</strong>{" "}
-          這些是 prophetica 團隊內部測試資料，幫你理解持倉頁長相。實際持倉須在你登入並完成 KYC 後顯示。
-        </p>
-      </div>
-    </section>
-  );
-}
-
 function SummaryCards({
+  t,
   summary,
   walletOverview,
 }: {
+  t: PortfolioCopy;
   summary: PortfolioSummary;
   walletOverview: WalletOverview;
 }) {
   const cards = [
     {
-      kicker: "Wallet",
+      kicker: t("summary.wallet.kicker"),
       label:
         walletOverview.source === "api-gateway"
-          ? `API gateway user ${walletOverview.balance.userId}`
-          : "API gateway fallback",
+          ? t("summary.wallet.labelLive", { userId: walletOverview.balance.userId })
+          : t("summary.wallet.labelFallback"),
       value: formatPoints(walletOverview.balance.availablePoints),
       tone: "neutral" as const,
     },
     {
-      kicker: "Locked",
-      label: "Locked + frozen balance",
+      kicker: t("summary.locked.kicker"),
+      label: t("summary.locked.label"),
       value: formatPoints(walletOverview.balance.lockedPoints + walletOverview.balance.frozenPoints),
       tone: "neutral" as const,
     },
     {
-      kicker: "進行中投入",
-      label: "總成本",
+      kicker: t("summary.activeCost.kicker"),
+      label: t("summary.activeCost.label"),
       value: formatPoints(summary.totalCostPoints),
       tone: "neutral" as const,
     },
     {
-      kicker: "進行中市值",
-      label: "目前價值",
+      kicker: t("summary.activeValue.kicker"),
+      label: t("summary.activeValue.label"),
       value: formatPoints(summary.currentValuePoints),
       tone: "neutral" as const,
     },
     {
-      kicker: "進行中未實現",
-      label: "未實現損益",
+      kicker: t("summary.unrealized.kicker"),
+      label: t("summary.unrealized.label"),
       value: formatPointsSigned(summary.unrealizedPnlPoints),
       tone: pickTone(summary.unrealizedPnlPoints),
     },
     {
-      kicker: "已結算",
-      label: "累計已實現損益",
+      kicker: t("summary.realized.kicker"),
+      label: t("summary.realized.label"),
       value: formatPointsSigned(summary.realizedPnlPointsLifetime),
       tone: pickTone(summary.realizedPnlPointsLifetime),
     },
@@ -126,7 +149,10 @@ function SummaryCards({
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {cards.map((card) => (
-            <article key={card.kicker} className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+            <article
+              key={card.kicker}
+              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+            >
               <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
                 {card.kicker}
               </div>
@@ -149,30 +175,36 @@ function SummaryCards({
   );
 }
 
-function LedgerActivitySection({ walletOverview }: { walletOverview: WalletOverview }) {
+function LedgerActivitySection({
+  t,
+  walletOverview,
+}: {
+  t: PortfolioCopy;
+  walletOverview: WalletOverview;
+}) {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
         <header className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
             <h2 className="font-display text-[34px] font-semibold leading-[1.1]">
-              Wallet ledger
+              {t("ledger.heading")}
             </h2>
             <p className="mt-2 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
               {walletOverview.source === "api-gateway"
-                ? "Live balance and recent wallet entries from api-gateway."
-                : "API gateway is not reachable, so this view is using a zero-balance fallback."}
+                ? t("ledger.subtitleLive")
+                : t("ledger.subtitleFallback")}
             </p>
           </div>
           <span className="font-mono text-[14px] tabular-nums tracking-[-0.224px] text-proph-ink-muted-48">
-            {walletOverview.ledgerEntries.length} entries
+            {t("ledger.count", { count: walletOverview.ledgerEntries.length })}
           </span>
         </header>
 
         {walletOverview.ledgerEntries.length === 0 ? (
           <article className="rounded-proph-lg border border-proph-divider-soft bg-proph-canvas-parchment p-6">
             <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
-              No wallet ledger entries are available yet.
+              {t("ledger.empty")}
             </p>
           </article>
         ) : (
@@ -184,7 +216,7 @@ function LedgerActivitySection({ walletOverview }: { walletOverview: WalletOverv
               >
                 <div className="min-w-0">
                   <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-                    txn #{entry.txnId} 繚 {entry.direction}
+                    {t("ledger.txnLabel", { txnId: entry.txnId, direction: entry.direction })}
                   </div>
                   <div className="mt-1 truncate font-mono text-[14px] tabular-nums tracking-[-0.224px] text-proph-ink-muted-80">
                     {entry.accountCode}
@@ -199,7 +231,7 @@ function LedgerActivitySection({ walletOverview }: { walletOverview: WalletOverv
                   {formatPointsSigned(entry.amountPoints)}
                 </div>
                 <div className="font-mono text-[14px] tabular-nums tracking-[-0.224px] text-proph-ink-muted-48">
-                  balance {formatPoints(entry.balanceAfterPoints)}
+                  {t("ledger.balanceLabel", { balance: formatPoints(entry.balanceAfterPoints) })}
                 </div>
               </li>
             ))}
@@ -211,37 +243,45 @@ function LedgerActivitySection({ walletOverview }: { walletOverview: WalletOverv
 }
 
 function PositionsSection({
-  title,
-  subtitle,
+  t,
   positions,
   variant,
 }: {
-  title: string;
-  subtitle: string;
+  t: PortfolioCopy;
   positions: ResolvedPosition[];
   variant: "active" | "settled";
 }) {
+  const scope = variant === "active" ? "positions.active" : "positions.settled";
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
         <header className="mb-8 flex items-baseline justify-between">
           <div>
-            <h2 className="font-display text-[40px] font-semibold leading-[1.1]">{title}</h2>
+            <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+              {t(`${scope}.title`)}
+            </h2>
             <p className="mt-2 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
-              {subtitle}
+              {t(`${scope}.subtitle`)}
             </p>
           </div>
           <span className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
-            {positions.length} 筆
+            {t("positions.count", { count: positions.length })}
           </span>
         </header>
 
         {positions.length === 0 ? (
-          <EmptyPlaceholder variant={variant} />
+          <article className="rounded-proph-lg border border-proph-divider-soft bg-proph-canvas-parchment p-8 text-center">
+            <p className="font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
+              {t(`${scope}.empty`)}
+            </p>
+            <ProphLinkButton variant="primary" href="/markets" className="mt-5">
+              {t("positions.browseMarkets")}
+            </ProphLinkButton>
+          </article>
         ) : (
           <ul className="space-y-4">
             {positions.map((p) => (
-              <PositionRow key={`${p.marketId}-${p.outcome}`} position={p} variant={variant} />
+              <PositionRow key={`${p.marketId}-${p.outcome}`} t={t} position={p} variant={variant} />
             ))}
           </ul>
         )}
@@ -250,12 +290,21 @@ function PositionsSection({
   );
 }
 
-function PositionRow({ position, variant }: { position: ResolvedPosition; variant: "active" | "settled" }) {
+function PositionRow({
+  t,
+  position,
+  variant,
+}: {
+  t: PortfolioCopy;
+  position: ResolvedPosition;
+  variant: "active" | "settled";
+}) {
   const { market, outcome, shares, avgCostCents } = position;
-
   const pnl =
     variant === "active" ? position.unrealizedPnlPoints : (position.realizedPnlPoints ?? 0);
   const pnlTone = pickTone(pnl);
+  const valueLabelKey = variant === "active" ? "positions.active.valueLabel" : "positions.settled.valueLabel";
+  const pnlLabelKey = variant === "active" ? "positions.active.pnlLabel" : "positions.settled.pnlLabel";
 
   return (
     <li>
@@ -287,17 +336,19 @@ function PositionRow({ position, variant }: { position: ResolvedPosition; varian
         </div>
 
         <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-proph-divider-soft pt-4 md:grid-cols-4">
-          <Field label="持有股數" value={shares.toLocaleString()} mono />
-          <Field label="均價" value={`${avgCostCents}¢`} mono />
+          <Field label={t("positions.fields.shares")} value={shares.toLocaleString()} mono />
+          <Field label={t("positions.fields.avgPrice")} value={`${avgCostCents}¢`} mono />
           <Field
-            label={variant === "active" ? "目前價值" : "結算入帳"}
+            label={t(valueLabelKey)}
             value={formatPoints(
-              variant === "active" ? position.currentValuePoints : position.totalCostPoints + (position.realizedPnlPoints ?? 0),
+              variant === "active"
+                ? position.currentValuePoints
+                : position.totalCostPoints + (position.realizedPnlPoints ?? 0),
             )}
             mono
           />
           <Field
-            label={variant === "active" ? "未實現損益" : "已實現損益"}
+            label={t(pnlLabelKey)}
             value={formatPointsSigned(pnl)}
             mono
             tone={pnlTone}
@@ -323,7 +374,7 @@ function Field({
   label: string;
   value: string;
   mono?: boolean;
-  tone?: "neutral" | "positive" | "negative";
+  tone?: Tone;
   extra?: string;
 }) {
   return (
@@ -350,36 +401,4 @@ function Field({
       </dd>
     </div>
   );
-}
-
-function EmptyPlaceholder({ variant }: { variant: "active" | "settled" }) {
-  return (
-    <article className="rounded-proph-lg border border-proph-divider-soft bg-proph-canvas-parchment p-8 text-center">
-      <p className="font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
-        {variant === "active" ? "目前沒有進行中持倉。" : "尚未有任何結算紀錄。"}
-      </p>
-      <ProphLinkButton variant="primary" href="/markets" className="mt-5">
-        瀏覽市場
-      </ProphLinkButton>
-    </article>
-  );
-}
-
-type Tone = "neutral" | "positive" | "negative";
-
-function pickTone(value: number): Tone {
-  if (value > 0) return "positive";
-  if (value < 0) return "negative";
-  return "neutral";
-}
-
-function toneClass(tone: Tone): string {
-  switch (tone) {
-    case "positive":
-      return "text-proph-feedback-success";
-    case "negative":
-      return "text-proph-feedback-error";
-    default:
-      return "text-proph-ink";
-  }
 }

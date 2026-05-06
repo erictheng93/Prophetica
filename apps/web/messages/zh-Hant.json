@@ -539,6 +539,185 @@
       "ctaSecondary": "瀏覽市場"
     }
   },
+  "portfolio": {
+    "metadata": {
+      "title": "個人持倉 — prophetica",
+      "description": "查看你的進行中與已結算持倉，以及整體損益快照。"
+    },
+    "hero": {
+      "kicker": "個人持倉",
+      "headline": "你目前的對局組合。",
+      "tagline": "進行中持倉以最後成交價即時計價，已結算持倉顯示實際損益。所有金額以站內點數表示，不可兌回現金。"
+    },
+    "demoBanner": {
+      "label": "示意數據。",
+      "body": "這些是 prophetica 團隊內部測試資料，幫你理解持倉頁長相。實際持倉須在你登入並完成 KYC 後顯示。"
+    },
+    "summary": {
+      "wallet": {
+        "kicker": "Wallet",
+        "labelLive": "API gateway user {userId}",
+        "labelFallback": "API gateway fallback"
+      },
+      "locked": {
+        "kicker": "Locked",
+        "label": "Locked + frozen balance"
+      },
+      "activeCost": {
+        "kicker": "進行中投入",
+        "label": "總成本"
+      },
+      "activeValue": {
+        "kicker": "進行中市值",
+        "label": "目前價值"
+      },
+      "unrealized": {
+        "kicker": "進行中未實現",
+        "label": "未實現損益"
+      },
+      "realized": {
+        "kicker": "已結算",
+        "label": "累計已實現損益"
+      }
+    },
+    "ledger": {
+      "heading": "Wallet ledger",
+      "subtitleLive": "Live balance and recent wallet entries from api-gateway.",
+      "subtitleFallback": "API gateway is not reachable, so this view is using a zero-balance fallback.",
+      "count": "{count} entries",
+      "empty": "No wallet ledger entries are available yet.",
+      "txnLabel": "txn #{txnId} · {direction}",
+      "balanceLabel": "balance {balance}"
+    },
+    "positions": {
+      "active": {
+        "title": "進行中",
+        "subtitle": "跟著市場波動的持倉，價格採用最後成交價。",
+        "empty": "目前沒有進行中持倉。",
+        "valueLabel": "目前價值",
+        "pnlLabel": "未實現損益"
+      },
+      "settled": {
+        "title": "已結算",
+        "subtitle": "Oracle 已判定、結果已入帳。",
+        "empty": "尚未有任何結算紀錄。",
+        "valueLabel": "結算入帳",
+        "pnlLabel": "已實現損益"
+      },
+      "count": "{count} 筆",
+      "fields": {
+        "shares": "持有股數",
+        "avgPrice": "均價"
+      },
+      "browseMarkets": "瀏覽市場"
+    }
+  },
+  "topup": {
+    "metadata": {
+      "title": "點數儲值 — prophetica",
+      "description": "為帳戶儲值站內點數。1 點 = TWD 1。儲值受月儲值上限保護。"
+    },
+    "hero": {
+      "kicker": "點數儲值",
+      "headline": "把現金換成站內點數，僅限站內使用。",
+      "tagline": "1 點 = TWD 1（內部記帳基準）。儲值受你設定的月儲值上限保護；達上限將直接拒絕儲值。"
+    },
+    "demoBanner": {
+      "label": "示意數據。",
+      "body": "實際餘額與月儲值用量需登入後顯示。儲值通路串接由 SPEC-016 後端就緒後啟用。"
+    },
+    "balance": {
+      "currentLabel": "目前餘額",
+      "kycLine": "KYC Tier {tier} · 單筆上限 {cap}",
+      "kycCapTier1": "TWD 5,000",
+      "kycCapTier2": "—",
+      "kycCapTier3": "個案核定",
+      "gatewayUnreachable": "API gateway is not reachable. Showing a zero-balance fallback.",
+      "monthlyLabel": "本月儲值用量",
+      "remaining": "本月還可儲值 {amount}",
+      "atLimit": "你已達本月儲值上限。下個月 1 日重置；或前往<limitsLink>限額設定</limitsLink>查看（提高需 24 小時冷卻期）。",
+      "nearLimit": "你已使用月儲值上限的 {pct}%。請考慮先暫停儲值，本月不再加碼。",
+      "progressLabel": "月儲值用量"
+    },
+    "amount": {
+      "heading": "儲值金額",
+      "intro": "選擇預設金額，或自訂。1 點 = TWD 1，本次最多可儲值 {remaining}。",
+      "presetPoints": "點 / {twd}",
+      "customLabel": "自訂金額",
+      "customPlaceholder": "例如：2,500（最多 {max}）",
+      "customAriaLabel": "自訂儲值金額"
+    },
+    "channels": {
+      "heading": "選擇支付通路",
+      "intro": "台灣首發走綠界（主）/ 藍新（備援）。國際與區域通路待 Op Co. 啟用後評估。",
+      "feeLabel": "手續費",
+      "payoutLabel": "平台收款",
+      "footer": "手續費由平台吸收，不會額外向你收取。通路結算時程影響的是平台對帳節奏，與你的儲值入帳速度無關（通常 5 分鐘內入帳）。",
+      "items": {
+        "ecpay": {
+          "name": "綠界 ECPay",
+          "fee": "1.5–2.5%",
+          "payoutEta": "T+3 至 T+7",
+          "body": "信用卡 / ATM 轉帳 / 超商代碼。台灣首選通路；MCC 7995 / 7993 / 7800 已通過業務驗證。"
+        },
+        "newebpay": {
+          "name": "藍新 NewebPay",
+          "fee": "1.5–2.5%",
+          "payoutEta": "T+5",
+          "body": "綠界備援。MVP + 30 天啟用，並列為主要通路提供 fallback 切換能力。"
+        },
+        "stripe": {
+          "name": "Stripe（國際）",
+          "fee": "2.9% + USD 0.30",
+          "payoutEta": "T+2",
+          "body": "Op Co. 國際版本啟用後開放；目前處於 SPEC-016 §7 Phase 2 範圍，無啟用時程。"
+        },
+        "regional": {
+          "name": "區域通路（VN / PH / MY）",
+          "fee": "—",
+          "payoutEta": "—",
+          "body": "MoMo / VNPay / PayMongo 等。執照地律師確認各國 MCC 接受度後評估啟用。"
+        }
+      },
+      "tier": {
+        "active": "Tier-1",
+        "backup": "Tier-2",
+        "phase2": "Phase 2"
+      }
+    },
+    "confirm": {
+      "heading": "確認摘要",
+      "intro": "送出後將跳轉至支付通路頁面完成付款。付款成功後 5 分鐘內點數入帳。",
+      "rows": {
+        "amount": {
+          "label": "儲值金額",
+          "value": "1,000 點 / TWD 1,000"
+        },
+        "channel": {
+          "label": "支付通路",
+          "value": "綠界 ECPay（信用卡）"
+        },
+        "fee": {
+          "label": "手續費",
+          "value": "平台吸收"
+        },
+        "eta": {
+          "label": "預估入帳時間",
+          "value": "5 分鐘內"
+        }
+      },
+      "consent": "我確認儲值取得的點數<strong>不可兌回</strong>現金、虛擬貨幣或實體商品，僅限站內娛樂使用。",
+      "footnote": "支付完成將回到 prophetica；中途可取消但不退款部分流程已扣款情況。",
+      "ctaPay": "前往支付（後端待接）",
+      "ctaAtLimit": "已達月上限，無法儲值"
+    },
+    "rgReminder": {
+      "kicker": "請務必記得",
+      "headline": "月儲值上限是你給自己的保護線。如果儲值節奏失控，先按下暫停。",
+      "ctaCooldown": "啟動冷靜期",
+      "helplineLabel": "安心專線 · 24 小時"
+    }
+  },
   "landing": {
     "hero": {
       "kicker": "趣味預測娛樂",
