@@ -76,6 +76,22 @@ pub struct CancelOrderResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderBookSnapshot {
+    pub symbol: Symbol,
+    pub next_sequence: Sequence,
+    pub bids: Vec<SnapshotRestingOrder>,
+    pub asks: Vec<SnapshotRestingOrder>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotRestingOrder {
+    pub order_id: OrderId,
+    pub user_id: u64,
+    pub price: Price,
+    pub quantity: Quantity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OrderBookError {
     DuplicateOrderId(OrderId),
     SymbolMismatch { expected: Symbol, actual: Symbol },
@@ -119,6 +135,49 @@ impl OrderBook {
             asks: BTreeMap::new(),
             orders: HashMap::new(),
             next_sequence: 1,
+        }
+    }
+
+    #[must_use]
+    pub fn from_snapshot(snapshot: OrderBookSnapshot) -> Self {
+        let mut book = Self {
+            symbol: snapshot.symbol,
+            bids: BTreeMap::new(),
+            asks: BTreeMap::new(),
+            orders: HashMap::new(),
+            next_sequence: snapshot.next_sequence,
+        };
+
+        for order in snapshot.bids {
+            book.rest_order(
+                OrderSide::Buy,
+                order.price,
+                order.order_id,
+                order.user_id,
+                order.quantity,
+            );
+        }
+
+        for order in snapshot.asks {
+            book.rest_order(
+                OrderSide::Sell,
+                order.price,
+                order.order_id,
+                order.user_id,
+                order.quantity,
+            );
+        }
+
+        book
+    }
+
+    #[must_use]
+    pub fn snapshot(&self) -> OrderBookSnapshot {
+        OrderBookSnapshot {
+            symbol: self.symbol.clone(),
+            next_sequence: self.next_sequence,
+            bids: snapshot_orders(&self.bids, |Reverse(price)| price),
+            asks: snapshot_orders(&self.asks, |price| price),
         }
     }
 
@@ -519,6 +578,27 @@ impl OrderBook {
     }
 }
 
+fn snapshot_orders<Key>(
+    levels: &BTreeMap<Key, VecDeque<RestingOrder>>,
+    price_from_key: impl Fn(Key) -> Price,
+) -> Vec<SnapshotRestingOrder>
+where
+    Key: Copy + Ord,
+{
+    levels
+        .iter()
+        .flat_map(|(price, orders)| {
+            let price = price_from_key(*price);
+            orders.iter().map(move |order| SnapshotRestingOrder {
+                order_id: order.order_id.clone(),
+                user_id: order.user_id,
+                price,
+                quantity: order.quantity,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
@@ -903,6 +983,33 @@ mod tests {
         assert_eq!(result, Err(OrderBookError::SelfTradePrevented));
         assert_eq!(book.remaining_quantity(&id("maker")), Some(2));
         assert_eq!(book.remaining_quantity(&id("same-user-buyer")), None);
+    }
+
+    #[test]
+    fn snapshot_restore_preserves_resting_orders_fifo_and_next_sequence() {
+        let mut book = OrderBook::new(symbol());
+        book.add_order(user_order("older", 10, OrderSide::Sell, 55, 1))
+            .expect("older maker should rest");
+        book.add_order(user_order("newer", 11, OrderSide::Sell, 55, 2))
+            .expect("newer maker should rest");
+        book.add_order(user_order("first-taker", 20, OrderSide::Buy, 55, 1))
+            .expect("first taker should fill older maker");
+
+        let snapshot = book.snapshot();
+        let mut restored = OrderBook::from_snapshot(snapshot);
+
+        assert_eq!(restored.remaining_quantity(&id("older")), None);
+        assert_eq!(restored.remaining_quantity(&id("newer")), Some(2));
+
+        let result = restored
+            .add_order(user_order("second-taker", 21, OrderSide::Buy, 55, 1))
+            .expect("restored book should match newer maker");
+
+        assert_eq!(result.trades.len(), 1);
+        assert_eq!(result.trades[0].sequence, 2);
+        assert_eq!(result.trades[0].maker_order_id, id("newer"));
+        assert_eq!(result.trades[0].quantity, 1);
+        assert_eq!(restored.remaining_quantity(&id("newer")), Some(1));
     }
 
     #[test]
