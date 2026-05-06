@@ -33,6 +33,15 @@ export const colors = {
   // On-color
   "on-primary": "#ffffff",
   "on-dark": "#ffffff",
+
+  // Feedback (form validation / system messages).
+  // Tuned slightly below Apple's iOS systemRed/systemGreen so they pair with
+  // ink (#1d1d1f) rather than competing for attention. These are NOT brand
+  // accents — they exist exclusively for form errors, status messages, and
+  // the rare destructive-action confirmation. Do not use them for marketing.
+  "feedback-error": "#c92020",
+  "feedback-warning": "#a86b00",
+  "feedback-success": "#1f7a3f",
 } as const;
 
 export type ColorToken = keyof typeof colors;

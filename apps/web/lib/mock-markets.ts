@@ -213,6 +213,31 @@ export function formatCloseAt(iso: string): string {
 // These are deterministic mocks today. When packages/proto/v1/market.proto
 // lands and market-service exposes RPC, replace each function body with a
 // `ts-sdk` call; signatures should remain stable so consumers don't change.
+//
+// Expected RPC contract (target — when SPEC-003 §6 / SPEC-015 §6 ship)
+//
+//   service MarketService {
+//     // getMarketById  →  GetMarket(GetMarketRequest) returns (Market)
+//     // getOrderBookSnapshot  →  GetOrderBook(GetOrderBookRequest) returns (OrderBook)
+//     //   - depth: int32 (server caps at 50; UI requests 5)
+//     //   - returns levels with tickSize alignment per SPEC-003 §3
+//     // getRecentTrades  →  GetRecentTrades(GetTradesRequest) returns (TradeList)
+//     //   - limit: int32 (UI: 6)
+//     //   - server returns descending by trade_time; "ago" string is
+//     //     rendered client-side from a timestamp.
+//     // getChartSeries  →  GetPriceHistory(GetPriceHistoryRequest) returns (PricePoints)
+//     //   - granularity: ENUM_DAY / ENUM_HOUR / ENUM_MINUTE
+//     //   - lookback: Duration (UI: 30 days for daily)
+//   }
+//
+// Migration strategy when proto lands
+//   1. Generate ts-sdk client into packages/ts-sdk via buf.
+//   2. Replace function bodies here with awaited ts-sdk calls.
+//   3. Convert callers to async (currently they're called from server
+//      components inline — Next.js 15 await is already supported).
+//   4. Delete the BID_DEPTH / ASK_DEPTH / seededRng helpers; keep
+//      `formatCloseAt` / `formatPoints` / `categoryLabel` / `statusLabel`
+//      since those are presentation concerns.
 // =========================================================================
 
 export interface OrderBookLevel {

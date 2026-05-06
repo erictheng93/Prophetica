@@ -35,6 +35,11 @@
   --proph-color-on-primary: #ffffff;
   --proph-color-on-dark: #ffffff;
 
+  /* Colors — feedback (form validation / system messages, not brand accents) */
+  --proph-color-feedback-error: #c92020;
+  --proph-color-feedback-warning: #a86b00;
+  --proph-color-feedback-success: #1f7a3f;
+
   /* Spacing */
   --proph-space-xxs: 4px;
   --proph-space-xs: 8px;

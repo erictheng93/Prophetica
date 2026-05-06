@@ -190,7 +190,7 @@ export function TradePanel({ market }: { market: Market }) {
               min={1}
               max={99}
               {...register("priceCents")}
-              className="w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none aria-[invalid=true]:border-red-600"
+              className="w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none aria-[invalid=true]:border-proph-feedback-error"
               aria-invalid={!!errors.priceCents}
             />
           </FormField>
@@ -206,7 +206,7 @@ export function TradePanel({ market }: { market: Market }) {
               step={1}
               min={1}
               {...register("quantity")}
-              className="w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none aria-[invalid=true]:border-red-600"
+              className="w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none aria-[invalid=true]:border-proph-feedback-error"
               aria-invalid={!!errors.quantity}
             />
           </FormField>
@@ -261,10 +261,10 @@ function FormField({ label, hint, error, children }: FormFieldProps) {
       </span>
       <div className="mt-1">{children}</div>
       {error ? (
-        // DESIGN.md "Known Gaps" — error states aren't tokenized. Tailwind
-        // red-600 used inline; revisit when the design system gains semantic
-        // error / warning / success tokens.
-        <span className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-red-600">
+        <span
+          role="alert"
+          className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-feedback-error"
+        >
           {error}
         </span>
       ) : hint ? (

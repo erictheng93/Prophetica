@@ -9,6 +9,7 @@ import {
   type ISeriesApi,
   LineStyle,
 } from "lightweight-charts";
+import { colors, fontFamilies } from "@prophetica/design-tokens";
 import type { ProbabilityPoint } from "@/lib/mock-markets";
 
 interface Props {
@@ -21,20 +22,30 @@ interface Props {
 /*
  * YES-price-over-time chart powered by Lightweight Charts (TradingView, MIT).
  *
- * Why a client component: createChart binds to a DOM ref and only runs in the
- * browser. Lightweight Charts has no SSR support (per SPEC-014 §3.2 we accept
- * this — chart is supplementary, not blocking).
+ * Why a client component
+ *   createChart binds to a DOM ref and only runs in the browser. Lightweight
+ *   Charts has no SSR support. SEO impact is acceptable: the searchable
+ *   content on /markets/[id] (title, brief, current YES/NO probability bar)
+ *   is fully SSR'd; the time-series chart is supplementary. Decision logged
+ *   2026-05-06 — keep Lightweight Charts; revisit only if a Core Web Vital
+ *   regression or a hard SEO-snippet requirement appears.
  *
- * Theme tokens come from design/DESIGN.md via CSS custom properties:
- *   - line / area:   --proph-color-primary (#0066cc)
- *   - background:    --proph-color-canvas (#ffffff)
- *   - text:          --proph-color-ink (#1d1d1f)
- *   - grid horiz:    --proph-color-divider-soft (#f0f0f0)
- *
- * We hardcode the resolved hex values here because Lightweight Charts options
- * are JS literals, not CSS strings — they don't follow `var(--…)` updates.
- * If DESIGN.md tokens change, update here too.
+ * Theme tokens
+ *   Lightweight Charts options accept JS string literals, not CSS variables.
+ *   We import resolved color values from `@prophetica/design-tokens` so the
+ *   chart inherits the same source of truth as Tailwind / CSS — flipping a
+ *   token there propagates here on next build. Alpha-derived colors are
+ *   computed via `hexToRgba` rather than stored separately, so the line area
+ *   tracks `colors.primary` without a parallel token to maintain.
  */
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export function ProbabilityChart({ data, height = 280, ariaLabel = "YES 價格走勢" }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -46,13 +57,13 @@ export function ProbabilityChart({ data, height = 280, ariaLabel = "YES 價格�
 
     const chart = createChart(container, {
       layout: {
-        background: { type: ColorType.Solid, color: "#ffffff" },
-        textColor: "#7a7a7a",
-        fontFamily: "SF Pro Text, system-ui, -apple-system, sans-serif",
+        background: { type: ColorType.Solid, color: colors.canvas },
+        textColor: colors["ink-muted-48"],
+        fontFamily: fontFamilies.text,
       },
       grid: {
         vertLines: { visible: false },
-        horzLines: { color: "#f0f0f0", style: LineStyle.Solid },
+        horzLines: { color: colors["divider-soft"], style: LineStyle.Solid },
       },
       rightPriceScale: {
         borderVisible: false,
@@ -63,8 +74,8 @@ export function ProbabilityChart({ data, height = 280, ariaLabel = "YES 價格�
         timeVisible: false,
       },
       crosshair: {
-        vertLine: { color: "#cccccc", width: 1, style: LineStyle.Dashed, labelVisible: false },
-        horzLine: { color: "#cccccc", width: 1, style: LineStyle.Dashed, labelVisible: true },
+        vertLine: { color: colors["body-muted"], width: 1, style: LineStyle.Dashed, labelVisible: false },
+        horzLine: { color: colors["body-muted"], width: 1, style: LineStyle.Dashed, labelVisible: true },
       },
       width: container.clientWidth,
       height,
@@ -74,9 +85,9 @@ export function ProbabilityChart({ data, height = 280, ariaLabel = "YES 價格�
     chartRef.current = chart;
 
     const series = chart.addSeries(AreaSeries, {
-      lineColor: "#0066cc",
-      topColor: "rgba(0, 102, 204, 0.28)",
-      bottomColor: "rgba(0, 102, 204, 0.02)",
+      lineColor: colors.primary,
+      topColor: hexToRgba(colors.primary, 0.28),
+      bottomColor: hexToRgba(colors.primary, 0.02),
       lineWidth: 2,
       priceFormat: { type: "custom", formatter: (p: number) => `${Math.round(p)}¢` },
     });

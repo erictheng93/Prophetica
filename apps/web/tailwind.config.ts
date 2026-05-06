@@ -39,6 +39,9 @@ const config: Config = {
           "surface-chip-translucent": "var(--proph-color-surface-chip-translucent)",
           "on-primary": "var(--proph-color-on-primary)",
           "on-dark": "var(--proph-color-on-dark)",
+          "feedback-error": "var(--proph-color-feedback-error)",
+          "feedback-warning": "var(--proph-color-feedback-warning)",
+          "feedback-success": "var(--proph-color-feedback-success)",
         },
       },
       borderRadius: {

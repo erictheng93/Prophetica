@@ -25,6 +25,9 @@ colors:
   surface-chip-translucent: "#d2d2d7"
   on-primary: "#ffffff"
   on-dark: "#ffffff"
+  feedback-error: "#c92020"
+  feedback-warning: "#a86b00"
+  feedback-success: "#1f7a3f"
 
 typography:
   hero-display:
@@ -322,6 +325,14 @@ Store and shop surfaces retain the same chassis but switch modes. The product co
 - **Divider Soft** (`{colors.divider-soft}` — #f0f0f0): The "border" tone on secondary buttons — functions as a ring shadow rather than a hard line. In production, often applied as `rgba(0, 0, 0, 0.04)`.
 - **Hairline** (`{colors.hairline}` — #e0e0e0): The 1px hairline border on store utility cards and configurator chips.
 
+### Feedback States
+
+Form validation and system-message colors. The "Known Gaps" section originally noted these were missing; they were added on 2026-05-06 to support the `<TradePanel>` Zod-driven inline error UX. They are **not brand accents** — `Action Blue` remains the sole interactive accent.
+
+- **Error** (`{colors.feedback-error}` — #c92020): Inline form-field errors (Zod validation), destructive-action confirmation copy, blocking system messages. Tuned slightly below iOS systemRed (`#FF3B30`) so it pairs with ink (`#1d1d1f`) rather than competing for attention. **Never** apply to marketing surfaces or to elements that aren't communicating a problem.
+- **Warning** (`{colors.feedback-warning}` — #a86b00): Approaching-limit notices (e.g., 80% of monthly deposit cap per SPEC-006 §7.2), `stale` declarations, soft-fail states where the user can still proceed. Restricted to status copy and small inline icons.
+- **Success** (`{colors.feedback-success}` — #1f7a3f): Confirmation banners after KYC review GREEN, after a successful order submission, or settlement-positive resolutions in user-specific contexts. Sparingly used — the design assumes "success is the default" and avoids green confetti.
+
 ### Brand Gradient
 **No decorative gradients.** Atmospheric depth on product photography (the iPhone 17 Pro camera plate, the Apple Watch bands, AirPods reflections) is inherent to the imagery, not a CSS gradient overlay. The environment page's hero uses photographic atmosphere (mountain vista at dawn) but no gradient tokens are defined. Apple is the rare luxury-brand site with zero gradient-based design tokens.
 
@@ -554,7 +565,7 @@ The structural breakpoints that matter for agents: 1440px (content lock), 1068px
 
 ## Known Gaps
 
-- Form validation and error states were not surfaced on the analyzed pages; only the neutral search input is documented.
+- ~~Form validation and error states were not surfaced on the analyzed pages; only the neutral search input is documented.~~ **Resolved 2026-05-06**: see §Colors → "Feedback States" for `feedback-error / -warning / -success` tokens.
 - The homepage's embedded video/player frame uses `{colors.surface-black}`; interior player controls are not documented (they're a platform widget, not a web-design token).
 - Some component imagery is dynamic (rotating product hero) and its specific copy varies per surface — component specs name the structure, not the rotating content.
 - Dark-mode counterparts for store and accessories utility cards were not surfaced on the analyzed pages; the system documented is the daytime/light-dominant variant Apple ships by default.
