@@ -21,6 +21,21 @@ pub struct CommittedLedgerTransaction {
     pub replayed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountBalance {
+    pub account_code: String,
+    pub balance_minor_units: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LedgerEntryView {
+    pub txn_id: i64,
+    pub account_code: String,
+    pub direction: i16,
+    pub amount_minor_units: i64,
+    pub balance_after_minor_units: i64,
+}
+
 #[derive(Debug, Error)]
 pub enum PostTransactionError {
     #[error(transparent)]
@@ -42,6 +57,11 @@ impl LedgerStoreError {
             message: message.into(),
         }
     }
+
+    #[must_use]
+    pub fn into_message(self) -> String {
+        self.message
+    }
 }
 
 impl From<sqlx::Error> for LedgerStoreError {
@@ -61,6 +81,17 @@ pub trait LedgerStore {
         &self,
         draft: &PostTransactionDraft,
     ) -> Result<CommittedLedgerTransaction, LedgerStoreError>;
+
+    async fn get_account_balance(
+        &self,
+        account_code: &str,
+    ) -> Result<AccountBalance, LedgerStoreError>;
+
+    async fn list_entries(
+        &self,
+        account_code: &str,
+        limit: i64,
+    ) -> Result<Vec<LedgerEntryView>, LedgerStoreError>;
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +138,31 @@ where
             .commit_new_transaction(&draft)
             .await
             .map_err(PostTransactionError::from)
+    }
+
+    /// Returns the current balance for an account code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LedgerStoreError`] when the backing store cannot be queried.
+    pub async fn get_account_balance(
+        &self,
+        account_code: &str,
+    ) -> Result<AccountBalance, LedgerStoreError> {
+        self.store.get_account_balance(account_code).await
+    }
+
+    /// Lists recent entries for an account code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LedgerStoreError`] when the backing store cannot be queried.
+    pub async fn list_entries(
+        &self,
+        account_code: &str,
+        limit: i64,
+    ) -> Result<Vec<LedgerEntryView>, LedgerStoreError> {
+        self.store.list_entries(account_code, limit).await
     }
 }
 
@@ -190,6 +246,66 @@ impl LedgerStore for PostgresLedgerStore {
             idempotency_key,
             replayed: false,
         })
+    }
+
+    async fn get_account_balance(
+        &self,
+        account_code: &str,
+    ) -> Result<AccountBalance, LedgerStoreError> {
+        let (balance,) = sqlx::query_as::<_, (i64,)>(
+            "SELECT COALESCE(( \
+                 SELECT SUM(e.amount * e.direction) \
+                 FROM ledger_entries e \
+                 JOIN ledger_accounts a ON a.id = e.account_id \
+                 WHERE a.code = $1 \
+             ), 0)::BIGINT",
+        )
+        .bind(account_code)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(AccountBalance {
+            account_code: account_code.to_owned(),
+            balance_minor_units: balance,
+        })
+    }
+
+    async fn list_entries(
+        &self,
+        account_code: &str,
+        limit: i64,
+    ) -> Result<Vec<LedgerEntryView>, LedgerStoreError> {
+        let rows = sqlx::query_as::<_, (i64, String, i16, i64, i64)>(
+            "SELECT e.txn_id, a.code, e.direction, e.amount, e.balance_after \
+             FROM ledger_entries e \
+             JOIN ledger_accounts a ON a.id = e.account_id \
+             WHERE a.code = $1 \
+             ORDER BY e.created_at DESC, e.id DESC \
+             LIMIT $2",
+        )
+        .bind(account_code)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(
+                    txn_id,
+                    account_code,
+                    direction,
+                    amount_minor_units,
+                    balance_after_minor_units,
+                )| LedgerEntryView {
+                    txn_id,
+                    account_code,
+                    direction,
+                    amount_minor_units,
+                    balance_after_minor_units,
+                },
+            )
+            .collect())
     }
 }
 
@@ -278,8 +394,8 @@ mod tests {
     use sdk::ledger::{LedgerAmount, LedgerEntryDraft};
 
     use super::{
-        CommittedLedgerTransaction, LedgerService, LedgerStore, LedgerStoreError,
-        PostTransactionDraft,
+        AccountBalance, CommittedLedgerTransaction, LedgerEntryView, LedgerService, LedgerStore,
+        LedgerStoreError, PostTransactionDraft,
     };
 
     #[tokio::test]
@@ -319,6 +435,48 @@ mod tests {
         }
 
         assert_eq!(store.commit_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn returns_account_balance_from_store() {
+        let store = InMemoryLedgerStore::default();
+        let service = LedgerService::new(store.clone());
+        let draft = balanced_draft("deposit:balance-001");
+
+        match service.post_transaction(draft).await {
+            Ok(_) => {}
+            Err(error) => panic!("post should commit: {error}"),
+        }
+
+        let balance = match service
+            .get_account_balance("Player.Wallet.user_01")
+            .await
+        {
+            Ok(balance) => balance,
+            Err(error) => panic!("balance should load: {error}"),
+        };
+
+        assert_eq!(balance.balance_minor_units, -10_000);
+    }
+
+    #[tokio::test]
+    async fn lists_entries_from_store() {
+        let store = InMemoryLedgerStore::default();
+        let service = LedgerService::new(store.clone());
+        let draft = balanced_draft("deposit:entries-001");
+
+        match service.post_transaction(draft).await {
+            Ok(_) => {}
+            Err(error) => panic!("post should commit: {error}"),
+        }
+
+        let entries = match service.list_entries("Bank.TrustAccount.TWD", 25).await {
+            Ok(entries) => entries,
+            Err(error) => panic!("entries should load: {error}"),
+        };
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].amount_minor_units, 10_000);
     }
 
     #[tokio::test]
@@ -397,6 +555,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct InMemoryLedgerStore {
         transactions: Arc<Mutex<Vec<CommittedLedgerTransaction>>>,
+        entries: Arc<Mutex<Vec<LedgerEntryView>>>,
         next_id: Arc<AtomicI64>,
     }
 
@@ -438,7 +597,69 @@ mod tests {
                 Ok(mut transactions) => transactions.push(transaction.clone()),
                 Err(error) => panic!("transactions lock should not be poisoned: {error}"),
             }
+            match self.entries.lock() {
+                Ok(mut entries) => {
+                    for entry in &draft.entries {
+                        let current_balance = entries
+                            .iter()
+                            .filter(|stored| stored.account_code == entry.account_code())
+                            .map(|stored| {
+                                i64::from(stored.direction) * stored.amount_minor_units
+                            })
+                            .sum::<i64>();
+                        entries.push(LedgerEntryView {
+                            txn_id: transaction.id,
+                            account_code: entry.account_code().to_owned(),
+                            direction: entry.storage_direction(),
+                            amount_minor_units: entry.storage_amount_minor_units(),
+                            balance_after_minor_units: current_balance
+                                + entry.amount().minor_units(),
+                        });
+                    }
+                }
+                Err(error) => panic!("entries lock should not be poisoned: {error}"),
+            }
             Ok(transaction)
+        }
+
+        async fn get_account_balance(
+            &self,
+            account_code: &str,
+        ) -> Result<AccountBalance, LedgerStoreError> {
+            let entries = match self.entries.lock() {
+                Ok(entries) => entries,
+                Err(error) => panic!("entries lock should not be poisoned: {error}"),
+            };
+            let balance = entries
+                .iter()
+                .filter(|entry| entry.account_code == account_code)
+                .map(|entry| i64::from(entry.direction) * entry.amount_minor_units)
+                .sum();
+
+            Ok(AccountBalance {
+                account_code: account_code.to_owned(),
+                balance_minor_units: balance,
+            })
+        }
+
+        async fn list_entries(
+            &self,
+            account_code: &str,
+            limit: i64,
+        ) -> Result<Vec<LedgerEntryView>, LedgerStoreError> {
+            let entries = match self.entries.lock() {
+                Ok(entries) => entries,
+                Err(error) => panic!("entries lock should not be poisoned: {error}"),
+            };
+            let limit = usize::try_from(limit).unwrap_or(0);
+
+            Ok(entries
+                .iter()
+                .rev()
+                .filter(|entry| entry.account_code == account_code)
+                .take(limit)
+                .cloned()
+                .collect())
         }
     }
 }
