@@ -69,6 +69,17 @@ export const responsibleGamingColumn: SiteFooterColumn = {
   ],
 };
 
+export const marketsColumn: SiteFooterColumn = {
+  heading: "市場",
+  links: [
+    { label: "全部市場", href: "/markets" },
+    { label: "熱門", href: "/markets/trending" },
+    { label: "新上架", href: "/markets/new" },
+    { label: "已結算", href: "/markets/settled" },
+    { label: "個人持倉", href: "/portfolio" },
+  ],
+};
+
 export const kycColumn: SiteFooterColumn = {
   heading: "身份驗證",
   links: [
