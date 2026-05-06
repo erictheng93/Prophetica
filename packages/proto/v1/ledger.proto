@@ -1,6 +1,22 @@
 // ledger.proto — Wallet / Ledger Service 對外契約
 //
 // 對應 SPEC：SPEC-002（Funds Safety / Double-entry Ledger）、ADR-0003。
+//
+// Status (2026-05-06): 此 proto 為 canonical HTTP + gRPC 契約。
+// services/wallet-ledger-service/src/api.rs 目前以 hand-written serde 結構實作
+// 一個 HTTP 子集；長期將以 prost-build 從本檔生成、由 axum bridge 提供
+// HTTP，由 tonic 提供 gRPC。在那之前，本檔之欄位**必須**與 api.rs 之 serde
+// 結構一一對齊（含命名、巢狀層級、JSON shape），否則 ts-sdk 會在第一次
+// 整合時踩到 drift。
+//
+// JSON ↔ proto 對齊規則
+//   - `amount_minor_units`（不是 `amount`）— 對齊 SPEC-002 §3.2 整數化精度
+//   - 寫操作 RPC 採用 flat `idempotency_key` + `correlation_id` 欄位（不再
+//     纏 AuditMeta），對齊 api.rs HTTP 的 idiomatic JSON shape；AuditMeta
+//     保留於 common.proto 作為其他 service 的選擇
+//   - 回傳值含 `idempotency_key` echo，便於客戶端 audit 追蹤
+//   - `direction` 在 JSON 採 lowercase string ("debit" / "credit")，符合
+//     proto3 JSON canonical mapping
 
 syntax = "proto3";
 
@@ -32,21 +48,24 @@ message LedgerAccount {
 }
 
 // EntryDirection: +1 借方 / -1 貸方（SPEC-002 §4.3 ledger_entries.direction）。
+//
+// JSON canonical mapping: ENTRY_DIRECTION_DEBIT → "debit",
+// ENTRY_DIRECTION_CREDIT → "credit". api.rs 已採用 lowercase serde 字面。
 enum EntryDirection {
   ENTRY_DIRECTION_UNSPECIFIED = 0;
   ENTRY_DIRECTION_DEBIT = 1;
   ENTRY_DIRECTION_CREDIT = 2;     // 對應 -1
 }
 
-// LedgerEntry。amount 永遠 > 0；direction 表正負（SPEC-002 §4.3）。
+// LedgerEntry. amount_minor_units 永遠 > 0；direction 表正負（SPEC-002 §4.3）。
 message LedgerEntry {
   int64 id = 1;
   TxnID txn = 2;
   string account_code = 3;
   EntryDirection direction = 4;
-  int64 amount = 5;                // 內部單位（× 100）
-  string currency = 6;
-  int64 balance_after = 7;
+  int64 amount_minor_units = 5;          // SPEC-002 §3.2：內部單位整數
+  string currency = 6;                   // Phase 1 可省（依 account_code 推導）；Phase 2 必填
+  int64 balance_after_minor_units = 7;
   google.protobuf.Timestamp created_at = 8;
 }
 
@@ -65,6 +84,9 @@ message LedgerTransaction {
 //
 // 強制規則（ADR-0003 §10 點 4）：禁止使用 'misc' 之類的萬用值。
 // 新增 type 必須對應 SPEC 章節並走 PR review。
+//
+// JSON canonical mapping: TXN_TYPE_DEPOSIT → "deposit", TXN_TYPE_ORDER_LOCK
+// → "order_lock", ... api.rs 已採用 lowercase + underscore 字面。
 enum TxnType {
   TXN_TYPE_UNSPECIFIED = 0;
   TXN_TYPE_DEPOSIT = 1;             // §4.4.1
@@ -81,30 +103,40 @@ enum TxnType {
   TXN_TYPE_RECONCILIATION_ADJUST = 12; // 對帳暫掛人工修正
 }
 
-// PostTransactionRequest. 由業務 service 呼叫 ledger 提交一筆 balanced transaction.
+// PostTransactionRequest. 由業務 service 呼叫 ledger 提交一筆 balanced
+// transaction.
 //
 // 不變式：
 //   - len(entries) >= 2
-//   - Σ(direction × amount) = 0（SPEC-002 INV-1）
-//   - 同 idempotency_key 重送 → 回原結果
+//   - Σ(direction × amount_minor_units) = 0（SPEC-002 INV-1）
+//   - 同 idempotency_key 重送 → 回原結果（replayed=true）
+//
+// 為什麼不用 AuditMeta：寫操作 RPC 高頻、payload 小，flat 欄位讓 HTTP
+// JSON shape 與 api.rs 直接對齊；其他較少寫操作的 service 仍可採 AuditMeta
+// 巢狀。trace_id / client_ts 在 ledger 場景由 OpenTelemetry / 入庫時間覆蓋，
+// 不依賴客戶端傳入。
 message PostTransactionRequest {
-  AuditMeta audit = 1;
-  TxnType type = 2;
-  string description = 3;
-  repeated PostEntry entries = 4;
+  TxnType type = 1;
+  string idempotency_key = 2;             // SPEC-002 §6.1 — 必填
+  string correlation_id = 3;              // 跨服務追蹤；可空
+  string description = 4;                 // 人類可讀標註；可空
+  repeated PostEntry entries = 5;
 }
 
 message PostEntry {
   string account_code = 1;
   EntryDirection direction = 2;
-  int64 amount = 3;
-  string currency = 4;
+  int64 amount_minor_units = 3;           // 永遠 > 0；direction 表正負
+  string currency = 4;                    // Phase 1 可省；Phase 2 多幣別必填
 }
 
 message PostTransactionResponse {
   TxnID txn_id = 1;
-  bool replayed = 2;                // true 表本次為 idempotent replay
-  repeated LedgerEntry entries = 3; // 含 balance_after
+  string idempotency_key = 2;             // echo，方便客戶端關連 audit log
+  bool replayed = 3;                      // true 表本次為 idempotent replay
+  // entries[] 留作可選欄位：proto 為 canonical 完整契約，現行 api.rs HTTP
+  // 實作未必回傳；client 端應視為 optional 並另行 ListEntries 取明細。
+  repeated LedgerEntry entries = 4;
 }
 
 // GetWalletBalanceRequest / Response — 玩家錢包餘額查詢（高頻 API）。
@@ -112,17 +144,29 @@ message PostTransactionResponse {
 // 性能契約（SPEC-002 §9.2）：
 //   - cache hit P99 < 1ms（Redis）
 //   - cache miss P99 < 20ms（PG balance_after）
+//
+// HTTP route: GET /internal/ledger/wallets/:user_id/balance
 message GetWalletBalanceRequest {
   UserID user = 1;
 }
 
+// 三個子科目對應 SPEC-002 §4.2.1：
+//   Player.Wallet.{user_id}  → available
+//   Player.Locked.{user_id}  → locked   （訂單鎖定中）
+//   Player.Frozen.{user_id}  → frozen   （RG 自我排除 / 合規凍結）
 message GetWalletBalanceResponse {
-  Money available = 1;       // Player.Wallet.{user}
-  Money locked = 2;          // Player.Locked.{user}
-  google.protobuf.Timestamp as_of = 3;
+  UserID user = 1;                          // echo for client convenience
+  int64 available_minor_units = 2;
+  int64 locked_minor_units = 3;
+  int64 frozen_minor_units = 4;
+  google.protobuf.Timestamp as_of = 5;
 }
 
 // ListEntriesRequest — 玩家 / 客服 / 稽核查歷史。
+//
+// 現行 api.rs HTTP 實作為此契約之子集（僅支援 account_code + limit；
+// 未實作 user_id scope 與時間區間 + paging）。client 端使用時請以 proto
+// 為準；HTTP fallback 時可省略 from / to / page。
 message ListEntriesRequest {
   oneof scope {
     UserID user = 1;
@@ -131,6 +175,7 @@ message ListEntriesRequest {
   google.protobuf.Timestamp from = 3;
   google.protobuf.Timestamp to = 4;
   PageRequest page = 5;
+  int32 limit = 6;                         // api.rs 簡化用；伺服器 clamp 至 [1, 500]
 }
 
 message ListEntriesResponse {
@@ -139,6 +184,11 @@ message ListEntriesResponse {
 }
 
 // LedgerService — 由 wallet-ledger-service 暴露（SPEC-014 §4）。
+//
+// HTTP 對應路徑（api.rs 現行）：
+//   PostTransaction    → POST /internal/ledger/transactions
+//   GetWalletBalance   → GET  /internal/ledger/wallets/:user_id/balance
+//   ListEntries        → GET  /internal/ledger/entries?account_code=...&limit=...
 service LedgerService {
   rpc PostTransaction(PostTransactionRequest) returns (PostTransactionResponse);
   rpc GetWalletBalance(GetWalletBalanceRequest) returns (GetWalletBalanceResponse);
