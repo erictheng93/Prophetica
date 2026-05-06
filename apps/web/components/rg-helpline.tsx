@@ -1,46 +1,51 @@
 import { PhoneCall } from "@phosphor-icons/react/dist/ssr";
+import { getTranslations } from "next-intl/server";
 
 // SPEC-006 §7.1 — Mandatory help-line strip on responsible-gaming surfaces.
-// Numbers below are well-established Taiwan public hotlines. Final approved
-// list (incl. licensing-region resources for Malta / Curaçao / etc.) is
-// pending Compliance Officer sign-off; update this file as the source of truth.
+// Numbers stay literal (TW-specific public hotlines verified against published
+// sources); labels / hours / emergency note translate. Final approved list
+// (incl. licensing-region resources for Malta / Curaçao / etc.) is pending
+// Compliance Officer sign-off — extend HELPLINE_DATA + add catalogue entries
+// when that lands.
 
-interface Helpline {
-  label: string;
+interface HelplineData {
+  /** i18n key under `responsibleGaming.helpline.items` */
+  key: string;
+  /** Phone number — not translated. */
   number: string;
-  hours: string;
 }
 
-const helplines: Helpline[] = [
-  { label: "衛福部安心專線", number: "1925", hours: "24 小時" },
-  { label: "毒品危害防制中心", number: "0800-770-885", hours: "24 小時" },
-  { label: "張老師專線", number: "1980", hours: "週一至週六" },
+const HELPLINE_DATA: HelplineData[] = [
+  { key: "mhwSafe", number: "1925" },
+  { key: "drugPrevention", number: "0800-770-885" },
+  { key: "teacherZhang", number: "1980" },
 ];
 
-export function RGHelpline() {
+export async function RGHelpline() {
+  const t = await getTranslations("responsibleGaming.helpline");
   return (
     <section
       className="w-full bg-proph-surface-tile-1 text-proph-on-dark"
-      aria-label="責任博弈援助資源"
+      aria-label={t("ariaLabel")}
     >
       <div className="mx-auto max-w-proph px-6 py-10 md:px-10">
         <div className="mb-6 flex flex-col gap-1">
           <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] uppercase text-proph-body-muted">
-            需要協助
+            {t("kicker")}
           </span>
           <h3 className="font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px]">
-            如果你或身邊的人對遊戲行為感到困擾，這些專線 24 小時為你而開。
+            {t("headline")}
           </h3>
         </div>
 
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {helplines.map((line) => (
+          {HELPLINE_DATA.map((line) => (
             <li
               key={line.number}
               className="rounded-proph-lg border border-proph-on-dark/15 px-5 py-4"
             >
               <div className="font-text text-[12px] leading-none tracking-[-0.12px] text-proph-body-muted">
-                {line.label} · {line.hours}
+                {t(`items.${line.key}.label`)} · {t(`items.${line.key}.hours`)}
               </div>
               <a
                 href={`tel:${line.number.replace(/-/g, "")}`}
@@ -54,8 +59,7 @@ export function RGHelpline() {
         </ul>
 
         <p className="mt-6 font-text text-[12px] leading-[1.3] tracking-[-0.12px] text-proph-body-muted">
-          如有立即危險請撥打 119 或 110。撥打前述專線完全免費，且不會留下紀錄於你的 prophetica
-          帳號。
+          {t("emergencyNote")}
         </p>
       </div>
     </section>

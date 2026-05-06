@@ -718,6 +718,73 @@
       "helplineLabel": "安心專線 · 24 小時"
     }
   },
+  "responsibleGaming": {
+    "metadata": {
+      "title": "責任博弈 — prophetica",
+      "description": "限額設定、冷靜期、自我排除與求助資源。"
+    },
+    "helpline": {
+      "kicker": "需要協助",
+      "headline": "如果你或身邊的人對遊戲行為感到困擾，這些專線 24 小時為你而開。",
+      "ariaLabel": "責任博弈援助資源",
+      "items": {
+        "mhwSafe": { "label": "衛福部安心專線", "hours": "24 小時" },
+        "drugPrevention": { "label": "毒品危害防制中心", "hours": "24 小時" },
+        "teacherZhang": { "label": "張老師專線", "hours": "週一至週六" }
+      },
+      "emergencyNote": "如有立即危險請撥打 119 或 110。撥打前述專線完全免費，且不會留下紀錄於你的 prophetica 帳號。"
+    },
+    "overview": {
+      "hero": {
+        "kicker": "責任博弈",
+        "headline": "你的節奏，由你掌握。",
+        "tagline": "prophetica 是娛樂，不是金融商品。我們提供工具讓你隨時調整、暫停或退出，並在你需要時提供獨立的求助資源。"
+      },
+      "monthlySnapshot": {
+        "monthLabel": "本月（5 月）",
+        "heading": "你這個月的活動快照",
+        "depositCard": {
+          "kicker": "月儲值用量",
+          "limitNote": "月上限 {limit}",
+          "ariaLabel": "月儲值用量 {pct}%"
+        },
+        "tradeCard": {
+          "kicker": "交易次數",
+          "subtitle": "對局成交筆數"
+        },
+        "settlementCard": {
+          "kicker": "淨結算",
+          "subtitle": "本月所有結算加總"
+        }
+      },
+      "tools": {
+        "heading": "可用工具",
+        "cta": "前往設定",
+        "items": {
+          "limits": {
+            "kicker": "強制",
+            "title": "儲值上限",
+            "body": "月儲值上限是 prophetica 註冊時必設的保護線。降低立即生效；提高需 24 小時冷卻期。"
+          },
+          "cooldown": {
+            "kicker": "可選",
+            "title": "冷靜期",
+            "body": "短期暫停遊戲。期間帳戶無法登入、儲值、交易，到期自動恢復。"
+          },
+          "selfExclusion": {
+            "kicker": "強制可選",
+            "title": "自我排除",
+            "body": "中長期或永久停止使用本服務。永久排除不可逆，請審慎決定。"
+          },
+          "resources": {
+            "kicker": "外部",
+            "title": "求助資源",
+            "body": "戒癮諮詢、心理衛生專線與國際支援團體。24 小時免費，獨立於 prophetica 之外。"
+          }
+        }
+      }
+    }
+  },
   "landing": {
     "hero": {
       "kicker": "趣味預測娛樂",
