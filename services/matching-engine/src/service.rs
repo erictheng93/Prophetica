@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use proto::proph::v1::{
     BookLevel, BookSnapshot, CancelOrderRequest, CancelOrderResponse, GetBookSnapshotRequest,
@@ -16,6 +20,7 @@ use crate::{
         Price, Quantity, SnapshotRestingOrder, Symbol,
     },
     shard::{MarketCommand, MarketEvent, MarketShard},
+    wal::{self, WalRecord},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +35,7 @@ pub struct InMemoryEngineService {
     shards: Arc<Mutex<HashMap<String, mpsc::Sender<MarketCommand>>>>,
     order_routes: Arc<Mutex<HashMap<Vec<u8>, OrderRoute>>>,
     events: broadcast::Sender<EngineEvent>,
+    wal_dir: Option<Arc<PathBuf>>,
 }
 
 impl Default for InMemoryEngineService {
@@ -39,6 +45,7 @@ impl Default for InMemoryEngineService {
             shards: Arc::default(),
             order_routes: Arc::default(),
             events,
+            wal_dir: None,
         }
     }
 }
@@ -90,7 +97,7 @@ impl EngineService for InMemoryEngineService {
         let (reply_to, reply_rx) = oneshot::channel();
         sender
             .send(MarketCommand::PlaceOrder {
-                order: command_order,
+                order: command_order.clone(),
                 reply_to,
             })
             .await
@@ -99,6 +106,7 @@ impl EngineService for InMemoryEngineService {
             .await
             .map_err(|_| Status::unavailable("market shard dropped place order reply"))?
             .map_err(|error| map_order_book_error(&error))?;
+        self.append_wal_record(&market_id, &WalRecord::PlaceOrder(command_order))?;
 
         self.order_routes.lock().await.insert(
             order_id_bytes.clone(),
@@ -144,7 +152,7 @@ impl EngineService for InMemoryEngineService {
         let (reply_to, reply_rx) = oneshot::channel();
         sender
             .send(MarketCommand::CancelOrderForUser {
-                order_id: route.internal_order_id,
+                order_id: route.internal_order_id.clone(),
                 user_id,
                 reply_to,
             })
@@ -154,6 +162,10 @@ impl EngineService for InMemoryEngineService {
             .await
             .map_err(|_| Status::unavailable("market shard dropped cancel reply"))?
             .map_err(|error| map_order_book_error(&error))?;
+        self.append_wal_record(
+            &route.market_id,
+            &WalRecord::CancelOrder(route.internal_order_id.clone()),
+        )?;
 
         Ok(Response::new(CancelOrderResponse {
             order: Some(Order {
@@ -195,6 +207,14 @@ impl EngineService for InMemoryEngineService {
 
 impl InMemoryEngineService {
     #[must_use]
+    pub fn with_wal_dir(wal_dir: PathBuf) -> Self {
+        Self {
+            wal_dir: Some(Arc::new(wal_dir)),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
     pub fn subscribe_events(&self) -> broadcast::Receiver<EngineEvent> {
         self.events.subscribe()
     }
@@ -225,6 +245,20 @@ impl InMemoryEngineService {
         shards.insert(market_id.to_string(), command_tx.clone());
         command_tx
     }
+
+    fn append_wal_record(&self, market_id: &str, record: &WalRecord) -> Result<(), Status> {
+        let Some(wal_dir) = &self.wal_dir else {
+            return Ok(());
+        };
+
+        let path = market_wal_path(wal_dir, market_id);
+        wal::append_record(&path, record)
+            .map_err(|error| Status::internal(format!("failed to append wal record: {error}")))
+    }
+}
+
+fn market_wal_path(wal_dir: &Path, market_id: &str) -> PathBuf {
+    wal_dir.join(format!("{}.wal.jsonl", market_id.replace(['/', '\\'], "_")))
 }
 
 fn place_order_response(

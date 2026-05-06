@@ -224,3 +224,57 @@ async fn service_subscribers_receive_ordered_market_events() {
     assert_eq!(resting.sequence, 2);
     assert!(matches!(resting.event, MarketEvent::OrderResting { .. }));
 }
+
+#[tokio::test]
+async fn service_appends_successful_commands_to_market_wal() {
+    let wal_dir = unique_wal_dir();
+    std::fs::create_dir_all(&wal_dir).expect("wal dir should be created");
+    let service = InMemoryEngineService::with_wal_dir(wal_dir.clone());
+
+    let response = service
+        .place_order(tonic::Request::new(place_order_request(
+            10,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "client-maker",
+        )))
+        .await
+        .expect("place order should succeed")
+        .into_inner();
+    let order_id = response
+        .order
+        .expect("response should include order")
+        .id
+        .expect("order id should exist");
+
+    service
+        .cancel_order(tonic::Request::new(CancelOrderRequest {
+            audit: None,
+            order_id: Some(order_id),
+            user_id: Some(UserId { value: 10 }),
+        }))
+        .await
+        .expect("cancel should succeed");
+
+    let records = matching_engine::wal::read_records(&wal_dir.join("mkt-election.wal.jsonl"))
+        .expect("wal records should read");
+    assert_eq!(records.len(), 2);
+    assert!(matches!(
+        records[0],
+        matching_engine::wal::WalRecord::PlaceOrder(_)
+    ));
+    assert!(matches!(
+        records[1],
+        matching_engine::wal::WalRecord::CancelOrder(_)
+    ));
+}
+
+fn unique_wal_dir() -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock should be after epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("prophetica-engine-service-wal-{nanos}"))
+}
