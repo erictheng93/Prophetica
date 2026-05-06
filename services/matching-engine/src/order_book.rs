@@ -104,6 +104,7 @@ pub enum OrderBookError {
     FillOrKillWouldNotFill,
     PostOnlyWouldCross,
     SelfTradePrevented,
+    CancelOwnerMismatch,
 }
 
 #[derive(Debug, Clone)]
@@ -272,6 +273,34 @@ impl OrderBook {
         })
     }
 
+    /// Cancels a resting order only when it belongs to the requested user.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OrderBookError::UnknownOrder`] when the order is not resting,
+    /// or [`OrderBookError::CancelOwnerMismatch`] when the order belongs to a
+    /// different user.
+    pub fn cancel_order_for_user(
+        &mut self,
+        order_id: &OrderId,
+        user_id: u64,
+    ) -> Result<CancelOrderResult, OrderBookError> {
+        let location = self
+            .orders
+            .get(order_id)
+            .ok_or_else(|| OrderBookError::UnknownOrder(order_id.clone()))?;
+        let owner = self
+            .resting_order_at(location, order_id)
+            .ok_or_else(|| OrderBookError::UnknownOrder(order_id.clone()))?
+            .user_id;
+
+        if owner != user_id {
+            return Err(OrderBookError::CancelOwnerMismatch);
+        }
+
+        self.cancel_order(order_id)
+    }
+
     #[must_use]
     pub fn remaining_quantity(&self, order_id: &OrderId) -> Option<Quantity> {
         match self.orders.get(order_id)? {
@@ -293,6 +322,25 @@ impl OrderBook {
                 .iter()
                 .find(|order| &order.order_id == order_id)
                 .map(|order| order.quantity),
+        }
+    }
+
+    fn resting_order_at(
+        &self,
+        location: &OrderLocation,
+        order_id: &OrderId,
+    ) -> Option<&RestingOrder> {
+        match location.side {
+            OrderSide::Buy => self
+                .bids
+                .get(&Reverse(location.price))?
+                .iter()
+                .find(|order| &order.order_id == order_id),
+            OrderSide::Sell => self
+                .asks
+                .get(&location.price)?
+                .iter()
+                .find(|order| &order.order_id == order_id),
         }
     }
 
@@ -1040,6 +1088,40 @@ mod tests {
         assert!(result.trades.is_empty());
         assert_eq!(result.remaining_quantity, 3);
         assert!(result.rested);
+    }
+
+    #[test]
+    fn user_scoped_cancel_rejects_order_owned_by_another_user() {
+        let mut book = OrderBook::new(symbol());
+        book.add_order(user_order("seller", 10, OrderSide::Sell, 55, 3))
+            .expect("seller should rest");
+
+        let error = book
+            .cancel_order_for_user(&id("seller"), 20)
+            .expect_err("other user should not cancel seller order");
+
+        assert_eq!(error, OrderBookError::CancelOwnerMismatch);
+        assert_eq!(book.remaining_quantity(&id("seller")), Some(3));
+    }
+
+    #[test]
+    fn user_scoped_cancel_allows_order_owner() {
+        let mut book = OrderBook::new(symbol());
+        book.add_order(user_order("seller", 10, OrderSide::Sell, 55, 3))
+            .expect("seller should rest");
+
+        let result = book
+            .cancel_order_for_user(&id("seller"), 10)
+            .expect("owner should cancel own order");
+
+        assert_eq!(
+            result,
+            CancelOrderResult {
+                order_id: id("seller"),
+                canceled_quantity: 3,
+            }
+        );
+        assert_eq!(book.remaining_quantity(&id("seller")), None);
     }
 
     #[test]
