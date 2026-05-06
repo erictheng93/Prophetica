@@ -1,12 +1,48 @@
+#![allow(clippy::expect_used)]
+
 use matching_engine::{
     order_book::{OrderId, OrderSide},
-    projection::{OrderProjectionStatus, ProjectionEvent, project_engine_event},
+    projection::{
+        OrderProjectionStatus, ProjectionBroadcaster, ProjectionEvent, project_engine_event,
+    },
     service::EngineEvent,
     shard::MarketEvent,
 };
 
 fn id(value: &str) -> OrderId {
     OrderId::new(value)
+}
+
+#[tokio::test]
+async fn projection_broadcaster_fans_out_projected_events() {
+    let broadcaster = ProjectionBroadcaster::new(16);
+    let mut subscriber = broadcaster.subscribe();
+
+    broadcaster
+        .publish_engine_event(EngineEvent {
+            market_id: "mkt-election".to_string(),
+            sequence: 11,
+            event: MarketEvent::BookDelta {
+                side: OrderSide::Buy,
+                price: 54,
+                quantity_delta: 7,
+            },
+        })
+        .expect("projection event should publish");
+
+    assert_eq!(
+        subscriber
+            .recv()
+            .await
+            .expect("projected event should be received"),
+        ProjectionEvent::BookDelta {
+            market_id: "mkt-election".to_string(),
+            seq_no: 11,
+            side: OrderSide::Buy,
+            price_pts: 54,
+            quantity_delta: 7,
+        }
+    );
 }
 
 #[test]

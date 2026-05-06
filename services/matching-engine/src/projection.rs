@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 
 use crate::{
     order_book::{OrderSide, Price, Quantity, Sequence},
@@ -40,6 +41,40 @@ pub enum ProjectionEvent {
         filled_qty: Quantity,
         remaining_qty: Quantity,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectionBroadcaster {
+    events: broadcast::Sender<ProjectionEvent>,
+}
+
+impl ProjectionBroadcaster {
+    #[must_use]
+    pub fn new(capacity: usize) -> Self {
+        let (events, _event_rx) = broadcast::channel(capacity);
+        Self { events }
+    }
+
+    #[must_use]
+    pub fn subscribe(&self) -> broadcast::Receiver<ProjectionEvent> {
+        self.events.subscribe()
+    }
+
+    /// Projects and publishes one engine event.
+    ///
+    /// # Errors
+    ///
+    /// Returns a send error when there are no active projection subscribers.
+    pub fn publish_engine_event(
+        &self,
+        event: EngineEvent,
+    ) -> Result<(), broadcast::error::SendError<ProjectionEvent>> {
+        for projected in project_engine_event(event) {
+            self.events.send(projected)?;
+        }
+
+        Ok(())
+    }
 }
 
 #[must_use]
