@@ -314,8 +314,13 @@ impl LedgerStore for PostgresLedgerStore {
                 });
         };
 
+        let mut account_ids = Vec::with_capacity(draft.entries.len());
         for entry in &draft.entries {
-            let account_id = ensure_account(&mut tx, entry.account_code()).await?;
+            account_ids.push(ensure_account(&mut tx, entry.account_code()).await?);
+        }
+        lock_accounts(&mut tx, &account_ids).await?;
+
+        for (entry, account_id) in draft.entries.iter().zip(account_ids) {
             let current_balance = account_balance(&mut tx, account_id).await?;
             let balance_after = current_balance + entry.amount().minor_units();
             sqlx::query(
@@ -475,6 +480,24 @@ async fn ensure_account(
     Ok(id)
 }
 
+async fn lock_accounts(
+    tx: &mut Transaction<'_, Postgres>,
+    account_ids: &[i64],
+) -> Result<(), sqlx::Error> {
+    let mut sorted_ids = account_ids.to_vec();
+    sorted_ids.sort_unstable();
+    sorted_ids.dedup();
+
+    for account_id in sorted_ids {
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(account_id)
+            .execute(&mut **tx)
+            .await?;
+    }
+
+    Ok(())
+}
+
 async fn account_balance(
     tx: &mut Transaction<'_, Postgres>,
     account_id: i64,
@@ -515,8 +538,10 @@ mod tests {
         Arc, Mutex,
         atomic::{AtomicI64, Ordering},
     };
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use sdk::ledger::{LedgerAmount, LedgerEntryDraft};
+    use tokio::task::JoinSet;
 
     use super::{
         AccountBalance, CommittedLedgerTransaction, LedgerEntryView, LedgerService, LedgerStore,
@@ -573,10 +598,7 @@ mod tests {
             Err(error) => panic!("post should commit: {error}"),
         }
 
-        let balance = match service
-            .get_account_balance("Player.Wallet.user_01")
-            .await
-        {
+        let balance = match service.get_account_balance("Player.Wallet.user_01").await {
             Ok(balance) => balance,
             Err(error) => panic!("balance should load: {error}"),
         };
@@ -614,14 +636,8 @@ mod tests {
             correlation_id: None,
             description: None,
             entries: vec![
-                LedgerEntryDraft::new(
-                    "Player.Wallet.user_01",
-                    LedgerAmount::from_minor_units(1),
-                ),
-                LedgerEntryDraft::new(
-                    "Player.Locked.user_01",
-                    LedgerAmount::from_minor_units(-1),
-                ),
+                LedgerEntryDraft::new("Player.Wallet.user_01", LedgerAmount::from_minor_units(1)),
+                LedgerEntryDraft::new("Player.Locked.user_01", LedgerAmount::from_minor_units(-1)),
             ],
         };
 
@@ -647,14 +663,8 @@ mod tests {
             correlation_id: None,
             description: None,
             entries: vec![
-                LedgerEntryDraft::new(
-                    "Player.Wallet.user_01",
-                    LedgerAmount::from_minor_units(1),
-                ),
-                LedgerEntryDraft::new(
-                    "Bank.TrustAccount.TWD",
-                    LedgerAmount::from_minor_units(-1),
-                ),
+                LedgerEntryDraft::new("Player.Wallet.user_01", LedgerAmount::from_minor_units(1)),
+                LedgerEntryDraft::new("Bank.TrustAccount.TWD", LedgerAmount::from_minor_units(-1)),
             ],
         };
 
@@ -723,16 +733,17 @@ mod tests {
 
     #[tokio::test]
     async fn postgres_store_persists_and_replays_by_idempotency_key() {
-        let Some(database_url) = std::env::var("WALLET_LEDGER_TEST_DATABASE_URL").ok() else {
+        let Some(pool) = postgres_test_pool().await else {
             return;
-        };
-        let pool = match sqlx::PgPool::connect(&database_url).await {
-            Ok(pool) => pool,
-            Err(error) => panic!("test database should be reachable: {error}"),
         };
         let store = super::PostgresLedgerStore::new(pool);
         let service = LedgerService::new(store);
-        let draft = balanced_draft("deposit:postgres-001");
+        let test_id = unique_test_id("postgres-replay");
+        let draft = balanced_draft_for_user(
+            &format!("user_{test_id}"),
+            &format!("deposit:{test_id}:postgres-001"),
+            10_000,
+        );
 
         let first = match service.post_transaction(draft.clone()).await {
             Ok(transaction) => transaction,
@@ -748,17 +759,309 @@ mod tests {
         assert_eq!(first.id, second.id);
     }
 
+    #[tokio::test]
+    async fn postgres_migration_trigger_rejects_imbalanced_commit() {
+        let Some(pool) = postgres_test_pool().await else {
+            return;
+        };
+        let test_id = unique_test_id("postgres-trigger");
+        let mut tx = match pool.begin().await {
+            Ok(tx) => tx,
+            Err(error) => panic!("test transaction should start: {error}"),
+        };
+
+        let (txn_id,) = match sqlx::query_as::<_, (i64,)>(
+            "INSERT INTO ledger_transactions (txn_type, idempotency_key) \
+             VALUES ('deposit', $1) \
+             RETURNING id",
+        )
+        .bind(format!("deposit:{test_id}:imbalanced"))
+        .fetch_one(&mut *tx)
+        .await
+        {
+            Ok(row) => row,
+            Err(error) => panic!("test transaction row should insert: {error}"),
+        };
+        let bank_id = ensure_test_account(&mut tx, &format!("Bank.Test.{test_id}"), "asset").await;
+        let wallet_id =
+            ensure_test_account(&mut tx, &format!("Player.Wallet.{test_id}"), "liability").await;
+
+        for (account_id, direction, amount) in
+            [(bank_id, 1_i16, 10_000_i64), (wallet_id, -1, 9_999)]
+        {
+            match sqlx::query(
+                "INSERT INTO ledger_entries \
+                 (txn_id, account_id, direction, amount, currency, balance_after) \
+                 VALUES ($1, $2, $3, $4, 'PTS', $5)",
+            )
+            .bind(txn_id)
+            .bind(account_id)
+            .bind(direction)
+            .bind(amount)
+            .bind(i64::from(direction) * amount)
+            .execute(&mut *tx)
+            .await
+            {
+                Ok(_) => {}
+                Err(error) => {
+                    panic!("imbalanced entries should insert before deferred commit: {error}");
+                }
+            }
+        }
+
+        let error = match tx.commit().await {
+            Ok(()) => panic!("deferred trigger should reject imbalanced commit"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("Ledger imbalance for txn"),
+            "unexpected trigger error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn postgres_same_idempotency_key_creates_one_txn_and_record() {
+        let Some(pool) = postgres_test_pool().await else {
+            return;
+        };
+        let store = super::PostgresLedgerStore::new(pool.clone());
+        let service = LedgerService::new(store);
+        let test_id = unique_test_id("postgres-idempo-count");
+        let idempotency_key = format!("deposit:{test_id}:one-row");
+        let draft = balanced_draft_for_user(&format!("user_{test_id}"), &idempotency_key, 10_000);
+
+        for _ in 0..10 {
+            match service.post_transaction(draft.clone()).await {
+                Ok(_) => {}
+                Err(error) => panic!("post should commit or replay: {error}"),
+            }
+        }
+
+        let (txn_count,) = match sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*) FROM ledger_transactions WHERE idempotency_key = $1",
+        )
+        .bind(&idempotency_key)
+        .fetch_one(&pool)
+        .await
+        {
+            Ok(row) => row,
+            Err(error) => panic!("transaction count should query: {error}"),
+        };
+        let (record_count,) = match sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*) FROM idempotency_records WHERE key = $1",
+        )
+        .bind(&idempotency_key)
+        .fetch_one(&pool)
+        .await
+        {
+            Ok(row) => row,
+            Err(error) => panic!("idempotency count should query: {error}"),
+        };
+
+        assert_eq!(txn_count, 1);
+        assert_eq!(record_count, 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn postgres_concurrent_deposits_keep_balances_and_balance_after_consistent() {
+        let Some(pool) = postgres_test_pool().await else {
+            return;
+        };
+        let test_id = unique_test_id("postgres-concurrency");
+        let user_id = format!("concurrent_{test_id}");
+        let wallet_code = format!("Player.Wallet.{user_id}");
+        let bank_code = format!("Bank.TrustAccount.{test_id}");
+        let deposit_count = 1_000_i64;
+        let deposit_amount = 10_000_i64;
+
+        let mut tasks = JoinSet::new();
+        for index in 0..deposit_count {
+            let service = LedgerService::new(super::PostgresLedgerStore::new(pool.clone()));
+            let user_id = user_id.clone();
+            let bank_code = bank_code.clone();
+            let idempotency_key = format!("deposit:{test_id}:{index}");
+            tasks.spawn(async move {
+                let draft = PostTransactionDraft {
+                    txn_type: "deposit".to_owned(),
+                    idempotency_key,
+                    correlation_id: None,
+                    description: Some("concurrent deposit test".to_owned()),
+                    entries: vec![
+                        LedgerEntryDraft::new(
+                            bank_code,
+                            LedgerAmount::from_minor_units(deposit_amount),
+                        ),
+                        LedgerEntryDraft::new(
+                            format!("Player.Wallet.{user_id}"),
+                            LedgerAmount::from_minor_units(-deposit_amount),
+                        ),
+                    ],
+                };
+                service.post_transaction(draft).await
+            });
+        }
+
+        while let Some(result) = tasks.join_next().await {
+            match result {
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => panic!("deposit should commit: {error}"),
+                Err(error) => panic!("deposit task should join: {error}"),
+            }
+        }
+
+        let wallet_balance = current_balance(&pool, &wallet_code).await;
+        let bank_balance = current_balance(&pool, &bank_code).await;
+        let transaction_count = transaction_count(&pool, &format!("deposit:{test_id}:%")).await;
+
+        assert_eq!(transaction_count, deposit_count);
+        assert_eq!(wallet_balance, -(deposit_count * deposit_amount));
+        assert_eq!(bank_balance, deposit_count * deposit_amount);
+
+        let wallet_balance_after_values =
+            balance_after_values(&pool, &wallet_code, deposit_count).await;
+        let bank_balance_after_values =
+            balance_after_values(&pool, &bank_code, deposit_count).await;
+        let expected_wallet = (1..=deposit_count)
+            .map(|index| -(index * deposit_amount))
+            .collect::<Vec<_>>();
+        let expected_bank = (1..=deposit_count)
+            .map(|index| index * deposit_amount)
+            .collect::<Vec<_>>();
+
+        assert_eq!(wallet_balance_after_values, expected_wallet);
+        assert_eq!(bank_balance_after_values, expected_bank);
+    }
+
     fn balanced_draft(idempotency_key: &str) -> PostTransactionDraft {
+        balanced_draft_for_user("user_01", idempotency_key, 10_000)
+    }
+
+    fn balanced_draft_for_user(
+        user_id: &str,
+        idempotency_key: &str,
+        amount_minor_units: i64,
+    ) -> PostTransactionDraft {
         PostTransactionDraft {
             txn_type: "deposit".to_owned(),
             idempotency_key: idempotency_key.to_owned(),
             correlation_id: Some("trace-001".to_owned()),
             description: Some("test deposit".to_owned()),
             entries: vec![
-                LedgerEntryDraft::new("Bank.TrustAccount.TWD", LedgerAmount::from_points(100)),
-                LedgerEntryDraft::new("Player.Wallet.user_01", LedgerAmount::from_points(-100)),
+                LedgerEntryDraft::new(
+                    "Bank.TrustAccount.TWD",
+                    LedgerAmount::from_minor_units(amount_minor_units),
+                ),
+                LedgerEntryDraft::new(
+                    format!("Player.Wallet.{user_id}"),
+                    LedgerAmount::from_minor_units(-amount_minor_units),
+                ),
             ],
         }
+    }
+
+    async fn postgres_test_pool() -> Option<sqlx::PgPool> {
+        let Some(database_url) = std::env::var("WALLET_LEDGER_TEST_DATABASE_URL").ok() else {
+            return None;
+        };
+        let pool = match sqlx::PgPool::connect(&database_url).await {
+            Ok(pool) => pool,
+            Err(error) => panic!("test database should be reachable: {error}"),
+        };
+        match sqlx::migrate!("./migrations").run(&pool).await {
+            Ok(()) => {}
+            Err(error) => panic!("migrations should run against test database: {error}"),
+        }
+
+        Some(pool)
+    }
+
+    fn unique_test_id(prefix: &str) -> String {
+        let nanos = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(duration) => duration.as_nanos(),
+            Err(error) => panic!("system time should be after unix epoch: {error}"),
+        };
+        format!("{prefix}-{nanos}")
+    }
+
+    async fn ensure_test_account(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        account_code: &str,
+        account_type: &str,
+    ) -> i64 {
+        let (id,) = match sqlx::query_as::<_, (i64,)>(
+            "INSERT INTO ledger_accounts (code, type, currency) \
+             VALUES ($1, $2, 'PTS') \
+             ON CONFLICT (code) DO UPDATE SET code = EXCLUDED.code \
+             RETURNING id",
+        )
+        .bind(account_code)
+        .bind(account_type)
+        .fetch_one(&mut **tx)
+        .await
+        {
+            Ok(row) => row,
+            Err(error) => panic!("test account should upsert: {error}"),
+        };
+        id
+    }
+
+    async fn current_balance(pool: &sqlx::PgPool, account_code: &str) -> i64 {
+        let (balance,) = match sqlx::query_as::<_, (i64,)>(
+            "SELECT COALESCE(SUM(e.amount * e.direction), 0)::BIGINT \
+             FROM ledger_entries e \
+             JOIN ledger_accounts a ON a.id = e.account_id \
+             WHERE a.code = $1",
+        )
+        .bind(account_code)
+        .fetch_one(pool)
+        .await
+        {
+            Ok(row) => row,
+            Err(error) => panic!("balance should query: {error}"),
+        };
+        balance
+    }
+
+    async fn transaction_count(pool: &sqlx::PgPool, pattern: &str) -> i64 {
+        let (count,) = match sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*) FROM ledger_transactions WHERE idempotency_key LIKE $1",
+        )
+        .bind(pattern)
+        .fetch_one(pool)
+        .await
+        {
+            Ok(row) => row,
+            Err(error) => panic!("transaction count should query: {error}"),
+        };
+        count
+    }
+
+    async fn balance_after_values(
+        pool: &sqlx::PgPool,
+        account_code: &str,
+        expected_count: i64,
+    ) -> Vec<i64> {
+        let rows = match sqlx::query_as::<_, (i64,)>(
+            "SELECT e.balance_after \
+             FROM ledger_entries e \
+             JOIN ledger_accounts a ON a.id = e.account_id \
+             WHERE a.code = $1 \
+             ORDER BY ABS(e.balance_after)",
+        )
+        .bind(account_code)
+        .fetch_all(pool)
+        .await
+        {
+            Ok(rows) => rows,
+            Err(error) => panic!("balance_after values should query: {error}"),
+        };
+        let expected_len = match usize::try_from(expected_count) {
+            Ok(value) => value,
+            Err(error) => panic!("expected count should fit usize: {error}"),
+        };
+        assert_eq!(rows.len(), expected_len);
+        rows.into_iter().map(|(value,)| value).collect()
     }
 
     #[derive(Clone, Default)]
@@ -812,9 +1115,7 @@ mod tests {
                         let current_balance = entries
                             .iter()
                             .filter(|stored| stored.account_code == entry.account_code())
-                            .map(|stored| {
-                                i64::from(stored.direction) * stored.amount_minor_units
-                            })
+                            .map(|stored| i64::from(stored.direction) * stored.amount_minor_units)
                             .sum::<i64>();
                         entries.push(LedgerEntryView {
                             txn_id: transaction.id,

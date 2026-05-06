@@ -69,6 +69,7 @@ jobs:
       - name: test
         env:
           SQLX_OFFLINE: "true"
+          WALLET_LEDGER_TEST_DATABASE_URL: postgres://proph:dev@localhost:5432/prophetica
         run: make test
       - name: cargo deny
         run: cargo deny check
