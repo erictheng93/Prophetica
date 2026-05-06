@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
@@ -43,12 +45,93 @@ pub enum ProjectionEvent {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedProjection {
+    pub topic: String,
+    pub key: String,
+    pub payload: String,
+}
+
+pub trait ProjectionSink {
+    /// Publishes one serialized projection payload.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the sink cannot accept the payload.
+    fn publish(&self, topic: &str, key: &str, payload: &str) -> anyhow::Result<()>;
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectionPublisher<S> {
+    sink: S,
+}
+
+impl<S> ProjectionPublisher<S>
+where
+    S: ProjectionSink,
+{
+    #[must_use]
+    pub const fn new(sink: S) -> Self {
+        Self { sink }
+    }
+
+    /// Serializes and publishes one projection event.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when serialization or sink publishing fails.
+    pub fn publish(&self, event: &ProjectionEvent) -> anyhow::Result<()> {
+        let topic = projection_topic(event);
+        let key = projection_key(event);
+        let payload = serialize_projection_event(event)?;
+        self.sink.publish(topic, key, &payload)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryProjectionSink {
+    published: Arc<Mutex<Vec<PublishedProjection>>>,
+}
+
+impl InMemoryProjectionSink {
+    #[must_use]
+    pub fn published(&self) -> Vec<PublishedProjection> {
+        self.published.lock().map_or_else(
+            |poisoned| poisoned.into_inner().clone(),
+            |published| published.clone(),
+        )
+    }
+}
+
+impl ProjectionSink for InMemoryProjectionSink {
+    fn publish(&self, topic: &str, key: &str, payload: &str) -> anyhow::Result<()> {
+        if let Ok(mut published) = self.published.lock() {
+            published.push(PublishedProjection {
+                topic: topic.to_string(),
+                key: key.to_string(),
+                payload: payload.to_string(),
+            });
+        }
+
+        Ok(())
+    }
+}
+
 #[must_use]
 pub const fn projection_topic(event: &ProjectionEvent) -> &'static str {
     match event {
         ProjectionEvent::BookDelta { .. } => "engine.book_delta",
         ProjectionEvent::Trade { .. } => "engine.trade",
         ProjectionEvent::OrderUpdate { .. } => "engine.order_update",
+    }
+}
+
+#[must_use]
+pub fn projection_key(event: &ProjectionEvent) -> &str {
+    match event {
+        ProjectionEvent::BookDelta { market_id, .. }
+        | ProjectionEvent::Trade { market_id, .. }
+        | ProjectionEvent::OrderUpdate { market_id, .. } => market_id,
     }
 }
 

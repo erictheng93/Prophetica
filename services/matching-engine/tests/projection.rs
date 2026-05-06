@@ -3,8 +3,8 @@
 use matching_engine::{
     order_book::{OrderId, OrderSide},
     projection::{
-        OrderProjectionStatus, ProjectionBroadcaster, ProjectionEvent, project_engine_event,
-        projection_topic, serialize_projection_event,
+        InMemoryProjectionSink, OrderProjectionStatus, ProjectionBroadcaster, ProjectionEvent,
+        ProjectionPublisher, project_engine_event, projection_topic, serialize_projection_event,
     },
     service::EngineEvent,
     shard::MarketEvent,
@@ -137,4 +137,30 @@ fn serializes_projection_events_with_stable_transport_envelope() {
         serialize_projection_event(&event).expect("projection should serialize"),
         r#"{"topic":"engine.book_delta","market_id":"mkt-election","seq_no":12,"kind":"book_delta","payload":{"side":"Sell","price_pts":57,"quantity_delta":-3}}"#
     );
+}
+
+#[test]
+fn projection_publisher_sends_topic_key_and_payload() {
+    let sink = InMemoryProjectionSink::default();
+    let publisher = ProjectionPublisher::new(sink.clone());
+    let event = ProjectionEvent::Trade {
+        market_id: "mkt-election".to_string(),
+        seq_no: 13,
+        maker_order_id: "maker".to_string(),
+        taker_order_id: "taker".to_string(),
+        trade_sequence: 4,
+        price_pts: 58,
+        quantity: 2,
+    };
+
+    publisher
+        .publish(&event)
+        .expect("projection event should publish");
+
+    let emitted = sink.published();
+    assert_eq!(emitted.len(), 1);
+    assert_eq!(emitted[0].topic, "engine.trade");
+    assert_eq!(emitted[0].key, "mkt-election");
+    assert!(emitted[0].payload.contains(r#""kind":"trade""#));
+    assert!(emitted[0].payload.contains(r#""seq_no":13"#));
 }
