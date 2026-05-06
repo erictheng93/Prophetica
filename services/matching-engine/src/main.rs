@@ -1,4 +1,3 @@
-use sdk::service_stub::{ServiceDescriptor, run_http};
 use tokio::{runtime::Builder, task::LocalSet};
 
 fn main() -> anyhow::Result<()> {
@@ -23,13 +22,7 @@ fn main() -> anyhow::Result<()> {
                 .map_err(anyhow::Error::from)?;
             let local = LocalSet::new();
 
-            local.block_on(&runtime, async {
-                run_http(ServiceDescriptor {
-                    name: matching_engine::SERVICE_NAME,
-                    default_port: matching_engine::DEFAULT_PORT,
-                })
-                .await
-            })
+            local.block_on(&runtime, async { matching_engine::api::run_http().await })
         })?
         .join()
         .map_err(|_| anyhow::anyhow!("matching-engine runtime thread panicked"))?

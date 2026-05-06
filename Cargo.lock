@@ -1092,11 +1092,14 @@ name = "matching-engine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum 0.7.9",
  "core_affinity",
+ "http-body-util",
  "sdk",
  "serde",
  "serde_json",
  "tokio",
+ "tower 0.5.3",
  "tracing",
 ]
 
