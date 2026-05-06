@@ -1,5 +1,51 @@
 use sha2::{Digest, Sha256};
+use sqlx::PgPool;
 use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReconciliationLayer {
+    PlayerLiability = 2,
+    BankTrust = 3,
+    GatewaySettlement = 4,
+}
+
+impl ReconciliationLayer {
+    #[must_use]
+    pub const fn as_i16(self) -> i16 {
+        self as i16
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReconciliationFinding {
+    pub severity: String,
+    pub finding_type: String,
+    pub account_code: Option<String>,
+    pub expected_amount: i64,
+    pub actual_amount: i64,
+    pub difference_amount: i64,
+    pub details: serde_json::Value,
+}
+
+impl ReconciliationFinding {
+    #[must_use]
+    pub fn mismatch(
+        finding_type: impl Into<String>,
+        account_code: Option<String>,
+        expected_amount: i64,
+        actual_amount: i64,
+    ) -> Self {
+        Self {
+            severity: "critical".to_owned(),
+            finding_type: finding_type.into(),
+            account_code,
+            expected_amount,
+            actual_amount,
+            difference_amount: actual_amount - expected_amount,
+            details: serde_json::json!({}),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerLiabilitySnapshot {
@@ -15,7 +61,7 @@ impl PlayerLiabilitySnapshot {
     }
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error)]
 pub enum ReconciliationError {
     #[error(
         "player liability mismatch: expected {expected_minor_units}, actual {actual_minor_units}"
@@ -24,6 +70,8 @@ pub enum ReconciliationError {
         expected_minor_units: i64,
         actual_minor_units: i64,
     },
+    #[error(transparent)]
+    Store(#[from] sqlx::Error),
 }
 
 /// Validates SPEC-002 INV-2 for the signed ledger representation.
@@ -48,6 +96,117 @@ pub fn validate_player_liability(
             actual_minor_units,
         })
     }
+}
+
+/// Aggregates Layer 2 player liability balances directly from ledger entries.
+///
+/// Player liabilities are signed balances under `Player.Wallet.*`, `Player.Locked.*`,
+/// and `Player.Frozen.*`.
+///
+/// # Errors
+///
+/// Returns [`ReconciliationError::Store`] when Postgres cannot run the aggregation.
+pub async fn load_player_liability_snapshot(
+    pool: &PgPool,
+) -> Result<PlayerLiabilitySnapshot, ReconciliationError> {
+    let (wallet_minor_units,) = sqlx::query_as::<_, (i64,)>(
+        "SELECT COALESCE(SUM(e.amount * e.direction), 0)::BIGINT \
+         FROM ledger_entries e \
+         JOIN ledger_accounts a ON a.id = e.account_id \
+         WHERE a.code LIKE 'Player.Wallet.%'",
+    )
+    .fetch_one(pool)
+    .await?;
+    let (locked_minor_units,) = sqlx::query_as::<_, (i64,)>(
+        "SELECT COALESCE(SUM(e.amount * e.direction), 0)::BIGINT \
+         FROM ledger_entries e \
+         JOIN ledger_accounts a ON a.id = e.account_id \
+         WHERE a.code LIKE 'Player.Locked.%'",
+    )
+    .fetch_one(pool)
+    .await?;
+    let (frozen_minor_units,) = sqlx::query_as::<_, (i64,)>(
+        "SELECT COALESCE(SUM(e.amount * e.direction), 0)::BIGINT \
+         FROM ledger_entries e \
+         JOIN ledger_accounts a ON a.id = e.account_id \
+         WHERE a.code LIKE 'Player.Frozen.%'",
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(PlayerLiabilitySnapshot {
+        wallet_minor_units,
+        locked_minor_units,
+        frozen_minor_units,
+    })
+}
+
+#[must_use]
+pub fn player_liability_finding(
+    snapshot: PlayerLiabilitySnapshot,
+    expected_signed_minor_units: i64,
+) -> Option<ReconciliationFinding> {
+    let actual_minor_units = snapshot.total_minor_units();
+    (actual_minor_units != expected_signed_minor_units).then(|| {
+        ReconciliationFinding::mismatch(
+            "player_liability_mismatch",
+            Some("Player.*".to_owned()),
+            expected_signed_minor_units,
+            actual_minor_units,
+        )
+    })
+}
+
+/// Starts a reconciliation run row and returns its id.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the row cannot be inserted.
+pub async fn start_reconciliation_run(
+    pool: &PgPool,
+    layer: ReconciliationLayer,
+) -> Result<i64, sqlx::Error> {
+    let (run_id,) = sqlx::query_as::<_, (i64,)>(
+        "INSERT INTO reconciliation_runs (layer, status) \
+         VALUES ($1, 'started') \
+         RETURNING id",
+    )
+    .bind(layer.as_i16())
+    .fetch_one(pool)
+    .await?;
+
+    Ok(run_id)
+}
+
+/// Persists one reconciliation finding.
+///
+/// # Errors
+///
+/// Returns [`sqlx::Error`] when the finding cannot be inserted.
+pub async fn persist_reconciliation_finding(
+    pool: &PgPool,
+    run_id: i64,
+    finding: &ReconciliationFinding,
+) -> Result<i64, sqlx::Error> {
+    let (finding_id,) = sqlx::query_as::<_, (i64,)>(
+        "INSERT INTO reconciliation_findings \
+         (run_id, severity, finding_type, account_code, expected_amount, actual_amount, \
+          difference_amount, details) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         RETURNING id",
+    )
+    .bind(run_id)
+    .bind(&finding.severity)
+    .bind(&finding.finding_type)
+    .bind(finding.account_code.as_deref())
+    .bind(finding.expected_amount)
+    .bind(finding.actual_amount)
+    .bind(finding.difference_amount)
+    .bind(&finding.details)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(finding_id)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -92,7 +251,7 @@ pub fn compute_daily_hash(previous_hash_hex: &str, entries: &[HashChainEntry]) -
 mod tests {
     use super::{
         HashChainEntry, PlayerLiabilitySnapshot, ReconciliationError, compute_daily_hash,
-        validate_player_liability,
+        player_liability_finding, validate_player_liability,
     };
 
     #[test]
@@ -119,13 +278,38 @@ mod tests {
             Err(error) => error,
         };
 
-        assert_eq!(
-            error,
+        match error {
             ReconciliationError::PlayerLiabilityMismatch {
-                expected_minor_units: -13_499,
-                actual_minor_units: -13_500,
+                expected_minor_units,
+                actual_minor_units,
+            } => {
+                assert_eq!(expected_minor_units, -13_499);
+                assert_eq!(actual_minor_units, -13_500);
             }
-        );
+            ReconciliationError::Store(error) => {
+                panic!("unexpected store error: {error}");
+            }
+        }
+    }
+
+    #[test]
+    fn builds_player_liability_mismatch_finding() {
+        let snapshot = PlayerLiabilitySnapshot {
+            wallet_minor_units: -10_000,
+            locked_minor_units: -2_500,
+            frozen_minor_units: -1_000,
+        };
+
+        let Some(finding) = player_liability_finding(snapshot, -13_499) else {
+            panic!("mismatch should produce a finding");
+        };
+
+        assert_eq!(finding.severity, "critical");
+        assert_eq!(finding.finding_type, "player_liability_mismatch");
+        assert_eq!(finding.account_code, Some("Player.*".to_owned()));
+        assert_eq!(finding.expected_amount, -13_499);
+        assert_eq!(finding.actual_amount, -13_500);
+        assert_eq!(finding.difference_amount, -1);
     }
 
     #[test]
