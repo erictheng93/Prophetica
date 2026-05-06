@@ -9,5 +9,5 @@
     "incremental": false,
     "types": ["node"]
   },
-  "include": ["tests/**/*.ts", "lib/api-gateway.ts"]
+  "include": ["tests/**/*.ts", "lib/api-gateway.ts", "lib/engine-api.ts"]
 }

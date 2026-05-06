@@ -10,13 +10,12 @@ import {
   formatPoints,
   getChartSeries,
   getMarketById,
-  getOrderBookSnapshot,
   getRecentTrades,
   type Market,
-  type OrderBookSnapshot,
   type RecentTrade,
   statusLabel,
 } from "@/lib/mock-markets";
+import { fetchOrderBookSnapshot, type EngineOrderBookSnapshot } from "@/lib/engine-api";
 
 interface PageProps {
   // Next.js 15: params is a Promise.
@@ -119,8 +118,8 @@ function ResolvedBanner({ market }: { market: Market }) {
   );
 }
 
-function OpenMarketBody({ market }: { market: Market }) {
-  const book = getOrderBookSnapshot(market);
+async function OpenMarketBody({ market }: { market: Market }) {
+  const book = await fetchOrderBookSnapshot({ marketId: market.id });
   const trades = getRecentTrades(market);
 
   return (
@@ -138,7 +137,7 @@ function OpenMarketBody({ market }: { market: Market }) {
   );
 }
 
-function OrderBookTable({ book }: { book: OrderBookSnapshot }) {
+function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
   return (
     <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
       <header className="border-b border-proph-divider-soft px-6 py-4">
