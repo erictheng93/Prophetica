@@ -1,0 +1,49 @@
+{
+  "common": {
+    "brand": "prophetica",
+    "auth": {
+      "signIn": "登入",
+      "getStarted": "開始體驗"
+    }
+  },
+  "landing": {
+    "hero": {
+      "kicker": "趣味預測娛樂",
+      "headline": "預測，是一種眼光的競技。",
+      "tagline": "用站內點數對未公開事件結果進行預測，與全球玩家比眼光。",
+      "ctaPrimary": "開始體驗",
+      "ctaSecondary": "了解玩法",
+      "media": "Hero visual"
+    },
+    "neutral": {
+      "kicker": "平台中立",
+      "headline": "公平撮合，平台不下場。",
+      "tagline": "prophetica 僅提供撮合與結算服務，不持有合約倉位、不做造市商。所有對局都是玩家與玩家之間的眼光對決。",
+      "cta": "看撮合機制",
+      "media": "Order book illustration"
+    },
+    "points": {
+      "kicker": "點數即遊戲",
+      "headline": "站內點數，純娛樂。",
+      "tagline": "儲值取得的點數僅可在站內使用，不可兌回現金、虛擬貨幣或實體商品。我們是娛樂遊戲服務，不是金融商品。",
+      "ctaPrimary": "點數說明",
+      "ctaSecondary": "服務條款",
+      "media": "Points wallet"
+    },
+    "responsibleGaming": {
+      "kicker": "責任博弈優先",
+      "headline": "先設限額，再開始遊戲。",
+      "tagline": "每個帳號都必須完成限額設定。我們提供冷靜期、自我排除與求助資源，並對未成年參與採零容忍。",
+      "ctaPrimary": "設定我的限額",
+      "ctaSecondary": "求助資源",
+      "media": "Responsible gaming dashboard"
+    },
+    "start": {
+      "kicker": "開始遊戲三步",
+      "headline": "完成驗證、設定限額、瀏覽市場。",
+      "tagline": "身份驗證確保公平與合規，限額設定保護自己的娛樂節奏，市場列表是你的競技場。",
+      "ctaPrimary": "立即註冊",
+      "ctaSecondary": "查看市場"
+    }
+  }
+}

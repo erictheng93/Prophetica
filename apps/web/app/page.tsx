@@ -1,7 +1,12 @@
+import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
 import { AuthCta, Brand, FooterLegalRow, MainNavLinks, siteFooterColumns } from "@/lib/site-nav";
 
-// Landing page — DESIGN.md (Apple-style) integration test.
+// Landing page — DESIGN.md (Apple-style) integration test, now i18n-ready.
+// First page migrated to next-intl: copy lives in messages/zh-Hant.json
+// (`landing.*` namespace). Other pages still use string literals; migrate
+// per the pattern here as catalogues mature (see Tech Lead followups).
+//
 // Compliance posture: SPEC-001 §1.1 三原則 — copy frames the product as
 // 趣味預測娛樂遊戲, never as gambling/wager; 站內點數 explicitly 不可兌回.
 
@@ -18,7 +23,9 @@ const TileMedia = ({ label, surface }: { label: string; surface: "light" | "dark
   </div>
 );
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const t = await getTranslations("landing");
+
   return (
     <main className="min-h-screen bg-proph-canvas">
       {/*
@@ -31,68 +38,68 @@ export default function LandingPage() {
 
       <ProphTile
         surface="light"
-        kicker="趣味預測娛樂"
+        kicker={t("hero.kicker")}
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
-            預測，是一種眼光的競技。
+            {t("hero.headline")}
           </span>
         }
-        tagline="用站內點數對未公開事件結果進行預測，與全球玩家比眼光。"
+        tagline={t("hero.tagline")}
         actions={
           <>
-            <ProphLinkButton variant="primary" href="/auth/sign-in">開始體驗</ProphLinkButton>
-            <ProphLinkButton variant="secondary-pill" href="/how-it-works">了解玩法</ProphLinkButton>
+            <ProphLinkButton variant="primary" href="/auth/sign-in">{t("hero.ctaPrimary")}</ProphLinkButton>
+            <ProphLinkButton variant="secondary-pill" href="/how-it-works">{t("hero.ctaSecondary")}</ProphLinkButton>
           </>
         }
-        media={<TileMedia label="Hero visual" surface="light" />}
+        media={<TileMedia label={t("hero.media")} surface="light" />}
       />
 
       <ProphTile
         surface="dark"
-        kicker="平台中立"
-        headline="公平撮合，平台不下場。"
-        tagline="prophetica 僅提供撮合與結算服務，不持有合約倉位、不做造市商。所有對局都是玩家與玩家之間的眼光對決。"
-        actions={<ProphLinkButton variant="primary" href="/how-it-works">看撮合機制</ProphLinkButton>}
-        media={<TileMedia label="Order book illustration" surface="dark" />}
+        kicker={t("neutral.kicker")}
+        headline={t("neutral.headline")}
+        tagline={t("neutral.tagline")}
+        actions={<ProphLinkButton variant="primary" href="/how-it-works">{t("neutral.cta")}</ProphLinkButton>}
+        media={<TileMedia label={t("neutral.media")} surface="dark" />}
       />
 
       <ProphTile
         surface="parchment"
-        kicker="點數即遊戲"
-        headline="站內點數，純娛樂。"
-        tagline="儲值取得的點數僅可在站內使用，不可兌回現金、虛擬貨幣或實體商品。我們是娛樂遊戲服務，不是金融商品。"
+        kicker={t("points.kicker")}
+        headline={t("points.headline")}
+        tagline={t("points.tagline")}
         actions={
           <>
-            <ProphLinkButton variant="primary" href="/topup">點數說明</ProphLinkButton>
-            <ProphLinkButton variant="secondary-pill" href="/legal/terms">服務條款</ProphLinkButton>
+            <ProphLinkButton variant="primary" href="/topup">{t("points.ctaPrimary")}</ProphLinkButton>
+            <ProphLinkButton variant="secondary-pill" href="/legal/terms">{t("points.ctaSecondary")}</ProphLinkButton>
           </>
         }
-        media={<TileMedia label="Points wallet" surface="light" />}
+        media={<TileMedia label={t("points.media")} surface="light" />}
       />
 
       <ProphTile
         surface="dark-2"
-        kicker="責任博弈優先"
-        headline="先設限額，再開始遊戲。"
-        tagline="每個帳號都必須完成限額設定。我們提供冷靜期、自我排除與求助資源，並對未成年參與採零容忍。"
+        kicker={t("responsibleGaming.kicker")}
+        headline={t("responsibleGaming.headline")}
+        tagline={t("responsibleGaming.tagline")}
         actions={
           <>
-            <ProphLinkButton variant="primary" href="/responsible-gaming/limits">設定我的限額</ProphLinkButton>
-            <ProphLinkButton variant="secondary-pill-on-dark" href="/responsible-gaming/resources">求助資源</ProphLinkButton>
+            <ProphLinkButton variant="primary" href="/responsible-gaming/limits">{t("responsibleGaming.ctaPrimary")}</ProphLinkButton>
+            <ProphLinkButton variant="secondary-pill-on-dark" href="/responsible-gaming/resources">{t("responsibleGaming.ctaSecondary")}</ProphLinkButton>
           </>
         }
-        media={<TileMedia label="Responsible gaming dashboard" surface="dark" />}
+        media={<TileMedia label={t("responsibleGaming.media")} surface="dark" />}
       />
 
       <ProphTile
         surface="light"
-        kicker="開始遊戲三步"
-        headline="完成驗證、設定限額、瀏覽市場。"
-        tagline="身份驗證確保公平與合規，限額設定保護自己的娛樂節奏，市場列表是你的競技場。"
+        kicker={t("start.kicker")}
+        headline={t("start.headline")}
+        tagline={t("start.tagline")}
         actions={
           <>
-            <ProphLinkButton variant="primary" href="/auth/sign-in">立即註冊</ProphLinkButton>
-            <ProphLinkButton variant="secondary-pill" href="/markets">查看市場</ProphLinkButton>
+            <ProphLinkButton variant="primary" href="/auth/sign-in">{t("start.ctaPrimary")}</ProphLinkButton>
+            <ProphLinkButton variant="secondary-pill" href="/markets">{t("start.ctaSecondary")}</ProphLinkButton>
           </>
         }
       />
