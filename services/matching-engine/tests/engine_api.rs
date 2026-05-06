@@ -6,8 +6,9 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use matching_engine::{
-    api::router,
+    api::{router, service_router},
     order_book::{NewOrder, OrderBook, OrderId, OrderSide, OrderType, Symbol},
+    service::InMemoryEngineService,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -52,6 +53,69 @@ async fn book_snapshot_returns_empty_book_for_unknown_market() {
     assert_eq!(body["asks"], json!([]));
 }
 
+#[tokio::test]
+async fn rest_order_flow_uses_matching_engine_service_state() {
+    let app = service_router(InMemoryEngineService::default());
+
+    let response = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/v1/markets/mkt-election/orders",
+            Some(10),
+            &json!({
+                "side": "sell",
+                "outcome": "YES",
+                "type": "LIMIT",
+                "price_pts": 55,
+                "quantity": 3,
+                "time_in_force": "GTC"
+            }),
+        ))
+        .await
+        .expect("request should be handled");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let placed = response_json(response).await;
+    let order_id = placed["order_id"]
+        .as_str()
+        .expect("response should include order id");
+    assert!(order_id.starts_with("ord_"));
+    assert_eq!(placed["status"], json!("ACTIVE"));
+    assert_eq!(placed["remaining_qty"], json!(3));
+
+    let snapshot = app
+        .clone()
+        .oneshot(empty_get("/api/v1/markets/mkt-election/book?depth=10"))
+        .await
+        .expect("request should be handled");
+    assert_eq!(snapshot.status(), StatusCode::OK);
+    let body = response_json(snapshot).await;
+    assert_eq!(body["asks"], json!([{ "price_pts": 55, "qty": 3 }]));
+
+    let rejected = app
+        .clone()
+        .oneshot(empty_delete(
+            &format!("/api/v1/orders/{order_id}"),
+            Some(20),
+        ))
+        .await
+        .expect("request should be handled");
+    assert_eq!(rejected.status(), StatusCode::FORBIDDEN);
+
+    let cancelled = app
+        .oneshot(empty_delete(
+            &format!("/api/v1/orders/{order_id}"),
+            Some(10),
+        ))
+        .await
+        .expect("request should be handled");
+    assert_eq!(cancelled.status(), StatusCode::OK);
+    let body = response_json(cancelled).await;
+    assert_eq!(body["status"], json!("CANCELLED"));
+    assert_eq!(body["remaining_qty"], json!(0));
+}
+
 fn order(order_id: &str, user_id: u64, side: OrderSide, price: u64, quantity: u64) -> NewOrder {
     NewOrder {
         order_id: OrderId::new(order_id),
@@ -69,6 +133,28 @@ fn empty_get(uri: &str) -> Request<Body> {
         .method("GET")
         .uri(uri)
         .body(Body::empty())
+        .expect("request should build")
+}
+
+fn empty_delete(uri: &str, user_id: Option<u64>) -> Request<Body> {
+    let mut builder = Request::builder().method("DELETE").uri(uri);
+    if let Some(user_id) = user_id {
+        builder = builder.header("x-user-id", user_id.to_string());
+    }
+    builder.body(Body::empty()).expect("request should build")
+}
+
+fn json_request(method: &str, uri: &str, user_id: Option<u64>, body: &Value) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json");
+    if let Some(user_id) = user_id {
+        builder = builder.header("x-user-id", user_id.to_string());
+    }
+
+    builder
+        .body(Body::from(body.to_string()))
         .expect("request should build")
 }
 
