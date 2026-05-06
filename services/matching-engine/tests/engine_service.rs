@@ -1,0 +1,119 @@
+#![allow(clippy::expect_used)]
+
+use matching_engine::service::InMemoryEngineService;
+use proto::proph::v1::{
+    AuditMeta, CancelOrderRequest, GetBookSnapshotRequest, MarketId, OrderId, OrderType,
+    PlaceOrderRequest, Side, TimeInForce, UserId, engine_service_server::EngineService,
+};
+
+fn market_id() -> MarketId {
+    MarketId {
+        value: "mkt-election".to_string(),
+    }
+}
+
+fn place_order_request(
+    user_id: u64,
+    side: Side,
+    order_type: OrderType,
+    price_pts: i32,
+    quantity: i64,
+    client_order_id: &str,
+) -> PlaceOrderRequest {
+    PlaceOrderRequest {
+        audit: Some(AuditMeta::default()),
+        user_id: Some(UserId { value: user_id }),
+        market_id: Some(market_id()),
+        side: side.into(),
+        outcome: 1,
+        r#type: order_type.into(),
+        price_pts,
+        quantity,
+        tif: TimeInForce::Gtc.into(),
+        post_only: order_type == OrderType::PostOnly,
+        client_order_id: client_order_id.to_string(),
+    }
+}
+
+#[tokio::test]
+async fn place_order_and_get_book_snapshot_flow_through_engine_service() {
+    let service = InMemoryEngineService::default();
+
+    let response = service
+        .place_order(tonic::Request::new(place_order_request(
+            10,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "client-maker",
+        )))
+        .await
+        .expect("place order should succeed")
+        .into_inner();
+
+    let order = response.order.expect("response should include order");
+    assert_eq!(order.market_id, Some(market_id()));
+    assert_eq!(order.qty_remaining, 3);
+    assert_eq!(order.price_pts, 55);
+    assert_eq!(order.id.expect("order id should exist").value.len(), 16);
+
+    let snapshot = service
+        .get_book_snapshot(tonic::Request::new(GetBookSnapshotRequest {
+            market_id: Some(market_id()),
+            depth: 10,
+        }))
+        .await
+        .expect("snapshot should succeed")
+        .into_inner();
+
+    assert_eq!(snapshot.asks.len(), 1);
+    assert_eq!(snapshot.asks[0].price_pts, 55);
+    assert_eq!(snapshot.asks[0].qty, 3);
+}
+
+#[tokio::test]
+async fn cancel_order_rejects_non_owner_and_allows_owner() {
+    let service = InMemoryEngineService::default();
+    let response = service
+        .place_order(tonic::Request::new(place_order_request(
+            10,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "client-maker",
+        )))
+        .await
+        .expect("place order should succeed")
+        .into_inner();
+    let order_id = response
+        .order
+        .expect("response should include order")
+        .id
+        .expect("order id should exist");
+
+    let non_owner = service
+        .cancel_order(tonic::Request::new(CancelOrderRequest {
+            audit: None,
+            order_id: Some(order_id.clone()),
+            user_id: Some(UserId { value: 20 }),
+        }))
+        .await
+        .expect_err("non-owner cancel should be rejected");
+    assert_eq!(non_owner.code(), tonic::Code::PermissionDenied);
+
+    let owner = service
+        .cancel_order(tonic::Request::new(CancelOrderRequest {
+            audit: None,
+            order_id: Some(OrderId {
+                value: order_id.value,
+            }),
+            user_id: Some(UserId { value: 10 }),
+        }))
+        .await
+        .expect("owner cancel should succeed")
+        .into_inner();
+    let cancelled = owner.order.expect("response should include order");
+    assert_eq!(cancelled.qty_remaining, 0);
+}

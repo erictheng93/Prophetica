@@ -3,6 +3,7 @@ pub const DEFAULT_PORT: u16 = 8088;
 
 pub mod api;
 pub mod order_book;
+pub mod service;
 pub mod shard;
 pub mod wal;
 

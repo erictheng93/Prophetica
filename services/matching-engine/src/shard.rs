@@ -1,8 +1,8 @@
 use tokio::sync::{mpsc, oneshot};
 
 use crate::order_book::{
-    AddOrderResult, CancelOrderResult, NewOrder, OrderBook, OrderBookError, OrderId, Price,
-    Quantity, Sequence, Symbol,
+    AddOrderResult, CancelOrderResult, NewOrder, OrderBook, OrderBookError, OrderBookSnapshot,
+    OrderId, Price, Quantity, Sequence, Symbol,
 };
 
 #[derive(Debug)]
@@ -14,6 +14,14 @@ pub enum MarketCommand {
     CancelOrder {
         order_id: OrderId,
         reply_to: oneshot::Sender<Result<CancelOrderResult, OrderBookError>>,
+    },
+    CancelOrderForUser {
+        order_id: OrderId,
+        user_id: u64,
+        reply_to: oneshot::Sender<Result<CancelOrderResult, OrderBookError>>,
+    },
+    GetSnapshot {
+        reply_to: oneshot::Sender<OrderBookSnapshot>,
     },
 }
 
@@ -80,6 +88,20 @@ impl MarketShard {
                         publish_cancel_order_event(cancel_order_result, &events).await;
                     }
                     let _ = reply_to.send(result);
+                }
+                MarketCommand::CancelOrderForUser {
+                    order_id,
+                    user_id,
+                    reply_to,
+                } => {
+                    let result = self.book.cancel_order_for_user(&order_id, user_id);
+                    if let Ok(cancel_order_result) = &result {
+                        publish_cancel_order_event(cancel_order_result, &events).await;
+                    }
+                    let _ = reply_to.send(result);
+                }
+                MarketCommand::GetSnapshot { reply_to } => {
+                    let _ = reply_to.send(self.book.snapshot());
                 }
             }
         }
