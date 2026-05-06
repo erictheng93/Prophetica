@@ -1,3 +1,10 @@
+import type {
+  ClientOptions,
+  LedgerEntry as SdkLedgerEntry,
+  WalletBalance as SdkWalletBalance,
+  WalletClient,
+} from "@prophetica/ts-sdk";
+
 export const API_GATEWAY_FALLBACK_USER_ID = "user_01";
 
 const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
@@ -24,36 +31,19 @@ export interface WalletOverview {
   source: "api-gateway" | "fallback:api-gateway-unavailable";
 }
 
-interface ApiWalletBalance {
-  user_id: string;
-  available_minor_units: number;
-  locked_minor_units: number;
-  frozen_minor_units: number;
-}
-
-interface ApiLedgerEntry {
-  txn_id: number;
-  account_code: string;
-  direction: "debit" | "credit";
-  amount_minor_units: number;
-  balance_after_minor_units: number;
-}
-
-interface ApiLedgerEntriesResponse {
-  entries: ApiLedgerEntry[];
-}
-
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
+export type WalletClientFactory = (options: ClientOptions) => WalletClient;
 
 export interface FetchWalletOverviewOptions {
   baseUrl?: string;
   userId?: string;
   fetcher?: Fetcher;
   ledgerLimit?: number;
+  walletClientFactory?: WalletClientFactory;
 }
 
-export function minorUnitsToPoints(minorUnits: number): number {
-  return -minorUnits / 100;
+export function minorUnitsToPoints(minorUnits: number | bigint): number {
+  return -Number(minorUnits) / 100;
 }
 
 export async function fetchWalletOverview(
@@ -65,23 +55,22 @@ export async function fetchWalletOverview(
   const userId = options.userId ?? process.env.PROPHETICA_DEV_USER_ID ?? API_GATEWAY_FALLBACK_USER_ID;
   const fetcher = options.fetcher ?? fetch;
   const ledgerLimit = options.ledgerLimit ?? DEFAULT_LEDGER_LIMIT;
+  const walletClientFactory = options.walletClientFactory ?? (await loadWalletClientFactory());
+  const walletClient = walletClientFactory({
+    baseUrl,
+    auth: { userId },
+    fetcher,
+  });
 
   try {
     const [balance, ledgerEntries] = await Promise.all([
-      fetchJson<ApiWalletBalance>(fetcher, `${baseUrl}/v1/me/wallet/balance`, userId),
-      fetchJson<ApiLedgerEntriesResponse>(
-        fetcher,
-        `${baseUrl}/v1/ledger/entries?${new URLSearchParams({
-          account_code: `Player.Wallet.${userId}`,
-          limit: String(ledgerLimit),
-        })}`,
-        userId,
-      ),
+      walletClient.getBalance(),
+      walletClient.listEntries(`Player.Wallet.${userId}`, ledgerLimit),
     ]);
 
     return {
       balance: mapWalletBalance(balance),
-      ledgerEntries: ledgerEntries.entries.map(mapLedgerEntry),
+      ledgerEntries: ledgerEntries.map(mapLedgerEntry),
       source: "api-gateway",
     };
   } catch {
@@ -89,40 +78,29 @@ export async function fetchWalletOverview(
   }
 }
 
-async function fetchJson<T>(fetcher: Fetcher, url: string, userId: string): Promise<T> {
-  const response = await fetcher(url, {
-    cache: "no-store",
-    headers: {
-      "x-user-id": userId,
-      accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`api-gateway request failed: ${response.status}`);
-  }
-
-  return (await response.json()) as T;
+async function loadWalletClientFactory(): Promise<WalletClientFactory> {
+  const { createWalletClient } = await import("@prophetica/ts-sdk");
+  return createWalletClient;
 }
 
-function mapWalletBalance(balance: ApiWalletBalance): WalletBalance {
+function mapWalletBalance(balance: SdkWalletBalance): WalletBalance {
   return {
-    userId: balance.user_id,
-    availablePoints: minorUnitsToPoints(balance.available_minor_units),
-    lockedPoints: minorUnitsToPoints(balance.locked_minor_units),
-    frozenPoints: minorUnitsToPoints(balance.frozen_minor_units),
+    userId: balance.userId,
+    availablePoints: minorUnitsToPoints(balance.availableMinorUnits),
+    lockedPoints: minorUnitsToPoints(balance.lockedMinorUnits),
+    frozenPoints: minorUnitsToPoints(balance.frozenMinorUnits),
   };
 }
 
-function mapLedgerEntry(entry: ApiLedgerEntry): LedgerEntry {
+function mapLedgerEntry(entry: SdkLedgerEntry): LedgerEntry {
   return {
-    txnId: entry.txn_id,
-    accountCode: entry.account_code,
+    txnId: Number(entry.txnId),
+    accountCode: entry.accountCode,
     direction: entry.direction,
     amountPoints: minorUnitsToPoints(
-      entry.direction === "credit" ? -entry.amount_minor_units : entry.amount_minor_units,
+      entry.direction === "credit" ? -entry.amountMinorUnits : entry.amountMinorUnits,
     ),
-    balanceAfterPoints: minorUnitsToPoints(entry.balance_after_minor_units),
+    balanceAfterPoints: minorUnitsToPoints(entry.balanceAfterMinorUnits),
   };
 }
 

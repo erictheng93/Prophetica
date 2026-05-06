@@ -113,6 +113,13 @@ rtk cargo nextest run -p wallet-ledger-service --locked
 - [ ] Add E2E path: archive job -> WORM/local archive -> verify command.
 - [ ] Document which E2E tests run locally, in CI, and only in staging.
 
+## 9. ts-sdk Follow-ups
+
+- [ ] After LINE `id_token -> prophetica` session/JWT bridge exists, make `apps/liff` the first non-web player-facing consumer of `@prophetica/ts-sdk` wallet data.
+- [ ] Defer `apps/admin` as a ts-sdk consumer until admin-only services/endpoints exist; its API surface should not be forced through player wallet/market clients.
+- [ ] When there are at least three real consumers or a concrete duplication pain point, extract remaining `apps/web/lib/{market-api,engine-api,position-api}.ts` client logic into `packages/ts-sdk/src/{market,engine,positions}/`.
+- [ ] Keep `apps/web/lib/*` adapters as UI-facing compatibility wrappers while migrating to ts-sdk clients, preserving fallback behavior during each step.
+
 ## Current Testing Status
 
 - Unit tests: mostly covered for the Phase 1 ledger core.

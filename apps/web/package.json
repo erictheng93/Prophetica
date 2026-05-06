@@ -16,6 +16,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@phosphor-icons/react": "^2.1.7",
     "@prophetica/design-tokens": "workspace:*",
+    "@prophetica/ts-sdk": "workspace:*",
     "@prophetica/ui": "workspace:*",
     "lightweight-charts": "^5.2.0",
     "next": "^15.0.0",
