@@ -74,6 +74,8 @@ pub struct AddOrderResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CancelOrderResult {
     pub order_id: OrderId,
+    pub side: OrderSide,
+    pub price: Price,
     pub canceled_quantity: Quantity,
 }
 
@@ -269,6 +271,8 @@ impl OrderBook {
 
         Ok(CancelOrderResult {
             order_id: order_id.clone(),
+            side: location.side,
+            price: location.price,
             canceled_quantity,
         })
     }
@@ -1076,6 +1080,8 @@ mod tests {
             cancel,
             CancelOrderResult {
                 order_id: id("seller"),
+                side: OrderSide::Sell,
+                price: 55,
                 canceled_quantity: 3,
             }
         );
@@ -1118,6 +1124,8 @@ mod tests {
             result,
             CancelOrderResult {
                 order_id: id("seller"),
+                side: OrderSide::Sell,
+                price: 55,
                 canceled_quantity: 3,
             }
         );

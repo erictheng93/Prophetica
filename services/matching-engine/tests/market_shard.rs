@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used)]
+#![allow(clippy::expect_used, clippy::too_many_lines)]
 
 use matching_engine::order_book::{
     CancelOrderResult, NewOrder, OrderId, OrderSide, OrderType, Symbol,
@@ -37,6 +37,10 @@ async fn shard_processes_cancel_orders_through_same_command_queue() {
         .recv()
         .await
         .expect("maker resting event should be published");
+    event_rx
+        .recv()
+        .await
+        .expect("maker book delta should be published");
 
     let (cancel_reply_tx, cancel_reply_rx) = oneshot::channel();
     command_tx
@@ -55,6 +59,8 @@ async fn shard_processes_cancel_orders_through_same_command_queue() {
         cancel_result,
         CancelOrderResult {
             order_id: id("maker"),
+            side: OrderSide::Sell,
+            price: 55,
             canceled_quantity: 2,
         }
     );
@@ -68,6 +74,17 @@ async fn shard_processes_cancel_orders_through_same_command_queue() {
         MarketEvent::OrderCancelled {
             order_id: id("maker"),
             canceled_quantity: 2,
+        }
+    );
+    assert_eq!(
+        event_rx
+            .recv()
+            .await
+            .expect("cancel book delta should publish"),
+        MarketEvent::BookDelta {
+            side: OrderSide::Sell,
+            price: 55,
+            quantity_delta: -2,
         }
     );
 
@@ -159,6 +176,18 @@ async fn shard_processes_place_orders_in_command_order() {
             order_id: id("maker")
         }
     );
+    let maker_delta = event_rx
+        .recv()
+        .await
+        .expect("maker book delta should be published");
+    assert_eq!(
+        maker_delta,
+        MarketEvent::BookDelta {
+            side: OrderSide::Sell,
+            price: 55,
+            quantity_delta: 2,
+        }
+    );
 
     let (taker_reply_tx, taker_reply_rx) = oneshot::channel();
     command_tx
@@ -202,6 +231,17 @@ async fn shard_processes_place_orders_in_command_order() {
             quantity: 2,
         }
     );
+    assert_eq!(
+        event_rx
+            .recv()
+            .await
+            .expect("trade book delta should publish"),
+        MarketEvent::BookDelta {
+            side: OrderSide::Sell,
+            price: 55,
+            quantity_delta: -2,
+        }
+    );
     let filled_event = event_rx
         .recv()
         .await
@@ -242,6 +282,10 @@ async fn shard_publishes_partial_and_ioc_cancel_status_events() {
         .await
         .expect("accepted event should publish");
     event_rx.recv().await.expect("resting event should publish");
+    event_rx
+        .recv()
+        .await
+        .expect("maker book delta should publish");
 
     let (taker_reply_tx, taker_reply_rx) = oneshot::channel();
     command_tx
@@ -280,6 +324,17 @@ async fn shard_publishes_partial_and_ioc_cancel_status_events() {
             sequence: 1,
             price: 55,
             quantity: 2,
+        }
+    );
+    assert_eq!(
+        event_rx
+            .recv()
+            .await
+            .expect("trade book delta should publish"),
+        MarketEvent::BookDelta {
+            side: OrderSide::Sell,
+            price: 55,
+            quantity_delta: -2,
         }
     );
     assert_eq!(

@@ -2,7 +2,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::order_book::{
     AddOrderResult, CancelOrderResult, NewOrder, OrderBook, OrderBookError, OrderBookSnapshot,
-    OrderId, Price, Quantity, Sequence, Symbol,
+    OrderId, OrderSide, Price, Quantity, Sequence, Symbol,
 };
 
 #[derive(Debug)]
@@ -44,6 +44,11 @@ pub enum MarketEvent {
         order_id: OrderId,
         canceled_quantity: Quantity,
     },
+    BookDelta {
+        side: OrderSide,
+        price: Price,
+        quantity_delta: i64,
+    },
     OrderFilled {
         order_id: OrderId,
         total_filled: Quantity,
@@ -76,9 +81,9 @@ impl MarketShard {
         while let Some(command) = commands.recv().await {
             match command {
                 MarketCommand::PlaceOrder { order, reply_to } => {
-                    let result = self.book.add_order(order);
+                    let result = self.book.add_order(order.clone());
                     if let Ok(add_order_result) = &result {
-                        publish_add_order_events(add_order_result, &events).await;
+                        publish_add_order_events(&order, add_order_result, &events).await;
                     }
                     let _ = reply_to.send(result);
                 }
@@ -108,7 +113,11 @@ impl MarketShard {
     }
 }
 
-async fn publish_add_order_events(result: &AddOrderResult, events: &mpsc::Sender<MarketEvent>) {
+async fn publish_add_order_events(
+    order: &NewOrder,
+    result: &AddOrderResult,
+    events: &mpsc::Sender<MarketEvent>,
+) {
     if events
         .send(MarketEvent::OrderAccepted {
             order_id: result.order_id.clone(),
@@ -134,6 +143,17 @@ async fn publish_add_order_events(result: &AddOrderResult, events: &mpsc::Sender
             quantity: trade.quantity,
         };
         if events.send(event).await.is_err() {
+            return;
+        }
+        if publish_book_delta(
+            events,
+            maker_side(trade.aggressor_side),
+            trade.price,
+            -i64::try_from(trade.quantity).unwrap_or(i64::MAX),
+        )
+        .await
+        .is_err()
+        {
             return;
         }
     }
@@ -162,18 +182,32 @@ async fn publish_add_order_events(result: &AddOrderResult, events: &mpsc::Sender
     }
 
     if result.rested {
-        let _ = events
+        if events
             .send(MarketEvent::OrderResting {
                 order_id: result.order_id.clone(),
             })
-            .await;
-    } else if result.remaining_quantity > 0 {
-        let _ = events
+            .await
+            .is_err()
+        {
+            return;
+        }
+        let _ = publish_book_delta(
+            events,
+            order.side,
+            order.price,
+            i64::try_from(result.remaining_quantity).unwrap_or(i64::MAX),
+        )
+        .await;
+    } else if result.remaining_quantity > 0
+        && events
             .send(MarketEvent::OrderCancelled {
                 order_id: result.order_id.clone(),
                 canceled_quantity: result.remaining_quantity,
             })
-            .await;
+            .await
+            .is_err()
+    {
+        return;
     }
 }
 
@@ -187,4 +221,33 @@ async fn publish_cancel_order_event(
             canceled_quantity: result.canceled_quantity,
         })
         .await;
+    let _ = publish_book_delta(
+        events,
+        result.side,
+        result.price,
+        -i64::try_from(result.canceled_quantity).unwrap_or(i64::MAX),
+    )
+    .await;
+}
+
+async fn publish_book_delta(
+    events: &mpsc::Sender<MarketEvent>,
+    side: OrderSide,
+    price: Price,
+    quantity_delta: i64,
+) -> Result<(), mpsc::error::SendError<MarketEvent>> {
+    events
+        .send(MarketEvent::BookDelta {
+            side,
+            price,
+            quantity_delta,
+        })
+        .await
+}
+
+fn maker_side(aggressor_side: OrderSide) -> OrderSide {
+    match aggressor_side {
+        OrderSide::Buy => OrderSide::Sell,
+        OrderSide::Sell => OrderSide::Buy,
+    }
 }
