@@ -105,7 +105,7 @@ function ResolvedBanner({ market }: { market: Market }) {
       </div>
       <div
         className={
-          "mt-2 font-display text-[56px] font-semibold leading-none tracking-[-0.28px] " +
+          "mt-2 font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-none tracking-[-0.28px] " +
           (isYes ? "text-proph-primary" : "text-proph-ink")
         }
       >
@@ -244,7 +244,7 @@ function MarketInfoBlock({ market }: { market: Market }) {
         <p className="mt-8 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-48">
           市場合規邊界遵循 SPEC-015 §5；Oracle 結算流程與申訴窗口遵循 SPEC-004。
           如對結算結果有疑問，請於結算後 24 小時內透過{" "}
-          <a href="/support/disputes" className="text-proph-primary hover:underline">
+          <a href="/support/disputes" className="text-proph-primary underline">
             申訴流程
           </a>
           提起。

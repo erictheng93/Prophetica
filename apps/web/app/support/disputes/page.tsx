@@ -254,7 +254,7 @@ function SubmissionForm() {
             <input type="checkbox" required className="mt-1 h-4 w-4 accent-proph-primary" />
             <span>
               我了解工單範圍內的查詢會被記錄於 audit_logs，並接受{" "}
-              <a href="/legal/privacy" className="text-proph-primary hover:underline">
+              <a href="/legal/privacy" className="text-proph-primary underline">
                 隱私政策
               </a>
               對申訴資料的處理規範。

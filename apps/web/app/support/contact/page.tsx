@@ -156,7 +156,7 @@ function GeneralForm() {
 
           <p className="font-text text-[12px] leading-[1.3] tracking-[-0.12px] text-proph-ink-muted-48">
             提交即代表你同意我們依{" "}
-            <a href="/legal/privacy" className="text-proph-primary hover:underline">
+            <a href="/legal/privacy" className="text-proph-primary underline">
               隱私政策
             </a>{" "}
             處理你提供的聯絡資料。我們不會把你的 Email 用於行銷推播。

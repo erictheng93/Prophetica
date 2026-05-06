@@ -86,7 +86,7 @@ const sections: Section[] = [
           <>
             由 SumSub Cloud（EU region）與 Cloudflare R2（EU region）Object Lock 加密儲存。
             <strong className="font-semibold">客服無法直接讀取證件影像</strong>，只有 Compliance Officer 在通過簽核後可申請查閱。
-            完整說明見 <a href="/kyc/privacy-notice" className="text-proph-primary hover:underline">KYC 隱私說明</a>。
+            完整說明見 <a href="/kyc/privacy-notice" className="text-proph-primary underline">KYC 隱私說明</a>。
           </>
         ),
       },
@@ -105,7 +105,7 @@ const sections: Section[] = [
         a: (
           <>
             24 小時申訴窗口開放，可在{" "}
-            <a href="/support/disputes" className="text-proph-primary hover:underline">
+            <a href="/support/disputes" className="text-proph-primary underline">
               申訴流程
             </a>
             提交。所有申訴 24 小時內會收到狀態回覆（即使尚未裁決）。
@@ -127,11 +127,11 @@ const sections: Section[] = [
         a: (
           <>
             馬上前往{" "}
-            <a href="/responsible-gaming" className="text-proph-primary hover:underline">
+            <a href="/responsible-gaming" className="text-proph-primary underline">
               責任博弈
             </a>{" "}
             設定限額或啟動冷靜期。外部援助專線{" "}
-            <a href="tel:1925" className="text-proph-primary hover:underline">
+            <a href="tel:1925" className="text-proph-primary underline">
               1925
             </a>
             （衛福部安心專線）24 小時免費，且不會與 prophetica 交換任何資訊。

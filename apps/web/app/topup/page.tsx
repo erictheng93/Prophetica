@@ -150,7 +150,7 @@ function BalanceBlock(props: BalanceBlockProps) {
             <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
               目前餘額
             </div>
-            <div className="mt-2 font-display text-[56px] font-semibold leading-none tracking-[-0.28px]">
+            <div className="mt-2 font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-none tracking-[-0.28px]">
               {formatPoints(currentBalance)}
             </div>
             <div className="mt-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
@@ -166,7 +166,14 @@ function BalanceBlock(props: BalanceBlockProps) {
             <div className="mt-2 font-display text-[34px] font-semibold leading-none tracking-[-0.374px]">
               {formatPoints(monthlyDeposited)} / {formatPoints(monthlyLimit)}
             </div>
-            <div className="mt-4 h-2 w-full overflow-hidden rounded-proph-pill bg-proph-divider-soft">
+            <div
+              className="mt-4 h-2 w-full overflow-hidden rounded-proph-pill bg-proph-divider-soft"
+              role="progressbar"
+              aria-label="月儲值用量"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(usagePct)}
+            >
               <div
                 className={
                   "h-full " +
@@ -177,7 +184,6 @@ function BalanceBlock(props: BalanceBlockProps) {
                     : "bg-proph-primary")
                 }
                 style={{ width: `${usagePct}%` }}
-                aria-label={`月儲值用量 ${usagePct.toFixed(0)}%`}
               />
             </div>
             <div className="mt-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
@@ -288,8 +294,10 @@ function ChannelSection() {
               <li
                 key={c.name}
                 className={
-                  "flex flex-col rounded-proph-lg border bg-proph-canvas p-6 " +
-                  (disabled ? "border-proph-divider-soft opacity-60" : "border-proph-hairline")
+                  "flex flex-col rounded-proph-lg border p-6 " +
+                  (disabled
+                    ? "border-proph-divider-soft bg-proph-canvas-parchment"
+                    : "border-proph-hairline bg-proph-canvas")
                 }
               >
                 <div className="flex items-baseline justify-between gap-3">

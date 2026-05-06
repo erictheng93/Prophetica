@@ -15,7 +15,7 @@
   --proph-color-body-on-dark: #ffffff;
   --proph-color-body-muted: #cccccc;
   --proph-color-ink-muted-80: #333333;
-  --proph-color-ink-muted-48: #7a7a7a;
+  --proph-color-ink-muted-48: #595959;
 
   /* Colors — hairlines */
   --proph-color-divider-soft: #f0f0f0;
@@ -37,7 +37,7 @@
 
   /* Colors — feedback (form validation / system messages, not brand accents) */
   --proph-color-feedback-error: #c92020;
-  --proph-color-feedback-warning: #a86b00;
+  --proph-color-feedback-warning: #8a5800;
   --proph-color-feedback-success: #1f7a3f;
 
   /* Spacing */

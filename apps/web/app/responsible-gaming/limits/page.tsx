@@ -37,7 +37,7 @@ function CurrentLimitCard() {
           <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
             目前的月儲值上限
           </div>
-          <div className="mt-2 font-display text-[56px] font-semibold leading-none tracking-[-0.28px]">
+          <div className="mt-2 font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-none tracking-[-0.28px]">
             {formatPoints(mockState.currentLimit)}
           </div>
           <div className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">

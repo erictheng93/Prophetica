@@ -11,7 +11,7 @@ const TileMedia = ({ label, surface }: { label: string; surface: "light" | "dark
       "flex h-64 w-full max-w-3xl items-center justify-center rounded-proph-lg " +
       (surface === "dark"
         ? "bg-proph-surface-tile-2 text-proph-body-muted"
-        : "bg-proph-canvas-parchment text-proph-ink-muted-48")
+        : "bg-proph-canvas-parchment text-proph-ink-muted-80")
     }
   >
     <span className="font-display text-[21px] font-semibold tracking-[0.231px]">{label}</span>
@@ -33,7 +33,7 @@ export default function LandingPage() {
         surface="light"
         kicker="趣味預測娛樂"
         headline={
-          <span className="font-display text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
+          <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             預測，是一種眼光的競技。
           </span>
         }
@@ -78,7 +78,7 @@ export default function LandingPage() {
         actions={
           <>
             <ProphLinkButton variant="primary" href="/responsible-gaming/limits">設定我的限額</ProphLinkButton>
-            <ProphLinkButton variant="secondary-pill" href="/responsible-gaming/resources">求助資源</ProphLinkButton>
+            <ProphLinkButton variant="secondary-pill-on-dark" href="/responsible-gaming/resources">求助資源</ProphLinkButton>
           </>
         }
         media={<TileMedia label="Responsible gaming dashboard" surface="dark" />}

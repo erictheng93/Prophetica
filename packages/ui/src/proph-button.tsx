@@ -2,12 +2,13 @@ import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type 
 import { cn } from "./cn";
 
 export type ProphButtonVariant =
-  | "primary"        // DESIGN.md §Buttons — Action Blue pill, the brand action
-  | "secondary-pill" // ghost pill: transparent fill, blue border + text
-  | "dark-utility"   // ink rect, 8px radius — for use against light/parchment, NOT against surface-black
-  | "pearl-capsule"  // surface-pearl, 11px radius — secondary on cards
-  | "store-hero"     // larger primary, weight 300 (the rare 300)
-  | "icon-circular"; // 44x44 translucent chip over photography
+  | "primary"               // DESIGN.md §Buttons — Action Blue pill, the brand action
+  | "secondary-pill"        // ghost pill: transparent fill, blue border + text (light surfaces)
+  | "secondary-pill-on-dark" // ghost pill for dark tiles — primary-on-dark Sky Blue
+  | "dark-utility"          // ink rect, 8px radius — for use against light/parchment, NOT against surface-black
+  | "pearl-capsule"         // surface-pearl, 11px radius — secondary on cards
+  | "store-hero"            // larger primary, weight 300 (the rare 300)
+  | "icon-circular";        // 44x44 translucent chip over photography
 
 export type ProphButtonSize = "default" | "lg";
 
@@ -38,6 +39,14 @@ const variantClasses: Record<ProphButtonVariant, string> = {
   "secondary-pill": cn(
     "bg-transparent text-proph-primary",
     "border border-proph-primary",
+    "rounded-proph-pill px-[22px] py-[11px]",
+    "font-text text-[17px] leading-[1.47] tracking-[-0.374px]",
+  ),
+  "secondary-pill-on-dark": cn(
+    // Sky Link Blue (primary-on-dark, #2997ff) clears WCAG AA on
+    // surface-tile-* backgrounds; Action Blue does not.
+    "bg-transparent text-proph-primary-on-dark",
+    "border border-proph-primary-on-dark",
     "rounded-proph-pill px-[22px] py-[11px]",
     "font-text text-[17px] leading-[1.47] tracking-[-0.374px]",
   ),

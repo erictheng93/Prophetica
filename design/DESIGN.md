@@ -12,7 +12,7 @@ colors:
   body-on-dark: "#ffffff"
   body-muted: "#cccccc"
   ink-muted-80: "#333333"
-  ink-muted-48: "#7a7a7a"
+  ink-muted-48: "#595959"
   divider-soft: "#f0f0f0"
   hairline: "#e0e0e0"
   canvas: "#ffffff"
@@ -26,7 +26,7 @@ colors:
   on-primary: "#ffffff"
   on-dark: "#ffffff"
   feedback-error: "#c92020"
-  feedback-warning: "#a86b00"
+  feedback-warning: "#8a5800"
   feedback-success: "#1f7a3f"
 
 typography:
@@ -319,7 +319,7 @@ Store and shop surfaces retain the same chassis but switch modes. The product co
 - **Body On Dark** (`{colors.body-on-dark}` — #ffffff): All text on dark tiles and on the global nav bar.
 - **Body Muted** (`{colors.body-muted}` — #cccccc): Secondary copy on dark tiles where pure white would be too loud.
 - **Ink Muted 80** (`{colors.ink-muted-80}` — #333333): Body text on the white Pearl Button surface — slightly softer than pure black.
-- **Ink Muted 48** (`{colors.ink-muted-48}` — #7a7a7a): Disabled button text and legal fine-print.
+- **Ink Muted 48** (`{colors.ink-muted-48}` — #595959): Kickers, dt labels, captions, disabled button text, and legal fine-print. (Bumped 2026-05-06 from #7a7a7a; original failed WCAG AA at 12px body sizes.)
 
 ### Hairlines & Borders
 - **Divider Soft** (`{colors.divider-soft}` — #f0f0f0): The "border" tone on secondary buttons — functions as a ring shadow rather than a hard line. In production, often applied as `rgba(0, 0, 0, 0.04)`.
@@ -330,7 +330,7 @@ Store and shop surfaces retain the same chassis but switch modes. The product co
 Form validation and system-message colors. The "Known Gaps" section originally noted these were missing; they were added on 2026-05-06 to support the `<TradePanel>` Zod-driven inline error UX. They are **not brand accents** — `Action Blue` remains the sole interactive accent.
 
 - **Error** (`{colors.feedback-error}` — #c92020): Inline form-field errors (Zod validation), destructive-action confirmation copy, blocking system messages. Tuned slightly below iOS systemRed (`#FF3B30`) so it pairs with ink (`#1d1d1f`) rather than competing for attention. **Never** apply to marketing surfaces or to elements that aren't communicating a problem.
-- **Warning** (`{colors.feedback-warning}` — #a86b00): Approaching-limit notices (e.g., 80% of monthly deposit cap per SPEC-006 §7.2), `stale` declarations, soft-fail states where the user can still proceed. Restricted to status copy and small inline icons.
+- **Warning** (`{colors.feedback-warning}` — #8a5800): Approaching-limit notices (e.g., 80% of monthly deposit cap per SPEC-006 §7.2), `stale` declarations, soft-fail states where the user can still proceed. Restricted to status copy and small inline icons.
 - **Success** (`{colors.feedback-success}` — #1f7a3f): Confirmation banners after KYC review GREEN, after a successful order submission, or settlement-positive resolutions in user-specific contexts. Sparingly used — the design assumes "success is the default" and avoids green confetti.
 
 ### Brand Gradient

@@ -179,11 +179,11 @@ export function FooterLegalRow() {
       </span>
       <span className="font-text text-[12px] leading-none tracking-[-0.12px]">
         援助專線{" "}
-        <a href="tel:1925" className="text-proph-primary hover:underline">
+        <a href="tel:1925" className="text-proph-primary underline">
           1925
         </a>
         （24 小時）·{" "}
-        <a href="/legal/geo-block" className="hover:underline">
+        <a href="/legal/geo-block" className="text-proph-primary underline">
           服務地區限制
         </a>
       </span>

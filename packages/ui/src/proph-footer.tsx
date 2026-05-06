@@ -50,7 +50,7 @@ export function ProphFooter({ columns, legal, className }: ProphFooterProps) {
         </div>
 
         {legal ? (
-          <div className="mt-12 border-t border-proph-divider-soft pt-6 font-text text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-48">
+          <div className="mt-12 border-t border-proph-divider-soft pt-6 font-text text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-80">
             {legal}
           </div>
         ) : null}

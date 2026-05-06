@@ -71,7 +71,7 @@ function PrivacyReminder() {
           </h2>
           <p className="mt-3 font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
             填寫此表前請先閱讀
-            <a href="/kyc/privacy-notice" className="text-proph-primary hover:underline">
+            <a href="/kyc/privacy-notice" className="text-proph-primary underline">
               KYC 隱私說明
             </a>
             ，了解 prophetica 收集哪些欄位、為什麼收集、保存多久、由誰存取。Tier 1 的證件號碼一律
@@ -91,7 +91,7 @@ function CountryGuide() {
           <h2 className="font-display text-[40px] font-semibold leading-[1.1]">首發 5 國的證件規格</h2>
           <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
             選擇你的國家後，在下方表單依對應格式輸入。不在這 5 國的玩家，請先閱讀
-            <a href="/legal/geo-block" className="text-proph-primary hover:underline">
+            <a href="/legal/geo-block" className="text-proph-primary underline">
               服務地區限制
             </a>
             。
@@ -205,11 +205,11 @@ function Tier1Form() {
             <input type="checkbox" required className="mt-1 h-4 w-4 accent-proph-primary" />
             <span>
               我已閱讀
-              <a href="/kyc/privacy-notice" className="text-proph-primary hover:underline">
+              <a href="/kyc/privacy-notice" className="text-proph-primary underline">
                 KYC 隱私說明
               </a>
               與
-              <a href="/legal/terms" className="text-proph-primary hover:underline">
+              <a href="/legal/terms" className="text-proph-primary underline">
                 服務條款
               </a>
               ，並同意 prophetica 依據說明處理我提交的資料。

@@ -124,3 +124,5 @@ build/
 # ---------------------------------------------------------------
 tools/load-test/results/
 *.csv.gz
+.playwright-mcp/
+audit-*.png

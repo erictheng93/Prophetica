@@ -67,7 +67,7 @@ export default function GeoBlockPage() {
         surface="light"
         kicker="服務地區限制"
         headline={
-          <span className="font-display text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
+          <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             本服務在你目前的所在地區無法使用。
           </span>
         }
@@ -117,7 +117,7 @@ export default function GeoBlockPage() {
               站內點數不可兌回現金 / 虛擬貨幣 / 實體商品。
             </span>
             <span className="font-text text-[12px] leading-none tracking-[-0.12px]">
-              援助專線 <a href="tel:1925" className="text-proph-primary hover:underline">1925</a>（24 小時）
+              援助專線 <a href="tel:1925" className="text-proph-primary underline">1925</a>（24 小時）
             </span>
           </div>
         }

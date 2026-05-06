@@ -140,7 +140,7 @@ function YourRights() {
         <h2 className="mb-6 font-display text-[40px] font-semibold leading-[1.1]">你的權利</h2>
         <p className="max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
           完整的個資權利說明在
-          <a href="/legal/privacy" className="text-proph-primary hover:underline">
+          <a href="/legal/privacy" className="text-proph-primary underline">
             隱私政策
           </a>
           。摘要如下：

@@ -112,7 +112,7 @@ function PermanentSection() {
           <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] uppercase text-proph-body-muted">
             選項二（不可逆）
           </span>
-          <h2 className="mt-1 font-display text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
+          <h2 className="mt-1 font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             永久排除。
           </h2>
           <p className="mt-4 font-display text-[24px] font-light leading-[1.5]">

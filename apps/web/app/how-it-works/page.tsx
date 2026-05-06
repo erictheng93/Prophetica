@@ -88,7 +88,7 @@ function Hero() {
       surface="light"
       kicker="玩法說明"
       headline={
-        <span className="font-display text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
+        <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
           從註冊到結算，5 分鐘看懂。
         </span>
       }
@@ -167,7 +167,7 @@ function StartStepsBlock() {
               {s.href ? (
                 <a
                   href={s.href}
-                  className="mt-4 inline-block font-text text-[17px] tracking-[-0.374px] text-proph-primary hover:underline"
+                  className="mt-4 inline-block font-text text-[17px] tracking-[-0.374px] text-proph-primary underline"
                 >
                   {s.cta} →
                 </a>

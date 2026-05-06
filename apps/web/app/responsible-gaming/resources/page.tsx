@@ -48,7 +48,7 @@ function GuideCards() {
               </p>
               <a
                 href={g.href}
-                className="mt-4 inline-block font-text text-[17px] tracking-[-0.374px] text-proph-primary hover:underline"
+                className="mt-4 inline-block font-text text-[17px] tracking-[-0.374px] text-proph-primary underline"
               >
                 {g.cta} →
               </a>
@@ -72,7 +72,7 @@ function PrivacyNote() {
         </p>
         <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
           如果你選擇透過站內客服求助，溝通紀錄將依
-          <a href="/legal/privacy" className="text-proph-primary hover:underline">
+          <a href="/legal/privacy" className="text-proph-primary underline">
             隱私政策
           </a>
           處理，僅授權給通過 RG 培訓的客服人員存取。

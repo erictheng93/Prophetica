@@ -51,7 +51,7 @@ function HeroBlock() {
       surface="light"
       kicker="關於 prophetica"
       headline={
-        <span className="font-display text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
+        <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
           我們做撮合與結算，平台不下場。
         </span>
       }
@@ -155,7 +155,7 @@ function StructureBlock() {
             細節可參考{" "}
             <a
               href="https://github.com/cloudflare/kumo"
-              className="text-proph-primary hover:underline"
+              className="text-proph-primary underline"
               rel="noreferrer"
             >
               ADR-0002

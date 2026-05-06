@@ -14,7 +14,11 @@ export const colors = {
   "body-on-dark": "#ffffff",
   "body-muted": "#cccccc",
   "ink-muted-80": "#333333",
-  "ink-muted-48": "#7a7a7a",
+  // Bumped 2026-05-06 from #7a7a7a → #595959 to clear WCAG AA 4.5:1 at 12px
+  // body text sizes. Token semantics (a "muted" gray for kickers / labels /
+  // legal fine-print) preserved; the original 48%-ink-mix derivation no
+  // longer holds but the hex is what consumers depend on.
+  "ink-muted-48": "#595959",
 
   // Hairlines
   "divider-soft": "#f0f0f0",
@@ -40,7 +44,8 @@ export const colors = {
   // accents — they exist exclusively for form errors, status messages, and
   // the rare destructive-action confirmation. Do not use them for marketing.
   "feedback-error": "#c92020",
-  "feedback-warning": "#a86b00",
+  // Bumped 2026-05-06 from #a86b00 → #8a5800 to clear WCAG AA 4.5:1 at 12px.
+  "feedback-warning": "#8a5800",
   "feedback-success": "#1f7a3f",
 } as const;
 

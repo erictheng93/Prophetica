@@ -159,7 +159,7 @@ export default function ResponsibleGamingPage() {
         surface="light"
         kicker="責任博弈"
         headline={
-          <span className="font-display text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
+          <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             你的節奏，由你掌握。
           </span>
         }

@@ -144,7 +144,7 @@ function SigninForm() {
               </span>
               <a
                 href="/support/contact?topic=password-reset"
-                className="font-text text-[14px] tracking-[-0.224px] text-proph-primary hover:underline"
+                className="font-text text-[14px] tracking-[-0.224px] text-proph-primary underline"
               >
                 忘記密碼？
               </a>
@@ -167,7 +167,7 @@ function SigninForm() {
             <strong className="font-semibold text-proph-ink">兩步驗證：</strong>{" "}
             首次登入會引導你綁定 TOTP App（Google Authenticator、1Password 等）。
             遺失裝置請聯繫{" "}
-            <a href="/support/contact" className="text-proph-primary hover:underline">
+            <a href="/support/contact" className="text-proph-primary underline">
               客服
             </a>
             申請重設，需重新通過 KYC。
@@ -188,7 +188,7 @@ function SigninForm() {
 
           <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
             沒有帳戶？{" "}
-            <a href="/auth/sign-in?mode=signup" className="text-proph-primary hover:underline">
+            <a href="/auth/sign-in?mode=signup" className="text-proph-primary underline">
               註冊一個
             </a>
           </p>
@@ -251,7 +251,7 @@ function SignupForm() {
             </select>
             <span className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
               我們目前只開放這 5 國。其他國家請查看{" "}
-              <a href="/legal/geo-block" className="text-proph-primary hover:underline">
+              <a href="/legal/geo-block" className="text-proph-primary underline">
                 服務地區限制
               </a>
               。
@@ -267,11 +267,11 @@ function SignupForm() {
               <input type="checkbox" required className="mt-1 h-4 w-4 accent-proph-primary" />
               <span>
                 我已閱讀{" "}
-                <a href="/legal/terms" className="text-proph-primary hover:underline">
+                <a href="/legal/terms" className="text-proph-primary underline">
                   服務條款
                 </a>{" "}
                 與{" "}
-                <a href="/legal/privacy" className="text-proph-primary hover:underline">
+                <a href="/legal/privacy" className="text-proph-primary underline">
                   隱私政策
                 </a>
                 ，並同意 prophetica 依此處理我的資料。
@@ -310,7 +310,7 @@ function SignupForm() {
 
           <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
             已有帳戶？{" "}
-            <a href="/auth/sign-in" className="text-proph-primary hover:underline">
+            <a href="/auth/sign-in" className="text-proph-primary underline">
               登入
             </a>
           </p>
@@ -354,7 +354,7 @@ function PostSignupPreview() {
 
         <p className="mt-6 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
           完成這 4 步後進入{" "}
-          <a href="/kyc/tier-1" className="text-proph-primary hover:underline">
+          <a href="/kyc/tier-1" className="text-proph-primary underline">
             KYC Tier 1 基礎驗證
           </a>
           （另 10 秒）。即可瀏覽市場開始下單。

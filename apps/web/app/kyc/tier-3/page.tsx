@@ -106,7 +106,7 @@ function StartFlow() {
           <div className="mt-8 flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
             <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
               審核期間若有疑問，可由
-              <a href="/support/contact" className="text-proph-primary hover:underline">
+              <a href="/support/contact" className="text-proph-primary underline">
                 客服管道
               </a>
               聯繫專屬 Compliance 窗口。
