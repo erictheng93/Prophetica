@@ -107,8 +107,9 @@ function IncomeDeclaration() {
           </p>
         </header>
 
-        <form action="#" aria-disabled="true" className="space-y-6">
-          <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <form action="#">
+          <fieldset disabled className="space-y-6">
+            <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <legend className="sr-only">月收入區間</legend>
             {incomeBuckets.map((b) => (
               <label
@@ -128,9 +129,9 @@ function IncomeDeclaration() {
                 月儲值上限維持 TWD 100,000
               </span>
             </label>
-          </fieldset>
+            </fieldset>
 
-          <div className="flex justify-end">
+            <div className="flex justify-end">
             <button
               type="submit"
               disabled
@@ -138,7 +139,8 @@ function IncomeDeclaration() {
             >
               儲存（後端待接）
             </button>
-          </div>
+            </div>
+          </fieldset>
         </form>
       </div>
     </section>

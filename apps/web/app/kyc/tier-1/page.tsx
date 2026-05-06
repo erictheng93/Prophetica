@@ -142,8 +142,9 @@ function Tier1Form() {
           </p>
         </header>
 
-        <form action="#" aria-disabled="true" className="space-y-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <form action="#">
+          <fieldset disabled className="space-y-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-2">
               <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
                 姓名（與證件一致）
@@ -215,7 +216,7 @@ function Tier1Form() {
             </span>
           </label>
 
-          <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
             <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
               送出後 24 小時內最多嘗試 5 次。連續失敗將導入 Tier 2 流程。
             </p>
@@ -226,7 +227,8 @@ function Tier1Form() {
             >
               送出基礎驗證（後端待接）
             </button>
-          </div>
+            </div>
+          </fieldset>
         </form>
       </div>
     </section>

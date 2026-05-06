@@ -62,8 +62,9 @@ function TimeoutChoice() {
           </p>
         </header>
 
-        <form action="#" aria-disabled="true" className="space-y-6">
-          <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <form action="#">
+          <fieldset disabled className="space-y-6">
+            <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <legend className="sr-only">中長期暫停期間</legend>
             {timeoutOptions.map((opt) => (
               <label
@@ -81,9 +82,9 @@ function TimeoutChoice() {
                 </span>
               </label>
             ))}
-          </fieldset>
+            </fieldset>
 
-          <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
             <label className="flex items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
               <input type="checkbox" required className="h-4 w-4 accent-proph-primary" />
               我了解期間無法登入，且解除後仍有 14 天延長冷靜期。
@@ -95,7 +96,8 @@ function TimeoutChoice() {
             >
               啟動 Time-out（後端待接）
             </button>
-          </div>
+            </div>
+          </fieldset>
         </form>
       </div>
     </section>
@@ -118,8 +120,9 @@ function PermanentSection() {
           </p>
         </header>
 
-        <form action="#" aria-disabled="true" className="space-y-6">
-          <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <form action="#">
+          <fieldset disabled className="space-y-6">
+            <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <legend className="font-display text-[21px] font-semibold tracking-[0.231px]">
               點數處理方式
             </legend>
@@ -145,17 +148,17 @@ function PermanentSection() {
                 點數依當下價值換算，捐贈至 Compliance 合作之戒癮 / 心理衛生機構。捐贈紀錄可索取。
               </span>
             </label>
-          </fieldset>
+            </fieldset>
 
-          <label className="flex items-start gap-3 rounded-proph-md border border-proph-on-dark/20 px-5 py-4 font-text text-[14px] leading-[1.43] tracking-[-0.224px]">
+            <label className="flex items-start gap-3 rounded-proph-md border border-proph-on-dark/20 px-5 py-4 font-text text-[14px] leading-[1.43] tracking-[-0.224px]">
             <input type="checkbox" required className="mt-1 h-4 w-4 accent-proph-primary-on-dark" />
             <span>
               我清楚知道**永久排除無法解除**。我不是因為一時情緒、糾紛或賠錢才做這個決定，
               而是經過完整評估之後的選擇。
             </span>
-          </label>
+            </label>
 
-          <div className="flex flex-col items-start gap-3 border-t border-proph-on-dark/20 pt-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col items-start gap-3 border-t border-proph-on-dark/20 pt-6 md:flex-row md:items-center md:justify-between">
             <p className="font-text text-[14px] tracking-[-0.224px] text-proph-body-muted">
               這個按鈕在後端待接前不會生效。建議先撥打援助專線，或聯繫客服協助評估。
             </p>
@@ -166,7 +169,8 @@ function PermanentSection() {
             >
               啟動永久排除（後端待接）
             </button>
-          </div>
+            </div>
+          </fieldset>
         </form>
       </div>
     </section>

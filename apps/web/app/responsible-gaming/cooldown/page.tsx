@@ -51,8 +51,9 @@ function ChooseDuration() {
           </p>
         </header>
 
-        <form action="#" aria-disabled="true" className="space-y-6">
-          <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <form action="#">
+          <fieldset disabled className="space-y-6">
+            <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <legend className="sr-only">冷靜期長度選項</legend>
             {durations.map((d) => (
               <label
@@ -70,9 +71,9 @@ function ChooseDuration() {
                 </span>
               </label>
             ))}
-          </fieldset>
+            </fieldset>
 
-          <div className="rounded-proph-md border border-proph-primary/30 bg-proph-canvas-parchment px-5 py-4">
+            <div className="rounded-proph-md border border-proph-primary/30 bg-proph-canvas-parchment px-5 py-4">
             <p className="font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink">
               冷靜期一旦啟動即無法取消。若需要更長期或永久停止使用，請使用
               <a href="/responsible-gaming/self-exclusion" className="underline">
@@ -80,9 +81,9 @@ function ChooseDuration() {
               </a>
               。
             </p>
-          </div>
+            </div>
 
-          <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
             <label className="flex items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
               <input type="checkbox" required className="h-4 w-4 accent-proph-primary" />
               我了解冷靜期啟動後無法縮短或取消。
@@ -94,7 +95,8 @@ function ChooseDuration() {
             >
               啟動冷靜期（後端待接）
             </button>
-          </div>
+            </div>
+          </fieldset>
         </form>
       </div>
     </section>

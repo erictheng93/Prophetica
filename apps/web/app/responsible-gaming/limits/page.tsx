@@ -77,8 +77,9 @@ function AdjustForm() {
          * mandates React Hook Form + Zod for any form that actually posts;
          * convert when wallet-ledger-service exposes the limit-change endpoint.
          */}
-        <form className="space-y-6" action="#" aria-disabled="true">
-          <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <form action="#">
+          <fieldset disabled className="space-y-6">
+            <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <legend className="sr-only">選擇新的月儲值上限</legend>
             {limitOptions.map((opt) => (
               <label
@@ -111,9 +112,9 @@ function AdjustForm() {
                 aria-label="自訂月儲值上限金額"
               />
             </label>
-          </fieldset>
+            </fieldset>
 
-          <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
             <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
               提交後若為提高上限，將進入 24 小時冷卻期，期間可隨時取消申請。
             </p>
@@ -124,7 +125,8 @@ function AdjustForm() {
             >
               送出申請（後端待接）
             </button>
-          </div>
+            </div>
+          </fieldset>
         </form>
       </div>
     </section>
