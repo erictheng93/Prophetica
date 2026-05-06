@@ -1,3 +1,5 @@
+import { Check } from "@phosphor-icons/react/dist/ssr";
+
 // Visual indicator of the 4 KYC tiers (TIER_0 → TIER_3).
 // SPEC-005 §2.1 canonical identifiers — UI labels in 中文 only, never the
 // raw enum strings (the enum lives in protobuf / DB / service layer).
@@ -42,10 +44,13 @@ export function TierStepper({ currentTier }: TierStepperProps) {
             >
               <span
                 className={
-                  "font-text text-[12px] uppercase leading-none tracking-[-0.12px] " +
+                  "inline-flex items-center gap-1 font-text text-[12px] uppercase leading-none tracking-[-0.12px] " +
                   (isCurrent ? "text-proph-primary" : "text-proph-ink-muted-48")
                 }
               >
+                {isPast ? (
+                  <Check weight="bold" className="h-3 w-3 shrink-0" aria-hidden="true" />
+                ) : null}
                 {tier.shortName}
                 {isCurrent ? "（目前）" : isPast ? "（已通過）" : ""}
               </span>

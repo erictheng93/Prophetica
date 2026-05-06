@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { TrendDown, TrendUp } from "@phosphor-icons/react";
 import type { Market } from "@/lib/mock-markets";
 
 /*
@@ -156,7 +157,8 @@ export function TradePanel({ market }: { market: Market }) {
                 <span className="block font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
                   BUY
                 </span>
-                <span className="mt-1 block font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-primary">
+                <span className="mt-1 inline-flex items-center gap-1 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-primary">
+                  <TrendUp weight="bold" className="h-6 w-6 shrink-0" aria-hidden />
                   YES
                 </span>
                 <span className="mt-1 block font-mono text-[14px] tabular-nums text-proph-ink-muted-80">
@@ -168,7 +170,8 @@ export function TradePanel({ market }: { market: Market }) {
                 <span className="block font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
                   BUY
                 </span>
-                <span className="mt-1 block font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-ink">
+                <span className="mt-1 inline-flex items-center gap-1 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-ink">
+                  <TrendDown weight="bold" className="h-6 w-6 shrink-0" aria-hidden />
                   NO
                 </span>
                 <span className="mt-1 block font-mono text-[14px] tabular-nums text-proph-ink-muted-80">

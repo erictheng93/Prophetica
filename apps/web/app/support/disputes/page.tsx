@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ArrowUpRight, Warning } from "@phosphor-icons/react/dist/ssr";
 import { ProphLinkButton, ProphTile } from "@prophetica/ui";
 
 export const metadata: Metadata = {
@@ -78,7 +79,7 @@ function CategoryGrid() {
                 <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">{c.label}</h3>
                 <span
                   className={
-                    "rounded-proph-pill border px-3 py-0.5 font-text text-[12px] uppercase tracking-[-0.12px] " +
+                    "inline-flex items-center gap-1 rounded-proph-pill border px-3 py-0.5 font-text text-[12px] uppercase tracking-[-0.12px] " +
                     (c.priority === "緊急"
                       ? "border-proph-feedback-error text-proph-feedback-error"
                       : c.priority === "高"
@@ -86,6 +87,11 @@ function CategoryGrid() {
                       : "border-proph-divider-soft text-proph-ink-muted-48")
                   }
                 >
+                  {c.priority === "緊急" ? (
+                    <Warning weight="fill" className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  ) : c.priority === "高" ? (
+                    <ArrowUpRight weight="bold" className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  ) : null}
                   {c.priority}
                 </span>
               </div>

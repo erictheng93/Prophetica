@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { TrendDown, TrendUp } from "@phosphor-icons/react/dist/ssr";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
 import {
   AuthCta,
@@ -252,14 +253,19 @@ function Field({
       </dt>
       <dd
         className={
-          "mt-1 " +
+          "mt-1 inline-flex items-center gap-1 " +
           (mono ? "font-mono tabular-nums text-[17px] tracking-[-0.374px] " : "font-text text-[17px] tracking-[-0.374px] ") +
           toneClass(tone)
         }
       >
-        {value}
+        {tone === "positive" ? (
+          <TrendUp weight="bold" className="h-4 w-4 shrink-0" aria-hidden="true" />
+        ) : tone === "negative" ? (
+          <TrendDown weight="bold" className="h-4 w-4 shrink-0" aria-hidden="true" />
+        ) : null}
+        <span>{value}</span>
         {extra ? (
-          <span className="ml-2 font-text text-[12px] tracking-[-0.12px]">{extra}</span>
+          <span className="ml-1 font-text text-[12px] tracking-[-0.12px]">{extra}</span>
         ) : null}
       </dd>
     </div>

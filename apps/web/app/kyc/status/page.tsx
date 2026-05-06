@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import type { Icon } from "@phosphor-icons/react";
+import { CheckCircle, Circle, Spinner, XCircle } from "@phosphor-icons/react/dist/ssr";
 import { ProphLinkButton, ProphTile } from "@prophetica/ui";
 
 export const metadata: Metadata = {
@@ -29,7 +31,7 @@ const stateColor: Record<StepState, string> = {
   done: "border-proph-ink-muted-80 bg-proph-canvas",
   current: "border-proph-primary bg-proph-canvas-parchment",
   pending: "border-proph-divider-soft bg-proph-canvas",
-  failed: "border-red-600 bg-proph-canvas",
+  failed: "border-proph-feedback-error bg-proph-canvas",
 };
 
 const stateLabel: Record<StepState, string> = {
@@ -39,6 +41,20 @@ const stateLabel: Record<StepState, string> = {
   failed: "失敗",
 };
 
+const stateIcon: Record<StepState, Icon> = {
+  done: CheckCircle,
+  current: Spinner,
+  pending: Circle,
+  failed: XCircle,
+};
+
+const stateIconClass: Record<StepState, string> = {
+  done: "text-proph-feedback-success",
+  current: "text-proph-primary animate-spin",
+  pending: "text-proph-ink-muted-48",
+  failed: "text-proph-feedback-error",
+};
+
 function Timeline() {
   return (
     <section className="bg-proph-canvas">
@@ -46,13 +62,20 @@ function Timeline() {
         <h2 className="mb-8 font-display text-[40px] font-semibold leading-[1.1]">最近一次審核</h2>
 
         <ol className="space-y-3">
-          {mockTimeline.map((step, idx) => (
+          {mockTimeline.map((step, idx) => {
+            const Icon = stateIcon[step.state];
+            return (
             <li
               key={`${step.label}-${idx}`}
               className={`rounded-proph-lg border-l-4 border bg-proph-canvas p-5 ${stateColor[step.state]}`}
             >
               <div className="flex flex-wrap items-baseline justify-between gap-3">
-                <div className="flex items-baseline gap-3">
+                <div className="flex items-center gap-3">
+                  <Icon
+                    weight="bold"
+                    className={`h-5 w-5 shrink-0 ${stateIconClass[step.state]}`}
+                    aria-hidden
+                  />
                   <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
                     步驟 {idx + 1} · {stateLabel[step.state]}
                   </span>
@@ -70,7 +93,8 @@ function Timeline() {
                 {step.detail}
               </p>
             </li>
-          ))}
+            );
+          })}
         </ol>
       </div>
     </section>

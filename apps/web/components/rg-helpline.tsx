@@ -1,3 +1,5 @@
+import { PhoneCall } from "@phosphor-icons/react/dist/ssr";
+
 // SPEC-006 §7.1 — Mandatory help-line strip on responsible-gaming surfaces.
 // Numbers below are well-established Taiwan public hotlines. Final approved
 // list (incl. licensing-region resources for Malta / Curaçao / etc.) is
@@ -42,8 +44,9 @@ export function RGHelpline() {
               </div>
               <a
                 href={`tel:${line.number.replace(/-/g, "")}`}
-                className="mt-2 block font-display text-[34px] font-semibold leading-none tracking-[-0.374px] text-proph-primary-on-dark"
+                className="mt-2 inline-flex items-center gap-2 font-display text-[34px] font-semibold leading-none tracking-[-0.374px] text-proph-primary-on-dark"
               >
+                <PhoneCall weight="bold" className="h-7 w-7" aria-hidden="true" />
                 {line.number}
               </a>
             </li>
