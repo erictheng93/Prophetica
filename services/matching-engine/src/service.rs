@@ -20,7 +20,7 @@ use crate::{
         OrderType, Price, Quantity, SnapshotRestingOrder, Symbol,
     },
     shard::{MarketCommand, MarketEvent, MarketShard},
-    snapshot::read_persisted_snapshot,
+    snapshot::{PersistedOrderBookSnapshot, read_persisted_snapshot, write_persisted_snapshot},
     wal::{self, WalRecord},
 };
 
@@ -254,6 +254,37 @@ impl InMemoryEngineService {
     #[must_use]
     pub fn subscribe_events(&self) -> broadcast::Receiver<EngineEvent> {
         self.events.subscribe()
+    }
+
+    /// Writes a persisted market snapshot with the WAL record count already applied.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the market shard is unavailable or the snapshot cannot be written.
+    pub async fn write_market_snapshot(
+        &self,
+        snapshot_dir: impl AsRef<Path>,
+        market_id: &str,
+        records_applied: usize,
+    ) -> Result<(), Status> {
+        let sender = self.sender_for_market(market_id).await;
+        let (reply_to, reply_rx) = oneshot::channel();
+        sender
+            .send(MarketCommand::GetSnapshot { reply_to })
+            .await
+            .map_err(|_| Status::unavailable("market shard stopped"))?;
+        let book = reply_rx
+            .await
+            .map_err(|_| Status::unavailable("market shard dropped snapshot reply"))?;
+
+        write_persisted_snapshot(
+            &market_snapshot_path(snapshot_dir.as_ref(), market_id),
+            &PersistedOrderBookSnapshot {
+                records_applied,
+                book,
+            },
+        )
+        .map_err(|error| Status::internal(format!("failed to write market snapshot: {error}")))
     }
 
     async fn sender_for_market(&self, market_id: &str) -> mpsc::Sender<MarketCommand> {

@@ -7,7 +7,7 @@ use matching_engine::{
         Symbol,
     },
     service::InMemoryEngineService,
-    snapshot::{PersistedOrderBookSnapshot, write_persisted_snapshot},
+    snapshot::{PersistedOrderBookSnapshot, read_persisted_snapshot, write_persisted_snapshot},
     wal::{WalRecord, append_record},
 };
 use proto::proph::v1::{
@@ -408,6 +408,35 @@ async fn service_recovers_from_snapshot_then_replays_remaining_wal() {
         }))
         .await
         .expect("snapshot-restored owner route should cancel");
+}
+
+#[tokio::test]
+async fn service_writes_persisted_market_snapshot_with_wal_offset() {
+    let service = InMemoryEngineService::default();
+    service
+        .place_order(tonic::Request::new(place_order_request(
+            10,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "client-maker",
+        )))
+        .await
+        .expect("place order should succeed");
+    let snapshot_dir = unique_wal_dir();
+
+    service
+        .write_market_snapshot(&snapshot_dir, "mkt-election", 1)
+        .await
+        .expect("snapshot should write");
+    let snapshot = read_persisted_snapshot(&snapshot_dir.join("mkt-election.snapshot.json"))
+        .expect("snapshot should read");
+
+    assert_eq!(snapshot.records_applied, 1);
+    assert_eq!(snapshot.book.asks.len(), 1);
+    assert_eq!(snapshot.book.asks[0].price, 55);
+    assert_eq!(snapshot.book.asks[0].quantity, 3);
 }
 
 #[tokio::test]
