@@ -2,6 +2,7 @@ pub const SERVICE_NAME: &str = "wallet-ledger-service";
 pub const DEFAULT_PORT: u16 = 8086;
 
 pub mod api;
+pub mod gateway;
 pub mod ledger;
 pub mod reconciliation;
 
