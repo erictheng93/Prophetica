@@ -18,11 +18,17 @@ use crate::{
     shard::{MarketCommand, MarketEvent, MarketShard},
 };
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineEvent {
+    pub market_id: String,
+    pub event: MarketEvent,
+}
+
 #[derive(Debug, Clone)]
 pub struct InMemoryEngineService {
     shards: Arc<Mutex<HashMap<String, mpsc::Sender<MarketCommand>>>>,
     order_routes: Arc<Mutex<HashMap<Vec<u8>, OrderRoute>>>,
-    events: broadcast::Sender<MarketEvent>,
+    events: broadcast::Sender<EngineEvent>,
 }
 
 impl Default for InMemoryEngineService {
@@ -188,7 +194,7 @@ impl EngineService for InMemoryEngineService {
 
 impl InMemoryEngineService {
     #[must_use]
-    pub fn subscribe_events(&self) -> broadcast::Receiver<MarketEvent> {
+    pub fn subscribe_events(&self) -> broadcast::Receiver<EngineEvent> {
         self.events.subscribe()
     }
 
@@ -201,9 +207,13 @@ impl InMemoryEngineService {
         let (command_tx, command_rx) = mpsc::channel(1024);
         let (event_tx, mut event_rx) = mpsc::channel(1024);
         let event_broadcast = self.events.clone();
+        let event_market_id = market_id.to_string();
         tokio::spawn(async move {
             while let Some(event) = event_rx.recv().await {
-                let _ = event_broadcast.send(event);
+                let _ = event_broadcast.send(EngineEvent {
+                    market_id: event_market_id.clone(),
+                    event,
+                });
             }
         });
         let shard = MarketShard::new(Symbol::new(market_id.to_string()));
