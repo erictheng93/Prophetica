@@ -321,9 +321,8 @@ async fn service_recovers_book_and_cancel_routes_from_market_wal() {
 }
 
 fn unique_wal_dir() -> std::path::PathBuf {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock should be after epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!("prophetica-engine-service-wal-{nanos}"))
+    std::env::temp_dir().join(format!(
+        "prophetica-engine-service-wal-{}",
+        ulid::Ulid::new()
+    ))
 }

@@ -55,7 +55,7 @@ pub struct NewOrder {
     pub quantity: Quantity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TradeEvent {
     pub sequence: Sequence,
     pub symbol: Symbol,
@@ -68,7 +68,7 @@ pub struct TradeEvent {
     pub quantity: Quantity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddOrderResult {
     pub order_id: OrderId,
     pub trades: Vec<TradeEvent>,
@@ -76,7 +76,7 @@ pub struct AddOrderResult {
     pub rested: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CancelOrderResult {
     pub order_id: OrderId,
     pub side: OrderSide,
@@ -84,7 +84,7 @@ pub struct CancelOrderResult {
     pub canceled_quantity: Quantity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OrderBookSnapshot {
     pub symbol: Symbol,
     pub next_sequence: Sequence,
@@ -92,7 +92,7 @@ pub struct OrderBookSnapshot {
     pub asks: Vec<SnapshotRestingOrder>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SnapshotRestingOrder {
     pub order_id: OrderId,
     pub user_id: u64,

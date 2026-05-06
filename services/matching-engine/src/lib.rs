@@ -7,6 +7,7 @@ pub mod order_book;
 pub mod projection;
 pub mod service;
 pub mod shard;
+pub mod snapshot;
 pub mod wal;
 
 pub type OrderId = [u8; 16];
