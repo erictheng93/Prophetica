@@ -214,6 +214,23 @@ impl InMemoryEngineService {
         }
     }
 
+    /// Recovers configured markets from per-market WAL files and starts their shards.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a WAL file cannot be read or replayed.
+    pub fn recover_from_wal_dir(
+        wal_dir: PathBuf,
+        market_ids: impl IntoIterator<Item = String>,
+    ) -> anyhow::Result<Self> {
+        let service = Self::with_wal_dir(wal_dir);
+        for market_id in market_ids {
+            service.recover_market_from_wal(&market_id)?;
+        }
+
+        Ok(service)
+    }
+
     #[must_use]
     pub fn subscribe_events(&self) -> broadcast::Receiver<EngineEvent> {
         self.events.subscribe()
@@ -246,6 +263,67 @@ impl InMemoryEngineService {
         command_tx
     }
 
+    fn recover_market_from_wal(&self, market_id: &str) -> anyhow::Result<()> {
+        let Some(wal_dir) = &self.wal_dir else {
+            return Ok(());
+        };
+        let path = market_wal_path(wal_dir, market_id);
+        if !path.exists() {
+            return Ok(());
+        }
+
+        let records = wal::read_records(&path)?;
+        let mut routes = HashMap::new();
+        for record in &records {
+            match record {
+                WalRecord::PlaceOrder(order) => {
+                    if let Some(order_key) = proto_order_key(&order.order_id) {
+                        routes.insert(
+                            order_key,
+                            OrderRoute {
+                                market_id: market_id.to_string(),
+                                internal_order_id: order.order_id.clone(),
+                            },
+                        );
+                    }
+                }
+                WalRecord::CancelOrder(order_id) => {
+                    if let Some(order_key) = proto_order_key(order_id) {
+                        routes.remove(&order_key);
+                    }
+                }
+            }
+        }
+
+        let book = wal::replay_records(Symbol::new(market_id.to_string()), records)
+            .map_err(|error| anyhow::anyhow!("failed to replay market wal: {error:?}"))?;
+        let (command_tx, command_rx) = mpsc::channel(1024);
+        let (event_tx, mut event_rx) = mpsc::channel(1024);
+        let event_broadcast = self.events.clone();
+        let event_market_id = market_id.to_string();
+        tokio::spawn(async move {
+            let mut sequence = 1;
+            while let Some(event) = event_rx.recv().await {
+                let _ = event_broadcast.send(EngineEvent {
+                    market_id: event_market_id.clone(),
+                    sequence,
+                    event,
+                });
+                sequence += 1;
+            }
+        });
+        tokio::spawn(MarketShard::from_book(book).run(command_rx, event_tx));
+
+        if let Ok(mut shards) = self.shards.try_lock() {
+            shards.insert(market_id.to_string(), command_tx);
+        }
+        if let Ok(mut order_routes) = self.order_routes.try_lock() {
+            order_routes.extend(routes);
+        }
+
+        Ok(())
+    }
+
     fn append_wal_record(&self, market_id: &str, record: &WalRecord) -> Result<(), Status> {
         let Some(wal_dir) = &self.wal_dir else {
             return Ok(());
@@ -259,6 +337,14 @@ impl InMemoryEngineService {
 
 fn market_wal_path(wal_dir: &Path, market_id: &str) -> PathBuf {
     wal_dir.join(format!("{}.wal.jsonl", market_id.replace(['/', '\\'], "_")))
+}
+
+fn proto_order_key(order_id: &OrderId) -> Option<Vec<u8>> {
+    order_id
+        .as_str()
+        .parse::<ulid::Ulid>()
+        .ok()
+        .map(|ulid| ulid.to_bytes().to_vec())
 }
 
 fn place_order_response(

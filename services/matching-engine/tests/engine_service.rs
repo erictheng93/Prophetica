@@ -271,6 +271,55 @@ async fn service_appends_successful_commands_to_market_wal() {
     ));
 }
 
+#[tokio::test]
+async fn service_recovers_book_and_cancel_routes_from_market_wal() {
+    let wal_dir = unique_wal_dir();
+    std::fs::create_dir_all(&wal_dir).expect("wal dir should be created");
+    let service = InMemoryEngineService::with_wal_dir(wal_dir.clone());
+
+    let response = service
+        .place_order(tonic::Request::new(place_order_request(
+            10,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "client-maker",
+        )))
+        .await
+        .expect("place order should succeed")
+        .into_inner();
+    let order_id = response
+        .order
+        .expect("response should include order")
+        .id
+        .expect("order id should exist");
+
+    let recovered =
+        InMemoryEngineService::recover_from_wal_dir(wal_dir, ["mkt-election".to_string()])
+            .expect("service should recover from wal");
+    let snapshot = recovered
+        .get_book_snapshot(tonic::Request::new(GetBookSnapshotRequest {
+            market_id: Some(market_id()),
+            depth: 10,
+        }))
+        .await
+        .expect("snapshot should recover")
+        .into_inner();
+    assert_eq!(snapshot.asks.len(), 1);
+    assert_eq!(snapshot.asks[0].price_pts, 55);
+    assert_eq!(snapshot.asks[0].qty, 3);
+
+    recovered
+        .cancel_order(tonic::Request::new(CancelOrderRequest {
+            audit: None,
+            order_id: Some(order_id),
+            user_id: Some(UserId { value: 10 }),
+        }))
+        .await
+        .expect("recovered owner route should cancel");
+}
+
 fn unique_wal_dir() -> std::path::PathBuf {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

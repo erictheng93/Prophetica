@@ -73,6 +73,11 @@ impl MarketShard {
         }
     }
 
+    #[must_use]
+    pub fn from_book(book: OrderBook) -> Self {
+        Self { book }
+    }
+
     pub async fn run(
         mut self,
         mut commands: mpsc::Receiver<MarketCommand>,
