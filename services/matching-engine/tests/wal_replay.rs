@@ -1,9 +1,8 @@
 #![allow(clippy::expect_used)]
 
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use matching_engine::order_book::{NewOrder, OrderId, OrderSide, OrderType, Symbol};
+use matching_engine::order_book::{NewOrder, OrderBook, OrderId, OrderSide, OrderType, Symbol};
 use matching_engine::wal::{WalRecord, append_record, read_records, replay_records};
 
 fn id(value: &str) -> OrderId {
@@ -57,10 +56,39 @@ fn wal_records_round_trip_and_replay_into_order_book() {
     std::fs::remove_file(wal_path).expect("temp wal should be removed");
 }
 
+#[test]
+fn wal_replay_produces_byte_equal_snapshot() {
+    let wal_path = temp_wal_path();
+    let records = vec![
+        WalRecord::PlaceOrder(order("maker-a", 10, OrderSide::Sell, 55, 2)),
+        WalRecord::PlaceOrder(order("maker-b", 11, OrderSide::Sell, 56, 3)),
+        WalRecord::PlaceOrder(order("taker", 20, OrderSide::Buy, 55, 1)),
+    ];
+    let mut live = OrderBook::new(symbol());
+    for record in &records {
+        append_record(&wal_path, record).expect("wal record should append");
+        if let WalRecord::PlaceOrder(order) = record {
+            live.add_order(order.clone())
+                .expect("live order should apply");
+        }
+    }
+
+    let recovered = replay_records(
+        symbol(),
+        read_records(&wal_path).expect("records should read"),
+    )
+    .expect("wal should replay");
+    let live_bytes = serde_json::to_vec(&live.snapshot()).expect("live snapshot should serialize");
+    let recovered_bytes =
+        serde_json::to_vec(&recovered.snapshot()).expect("recovered snapshot should serialize");
+
+    assert_eq!(recovered_bytes, live_bytes);
+    std::fs::remove_file(wal_path).expect("temp wal should be removed");
+}
+
 fn temp_wal_path() -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!("prophetica-matching-engine-{nanos}.wal.jsonl"))
+    std::env::temp_dir().join(format!(
+        "prophetica-matching-engine-{}.wal.jsonl",
+        ulid::Ulid::new()
+    ))
 }
