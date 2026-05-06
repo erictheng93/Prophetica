@@ -208,7 +208,10 @@ impl WalletLedgerClient for HttpWalletLedgerClient {
         let response = self
             .client
             .get(url)
-            .query(&[("account_code", account_code), ("limit", &limit.to_string())])
+            .query(&[
+                ("account_code", account_code),
+                ("limit", &limit.to_string()),
+            ])
             .send()
             .await
             .map_err(|error| ApiError::upstream(error.to_string()))?;
@@ -240,7 +243,10 @@ async fn get_my_wallet_balance<C>(
 where
     C: WalletLedgerClient + Send + Sync,
 {
-    let balance = state.wallet_ledger.get_wallet_balance(&auth.user_id).await?;
+    let balance = state
+        .wallet_ledger
+        .get_wallet_balance(&auth.user_id)
+        .await?;
     Ok(Json(balance))
 }
 
@@ -297,9 +303,7 @@ mod tests {
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
-    use super::{
-        ApiError, LedgerEntry, WalletBalance, WalletLedgerClient, router,
-    };
+    use super::{ApiError, LedgerEntry, WalletBalance, WalletLedgerClient, router};
 
     #[tokio::test]
     async fn wallet_balance_requires_auth_context() {
