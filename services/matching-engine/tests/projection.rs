@@ -4,6 +4,7 @@ use matching_engine::{
     order_book::{OrderId, OrderSide},
     projection::{
         OrderProjectionStatus, ProjectionBroadcaster, ProjectionEvent, project_engine_event,
+        projection_topic, serialize_projection_event,
     },
     service::EngineEvent,
     shard::MarketEvent,
@@ -118,5 +119,22 @@ fn projects_status_events_for_order_update_streams() {
             filled_qty: 0,
             remaining_qty: 0,
         }]
+    );
+}
+
+#[test]
+fn serializes_projection_events_with_stable_transport_envelope() {
+    let event = ProjectionEvent::BookDelta {
+        market_id: "mkt-election".to_string(),
+        seq_no: 12,
+        side: OrderSide::Sell,
+        price_pts: 57,
+        quantity_delta: -3,
+    };
+
+    assert_eq!(projection_topic(&event), "engine.book_delta");
+    assert_eq!(
+        serialize_projection_event(&event).expect("projection should serialize"),
+        r#"{"topic":"engine.book_delta","market_id":"mkt-election","seq_no":12,"kind":"book_delta","payload":{"side":"Sell","price_pts":57,"quantity_delta":-3}}"#
     );
 }

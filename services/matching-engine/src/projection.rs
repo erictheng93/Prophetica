@@ -43,6 +43,115 @@ pub enum ProjectionEvent {
     },
 }
 
+#[must_use]
+pub const fn projection_topic(event: &ProjectionEvent) -> &'static str {
+    match event {
+        ProjectionEvent::BookDelta { .. } => "engine.book_delta",
+        ProjectionEvent::Trade { .. } => "engine.trade",
+        ProjectionEvent::OrderUpdate { .. } => "engine.order_update",
+    }
+}
+
+/// Serializes a projection event into a stable transport envelope.
+///
+/// # Errors
+///
+/// Returns an error if JSON serialization fails.
+pub fn serialize_projection_event(event: &ProjectionEvent) -> serde_json::Result<String> {
+    #[derive(Serialize)]
+    struct Envelope<'a, T> {
+        topic: &'static str,
+        market_id: &'a str,
+        seq_no: Sequence,
+        kind: &'static str,
+        payload: T,
+    }
+
+    #[derive(Serialize)]
+    struct BookDeltaPayload {
+        side: OrderSide,
+        price_pts: Price,
+        quantity_delta: i64,
+    }
+
+    #[derive(Serialize)]
+    struct TradePayload<'a> {
+        maker_order_id: &'a str,
+        taker_order_id: &'a str,
+        trade_sequence: Sequence,
+        price_pts: Price,
+        quantity: Quantity,
+    }
+
+    #[derive(Serialize)]
+    struct OrderUpdatePayload<'a> {
+        order_id: &'a str,
+        status: OrderProjectionStatus,
+        filled_qty: Quantity,
+        remaining_qty: Quantity,
+    }
+
+    match event {
+        ProjectionEvent::BookDelta {
+            market_id,
+            seq_no,
+            side,
+            price_pts,
+            quantity_delta,
+        } => serde_json::to_string(&Envelope {
+            topic: projection_topic(event),
+            market_id,
+            seq_no: *seq_no,
+            kind: "book_delta",
+            payload: BookDeltaPayload {
+                side: *side,
+                price_pts: *price_pts,
+                quantity_delta: *quantity_delta,
+            },
+        }),
+        ProjectionEvent::Trade {
+            market_id,
+            seq_no,
+            maker_order_id,
+            taker_order_id,
+            trade_sequence,
+            price_pts,
+            quantity,
+        } => serde_json::to_string(&Envelope {
+            topic: projection_topic(event),
+            market_id,
+            seq_no: *seq_no,
+            kind: "trade",
+            payload: TradePayload {
+                maker_order_id,
+                taker_order_id,
+                trade_sequence: *trade_sequence,
+                price_pts: *price_pts,
+                quantity: *quantity,
+            },
+        }),
+        ProjectionEvent::OrderUpdate {
+            market_id,
+            seq_no,
+            order_id,
+            status,
+            filled_qty,
+            remaining_qty,
+        } => serde_json::to_string(&Envelope {
+            topic: projection_topic(event),
+            market_id,
+            seq_no: *seq_no,
+            kind: "order_update",
+            payload: OrderUpdatePayload {
+                order_id,
+                status: *status,
+                filled_qty: *filled_qty,
+                remaining_qty: *remaining_qty,
+            },
+        }),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProjectionBroadcaster {
     events: broadcast::Sender<ProjectionEvent>,
