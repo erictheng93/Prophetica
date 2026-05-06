@@ -63,7 +63,7 @@ pub trait LedgerStore {
     ) -> Result<CommittedLedgerTransaction, LedgerStoreError>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LedgerService<S> {
     store: S,
 }

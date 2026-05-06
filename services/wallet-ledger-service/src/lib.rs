@@ -1,6 +1,7 @@
 pub const SERVICE_NAME: &str = "wallet-ledger-service";
 pub const DEFAULT_PORT: u16 = 8086;
 
+pub mod api;
 pub mod ledger;
 
 use sdk::ledger::{LedgerTransactionDraft, LedgerValidationError};
