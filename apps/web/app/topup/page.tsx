@@ -7,6 +7,7 @@ import {
   getFooterColumns,
   MainNavLinks,
 } from "@/lib/site-nav";
+import { fetchWalletOverview } from "@/lib/api-gateway";
 
 export const metadata: Metadata = {
   title: "點數儲值 — prophetica",
@@ -58,7 +59,6 @@ const channels: ChannelCard[] = [
 
 // Mock player state — replaced by user-service / wallet-ledger snapshot.
 const mockState = {
-  currentBalance: 12_500,
   monthlyDeposited: 8_400,
   monthlyLimit: 30_000,
   kycTier: 1,
@@ -69,7 +69,9 @@ const formatTwd = (n: number): string => `TWD ${n.toLocaleString("zh-Hant")}`;
 
 export default async function TopUpPage() {
   const sectionFooterColumns = await getFooterColumns(["responsibleGaming", "legal", "support"]);
-  const { currentBalance, monthlyDeposited, monthlyLimit, kycTier } = mockState;
+  const walletOverview = await fetchWalletOverview();
+  const { monthlyDeposited, monthlyLimit, kycTier } = mockState;
+  const currentBalance = walletOverview.balance.availablePoints;
   const usagePct = Math.min(100, (monthlyDeposited / monthlyLimit) * 100);
   const remainingPoints = Math.max(0, monthlyLimit - monthlyDeposited);
   // SPEC-006 §7.2 thresholds.
@@ -98,6 +100,7 @@ export default async function TopUpPage() {
         nearLimit={nearLimit}
         atLimit={atLimit}
         kycTier={kycTier}
+        walletSource={walletOverview.source}
       />
 
       <AmountSection atLimit={atLimit} remainingPoints={remainingPoints} />
@@ -135,10 +138,21 @@ interface BalanceBlockProps {
   nearLimit: boolean;
   atLimit: boolean;
   kycTier: number;
+  walletSource: string;
 }
 
 function BalanceBlock(props: BalanceBlockProps) {
-  const { currentBalance, monthlyDeposited, monthlyLimit, remainingPoints, usagePct, nearLimit, atLimit, kycTier } = props;
+  const {
+    currentBalance,
+    monthlyDeposited,
+    monthlyLimit,
+    remainingPoints,
+    usagePct,
+    nearLimit,
+    atLimit,
+    kycTier,
+    walletSource,
+  } = props;
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
@@ -154,6 +168,11 @@ function BalanceBlock(props: BalanceBlockProps) {
               KYC Tier {kycTier} · 單筆上限{" "}
               {kycTier === 1 ? "TWD 5,000" : kycTier === 2 ? "—" : "個案核定"}
             </div>
+            {walletSource !== "api-gateway" ? (
+              <p className="mt-4 rounded-proph-md border border-proph-feedback-warning bg-proph-canvas-parchment px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-feedback-warning">
+                API gateway is not reachable. Showing a zero-balance fallback.
+              </p>
+            ) : null}
           </article>
 
           <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">

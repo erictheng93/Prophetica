@@ -111,6 +111,7 @@ test-results/
 coverage/
 .nyc_output/
 junit.xml
+.test-out/
 
 # ---------------------------------------------------------------
 # Build artifacts not in /dist

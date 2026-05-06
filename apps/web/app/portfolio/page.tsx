@@ -20,6 +20,7 @@ import {
   type ResolvedPosition,
   summarizePortfolio,
 } from "@/lib/mock-portfolio";
+import { fetchWalletOverview, type WalletOverview } from "@/lib/api-gateway";
 
 export const metadata: Metadata = {
   title: "個人持倉 — prophetica",
@@ -29,6 +30,7 @@ export const metadata: Metadata = {
 
 export default async function PortfolioPage() {
   const sectionFooterColumns = await getFooterColumns(["markets", "legal", "support"]);
+  const walletOverview = await fetchWalletOverview();
   const summary = summarizePortfolio();
   const active = listActivePositions();
   const settled = listSettledPositions();
@@ -46,7 +48,9 @@ export default async function PortfolioPage() {
 
       <DemoBanner />
 
-      <SummaryCards summary={summary} />
+      <SummaryCards summary={summary} walletOverview={walletOverview} />
+
+      <LedgerActivitySection walletOverview={walletOverview} />
 
       <PositionsSection title="進行中" subtitle="跟著市場波動的持倉，價格採用最後成交價。" positions={active} variant="active" />
 
@@ -70,8 +74,29 @@ function DemoBanner() {
   );
 }
 
-function SummaryCards({ summary }: { summary: ReturnType<typeof summarizePortfolio> }) {
+function SummaryCards({
+  summary,
+  walletOverview,
+}: {
+  summary: ReturnType<typeof summarizePortfolio>;
+  walletOverview: WalletOverview;
+}) {
   const cards = [
+    {
+      kicker: "Wallet",
+      label:
+        walletOverview.source === "api-gateway"
+          ? `API gateway user ${walletOverview.balance.userId}`
+          : "API gateway fallback",
+      value: formatPoints(walletOverview.balance.availablePoints),
+      tone: "neutral" as const,
+    },
+    {
+      kicker: "Locked",
+      label: "Locked + frozen balance",
+      value: formatPoints(walletOverview.balance.lockedPoints + walletOverview.balance.frozenPoints),
+      tone: "neutral" as const,
+    },
     {
       kicker: "進行中投入",
       label: "總成本",
@@ -101,7 +126,7 @@ function SummaryCards({ summary }: { summary: ReturnType<typeof summarizePortfol
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {cards.map((card) => (
             <article key={card.kicker} className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
               <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
@@ -121,6 +146,67 @@ function SummaryCards({ summary }: { summary: ReturnType<typeof summarizePortfol
             </article>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+function LedgerActivitySection({ walletOverview }: { walletOverview: WalletOverview }) {
+  return (
+    <section className="bg-proph-canvas">
+      <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
+        <header className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="font-display text-[34px] font-semibold leading-[1.1]">
+              Wallet ledger
+            </h2>
+            <p className="mt-2 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
+              {walletOverview.source === "api-gateway"
+                ? "Live balance and recent wallet entries from api-gateway."
+                : "API gateway is not reachable, so this view is using a zero-balance fallback."}
+            </p>
+          </div>
+          <span className="font-mono text-[14px] tabular-nums tracking-[-0.224px] text-proph-ink-muted-48">
+            {walletOverview.ledgerEntries.length} entries
+          </span>
+        </header>
+
+        {walletOverview.ledgerEntries.length === 0 ? (
+          <article className="rounded-proph-lg border border-proph-divider-soft bg-proph-canvas-parchment p-6">
+            <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
+              No wallet ledger entries are available yet.
+            </p>
+          </article>
+        ) : (
+          <ul className="divide-y divide-proph-divider-soft rounded-proph-lg border border-proph-hairline bg-proph-canvas">
+            {walletOverview.ledgerEntries.slice(0, 5).map((entry) => (
+              <li
+                key={entry.txnId}
+                className="grid grid-cols-1 gap-3 p-5 md:grid-cols-[1fr_auto_auto] md:items-center"
+              >
+                <div className="min-w-0">
+                  <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
+                    txn #{entry.txnId} 繚 {entry.direction}
+                  </div>
+                  <div className="mt-1 truncate font-mono text-[14px] tabular-nums tracking-[-0.224px] text-proph-ink-muted-80">
+                    {entry.accountCode}
+                  </div>
+                </div>
+                <div
+                  className={
+                    "font-mono text-[17px] tabular-nums tracking-[-0.374px] " +
+                    toneClass(pickTone(entry.amountPoints))
+                  }
+                >
+                  {formatPointsSigned(entry.amountPoints)}
+                </div>
+                <div className="font-mono text-[14px] tabular-nums tracking-[-0.224px] text-proph-ink-muted-48">
+                  balance {formatPoints(entry.balanceAfterPoints)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </section>
   );
@@ -168,7 +254,6 @@ function PositionsSection({
 
 function PositionRow({ position, variant }: { position: ResolvedPosition; variant: "active" | "settled" }) {
   const { market, outcome, shares, avgCostCents } = position;
-  const sideClass = outcome === "YES" ? "text-proph-primary" : "text-proph-ink";
 
   const pnl =
     variant === "active" ? position.unrealizedPnlPoints : (position.realizedPnlPoints ?? 0);

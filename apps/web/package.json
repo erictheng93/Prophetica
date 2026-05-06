@@ -8,7 +8,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "lint": "tsc --noEmit",
-    "test": "node -e \"console.log('web bootstrap test ok')\""
+    "test": "tsc --project tsconfig.test.json && node .test-out/tests/api-gateway-client.test.js"
   },
   "dependencies": {
     "@cloudflare/kumo": "latest",
