@@ -1,5 +1,7 @@
 #![allow(clippy::expect_used)]
 
+#[cfg(feature = "kafka")]
+use matching_engine::projection::KafkaProjectionSink;
 use matching_engine::{
     order_book::{OrderId, OrderSide},
     projection::{
@@ -172,6 +174,13 @@ fn projection_publisher_sends_topic_key_and_payload() {
     assert_eq!(emitted[0].key, "mkt-election");
     assert!(emitted[0].payload.contains(r#""kind":"trade""#));
     assert!(emitted[0].payload.contains(r#""seq_no":13"#));
+}
+
+#[cfg(feature = "kafka")]
+#[test]
+fn kafka_projection_sink_can_be_constructed_from_brokers() {
+    KafkaProjectionSink::from_brokers("localhost:9092")
+        .expect("kafka projection producer should construct without connecting");
 }
 
 #[test]

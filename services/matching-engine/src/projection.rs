@@ -1,5 +1,12 @@
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "kafka")]
+use std::time::Duration;
 
+#[cfg(feature = "kafka")]
+use rdkafka::{
+    config::ClientConfig,
+    producer::{BaseProducer, BaseRecord},
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
@@ -155,6 +162,41 @@ impl ProjectionSink for InMemoryProjectionSink {
             });
         }
 
+        Ok(())
+    }
+}
+
+#[cfg(feature = "kafka")]
+pub struct KafkaProjectionSink {
+    producer: BaseProducer,
+}
+
+#[cfg(feature = "kafka")]
+impl KafkaProjectionSink {
+    /// Builds a Kafka projection sink with idempotent producer settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Kafka error when the producer cannot be constructed from the provided brokers.
+    pub fn from_brokers(brokers: &str) -> Result<Self, rdkafka::error::KafkaError> {
+        let producer = ClientConfig::new()
+            .set("bootstrap.servers", brokers)
+            .set("acks", "all")
+            .set("enable.idempotence", "true")
+            .set("message.timeout.ms", "5000")
+            .create()?;
+
+        Ok(Self { producer })
+    }
+}
+
+#[cfg(feature = "kafka")]
+impl ProjectionSink for KafkaProjectionSink {
+    fn publish(&self, topic: &str, key: &str, payload: &str) -> anyhow::Result<()> {
+        self.producer
+            .send(BaseRecord::to(topic).key(key).payload(payload))
+            .map_err(|(error, _message)| anyhow::anyhow!(error))?;
+        self.producer.poll(Duration::ZERO);
         Ok(())
     }
 }
