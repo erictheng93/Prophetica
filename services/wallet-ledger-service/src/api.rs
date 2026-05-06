@@ -222,6 +222,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn post_transaction_replays_one_hundred_retries() {
+        let store = InMemoryLedgerStore::default();
+        let request_body = json!({
+            "txn_type": "deposit",
+            "idempotency_key": "gateway:txn-100x",
+            "entries": [
+                {
+                    "account_code": "Bank.TrustAccount.TWD",
+                    "direction": "debit",
+                    "amount_minor_units": 10_000
+                },
+                {
+                    "account_code": "Player.Wallet.user_01",
+                    "direction": "credit",
+                    "amount_minor_units": 10_000
+                }
+            ]
+        });
+
+        for attempt in 0..100 {
+            let response = super::router(store.clone())
+                .oneshot(json_post(&request_body))
+                .await
+                .expect("retry request should be handled");
+
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = response_json(response).await;
+            assert_eq!(body["txn_id"], json!(1));
+            assert_eq!(body["replayed"], json!(attempt > 0));
+        }
+
+        assert_eq!(store.commit_count(), 1);
+    }
+
+    #[tokio::test]
     async fn post_transaction_rejects_imbalanced_request() {
         let store = InMemoryLedgerStore::default();
         let response = super::router(store.clone())

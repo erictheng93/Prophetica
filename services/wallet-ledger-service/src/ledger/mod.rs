@@ -304,6 +304,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn repeated_idempotency_key_commits_only_once() {
+        let store = InMemoryLedgerStore::default();
+        let service = LedgerService::new(store.clone());
+        let draft = balanced_draft("deposit:gateway-100x");
+
+        for _ in 0..100 {
+            let transaction = match service.post_transaction(draft.clone()).await {
+                Ok(transaction) => transaction,
+                Err(error) => panic!("post should commit or replay: {error}"),
+            };
+
+            assert_eq!(transaction.id, 1);
+        }
+
+        assert_eq!(store.commit_count(), 1);
+    }
+
+    #[tokio::test]
     async fn rejects_invalid_transaction_before_store_commit() {
         let store = InMemoryLedgerStore::default();
         let service = LedgerService::new(store.clone());

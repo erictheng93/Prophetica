@@ -26,6 +26,17 @@ CREATE TABLE ledger_transactions (
 CREATE INDEX idx_txn_type ON ledger_transactions(txn_type);
 CREATE INDEX idx_txn_corr ON ledger_transactions(correlation_id);
 
+CREATE TABLE idempotency_records (
+    key VARCHAR(128) PRIMARY KEY,
+    txn_id BIGINT REFERENCES ledger_transactions(id),
+    response JSONB NOT NULL,
+    status_code INT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX idx_idempo_expires ON idempotency_records(expires_at);
+
 CREATE TABLE ledger_entries (
     id BIGSERIAL PRIMARY KEY,
     txn_id BIGINT NOT NULL REFERENCES ledger_transactions(id),
