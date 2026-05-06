@@ -3,6 +3,7 @@ pub const DEFAULT_PORT: u16 = 8086;
 
 pub mod api;
 pub mod ledger;
+pub mod reconciliation;
 
 use sdk::ledger::{LedgerTransactionDraft, LedgerValidationError};
 
