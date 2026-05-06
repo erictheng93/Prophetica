@@ -193,6 +193,62 @@ async fn book_websocket_sends_initial_snapshot() {
     server.abort();
 }
 
+#[tokio::test]
+async fn trade_websocket_streams_market_trades() {
+    let service = InMemoryEngineService::default();
+    service
+        .place_order(tonic::Request::new(place_order_proto(
+            10,
+            Side::Ask,
+            55,
+            3,
+            "maker",
+        )))
+        .await
+        .expect("resting order should be accepted");
+
+    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .expect("listener should bind");
+    let addr = listener.local_addr().expect("listener should have addr");
+    let app = service_router(service.clone());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server should run");
+    });
+
+    let (mut socket, _response) =
+        connect_async(format!("ws://{addr}/ws/markets/mkt-election/trades"))
+            .await
+            .expect("websocket should connect");
+
+    service
+        .place_order(tonic::Request::new(place_order_proto(
+            20,
+            Side::Bid,
+            55,
+            2,
+            "taker",
+        )))
+        .await
+        .expect("crossing order should trade");
+
+    let message = tokio::time::timeout(Duration::from_secs(1), socket.next())
+        .await
+        .expect("trade should be streamed")
+        .expect("socket should stay open")
+        .expect("message should be valid");
+    let body: Value =
+        serde_json::from_str(message.to_text().expect("trade message should be text"))
+            .expect("trade should be json");
+
+    assert_eq!(body["type"], json!("trade"));
+    assert_eq!(body["market_id"], json!("mkt-election"));
+    assert_eq!(body["price_pts"], json!(55));
+    assert_eq!(body["qty"], json!(2));
+
+    server.abort();
+}
+
 fn order(order_id: &str, user_id: u64, side: OrderSide, price: u64, quantity: u64) -> NewOrder {
     NewOrder {
         order_id: OrderId::new(order_id),
@@ -202,6 +258,30 @@ fn order(order_id: &str, user_id: u64, side: OrderSide, price: u64, quantity: u6
         order_type: OrderType::Limit,
         price,
         quantity,
+    }
+}
+
+fn place_order_proto(
+    user_id: u64,
+    side: Side,
+    price_pts: i32,
+    quantity: i64,
+    client_order_id: &str,
+) -> PlaceOrderRequest {
+    PlaceOrderRequest {
+        audit: None,
+        user_id: Some(UserId { value: user_id }),
+        market_id: Some(MarketId {
+            value: "mkt-election".to_string(),
+        }),
+        side: side.into(),
+        outcome: 1,
+        r#type: ProtoOrderType::Limit.into(),
+        price_pts,
+        quantity,
+        tif: TimeInForce::Gtc.into(),
+        post_only: false,
+        client_order_id: client_order_id.to_string(),
     }
 }
 

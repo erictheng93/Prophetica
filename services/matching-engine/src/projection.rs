@@ -56,6 +56,19 @@ struct BookDeltaMessage<'a> {
     qty_delta: i64,
 }
 
+#[derive(Serialize)]
+struct TradeMessage<'a> {
+    #[serde(rename = "type")]
+    message_type: &'static str,
+    market_id: &'a str,
+    seq: Sequence,
+    maker_order_id: &'a str,
+    taker_order_id: &'a str,
+    trade_seq: Sequence,
+    price_pts: Price,
+    qty: Quantity,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishedProjection {
     pub topic: String,
@@ -169,6 +182,37 @@ pub fn book_stream_message(market: &str, event: &ProjectionEvent) -> Option<Stri
         side: *side,
         price_pts: *price_pts,
         qty_delta: *quantity_delta,
+    })
+    .ok()
+}
+
+#[must_use]
+pub fn trade_stream_message(market: &str, event: &ProjectionEvent) -> Option<String> {
+    let ProjectionEvent::Trade {
+        market_id,
+        seq_no,
+        maker_order_id,
+        taker_order_id,
+        trade_sequence,
+        price_pts,
+        quantity,
+    } = event
+    else {
+        return None;
+    };
+    if market_id != market {
+        return None;
+    }
+
+    serde_json::to_string(&TradeMessage {
+        message_type: "trade",
+        market_id,
+        seq: *seq_no,
+        maker_order_id,
+        taker_order_id,
+        trade_seq: *trade_sequence,
+        price_pts: *price_pts,
+        qty: *quantity,
     })
     .ok()
 }
