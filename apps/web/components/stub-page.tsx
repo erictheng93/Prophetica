@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
 import {
   AuthCta,
@@ -28,9 +29,12 @@ export async function StubPage({
   headline,
   tagline,
   backHref = "/",
-  backLabel = "回首頁",
+  backLabel,
 }: StubPageProps) {
-  const footerColumns = await getFooterColumns(siteFooterColumnIds);
+  const [footerColumns, t] = await Promise.all([
+    getFooterColumns(siteFooterColumnIds),
+    getTranslations("stubPage"),
+  ]);
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
@@ -39,10 +43,10 @@ export async function StubPage({
         surface="light"
         kicker={kicker}
         headline={headline}
-        tagline={tagline ?? "這個頁面正在準備中，將在後續版本上線。感謝你的耐心。"}
+        tagline={tagline ?? t("tagline")}
         actions={
           <ProphLinkButton variant="primary" href={backHref}>
-            {backLabel}
+            {backLabel ?? t("backLabel")}
           </ProphLinkButton>
         }
       />
