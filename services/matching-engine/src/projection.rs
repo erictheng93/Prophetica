@@ -45,6 +45,17 @@ pub enum ProjectionEvent {
     },
 }
 
+#[derive(Serialize)]
+struct BookDeltaMessage<'a> {
+    #[serde(rename = "type")]
+    message_type: &'static str,
+    market_id: &'a str,
+    seq: Sequence,
+    side: OrderSide,
+    price_pts: Price,
+    qty_delta: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublishedProjection {
     pub topic: String,
@@ -133,6 +144,33 @@ pub fn projection_key(event: &ProjectionEvent) -> &str {
         | ProjectionEvent::Trade { market_id, .. }
         | ProjectionEvent::OrderUpdate { market_id, .. } => market_id,
     }
+}
+
+#[must_use]
+pub fn book_stream_message(market: &str, event: &ProjectionEvent) -> Option<String> {
+    let ProjectionEvent::BookDelta {
+        market_id,
+        seq_no,
+        side,
+        price_pts,
+        quantity_delta,
+    } = event
+    else {
+        return None;
+    };
+    if market_id != market {
+        return None;
+    }
+
+    serde_json::to_string(&BookDeltaMessage {
+        message_type: "delta",
+        market_id,
+        seq: *seq_no,
+        side: *side,
+        price_pts: *price_pts,
+        qty_delta: *quantity_delta,
+    })
+    .ok()
 }
 
 /// Serializes a projection event into a stable transport envelope.

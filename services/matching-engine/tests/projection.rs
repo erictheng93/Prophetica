@@ -4,7 +4,8 @@ use matching_engine::{
     order_book::{OrderId, OrderSide},
     projection::{
         InMemoryProjectionSink, OrderProjectionStatus, ProjectionBroadcaster, ProjectionEvent,
-        ProjectionPublisher, project_engine_event, projection_topic, serialize_projection_event,
+        ProjectionPublisher, book_stream_message, project_engine_event, projection_topic,
+        serialize_projection_event,
     },
     service::EngineEvent,
     shard::MarketEvent,
@@ -163,4 +164,39 @@ fn projection_publisher_sends_topic_key_and_payload() {
     assert_eq!(emitted[0].key, "mkt-election");
     assert!(emitted[0].payload.contains(r#""kind":"trade""#));
     assert!(emitted[0].payload.contains(r#""seq_no":13"#));
+}
+
+#[test]
+fn book_stream_message_filters_market_book_deltas() {
+    let ignored_trade = ProjectionEvent::Trade {
+        market_id: "mkt-election".to_string(),
+        seq_no: 1,
+        maker_order_id: "maker".to_string(),
+        taker_order_id: "taker".to_string(),
+        trade_sequence: 1,
+        price_pts: 55,
+        quantity: 2,
+    };
+    assert_eq!(book_stream_message("mkt-election", &ignored_trade), None);
+
+    let other_market = ProjectionEvent::BookDelta {
+        market_id: "other-market".to_string(),
+        seq_no: 2,
+        side: OrderSide::Sell,
+        price_pts: 57,
+        quantity_delta: -3,
+    };
+    assert_eq!(book_stream_message("mkt-election", &other_market), None);
+
+    let delta = ProjectionEvent::BookDelta {
+        market_id: "mkt-election".to_string(),
+        seq_no: 3,
+        side: OrderSide::Sell,
+        price_pts: 57,
+        quantity_delta: -3,
+    };
+    assert_eq!(
+        book_stream_message("mkt-election", &delta).expect("book delta should serialize"),
+        r#"{"type":"delta","market_id":"mkt-election","seq":3,"side":"Sell","price_pts":57,"qty_delta":-3}"#
+    );
 }
