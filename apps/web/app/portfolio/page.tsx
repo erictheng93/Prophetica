@@ -5,10 +5,8 @@ import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumns,
   MainNavLinks,
-  marketsColumn,
-  supportColumn,
 } from "@/lib/site-nav";
 import {
   categoryLabel,
@@ -29,9 +27,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const sectionFooterColumns = [marketsColumn, legalColumn, supportColumn];
-
-export default function PortfolioPage() {
+export default async function PortfolioPage() {
+  const sectionFooterColumns = await getFooterColumns(["markets", "legal", "support"]);
   const summary = summarizePortfolio();
   const active = listActivePositions();
   const settled = listSettledPositions();

@@ -1,27 +1,21 @@
 import type { ReactNode } from "react";
+import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphSubNav } from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  kycColumn,
-  legalColumn,
+  getFooterColumn,
+  getFooterColumns,
   MainNavLinks,
-  supportColumn,
+  type SiteNavLink,
 } from "@/lib/site-nav";
 
 // SPEC-005 §8 KYC user UX — shared chrome for /kyc/*.
 // Single primary nav + inline KYC section chip row + standard footer.
 // (No mandatory help-line strip here — that's SPEC-006 RG-specific.)
 
-// Chip nav reuses the footer column links and appends 審核狀態 — a transient
-// state page useful to jump to from any KYC sub-page but not worth listing
-// as a permanent footer category.
-const sectionLinks = [...kycColumn.links, { label: "審核狀態", href: "/kyc/status" }];
-
-const sectionFooterColumns = [kycColumn, legalColumn, supportColumn];
-
-function KYCSectionNav() {
+function KYCSectionNav({ links }: { links: SiteNavLink[] }) {
   return (
     <nav
       aria-label="KYC 區段導覽"
@@ -29,7 +23,7 @@ function KYCSectionNav() {
     >
       <div className="mx-auto max-w-proph overflow-x-auto px-6 md:px-10">
         <ul className="flex items-center gap-2 py-3">
-          {sectionLinks.map((l) => (
+          {links.map((l) => (
             <li key={l.href}>
               <a
                 href={l.href}
@@ -45,16 +39,30 @@ function KYCSectionNav() {
   );
 }
 
-export default function KYCLayout({ children }: { children: ReactNode }) {
+export default async function KYCLayout({ children }: { children: ReactNode }) {
+  // Chip nav reuses the footer column links and appends 審核狀態 — a transient
+  // state page useful to jump to from any KYC sub-page but not worth listing
+  // as a permanent footer category.
+  const [kycCol, footerColumns, tItems] = await Promise.all([
+    getFooterColumn("kyc"),
+    getFooterColumns(["kyc", "legal", "support"]),
+    getTranslations("common.footer.columns.kyc.items"),
+  ]);
+
+  const sectionLinks: SiteNavLink[] = [
+    ...kycCol.links,
+    { label: tItems("status"), href: "/kyc/status" },
+  ];
+
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
 
-      <KYCSectionNav />
+      <KYCSectionNav links={sectionLinks} />
 
       {children}
 
-      <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
+      <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
     </main>
   );
 }

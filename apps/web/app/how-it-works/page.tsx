@@ -4,11 +4,8 @@ import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumns,
   MainNavLinks,
-  marketsColumn,
-  responsibleGamingColumn,
-  supportColumn,
 } from "@/lib/site-nav";
 
 export const metadata: Metadata = {
@@ -16,7 +13,6 @@ export const metadata: Metadata = {
   description: "從註冊到結算的完整玩家流程：4 步驟入場、撮合機制、cent 價格、Oracle 結算與申訴窗口。",
 };
 
-const sectionFooterColumns = [marketsColumn, responsibleGamingColumn, legalColumn, supportColumn];
 
 interface PrincipleCard {
   kicker: string;
@@ -380,7 +376,8 @@ function ComplianceBlock() {
   );
 }
 
-export default function HowItWorksPage() {
+export default async function HowItWorksPage() {
+  const sectionFooterColumns = await getFooterColumns(["markets", "responsibleGaming", "legal", "support"]);
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />

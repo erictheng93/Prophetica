@@ -1,25 +1,23 @@
 import type { ReactNode } from "react";
+import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphSubNav } from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumns,
   MainNavLinks,
-  marketsColumn,
-  supportColumn,
+  type SiteNavLink,
 } from "@/lib/site-nav";
 
-const sectionLinks = [
-  { label: "全部", href: "/markets" },
-  { label: "熱門", href: "/markets/trending" },
-  { label: "新上架", href: "/markets/new" },
-  { label: "已結算", href: "/markets/settled" },
+const sectionItems = [
+  { key: "all", href: "/markets" },
+  { key: "trending", href: "/markets/trending" },
+  { key: "new", href: "/markets/new" },
+  { key: "settled", href: "/markets/settled" },
 ];
 
-const sectionFooterColumns = [marketsColumn, legalColumn, supportColumn];
-
-function MarketsSectionNav() {
+function MarketsSectionNav({ links }: { links: SiteNavLink[] }) {
   return (
     <nav
       aria-label="市場 區段導覽"
@@ -27,7 +25,7 @@ function MarketsSectionNav() {
     >
       <div className="mx-auto max-w-proph overflow-x-auto px-6 md:px-10">
         <ul className="flex items-center gap-2 py-3">
-          {sectionLinks.map((l) => (
+          {links.map((l) => (
             <li key={l.href}>
               <a
                 href={l.href}
@@ -43,13 +41,22 @@ function MarketsSectionNav() {
   );
 }
 
-export default function MarketsLayout({ children }: { children: ReactNode }) {
+export default async function MarketsLayout({ children }: { children: ReactNode }) {
+  const [tNav, footerColumns] = await Promise.all([
+    getTranslations("sectionNav.markets"),
+    getFooterColumns(["markets", "legal", "support"]),
+  ]);
+  const sectionLinks: SiteNavLink[] = sectionItems.map(({ key, href }) => ({
+    label: tNav(key),
+    href,
+  }));
+
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
-      <MarketsSectionNav />
+      <MarketsSectionNav links={sectionLinks} />
       {children}
-      <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
+      <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
     </main>
   );
 }

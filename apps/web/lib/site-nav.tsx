@@ -1,21 +1,20 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { ProphLinkButton } from "@prophetica/ui";
 
-// Shared site navigation data + small composable components.
+// Shared site navigation — i18n-aware version (S commit).
 //
-// Why this file exists:
-//   Earlier each consumer (landing / stub-page / RG layout / KYC layout)
-//   declared its own `navLinks` array, `footerColumns` array, and inline
-//   <Brand>/<AuthCta>/<LegalRow> JSX. Every footer-link addition meant 4
-//   files to touch. This module is the single source of truth.
+// Responsibilities split:
+//   - Static href maps live in this file (route hrefs are not translated).
+//   - Labels / headings come from `messages/<locale>.json` under
+//     `common.nav.*` and `common.footer.columns.*`.
+//   - Components (<Brand>, <MainNavLinks>, <AuthCta>, <FooterLegalRow>) are
+//     async server components that resolve their copy via getTranslations.
 //
-// Composition principles:
-//   - Each well-known footer column is a named constant — section layouts
-//     (RG, KYC) compose `[<sectionColumn>, legalColumn, supportColumn]`,
-//     full-site surfaces (landing, stub-page) use `siteFooterColumns`.
-//   - Brand uses next/link for client-side routing; do not downgrade to <a>.
-//   - The legal row is the only footer mandate from SPEC-006 §7.1 —
-//     anywhere ProphFooter is rendered, render <FooterLegalRow/> in `legal`.
+// Migration note: callers stay unchanged (`<MainNavLinks />`); React 19 RSC
+// renders async server components transparently. Footer-column consumers
+// switch from `siteFooterColumns` (constant array) to
+// `await getFooterColumns([...ids])` so the labels resolve at request time.
 
 export interface SiteNavLink {
   label: string;
@@ -27,122 +26,134 @@ export interface SiteFooterColumn {
   links: SiteNavLink[];
 }
 
-// -------------------- Main nav (the 4 top-level links) --------------------
+// -------------------- Static href maps --------------------
 
-export const mainNavLinks: SiteNavLink[] = [
-  { label: "市場", href: "/markets" },
-  { label: "玩法", href: "/how-it-works" },
-  { label: "責任博弈", href: "/responsible-gaming" },
-  { label: "客服", href: "/support" },
+interface NavItemDef {
+  /** i18n key under `common.nav` */
+  key: string;
+  href: string;
+}
+
+const mainNavItems: NavItemDef[] = [
+  { key: "markets", href: "/markets" },
+  { key: "howItWorks", href: "/how-it-works" },
+  { key: "responsibleGaming", href: "/responsible-gaming" },
+  { key: "support", href: "/support" },
 ];
 
-// -------------------- Footer columns (one per section) --------------------
+interface FooterItemDef {
+  /** i18n key under `common.footer.columns.<column>.items` */
+  key: string;
+  href: string;
+}
 
-export const aboutColumn: SiteFooterColumn = {
-  heading: "認識 prophetica",
-  links: [
-    { label: "關於平台", href: "/about" },
-    { label: "撮合機制", href: "/how-it-works" },
-    { label: "結算與爭議", href: "/settlement" },
-    { label: "代理計畫", href: "/affiliate" },
+export type FooterColumnId =
+  | "about"
+  | "player"
+  | "markets"
+  | "responsibleGaming"
+  | "kyc"
+  | "legal"
+  | "support";
+
+const FOOTER_ITEM_DEFS: Record<FooterColumnId, FooterItemDef[]> = {
+  about: [
+    { key: "platform", href: "/about" },
+    { key: "matching", href: "/how-it-works" },
+    { key: "settlement", href: "/settlement" },
+    { key: "affiliate", href: "/affiliate" },
+  ],
+  player: [
+    { key: "topup", href: "/topup" },
+    { key: "kyc", href: "/kyc" },
+    { key: "markets", href: "/markets" },
+    { key: "portfolio", href: "/portfolio" },
+  ],
+  markets: [
+    { key: "all", href: "/markets" },
+    { key: "trending", href: "/markets/trending" },
+    { key: "new", href: "/markets/new" },
+    { key: "settled", href: "/markets/settled" },
+    { key: "portfolio", href: "/portfolio" },
+  ],
+  responsibleGaming: [
+    { key: "overview", href: "/responsible-gaming" },
+    { key: "limits", href: "/responsible-gaming/limits" },
+    { key: "cooldown", href: "/responsible-gaming/cooldown" },
+    { key: "selfExclusion", href: "/responsible-gaming/self-exclusion" },
+    { key: "resources", href: "/responsible-gaming/resources" },
+  ],
+  kyc: [
+    { key: "overview", href: "/kyc" },
+    { key: "tier1", href: "/kyc/tier-1" },
+    { key: "tier2", href: "/kyc/tier-2" },
+    { key: "tier3", href: "/kyc/tier-3" },
+    { key: "privacyNotice", href: "/kyc/privacy-notice" },
+  ],
+  legal: [
+    { key: "terms", href: "/legal/terms" },
+    { key: "privacy", href: "/legal/privacy" },
+    { key: "geoBlock", href: "/legal/geo-block" },
+    { key: "aml", href: "/legal/aml" },
+  ],
+  support: [
+    { key: "center", href: "/support" },
+    { key: "faq", href: "/support/faq" },
+    { key: "disputes", href: "/support/disputes" },
+    { key: "contact", href: "/support/contact" },
   ],
 };
 
-export const playerColumn: SiteFooterColumn = {
-  heading: "玩家中心",
-  links: [
-    { label: "如何儲值點數", href: "/topup" },
-    { label: "身份驗證 KYC", href: "/kyc" },
-    { label: "市場列表", href: "/markets" },
-    { label: "個人持倉", href: "/portfolio" },
-  ],
-};
-
-export const responsibleGamingColumn: SiteFooterColumn = {
-  heading: "責任博弈",
-  links: [
-    { label: "概覽", href: "/responsible-gaming" },
-    { label: "限額設定", href: "/responsible-gaming/limits" },
-    { label: "冷靜期", href: "/responsible-gaming/cooldown" },
-    { label: "自我排除", href: "/responsible-gaming/self-exclusion" },
-    { label: "求助資源", href: "/responsible-gaming/resources" },
-  ],
-};
-
-export const marketsColumn: SiteFooterColumn = {
-  heading: "市場",
-  links: [
-    { label: "全部市場", href: "/markets" },
-    { label: "熱門", href: "/markets/trending" },
-    { label: "新上架", href: "/markets/new" },
-    { label: "已結算", href: "/markets/settled" },
-    { label: "個人持倉", href: "/portfolio" },
-  ],
-};
-
-export const kycColumn: SiteFooterColumn = {
-  heading: "身份驗證",
-  links: [
-    { label: "KYC 概覽", href: "/kyc" },
-    { label: "Tier 1 基礎", href: "/kyc/tier-1" },
-    { label: "Tier 2 標準", href: "/kyc/tier-2" },
-    { label: "Tier 3 強化", href: "/kyc/tier-3" },
-    { label: "隱私說明", href: "/kyc/privacy-notice" },
-  ],
-};
-
-export const legalColumn: SiteFooterColumn = {
-  heading: "法律與合規",
-  links: [
-    { label: "服務條款", href: "/legal/terms" },
-    { label: "隱私政策", href: "/legal/privacy" },
-    { label: "禁止地區", href: "/legal/geo-block" },
-    { label: "AML 政策", href: "/legal/aml" },
-  ],
-};
-
-export const supportColumn: SiteFooterColumn = {
-  heading: "支援",
-  links: [
-    { label: "客服中心", href: "/support" },
-    { label: "常見問題", href: "/support/faq" },
-    { label: "申訴流程", href: "/support/disputes" },
-    { label: "聯絡我們", href: "/support/contact" },
-  ],
-};
-
-// Full 5-column footer used on the landing page and on /stub-page surfaces
-// where the site IA should be visible at a glance.
-export const siteFooterColumns: SiteFooterColumn[] = [
-  aboutColumn,
-  playerColumn,
-  responsibleGamingColumn,
-  legalColumn,
-  supportColumn,
+/** 5-column footer used on landing and stub-page surfaces. */
+export const siteFooterColumnIds: FooterColumnId[] = [
+  "about",
+  "player",
+  "responsibleGaming",
+  "legal",
+  "support",
 ];
+
+// -------------------- Async data helpers --------------------
+
+export async function getFooterColumn(id: FooterColumnId): Promise<SiteFooterColumn> {
+  const t = await getTranslations(`common.footer.columns.${id}`);
+  return {
+    heading: t("heading"),
+    links: FOOTER_ITEM_DEFS[id].map(({ key, href }) => ({
+      label: t(`items.${key}`),
+      href,
+    })),
+  };
+}
+
+export async function getFooterColumns(ids: FooterColumnId[]): Promise<SiteFooterColumn[]> {
+  return Promise.all(ids.map(getFooterColumn));
+}
 
 // -------------------- Components --------------------
 
 /** Brand wordmark; goes in `ProphSubNav.category`. */
-export function Brand() {
+export async function Brand() {
+  const t = await getTranslations("common");
   return (
     <Link href="/" className="text-proph-ink hover:opacity-80">
-      prophetica
+      {t("brand")}
     </Link>
   );
 }
 
 /** The 4 main nav anchors; goes in `ProphSubNav.links`. */
-export function MainNavLinks() {
+export async function MainNavLinks() {
+  const t = await getTranslations("common.nav");
   return (
     <>
-      {mainNavLinks.map((l) => (
+      {mainNavItems.map(({ key, href }) => (
         <a
-          key={l.href}
-          href={l.href}
+          key={href}
+          href={href}
           className="font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink"
         >
-          {l.label}
+          {t(key)}
         </a>
       ))}
     </>
@@ -150,17 +161,18 @@ export function MainNavLinks() {
 }
 
 /** 登入 text link + 開始體驗 primary pill; goes in `ProphSubNav.cta`. */
-export function AuthCta() {
+export async function AuthCta() {
+  const t = await getTranslations("common.auth");
   return (
     <div className="flex items-center gap-4">
       <a
         href="/auth/sign-in"
         className="font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink"
       >
-        登入
+        {t("signIn")}
       </a>
       <ProphLinkButton variant="primary" href="/auth/sign-in">
-        開始體驗
+        {t("getStarted")}
       </ProphLinkButton>
     </div>
   );
@@ -170,21 +182,19 @@ export function AuthCta() {
  * Site-wide footer legal row. SPEC-006 §7.1 mandates 18+ + 援助電話 on every
  * footer; this component is the single rendering of that contract.
  */
-export function FooterLegalRow() {
+export async function FooterLegalRow() {
+  const t = await getTranslations("common.footer.legal");
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <span>
-        © {new Date().getFullYear()} prophetica. 趣味預測娛樂遊戲服務 · 18+ ·
-        站內點數不可兌回現金 / 虛擬貨幣 / 實體商品。
-      </span>
+      <span>{t("copyright", { year: new Date().getFullYear() })}</span>
       <span className="font-text text-[12px] leading-none tracking-[-0.12px]">
-        援助專線{" "}
+        {t("helplinePrefix")}{" "}
         <a href="tel:1925" className="text-proph-primary underline">
           1925
         </a>
-        （24 小時）·{" "}
+        {t("helplineHours")} ·{" "}
         <a href="/legal/geo-block" className="text-proph-primary underline">
-          服務地區限制
+          {t("geoBlockLink")}
         </a>
       </span>
     </div>

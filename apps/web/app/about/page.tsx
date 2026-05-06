@@ -4,11 +4,8 @@ import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumns,
   MainNavLinks,
-  marketsColumn,
-  responsibleGamingColumn,
-  supportColumn,
 } from "@/lib/site-nav";
 
 export const metadata: Metadata = {
@@ -16,7 +13,6 @@ export const metadata: Metadata = {
   description: "prophetica 不持倉、不下場，只做撮合與結算。三條法律邊界、三公司架構、為什麼是娛樂遊戲不是博弈。",
 };
 
-const sectionFooterColumns = [marketsColumn, responsibleGamingColumn, legalColumn, supportColumn];
 
 const principles = [
   { kicker: "原則一", title: "點數不可兌回", body: "永遠不可兌回現金、虛擬貨幣或實體商品。" },
@@ -244,7 +240,8 @@ function ContactBlock() {
   );
 }
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const sectionFooterColumns = await getFooterColumns(["markets", "responsibleGaming", "legal", "support"]);
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />

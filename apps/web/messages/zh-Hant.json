@@ -4,6 +4,103 @@
     "auth": {
       "signIn": "登入",
       "getStarted": "開始體驗"
+    },
+    "nav": {
+      "markets": "市場",
+      "howItWorks": "玩法",
+      "responsibleGaming": "責任博弈",
+      "support": "客服"
+    },
+    "footer": {
+      "legal": {
+        "copyright": "© {year} prophetica. 趣味預測娛樂遊戲服務 · 18+ · 站內點數不可兌回現金 / 虛擬貨幣 / 實體商品。",
+        "helplinePrefix": "援助專線",
+        "helplineHours": "（24 小時）",
+        "geoBlockLink": "服務地區限制"
+      },
+      "columns": {
+        "about": {
+          "heading": "認識 prophetica",
+          "items": {
+            "platform": "關於平台",
+            "matching": "撮合機制",
+            "settlement": "結算與爭議",
+            "affiliate": "代理計畫"
+          }
+        },
+        "player": {
+          "heading": "玩家中心",
+          "items": {
+            "topup": "如何儲值點數",
+            "kyc": "身份驗證 KYC",
+            "markets": "市場列表",
+            "portfolio": "個人持倉"
+          }
+        },
+        "markets": {
+          "heading": "市場",
+          "items": {
+            "all": "全部市場",
+            "trending": "熱門",
+            "new": "新上架",
+            "settled": "已結算",
+            "portfolio": "個人持倉"
+          }
+        },
+        "responsibleGaming": {
+          "heading": "責任博弈",
+          "items": {
+            "overview": "概覽",
+            "limits": "限額設定",
+            "cooldown": "冷靜期",
+            "selfExclusion": "自我排除",
+            "resources": "求助資源"
+          }
+        },
+        "kyc": {
+          "heading": "身份驗證",
+          "items": {
+            "overview": "KYC 概覽",
+            "tier1": "Tier 1 基礎",
+            "tier2": "Tier 2 標準",
+            "tier3": "Tier 3 強化",
+            "privacyNotice": "隱私說明",
+            "status": "審核狀態"
+          }
+        },
+        "legal": {
+          "heading": "法律與合規",
+          "items": {
+            "terms": "服務條款",
+            "privacy": "隱私政策",
+            "geoBlock": "禁止地區",
+            "aml": "AML 政策"
+          }
+        },
+        "support": {
+          "heading": "支援",
+          "items": {
+            "center": "客服中心",
+            "faq": "常見問題",
+            "disputes": "申訴流程",
+            "contact": "聯絡我們"
+          }
+        }
+      }
+    }
+  },
+  "sectionNav": {
+    "markets": {
+      "all": "全部",
+      "trending": "熱門",
+      "new": "新上架",
+      "settled": "已結算"
+    },
+    "support": {
+      "overview": "概覽",
+      "faq": "常見問題",
+      "disputes": "申訴流程",
+      "contact": "聯絡我們"
     }
   },
   "landing": {

@@ -4,10 +4,8 @@ import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumns,
   MainNavLinks,
-  marketsColumn,
-  supportColumn,
 } from "@/lib/site-nav";
 
 export const metadata: Metadata = {
@@ -15,7 +13,6 @@ export const metadata: Metadata = {
   description: "單層介紹費 + 12 個月交易佣金。不是 MLM，不是多層代理。所有佣金可被稽核、稅務透明。",
 };
 
-const sectionFooterColumns = [marketsColumn, legalColumn, supportColumn];
 
 function HeroBlock() {
   return (
@@ -244,7 +241,8 @@ function NotMlmBlock() {
   );
 }
 
-export default function AffiliatePage() {
+export default async function AffiliatePage() {
+  const sectionFooterColumns = await getFooterColumns(["markets", "legal", "support"]);
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />

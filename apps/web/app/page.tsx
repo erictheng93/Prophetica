@@ -1,6 +1,13 @@
 import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
-import { AuthCta, Brand, FooterLegalRow, MainNavLinks, siteFooterColumns } from "@/lib/site-nav";
+import {
+  AuthCta,
+  Brand,
+  FooterLegalRow,
+  getFooterColumns,
+  MainNavLinks,
+  siteFooterColumnIds,
+} from "@/lib/site-nav";
 
 // Landing page — DESIGN.md (Apple-style) integration test, now i18n-ready.
 // First page migrated to next-intl: copy lives in messages/zh-Hant.json
@@ -24,7 +31,10 @@ const TileMedia = ({ label, surface }: { label: string; surface: "light" | "dark
 );
 
 export default async function LandingPage() {
-  const t = await getTranslations("landing");
+  const [t, footerColumns] = await Promise.all([
+    getTranslations("landing"),
+    getFooterColumns(siteFooterColumnIds),
+  ]);
 
   return (
     <main className="min-h-screen bg-proph-canvas">
@@ -104,7 +114,7 @@ export default async function LandingPage() {
         }
       />
 
-      <ProphFooter columns={siteFooterColumns} legal={<FooterLegalRow />} />
+      <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
     </main>
   );
 }

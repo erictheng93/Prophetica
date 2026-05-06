@@ -4,10 +4,8 @@ import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumns,
   MainNavLinks,
-  marketsColumn,
-  supportColumn,
 } from "@/lib/site-nav";
 
 export const metadata: Metadata = {
@@ -15,7 +13,6 @@ export const metadata: Metadata = {
   description: "Oracle 結算流程、24 小時申訴窗口、Compliance 升級條件與多人申訴處理。",
 };
 
-const sectionFooterColumns = [marketsColumn, legalColumn, supportColumn];
 
 // SPEC-004 §2 settlement state machine.
 const states = [
@@ -193,7 +190,8 @@ function NeutralityReminder() {
   );
 }
 
-export default function SettlementPage() {
+export default async function SettlementPage() {
+  const sectionFooterColumns = await getFooterColumns(["markets", "legal", "support"]);
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />

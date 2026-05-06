@@ -1,26 +1,25 @@
 import type { ReactNode } from "react";
+import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphSubNav } from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumns,
   MainNavLinks,
-  supportColumn,
+  type SiteNavLink,
 } from "@/lib/site-nav";
 
 // SPEC-012 §2 service channels — shared chrome for /support/*.
 
-const sectionLinks = [
-  { label: "概覽", href: "/support" },
-  { label: "常見問題", href: "/support/faq" },
-  { label: "申訴流程", href: "/support/disputes" },
-  { label: "聯絡我們", href: "/support/contact" },
+const sectionItems = [
+  { key: "overview", href: "/support" },
+  { key: "faq", href: "/support/faq" },
+  { key: "disputes", href: "/support/disputes" },
+  { key: "contact", href: "/support/contact" },
 ];
 
-const sectionFooterColumns = [supportColumn, legalColumn];
-
-function SupportSectionNav() {
+function SupportSectionNav({ links }: { links: SiteNavLink[] }) {
   return (
     <nav
       aria-label="客服 區段導覽"
@@ -28,7 +27,7 @@ function SupportSectionNav() {
     >
       <div className="mx-auto max-w-proph overflow-x-auto px-6 md:px-10">
         <ul className="flex items-center gap-2 py-3">
-          {sectionLinks.map((l) => (
+          {links.map((l) => (
             <li key={l.href}>
               <a
                 href={l.href}
@@ -44,13 +43,22 @@ function SupportSectionNav() {
   );
 }
 
-export default function SupportLayout({ children }: { children: ReactNode }) {
+export default async function SupportLayout({ children }: { children: ReactNode }) {
+  const [tNav, footerColumns] = await Promise.all([
+    getTranslations("sectionNav.support"),
+    getFooterColumns(["support", "legal"]),
+  ]);
+  const sectionLinks: SiteNavLink[] = sectionItems.map(({ key, href }) => ({
+    label: tNav(key),
+    href,
+  }));
+
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
-      <SupportSectionNav />
+      <SupportSectionNav links={sectionLinks} />
       {children}
-      <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
+      <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
     </main>
   );
 }

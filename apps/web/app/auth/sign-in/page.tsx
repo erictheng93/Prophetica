@@ -3,9 +3,8 @@ import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetic
 import {
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumns,
   MainNavLinks,
-  supportColumn,
 } from "@/lib/site-nav";
 
 export const metadata: Metadata = {
@@ -18,7 +17,6 @@ interface PageProps {
   searchParams: Promise<{ mode?: string | string[] }>;
 }
 
-const sectionFooterColumns = [legalColumn, supportColumn];
 
 // SPEC-005 §2.4 first-launch 5 countries — kept in sync with /kyc/tier-1.
 const launchCountries = [
@@ -39,7 +37,10 @@ const postSignupSteps = [
 ];
 
 export default async function AuthPage({ searchParams }: PageProps) {
-  const params = await searchParams;
+  const [params, sectionFooterColumns] = await Promise.all([
+    searchParams,
+    getFooterColumns(["legal", "support"]),
+  ]);
   const raw = Array.isArray(params.mode) ? params.mode[0] : params.mode;
   const mode: "signin" | "signup" = raw === "signup" ? "signup" : "signin";
 

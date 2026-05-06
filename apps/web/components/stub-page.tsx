@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
-import { AuthCta, Brand, FooterLegalRow, MainNavLinks, siteFooterColumns } from "@/lib/site-nav";
+import {
+  AuthCta,
+  Brand,
+  FooterLegalRow,
+  getFooterColumns,
+  MainNavLinks,
+  siteFooterColumnIds,
+} from "@/lib/site-nav";
 
 // Reusable placeholder for routes that exist in the IA but lack real content.
 // Keeps footer/nav links navigable (no 404) without fabricating product copy
@@ -16,7 +23,14 @@ export interface StubPageProps {
   backLabel?: string;
 }
 
-export function StubPage({ kicker, headline, tagline, backHref = "/", backLabel = "回首頁" }: StubPageProps) {
+export async function StubPage({
+  kicker,
+  headline,
+  tagline,
+  backHref = "/",
+  backLabel = "回首頁",
+}: StubPageProps) {
+  const footerColumns = await getFooterColumns(siteFooterColumnIds);
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
@@ -33,7 +47,7 @@ export function StubPage({ kicker, headline, tagline, backHref = "/", backLabel 
         }
       />
 
-      <ProphFooter columns={siteFooterColumns} legal={<FooterLegalRow />} />
+      <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
     </main>
   );
 }

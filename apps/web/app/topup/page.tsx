@@ -4,10 +4,8 @@ import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumns,
   MainNavLinks,
-  responsibleGamingColumn,
-  supportColumn,
 } from "@/lib/site-nav";
 
 export const metadata: Metadata = {
@@ -15,8 +13,6 @@ export const metadata: Metadata = {
   description: "為帳戶儲值站內點數。1 點 = TWD 1。儲值受月儲值上限保護。",
   robots: { index: false, follow: false },
 };
-
-const sectionFooterColumns = [responsibleGamingColumn, legalColumn, supportColumn];
 
 const presetAmounts = [100, 500, 1_000, 5_000, 10_000];
 
@@ -71,7 +67,8 @@ const mockState = {
 const formatPoints = (n: number): string => `${n.toLocaleString("zh-Hant")} 點`;
 const formatTwd = (n: number): string => `TWD ${n.toLocaleString("zh-Hant")}`;
 
-export default function TopUpPage() {
+export default async function TopUpPage() {
+  const sectionFooterColumns = await getFooterColumns(["responsibleGaming", "legal", "support"]);
   const { currentBalance, monthlyDeposited, monthlyLimit, kycTier } = mockState;
   const usagePct = Math.min(100, (monthlyDeposited / monthlyLimit) * 100);
   const remainingPoints = Math.max(0, monthlyLimit - monthlyDeposited);

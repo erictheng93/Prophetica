@@ -5,17 +5,15 @@ import {
   AuthCta,
   Brand,
   FooterLegalRow,
-  legalColumn,
+  getFooterColumn,
+  getFooterColumns,
   MainNavLinks,
-  responsibleGamingColumn,
-  supportColumn,
+  type SiteNavLink,
 } from "@/lib/site-nav";
 
 // Shared chrome for /responsible-gaming/* — SPEC-006 §7.3 dedicated RG section.
 // Single primary nav (consolidated from prior global+sub stack) + an inline
 // RG-section chip row + helpline strip + footer.
-
-const sectionFooterColumns = [responsibleGamingColumn, legalColumn, supportColumn];
 
 /*
  * RG section navigation — rendered as inline content (not sticky chrome) so
@@ -23,7 +21,7 @@ const sectionFooterColumns = [responsibleGamingColumn, legalColumn, supportColum
  * directly above page content. Horizontally scrollable on narrow viewports;
  * each chip is a regular anchor.
  */
-function RGSectionNav() {
+function RGSectionNav({ links }: { links: SiteNavLink[] }) {
   return (
     <nav
       aria-label="責任博弈 區段導覽"
@@ -31,7 +29,7 @@ function RGSectionNav() {
     >
       <div className="mx-auto max-w-proph overflow-x-auto px-6 md:px-10">
         <ul className="flex items-center gap-2 py-3">
-          {responsibleGamingColumn.links.map((l) => (
+          {links.map((l) => (
             <li key={l.href}>
               <a
                 href={l.href}
@@ -47,18 +45,23 @@ function RGSectionNav() {
   );
 }
 
-export default function ResponsibleGamingLayout({ children }: { children: ReactNode }) {
+export default async function ResponsibleGamingLayout({ children }: { children: ReactNode }) {
+  const [rgColumn, footerColumns] = await Promise.all([
+    getFooterColumn("responsibleGaming"),
+    getFooterColumns(["responsibleGaming", "legal", "support"]),
+  ]);
+
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
 
-      <RGSectionNav />
+      <RGSectionNav links={rgColumn.links} />
 
       {children}
 
       <RGHelpline />
 
-      <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
+      <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
     </main>
   );
 }
