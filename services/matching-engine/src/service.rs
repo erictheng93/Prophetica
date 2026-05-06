@@ -76,6 +76,7 @@ impl EngineService for InMemoryEngineService {
         let request = request.into_inner();
         let market_id = required_market_id(request.market_id.as_ref())?;
         let user_id = required_user_id(request.user_id.as_ref())?;
+        reject_platform_system_user(user_id)?;
         let side = map_side(request.side)?;
         let order_type = map_order_type(request.r#type, request.post_only)?;
         let price = checked_price(request.price_pts)?;
@@ -470,6 +471,16 @@ fn required_user_id(user_id: Option<&UserId>) -> Result<u64, Status> {
         return Err(Status::invalid_argument("user_id must be non-zero"));
     }
     Ok(user_id)
+}
+
+fn reject_platform_system_user(user_id: u64) -> Result<(), Status> {
+    if (1..=8).contains(&user_id) {
+        return Err(Status::permission_denied(
+            "platform sentinel users cannot place orders",
+        ));
+    }
+
+    Ok(())
 }
 
 fn checked_price(price_pts: i32) -> Result<Price, Status> {

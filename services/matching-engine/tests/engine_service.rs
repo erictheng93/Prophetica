@@ -122,6 +122,25 @@ async fn cancel_order_rejects_non_owner_and_allows_owner() {
 }
 
 #[tokio::test]
+async fn place_order_rejects_platform_sentinel_users() {
+    let service = InMemoryEngineService::default();
+
+    let error = service
+        .place_order(tonic::Request::new(place_order_request(
+            1,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "platform-sentinel",
+        )))
+        .await
+        .expect_err("platform sentinel user should be rejected");
+
+    assert_eq!(error.code(), tonic::Code::PermissionDenied);
+}
+
+#[tokio::test]
 async fn grpc_server_serves_engine_service_requests() {
     let addr = free_loopback_addr();
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
