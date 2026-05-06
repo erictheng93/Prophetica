@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import { Brand } from "@/lib/site-nav";
 
 // SPEC-001 §2 — Geo-block user-facing screen.
 // Linked from footer (/legal/geo-block) AND served as the interception page by
@@ -52,11 +52,7 @@ export default function GeoBlockPage() {
        * SPEC-001 §2.2 forbids any UI hint suggesting circumvention.
        */}
       <ProphSubNav
-        category={
-          <Link href="/" className="text-proph-ink hover:opacity-80">
-            prophetica
-          </Link>
-        }
+        category={<Brand />}
         cta={
           <a
             href="/support"
