@@ -82,11 +82,22 @@ impl AuditArchive for LocalAuditArchive {
     }
 }
 
+/// Loads a persisted audit manifest from disk.
+///
+/// # Errors
+///
+/// Returns [`AuditArchiveError`] when the file cannot be read or parsed.
 pub fn load_manifest(path: &Path) -> Result<AuditManifest, AuditArchiveError> {
     let payload = fs::read(path)?;
     Ok(serde_json::from_slice(&payload)?)
 }
 
+/// Verifies that manifests form a continuous hash chain.
+///
+/// # Errors
+///
+/// Returns [`AuditArchiveError::EmptySequence`] for an empty input, or
+/// [`AuditArchiveError::ChainBreak`] when a manifest does not point at the previous hash.
 pub fn verify_manifest_chain(manifests: &[AuditManifest]) -> Result<(), AuditArchiveError> {
     if manifests.is_empty() {
         return Err(AuditArchiveError::EmptySequence);

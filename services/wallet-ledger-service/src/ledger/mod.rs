@@ -319,6 +319,7 @@ impl LedgerStore for PostgresLedgerStore {
             account_ids.push(ensure_account(&mut tx, entry.account_code()).await?);
         }
         lock_accounts(&mut tx, &account_ids).await?;
+        validate_locked_player_liability_bounds(&mut tx, draft, &account_ids).await?;
 
         for (entry, account_id) in draft.entries.iter().zip(account_ids) {
             let current_balance = account_balance(&mut tx, account_id).await?;
@@ -493,6 +494,34 @@ async fn lock_accounts(
             .bind(account_id)
             .execute(&mut **tx)
             .await?;
+    }
+
+    Ok(())
+}
+
+async fn validate_locked_player_liability_bounds(
+    tx: &mut Transaction<'_, Postgres>,
+    draft: &PostTransactionDraft,
+    account_ids: &[i64],
+) -> Result<(), LedgerStoreError> {
+    if draft.txn_type == "chargeback" {
+        return Ok(());
+    }
+
+    for (entry, account_id) in draft.entries.iter().zip(account_ids) {
+        if !is_player_liability_account(entry.account_code()) {
+            continue;
+        }
+
+        let current_balance = account_balance(tx, *account_id).await?;
+        let balance_after = current_balance + entry.amount().minor_units();
+        if balance_after > 0 {
+            return Err(LedgerStoreError::new(format!(
+                "insufficient funds for {}: projected balance {} minor units",
+                entry.account_code(),
+                balance_after
+            )));
+        }
     }
 
     Ok(())
@@ -863,6 +892,58 @@ mod tests {
         assert_eq!(record_count, 1);
     }
 
+    #[tokio::test]
+    async fn postgres_ledger_entries_are_immutable() {
+        let Some(pool) = postgres_test_pool().await else {
+            return;
+        };
+        let store = super::PostgresLedgerStore::new(pool.clone());
+        let service = LedgerService::new(store);
+        let test_id = unique_test_id("postgres-immutable");
+        let draft = balanced_draft_for_user(
+            &format!("user_{test_id}"),
+            &format!("deposit:{test_id}:immutable"),
+            10_000,
+        );
+
+        let transaction = match service.post_transaction(draft).await {
+            Ok(transaction) => transaction,
+            Err(error) => panic!("post should commit: {error}"),
+        };
+
+        let update_error = match sqlx::query(
+            "UPDATE ledger_entries SET balance_after = balance_after WHERE txn_id = $1",
+        )
+        .bind(transaction.id)
+        .execute(&pool)
+        .await
+        {
+            Ok(_) => panic!("ledger entry update should be rejected"),
+            Err(error) => error,
+        };
+        let delete_error = match sqlx::query("DELETE FROM ledger_entries WHERE txn_id = $1")
+            .bind(transaction.id)
+            .execute(&pool)
+            .await
+        {
+            Ok(_) => panic!("ledger entry delete should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(
+            update_error
+                .to_string()
+                .contains("ledger_entries are immutable"),
+            "unexpected update error: {update_error}"
+        );
+        assert!(
+            delete_error
+                .to_string()
+                .contains("ledger_entries are immutable"),
+            "unexpected delete error: {delete_error}"
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn postgres_concurrent_deposits_keep_balances_and_balance_after_consistent() {
         let Some(pool) = postgres_test_pool().await else {
@@ -961,9 +1042,7 @@ mod tests {
     }
 
     async fn postgres_test_pool() -> Option<sqlx::PgPool> {
-        let Some(database_url) = std::env::var("WALLET_LEDGER_TEST_DATABASE_URL").ok() else {
-            return None;
-        };
+        let database_url = std::env::var("WALLET_LEDGER_TEST_DATABASE_URL").ok()?;
         let pool = match sqlx::PgPool::connect(&database_url).await {
             Ok(pool) => pool,
             Err(error) => panic!("test database should be reachable: {error}"),

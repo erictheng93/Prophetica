@@ -57,6 +57,7 @@ pub struct LedgerSettlementTotals {
     pub reversal_minor_units: i64,
 }
 
+#[must_use]
 pub fn reconcile_gateway_settlement(
     date: &str,
     payments: &[SettledPayment],
