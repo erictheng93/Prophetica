@@ -19,12 +19,8 @@ check "node 20+" "node --version | grep -E '^v2[0-9]\\.'" || status=1
 check "pnpm 9+" "pnpm --version | grep -E '^9\\.'" || status=1
 check "docker" "docker --version" || status=1
 check "docker compose v2" "docker compose version" || status=1
-check "buf" "buf --version" || status=1
+check "buf 1.30+ (global or pnpm-managed)" "buf --version | grep -E '^(1\\.[3-9][0-9]|[2-9]\\.)' || pnpm exec buf --version | grep -E '^(1\\.[3-9][0-9]|[2-9]\\.)'" || status=1
 check "sqlx-cli" "cargo sqlx --version" || status=1
 check "sccache" "sccache --version" || status=1
-
-if [ -z "${KUMO_NPM_TOKEN:-}" ]; then
-  printf '[deferred] KUMO_NPM_TOKEN is not set; required for Cloudflare Kumo registry access in CI\n'
-fi
 
 exit "$status"

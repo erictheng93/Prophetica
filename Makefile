@@ -1,10 +1,12 @@
 .PHONY: doctor bootstrap dev down test lint fmt proto migrate seed clean
 
+BASH ?= bash
+
 doctor:
-	./tools/scripts/check-versions.sh
+	$(BASH) ./tools/scripts/check-versions.sh
 
 bootstrap:
-	./tools/scripts/bootstrap.sh
+	$(BASH) ./tools/scripts/bootstrap.sh
 
 dev:
 	docker compose -f infra/docker-compose.local.yaml up -d
@@ -26,13 +28,13 @@ fmt:
 	pnpm turbo run format
 
 proto:
-	buf generate
+	pnpm exec buf generate
 
 migrate:
-	./tools/scripts/migrate.sh up
+	$(BASH) ./tools/scripts/migrate.sh up
 
 seed:
-	./tools/scripts/seed.sh
+	$(BASH) ./tools/scripts/seed.sh
 
 clean:
 	rm -rf node_modules apps/*/.next packages/proto/gen crates/proto/src/gen target
