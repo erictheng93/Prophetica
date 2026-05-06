@@ -401,6 +401,144 @@
       "cta": "申請代理"
     }
   },
+  "howItWorks": {
+    "metadata": {
+      "title": "玩法說明 — prophetica",
+      "description": "從註冊到結算的完整玩家流程：4 步驟入場、撮合機制、cent 價格、Oracle 結算與申訴窗口。"
+    },
+    "hero": {
+      "kicker": "玩法說明",
+      "headline": "從註冊到結算，5 分鐘看懂。",
+      "tagline": "prophetica 是趣味預測娛樂遊戲。你用站內點數對未公開事件結果表態，與其他玩家對局。我們做撮合與結算，不下場。",
+      "ctaPrimary": "立即註冊",
+      "ctaSecondary": "先看市場"
+    },
+    "principles": {
+      "heading": "三條法律邊界",
+      "intro": "這些不是「我們的承諾」，是 prophetica 的設計約束。違反任一條等同關站，創辦人負刑責。知道這三條，才知道 prophetica 是什麼、不是什麼。",
+      "items": {
+        "noCashout": {
+          "kicker": "原則一",
+          "title": "點數不可兌回。",
+          "body": "儲值取得的點數僅限站內使用，永遠不可兌回現金、虛擬貨幣或實體商品。這不是限制，是 prophetica 的法律邊界。"
+        },
+        "noHouse": {
+          "kicker": "原則二",
+          "title": "平台不下場。",
+          "body": "prophetica 不持倉、不對賭、不從你的輸贏中獲利。我們只收手續費，幫玩家彼此撮合。"
+        },
+        "auditTrail": {
+          "kicker": "原則三",
+          "title": "全程稽核留痕。",
+          "body": "所有金流、撮合、結算、判定都寫入不可竄改的事件流，保存 7 年以上，可被監管單位稽核。"
+        }
+      }
+    },
+    "startSteps": {
+      "heading": "入場 4 步驟",
+      "intro": "前兩步是法律必經（年齡 + 責任博弈），第三第四步才是玩法相關。",
+      "items": {
+        "register": {
+          "title": "註冊帳戶",
+          "body": "Email + 手機 OTP + 生日（≥18 歲）。10 秒內完成基礎驗證 Tier 1，無需上傳證件影像。",
+          "cta": "前往註冊"
+        },
+        "rg": {
+          "title": "設定責任博弈",
+          "body": "月儲值上限是必設的保護線（TWD 1k / 5k / 30k / 100k 擇一）。可選擇加上下注上限、損失上限與冷靜期觸發點。",
+          "cta": "了解限額"
+        },
+        "topup": {
+          "title": "儲值點數",
+          "body": "依執照地的支付通路完成儲值，點數通常 5 分鐘內入帳。1 點 = TWD 1（內部記帳基準）。",
+          "cta": "儲值說明"
+        },
+        "trade": {
+          "title": "瀏覽市場、下單",
+          "body": "選擇你有把握的市場，買 YES 或 NO 一股，等市場結算。每股結算為 100 點（贏）或 0 點（輸）。",
+          "cta": "查看市場"
+        }
+      }
+    },
+    "matching": {
+      "kicker": "撮合機制",
+      "headline": "每一筆對局，都是玩家對玩家。",
+      "lead": "當你買 YES 一股，必有另一個玩家賣出（或同時有人買 NO 一股）。我們把訂單放進<strong>訂單簿</strong>，以價格優先、時間優先撮合。平台 <strong>不掛單、不報價、不從輸贏抽成</strong>。",
+      "platformTakes": {
+        "kicker": "平台收的",
+        "title": "手續費（雙邊收取）",
+        "body": "依交易量計算，與你的勝負無關。我們希望市場活絡，不希望某一邊輸太多。"
+      },
+      "platformDoesNot": {
+        "kicker": "平台不收的",
+        "title": "玩家輸贏的差額",
+        "body": "SPEC-001 §1.1 第二原則：平台不下場。我們不靠玩家輸錢賺錢；那會把我們變成莊家，是法律紅線。"
+      },
+      "cta": "看真實訂單簿範例"
+    },
+    "pricing": {
+      "heading": "價格用 cent 表示",
+      "intro": "每一股的價格是 1–99 cent（1 cent = 0.01 點）。可以把價格讀成「市場認為這件事發生的機率」。買 YES 50¢ ≈ 市場認為機率 50/50；買 YES 80¢ ≈ 市場認為機率 80%。",
+      "exampleHeading": "一個具體例子",
+      "exampleIntro": "假設「中華隊晉級 WBSC 四強」目前 YES 報價 38¢。你買 100 股 YES：",
+      "cards": {
+        "cost": {
+          "label": "成本",
+          "amount": "38 點",
+          "note": "100 股 × 38¢ ÷ 100 = 38 點"
+        },
+        "winYes": {
+          "label": "結算為 YES",
+          "amount": "+62 點",
+          "note": "每股入帳 100 點，總入帳 100 點 − 38 點成本"
+        },
+        "loseNo": {
+          "label": "結算為 NO",
+          "amount": "−38 點",
+          "note": "每股入帳 0 點，全額成本損失"
+        }
+      },
+      "exit": "想中途離場？可以在訂單簿掛賣單，由其他玩家接手。沒有「平台買回」這件事，只有玩家對玩家。"
+    },
+    "settlement": {
+      "heading": "結算來自 Oracle",
+      "intro": "每個市場上架時，platform 已指定明確的判定來源（Oracle）。市場關盤後，依 Oracle 公告判定 YES 或 NO，自動結算進玩家錢包。",
+      "items": {
+        "transparent": {
+          "title": "判定來源透明公開",
+          "body": "市場頁清楚列出 oracle source（例如：中央氣象署、FOMC 公告、選舉委員會）。沒有「我們覺得」這種判定。"
+        },
+        "appealWindow": {
+          "title": "24 小時申訴窗口",
+          "body": "結算後 24 小時內可開申訴工單。所有申訴會收到狀態回覆；多人申訴或大額個案會升級到 Compliance T3。"
+        },
+        "stateMachine": {
+          "title": "結算狀態機",
+          "body": "PENDING → SETTLING → SETTLED 或 CANCELLED。每個狀態的轉換寫入事件流，可在個人紀錄頁查到。"
+        },
+        "autoPayout": {
+          "title": "持倉自動兌換",
+          "body": "結算當下系統把持倉轉為點數入帳，不需任何手動操作。可在個人持倉頁查看入帳結果。"
+        }
+      },
+      "cta": "申訴流程"
+    },
+    "compliance": {
+      "kicker": "合規邊界",
+      "headline": "不是所有人都能玩，這是設計，不是 bug。",
+      "body": "18 歲以下不可參與。部分司法管轄區因法律因素無法提供服務。月儲值上限強制設定。受過 RG 認證的客服處理沉迷個案。我們把這些邊界視為產品的一部分，不是阻力。",
+      "ctaPrimary": "責任博弈工具",
+      "geoBlockLink": "服務地區限制",
+      "kycLink": "身份驗證分層"
+    },
+    "closing": {
+      "kicker": "準備好了嗎？",
+      "headline": "從註冊開始，10 分鐘內就能瀏覽你的第一個市場。",
+      "tagline": "基礎驗證 10 秒；責任博弈設定 1 分鐘；儲值入帳 5 分鐘以內。",
+      "ctaPrimary": "立即註冊",
+      "ctaSecondary": "瀏覽市場"
+    }
+  },
   "landing": {
     "hero": {
       "kicker": "趣味預測娛樂",
