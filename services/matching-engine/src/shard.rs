@@ -19,6 +19,9 @@ pub enum MarketCommand {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MarketEvent {
+    OrderAccepted {
+        order_id: OrderId,
+    },
     OrderResting {
         order_id: OrderId,
     },
@@ -32,6 +35,15 @@ pub enum MarketEvent {
     OrderCancelled {
         order_id: OrderId,
         canceled_quantity: Quantity,
+    },
+    OrderFilled {
+        order_id: OrderId,
+        total_filled: Quantity,
+    },
+    OrderPartiallyFilled {
+        order_id: OrderId,
+        filled_now: Quantity,
+        remaining: Quantity,
     },
 }
 
@@ -75,6 +87,22 @@ impl MarketShard {
 }
 
 async fn publish_add_order_events(result: &AddOrderResult, events: &mpsc::Sender<MarketEvent>) {
+    if events
+        .send(MarketEvent::OrderAccepted {
+            order_id: result.order_id.clone(),
+        })
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    let filled_quantity = result
+        .trades
+        .iter()
+        .map(|trade| trade.quantity)
+        .sum::<Quantity>();
+
     for trade in &result.trades {
         let event = MarketEvent::Trade {
             maker_order_id: trade.maker_order_id.clone(),
@@ -88,10 +116,40 @@ async fn publish_add_order_events(result: &AddOrderResult, events: &mpsc::Sender
         }
     }
 
+    if filled_quantity > 0 && result.remaining_quantity == 0 {
+        let _ = events
+            .send(MarketEvent::OrderFilled {
+                order_id: result.order_id.clone(),
+                total_filled: filled_quantity,
+            })
+            .await;
+        return;
+    }
+
+    if filled_quantity > 0
+        && events
+            .send(MarketEvent::OrderPartiallyFilled {
+                order_id: result.order_id.clone(),
+                filled_now: filled_quantity,
+                remaining: result.remaining_quantity,
+            })
+            .await
+            .is_err()
+    {
+        return;
+    }
+
     if result.rested {
         let _ = events
             .send(MarketEvent::OrderResting {
                 order_id: result.order_id.clone(),
+            })
+            .await;
+    } else if result.remaining_quantity > 0 {
+        let _ = events
+            .send(MarketEvent::OrderCancelled {
+                order_id: result.order_id.clone(),
+                canceled_quantity: result.remaining_quantity,
             })
             .await;
     }
