@@ -71,6 +71,16 @@ struct BookSnapshotResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct BookSnapshotStreamMessage {
+    #[serde(rename = "type")]
+    message_type: &'static str,
+    market_id: String,
+    seq: u64,
+    bids: Vec<BookLevelResponse>,
+    asks: Vec<BookLevelResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 struct OrderActionResponse {
     order_id: String,
     status: &'static str,
@@ -331,6 +341,12 @@ async fn stream_book_deltas(
     market_id: String,
 ) {
     let mut events = service.subscribe_events();
+    if send_book_snapshot(&mut socket, &service, &market_id)
+        .await
+        .is_err()
+    {
+        return;
+    }
 
     loop {
         let Ok(event) = events.recv().await else {
@@ -345,6 +361,33 @@ async fn stream_book_deltas(
             }
         }
     }
+}
+
+async fn send_book_snapshot(
+    socket: &mut WebSocket,
+    service: &InMemoryEngineService,
+    market_id: &str,
+) -> Result<(), ()> {
+    let snapshot = service
+        .get_book_snapshot(Request::new(GetBookSnapshotRequest {
+            market_id: Some(MarketId {
+                value: market_id.to_string(),
+            }),
+            depth: 100,
+        }))
+        .await
+        .map_err(|_| ())?
+        .into_inner();
+    let message = serde_json::to_string(&BookSnapshotStreamMessage {
+        message_type: "snapshot",
+        market_id: market_id.to_string(),
+        seq: 0,
+        bids: proto_levels(snapshot.bids),
+        asks: proto_levels(snapshot.asks),
+    })
+    .map_err(|_| ())?;
+
+    socket.send(Message::Text(message)).await.map_err(|_| ())
 }
 
 fn aggregate_levels(

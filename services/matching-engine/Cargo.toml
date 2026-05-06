@@ -19,7 +19,9 @@ tracing.workspace = true
 ulid.workspace = true
 
 [dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 http-body-util = "0.1"
+tokio-tungstenite = "0.24"
 tower = "0.5"
 
 [lints]

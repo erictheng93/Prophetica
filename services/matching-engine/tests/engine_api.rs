@@ -4,13 +4,20 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use futures_util::StreamExt;
 use http_body_util::BodyExt;
 use matching_engine::{
     api::{router, service_router},
     order_book::{NewOrder, OrderBook, OrderId, OrderSide, OrderType, Symbol},
     service::InMemoryEngineService,
 };
+use proto::proph::v1::{
+    MarketId, OrderType as ProtoOrderType, PlaceOrderRequest, Side, TimeInForce, UserId,
+    engine_service_server::EngineService,
+};
 use serde_json::{Value, json};
+use tokio::{net::TcpListener, time::Duration};
+use tokio_tungstenite::connect_async;
 use tower::ServiceExt;
 
 #[tokio::test]
@@ -126,6 +133,64 @@ async fn book_websocket_route_is_registered() {
         .expect("request should be handled");
 
     assert_ne!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn book_websocket_sends_initial_snapshot() {
+    let service = InMemoryEngineService::default();
+    service
+        .place_order(tonic::Request::new(PlaceOrderRequest {
+            audit: None,
+            user_id: Some(UserId { value: 10 }),
+            market_id: Some(MarketId {
+                value: "mkt-election".to_string(),
+            }),
+            side: Side::Ask.into(),
+            outcome: 1,
+            r#type: ProtoOrderType::Limit.into(),
+            price_pts: 55,
+            quantity: 3,
+            tif: TimeInForce::Gtc.into(),
+            post_only: false,
+            client_order_id: "maker".to_string(),
+        }))
+        .await
+        .expect("resting order should be accepted");
+
+    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+        .await
+        .expect("listener should bind");
+    let addr = listener.local_addr().expect("listener should have addr");
+    let app = service_router(service);
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("server should run");
+    });
+
+    let (mut socket, _response) =
+        connect_async(format!("ws://{addr}/ws/markets/mkt-election/book"))
+            .await
+            .expect("websocket should connect");
+    let message = tokio::time::timeout(Duration::from_secs(1), socket.next())
+        .await
+        .expect("snapshot should be sent on connect")
+        .expect("socket should stay open")
+        .expect("message should be valid");
+    let body: Value =
+        serde_json::from_str(message.to_text().expect("snapshot message should be text"))
+            .expect("snapshot should be json");
+
+    assert_eq!(
+        body,
+        json!({
+            "type": "snapshot",
+            "market_id": "mkt-election",
+            "seq": 0,
+            "bids": [],
+            "asks": [{ "price_pts": 55, "qty": 3 }]
+        })
+    );
+
+    server.abort();
 }
 
 fn order(order_id: &str, user_id: u64, side: OrderSide, price: u64, quantity: u64) -> NewOrder {
