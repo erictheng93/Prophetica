@@ -1130,9 +1130,18 @@
       "headline": "如果你或身邊的人對遊戲行為感到困擾，這些專線 24 小時為你而開。",
       "ariaLabel": "責任博弈援助資源",
       "items": {
-        "mhwSafe": { "label": "衛福部安心專線", "hours": "24 小時" },
-        "drugPrevention": { "label": "毒品危害防制中心", "hours": "24 小時" },
-        "teacherZhang": { "label": "張老師專線", "hours": "週一至週六" }
+        "mhwSafe": {
+          "label": "衛福部安心專線",
+          "hours": "24 小時"
+        },
+        "drugPrevention": {
+          "label": "毒品危害防制中心",
+          "hours": "24 小時"
+        },
+        "teacherZhang": {
+          "label": "張老師專線",
+          "hours": "週一至週六"
+        }
       },
       "emergencyNote": "如有立即危險請撥打 119 或 110。撥打前述專線完全免費，且不會留下紀錄於你的 prophetica 帳號。"
     },
@@ -1369,6 +1378,85 @@
         "heading": "關於你的隱私",
         "external": "撥打外部援助專線完全免費，且<strong>不會與 prophetica 交換任何資訊</strong>。我們不會知道你聯絡了哪些機構、討論了什麼。",
         "internal": "如果你選擇透過站內客服求助，溝通紀錄將依<privacyLink>隱私政策</privacyLink>處理，僅授權給通過 RG 培訓的客服人員存取。"
+      }
+    }
+  },
+  "kyc": {
+    "tierStepper": {
+      "ariaLabel": "KYC 等級進度",
+      "currentSuffix": "（目前）",
+      "passedSuffix": "（已通過）",
+      "tiers": {
+        "tier0": "訪客",
+        "tier1": "基礎",
+        "tier2": "標準",
+        "tier3": "強化"
+      }
+    },
+    "overview": {
+      "metadata": {
+        "title": "身份驗證 — prophetica",
+        "description": "TIER_0 到 TIER_3 的分層身份驗證。完成升級以解鎖更高儲值上限。"
+      },
+      "hero": {
+        "kicker": "身份驗證",
+        "headline": "完成驗證才能開始遊戲。",
+        "tagline": "prophetica 採分層 KYC 設計：基礎驗證 10 秒完成、標準驗證解鎖更高上限、強化驗證適用於高活動量。每一層只收必要資訊。"
+      },
+      "current": {
+        "kicker": "目前狀態",
+        "heading": "你目前是 Tier 1 基礎驗證玩家",
+        "depositLabel": "本月儲值用量",
+        "nearLimit": "你即將用完本月 Tier 1 額度。升級至 Tier 2 可解鎖更高上限。",
+        "upgradeHint": "升級下一層級可解鎖更高的月儲值與單筆上限。"
+      },
+      "tiers": {
+        "heading": "下一個層級",
+        "requirementsLabel": "需要",
+        "unlocksLabel": "解鎖",
+        "pastCta": "查看細節",
+        "cards": {
+          "tier1": {
+            "title": "Tier 1 基礎",
+            "bullet": "註冊 + 首次儲值",
+            "requirements": {
+              "0": "Email + 手機 OTP",
+              "1": "生日 ≥ 18 歲",
+              "2": "首發 5 國對應證件號（隱式驗證，不需上傳影像）"
+            },
+            "unlocks": "月儲值 < TWD 30,000；單筆 < TWD 5,000",
+            "ctaLabel": "完成 Tier 1"
+          },
+          "tier2": {
+            "title": "Tier 2 標準",
+            "bullet": "通過 SumSub 證件驗證",
+            "requirements": {
+              "0": "證件 OCR + 自拍人臉比對",
+              "1": "Liveness Detection（眨眼 / 轉頭）",
+              "2": "地址證明（水電帳單 / 銀行對帳單）"
+            },
+            "unlocks": "月儲值 < TWD 300,000（已申報月收入）；TWD 100,000（未申報）",
+            "ctaLabel": "升級 Tier 2"
+          },
+          "tier3": {
+            "title": "Tier 3 強化（EDD）",
+            "bullet": "高活動量或平台主動觸發",
+            "requirements": {
+              "0": "收入來源證明",
+              "1": "銀行對帳單",
+              "2": "視訊驗證",
+              "3": "PEP / 制裁名單篩查"
+            },
+            "unlocks": "個案核定，依執照地法規",
+            "ctaLabel": "申請 Tier 3"
+          }
+        }
+      }
+    },
+    "layout": {
+      "sectionNav": {
+        "ariaLabel": "KYC 區段導覽",
+        "status": "審核狀態"
       }
     },
     "tier1": {
@@ -1693,85 +1781,6 @@
             "title": "遇到問題？",
             "body": "審核超過 30 分鐘未完成、或收到 RED 結果不理解，可申訴或聯繫客服。",
             "cta": "申訴流程"
-          }
-        }
-      }
-    },
-    "layout": {
-      "sectionNav": {
-        "ariaLabel": "KYC 區段導覽",
-        "status": "審核狀態"
-      }
-    }
-  },
-  "kyc": {
-    "tierStepper": {
-      "ariaLabel": "KYC 等級進度",
-      "currentSuffix": "（目前）",
-      "passedSuffix": "（已通過）",
-      "tiers": {
-        "tier0": "訪客",
-        "tier1": "基礎",
-        "tier2": "標準",
-        "tier3": "強化"
-      }
-    },
-    "overview": {
-      "metadata": {
-        "title": "身份驗證 — prophetica",
-        "description": "TIER_0 到 TIER_3 的分層身份驗證。完成升級以解鎖更高儲值上限。"
-      },
-      "hero": {
-        "kicker": "身份驗證",
-        "headline": "完成驗證才能開始遊戲。",
-        "tagline": "prophetica 採分層 KYC 設計：基礎驗證 10 秒完成、標準驗證解鎖更高上限、強化驗證適用於高活動量。每一層只收必要資訊。"
-      },
-      "current": {
-        "kicker": "目前狀態",
-        "heading": "你目前是 Tier 1 基礎驗證玩家",
-        "depositLabel": "本月儲值用量",
-        "nearLimit": "你即將用完本月 Tier 1 額度。升級至 Tier 2 可解鎖更高上限。",
-        "upgradeHint": "升級下一層級可解鎖更高的月儲值與單筆上限。"
-      },
-      "tiers": {
-        "heading": "下一個層級",
-        "requirementsLabel": "需要",
-        "unlocksLabel": "解鎖",
-        "pastCta": "查看細節",
-        "cards": {
-          "tier1": {
-            "title": "Tier 1 基礎",
-            "bullet": "註冊 + 首次儲值",
-            "requirements": {
-              "0": "Email + 手機 OTP",
-              "1": "生日 ≥ 18 歲",
-              "2": "首發 5 國對應證件號（隱式驗證，不需上傳影像）"
-            },
-            "unlocks": "月儲值 < TWD 30,000；單筆 < TWD 5,000",
-            "ctaLabel": "完成 Tier 1"
-          },
-          "tier2": {
-            "title": "Tier 2 標準",
-            "bullet": "通過 SumSub 證件驗證",
-            "requirements": {
-              "0": "證件 OCR + 自拍人臉比對",
-              "1": "Liveness Detection（眨眼 / 轉頭）",
-              "2": "地址證明（水電帳單 / 銀行對帳單）"
-            },
-            "unlocks": "月儲值 < TWD 300,000（已申報月收入）；TWD 100,000（未申報）",
-            "ctaLabel": "升級 Tier 2"
-          },
-          "tier3": {
-            "title": "Tier 3 強化（EDD）",
-            "bullet": "高活動量或平台主動觸發",
-            "requirements": {
-              "0": "收入來源證明",
-              "1": "銀行對帳單",
-              "2": "視訊驗證",
-              "3": "PEP / 制裁名單篩查"
-            },
-            "unlocks": "個案核定，依執照地法規",
-            "ctaLabel": "申請 Tier 3"
           }
         }
       }
