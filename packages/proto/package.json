@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.69.0"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.12.0"
   }
 }
