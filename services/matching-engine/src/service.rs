@@ -15,6 +15,7 @@ use tonic::{Request, Response, Status};
 use ulid::Ulid;
 
 use crate::{
+    durability::EngineDurabilityGuard,
     order_book::{
         AddOrderResult, NewOrder, OrderBook, OrderBookError, OrderBookSnapshot, OrderId, OrderSide,
         OrderType, Price, Quantity, SnapshotRestingOrder, Symbol,
@@ -37,6 +38,7 @@ pub struct InMemoryEngineService {
     order_routes: Arc<Mutex<HashMap<Vec<u8>, OrderRoute>>>,
     events: broadcast::Sender<EngineEvent>,
     wal_dir: Option<Arc<PathBuf>>,
+    durability: EngineDurabilityGuard,
 }
 
 impl Default for InMemoryEngineService {
@@ -47,6 +49,7 @@ impl Default for InMemoryEngineService {
             order_routes: Arc::default(),
             events,
             wal_dir: None,
+            durability: EngineDurabilityGuard::default(),
         }
     }
 }
@@ -75,6 +78,7 @@ impl EngineService for InMemoryEngineService {
         request: Request<PlaceOrderRequest>,
     ) -> Result<Response<PlaceOrderResponse>, Status> {
         let request = request.into_inner();
+        self.ensure_writes_allowed()?;
         let market_id = required_market_id(request.market_id.as_ref())?;
         let user_id = required_user_id(request.user_id.as_ref())?;
         reject_platform_system_user(user_id)?;
@@ -138,6 +142,7 @@ impl EngineService for InMemoryEngineService {
         request: Request<CancelOrderRequest>,
     ) -> Result<Response<CancelOrderResponse>, Status> {
         let request = request.into_inner();
+        self.ensure_writes_allowed()?;
         let user_id = required_user_id(request.user_id.as_ref())?;
         let order_id = request
             .order_id
@@ -212,6 +217,14 @@ impl InMemoryEngineService {
     pub fn with_wal_dir(wal_dir: PathBuf) -> Self {
         Self {
             wal_dir: Some(Arc::new(wal_dir)),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn with_durability_guard(durability: EngineDurabilityGuard) -> Self {
+        Self {
+            durability,
             ..Self::default()
         }
     }
@@ -444,6 +457,14 @@ impl InMemoryEngineService {
         let path = market_wal_path(wal_dir, market_id);
         wal::append_record(&path, record)
             .map_err(|error| Status::internal(format!("failed to append wal record: {error}")))
+    }
+
+    fn ensure_writes_allowed(&self) -> Result<(), Status> {
+        if self.durability.is_read_only() {
+            return Err(Status::failed_precondition("engine primary is read-only"));
+        }
+
+        Ok(())
     }
 }
 
