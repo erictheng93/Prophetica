@@ -5,6 +5,7 @@ pub const DEFAULT_GRPC_PORT: u16 = 9088;
 pub mod api;
 pub mod order_book;
 pub mod projection;
+pub mod sentinel;
 pub mod service;
 pub mod shard;
 pub mod snapshot;

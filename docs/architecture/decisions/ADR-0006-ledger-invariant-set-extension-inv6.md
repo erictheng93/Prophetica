@@ -90,7 +90,7 @@ ADR-0006 範圍嚴格限定為「ADR-0003 §5 INV 集合擴展」：
 | **INV-3** | `Bank.TrustAccount + Σ(Revenue.*) − Σ(Expense.*) = 平台對玩家負債總額` | 每日 T+1 對帳 | ADR-0003 v1.0 §5 |
 | **INV-4** | `Player.Wallet.X` 與 `Player.Frozen.X` 任意時刻 ≥ 0（chargeback 反沖外）| application + DB CHECK | ADR-0003 v1.0 §5（範圍由 ADR-0006 擴展含 Frozen） |
 | **INV-5** | 每個 ledger_entry 一旦寫入不可 UPDATE / DELETE | DB role 權限分離 + audit | ADR-0003 v1.0 §5 |
-| **INV-6** | `Player.Wallet.{user_id}` 之 outflow（direction = +1，債務減少）目的地白名單僅限 `Player.Locked.{user_id}` / `Player.Frozen.{user_id}` / `Revenue.TradingFee` / `Revenue.SettlementFee` / `Player.Wallet.{other_user_id}`（限 trade settlement，需 `settle_txn_id` 不空）；**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何銀行 / 支付通路 / 外部錢包科目 | DB CONSTRAINT TRIGGER（拒絕 commit）+ CI sentinel-scan grep gate | **ADR-0006 新增**（呼應 SPEC-001 §1.1 ① 與 SPEC-011 §6.3 R-1 紅線）|
+| **INV-6** | `Player.Wallet.{user_id}` 之 outflow（direction = +1，債務減少）目的地白名單，僅限：(a) `Player.Locked.{user_id}`、(b) `Player.Frozen.{user_id}`、(c) `Revenue.TradingFee` / `Revenue.SettlementFee`、(d) `Player.Wallet.{other_user_id}`（**僅限** `txn_type ∈ {trade, settle}`）、(e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 SPEC-002 §8.1 deposit 反向沖正；非「點數變現」路徑，玩家不取得現金）；**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何其他銀行 / 支付通路 / 外部錢包科目 | DB CONSTRAINT TRIGGER（拒絕 commit）+ CI sentinel-scan grep gate | **ADR-0006 新增**（呼應 SPEC-001 §1.1 ① 與 SPEC-011 §6.3 R-1 紅線；chargeback carve-out 對齊 SPEC-002 §8.1）|
 
 ### 4.2 INV-6 的 mechanical check 落地策略
 
@@ -118,6 +118,7 @@ BEGIN
     END IF;
 
     -- 檢查同 transaction 內其他 entries（即配對科目），目的地必須在白名單
+    -- 白名單對齊 §4.1 表 INV-6 行 (a)-(e) 五類允許目的地
     PERFORM 1
     FROM ledger_entries e2
     JOIN ledger_accounts a2 ON e2.account_id = a2.id
@@ -131,6 +132,9 @@ BEGIN
           OR a2.code = 'Revenue.SettlementFee'
           OR (a2.code LIKE 'Player.Wallet.%'
               AND (SELECT txn_type FROM ledger_transactions WHERE id = NEW.txn_id) IN ('settle', 'trade'))
+          -- (e) Bank.TrustAccount.* 限 chargeback reversal（SPEC-002 §8.1）
+          OR (a2.code LIKE 'Bank.TrustAccount.%'
+              AND (SELECT txn_type FROM ledger_transactions WHERE id = NEW.txn_id) = 'chargeback')
       );
 
     IF FOUND THEN
@@ -269,3 +273,4 @@ ADR-0003 v1.0 §5 之 INV-2 公式「`Σ(Wallet) + Σ(Locked)`」與 INV-4 範�
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
 | 2026-05-07 | v1.0 | Tech Lead | 首版 Accepted；ADR-0003 §5 INV 集合擴展為 INV-1 ~ INV-6；INV-2 / INV-4 公式對齊含 Frozen 子科目（事後 governance 追認）；新增 INV-6 outflow whitelist（連動 R-1 紅線清除）|
+| 2026-05-07 | v1.0.1 | Tech Lead | INV-6 白名單補 chargeback carve-out（v1.0 落地過程中發現遺漏）：(a)-(d) 之外新增 (e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 SPEC-002 §8.1 deposit 反向沖正）。理由：chargeback 為「玩家信用卡爭議 → 銀行抽走原儲值 → 平台對玩家負債歸零 + 託管帳餘額減少退回卡組織」之合法 reversal，玩家**不**取得現金，故不違反 SPEC-001 §1.1 ① 紅線；§4.1 INV-6 行 + §4.2.1 plpgsql trigger 同步更新。發現過程：跑 wallet-ledger-service `chargeback_can_project_wallet_above_zero` test 時觸發 INV-6 偽陽性。屬於 v1.0 落地補正（typo / erratum 級），主決策方向未變動。 |

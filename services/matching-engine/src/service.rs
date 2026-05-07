@@ -614,7 +614,10 @@ fn required_user_id(user_id: Option<&UserId>) -> Result<u64, Status> {
 }
 
 fn reject_platform_system_user(user_id: u64) -> Result<(), Status> {
-    if (1..=8).contains(&user_id) {
+    // SPEC-003 §12.1.1 / §12.1.2 / ADR-0001 §6 v1.0.2 / R-2 紅線：
+    // 透過 sentinel module 之 sorted const slice + binary_search_by_key 判定，
+    // 而非 hardcoded range — 避免 v0.2.2 移除之 uid=4 被誤判為仍 active。
+    if crate::sentinel::is_platform_system_user(user_id) {
         return Err(Status::permission_denied(
             "platform sentinel users cannot place orders",
         ));

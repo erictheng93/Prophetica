@@ -178,8 +178,13 @@ where
         &self,
         draft: PostTransactionDraft,
     ) -> Result<CommittedLedgerTransaction, PostTransactionError> {
-        let transaction = LedgerTransactionDraft::new(draft.entries.clone());
-        transaction.validate_balanced()?;
+        // Map txn_type 字串 → 典型 LedgerTxnKind enum，讓 INV-6 知道是否
+        // 允許 Player.Wallet → Player.Wallet（限 trade / settle）。
+        // 未知 txn_type 落入 LedgerTxnKind::Other（最嚴格 INV-6 模式）。
+        let kind = crate::map_txn_type_to_kind(&draft.txn_type);
+        let transaction = LedgerTransactionDraft::new(draft.entries.clone()).with_kind(kind);
+        // validate() 包含 INV-1（借貸代數和）+ INV-6（Player.Wallet outflow whitelist）
+        transaction.validate()?;
         self.validate_player_liability_bounds(&draft).await?;
 
         if let Some(existing) = self
