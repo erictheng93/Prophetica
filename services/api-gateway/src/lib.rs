@@ -16,6 +16,9 @@ use tokio::{net::TcpListener, signal};
 pub const SERVICE_NAME: &str = "api-gateway";
 pub const DEFAULT_PORT: u16 = 8080;
 
+pub mod drill_logs;
+pub mod kill_switch;
+
 const USER_ID_HEADER: HeaderName = HeaderName::from_static("x-user-id");
 
 #[derive(Clone)]

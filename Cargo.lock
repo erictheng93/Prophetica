@@ -3460,6 +3460,7 @@ dependencies = [
  "axum 0.7.9",
  "hex",
  "http-body-util",
+ "proptest",
  "sdk",
  "serde",
  "serde_json",

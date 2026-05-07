@@ -98,12 +98,24 @@ pub enum SettlementExecutionError {
 
 pub struct SettlementBatchRunner {
     batches: Vec<SettlementBatch>,
+    halted: bool,
 }
 
 impl SettlementBatchRunner {
     #[must_use]
     pub fn new(batches: Vec<SettlementBatch>) -> Self {
-        Self { batches }
+        Self {
+            batches,
+            halted: false,
+        }
+    }
+
+    #[must_use]
+    pub fn halted(batches: Vec<SettlementBatch>) -> Self {
+        Self {
+            batches,
+            halted: true,
+        }
     }
 
     pub fn run_with_retry(
@@ -111,6 +123,10 @@ impl SettlementBatchRunner {
         mut progress: SettlementProgress,
         mut execute: impl FnMut(&SettlementBatch) -> Result<(), SettlementExecutionError>,
     ) -> SettlementProgress {
+        if self.halted {
+            return progress;
+        }
+
         for batch in self.batches {
             if progress.completed_batches.contains(&batch.batch_id) {
                 continue;
@@ -348,5 +364,25 @@ mod tests {
                 .completed_batches
                 .contains("mkt-election:batch:0001")
         );
+    }
+
+    #[test]
+    fn halted_batch_runner_pauses_settlement_batches() {
+        let batches = build_settlement_batches(
+            "mkt-election",
+            [Position::new("pos-yes", "user_01", Outcome::Yes, 100, 38)],
+        );
+        let mut executed = 0;
+
+        let progress = SettlementBatchRunner::halted(batches).run_with_retry(
+            SettlementProgress::default(),
+            |_batch| {
+                executed += 1;
+                Ok(())
+            },
+        );
+
+        assert_eq!(executed, 0);
+        assert!(progress.records.is_empty());
     }
 }

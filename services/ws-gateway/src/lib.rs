@@ -11,6 +11,20 @@ pub struct SettlementStatusPayload {
     pub your_payout: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineStatePayload {
+    pub event: &'static str,
+    pub state: &'static str,
+}
+
+#[must_use]
+pub const fn halted_state_payload() -> EngineStatePayload {
+    EngineStatePayload {
+        event: "engine_state",
+        state: "HALTED",
+    }
+}
+
 #[must_use]
 pub fn settlement_status_payload(
     market_id: impl Into<String>,
@@ -31,7 +45,7 @@ pub fn settlement_status_payload(
 
 #[cfg(test)]
 mod tests {
-    use super::settlement_status_payload;
+    use super::{halted_state_payload, settlement_status_payload};
 
     #[test]
     fn pending_payload_includes_result_and_dispute_deadline() {
@@ -65,5 +79,13 @@ mod tests {
 
         assert_eq!(payload.status, "SETTLED");
         assert_eq!(payload.your_payout, Some(6_500));
+    }
+
+    #[test]
+    fn halted_state_payload_notifies_clients() {
+        let payload = halted_state_payload();
+
+        assert_eq!(payload.event, "engine_state");
+        assert_eq!(payload.state, "HALTED");
     }
 }
