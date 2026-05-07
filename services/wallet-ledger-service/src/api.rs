@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, HeaderName, StatusCode},
     routing::{get, post},
 };
 use sdk::ledger::{LedgerAmount, LedgerEntryDraft};
@@ -11,10 +11,12 @@ use crate::ledger::{
     LedgerService, LedgerStore, LedgerStoreError, PostTransactionDraft, PostTransactionError,
 };
 
+const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-key");
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PostTransactionRequest {
     pub txn_type: String,
-    pub idempotency_key: String,
+    pub idempotency_key: Option<String>,
     pub correlation_id: Option<String>,
     pub description: Option<String>,
     pub entries: Vec<PostEntryRequest>,
@@ -89,15 +91,18 @@ where
         .with_state(LedgerService::new(store))
 }
 
-#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(service, request))]
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, idempotency.key = tracing::field::Empty), skip(service, request))]
 async fn post_transaction<S>(
     State(service): State<LedgerService<S>>,
+    headers: HeaderMap,
     Json(request): Json<PostTransactionRequest>,
 ) -> Result<Json<PostTransactionResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: LedgerStore + Send + Sync,
 {
-    let draft = request.try_into_draft()?;
+    let idempotency_key = idempotency_key_from_headers(&headers)?;
+    tracing::Span::current().record("idempotency.key", idempotency_key.as_str());
+    let draft = request.try_into_draft(idempotency_key)?;
     let transaction = service.post_transaction(draft).await.map_err(api_error)?;
 
     Ok(Json(PostTransactionResponse {
@@ -167,7 +172,10 @@ where
 }
 
 impl PostTransactionRequest {
-    fn try_into_draft(self) -> Result<PostTransactionDraft, (StatusCode, Json<ApiErrorResponse>)> {
+    fn try_into_draft(
+        self,
+        idempotency_key: String,
+    ) -> Result<PostTransactionDraft, (StatusCode, Json<ApiErrorResponse>)> {
         let entries = self
             .entries
             .into_iter()
@@ -176,7 +184,7 @@ impl PostTransactionRequest {
 
         Ok(PostTransactionDraft {
             txn_type: self.txn_type,
-            idempotency_key: self.idempotency_key,
+            idempotency_key,
             correlation_id: self.correlation_id,
             description: self.description,
             entries,
@@ -235,6 +243,33 @@ fn validation_error(message: String) -> (StatusCode, Json<ApiErrorResponse>) {
     )
 }
 
+fn idempotency_key_from_headers(
+    headers: &HeaderMap,
+) -> Result<String, (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(value) = headers.get(&IDEMPOTENCY_KEY_HEADER) else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiErrorResponse {
+                error: "ERROR_CODE_IDEMPOTENCY_KEY_REQUIRED",
+                message: "Idempotency-Key header is required for ledger writes".to_owned(),
+            }),
+        ));
+    };
+
+    let key = value.to_str().unwrap_or_default().trim();
+    if key.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiErrorResponse {
+                error: "ERROR_CODE_IDEMPOTENCY_KEY_REQUIRED",
+                message: "Idempotency-Key header must not be empty".to_owned(),
+            }),
+        ));
+    }
+
+    Ok(key.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{
@@ -255,6 +290,83 @@ mod tests {
         AccountBalance, CommittedLedgerTransaction, LedgerEntryView, LedgerStore, LedgerStoreError,
         PostTransactionDraft,
     };
+
+    #[tokio::test]
+    async fn post_transaction_requires_idempotency_key_header() {
+        let store = InMemoryLedgerStore::default();
+        let response = super::router(store.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/internal/ledger/transactions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "txn_type": "deposit",
+                            "entries": [
+                                {
+                                    "account_code": "Bank.TrustAccount.TWD",
+                                    "direction": "debit",
+                                    "amount_minor_units": 10_000
+                                },
+                                {
+                                    "account_code": "Player.Wallet.user_01",
+                                    "direction": "credit",
+                                    "amount_minor_units": 10_000
+                                }
+                            ]
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("ERROR_CODE_IDEMPOTENCY_KEY_REQUIRED"));
+        assert_eq!(store.commit_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn post_transaction_rejects_empty_idempotency_key_header() {
+        let store = InMemoryLedgerStore::default();
+        let response = super::router(store.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/internal/ledger/transactions")
+                    .header("content-type", "application/json")
+                    .header("Idempotency-Key", " ")
+                    .body(Body::from(
+                        json!({
+                            "txn_type": "deposit",
+                            "entries": [
+                                {
+                                    "account_code": "Bank.TrustAccount.TWD",
+                                    "direction": "debit",
+                                    "amount_minor_units": 10_000
+                                },
+                                {
+                                    "account_code": "Player.Wallet.user_01",
+                                    "direction": "credit",
+                                    "amount_minor_units": 10_000
+                                }
+                            ]
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("ERROR_CODE_IDEMPOTENCY_KEY_REQUIRED"));
+        assert_eq!(store.commit_count(), 0);
+    }
 
     #[tokio::test]
     async fn post_transaction_commits_balanced_request() {
@@ -432,10 +544,15 @@ mod tests {
     }
 
     fn json_post(body: &Value) -> Request<Body> {
+        let idempotency_key = body
+            .get("idempotency_key")
+            .and_then(Value::as_str)
+            .unwrap_or("test-idempotency-key");
         match Request::builder()
             .method("POST")
             .uri("/internal/ledger/transactions")
             .header("content-type", "application/json")
+            .header("Idempotency-Key", idempotency_key)
             .body(Body::from(body.to_string()))
         {
             Ok(request) => request,
