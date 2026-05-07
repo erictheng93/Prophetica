@@ -7,9 +7,18 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
+axum.workspace = true
 sdk = { path = "../../crates/sdk" }
+serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+http-body-util = "0.1"
+serde_json.workspace = true
+tower = "0.5"
 
 [lints]
 workspace = true

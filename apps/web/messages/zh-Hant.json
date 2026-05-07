@@ -701,6 +701,82 @@
       "body": "因為平台不持倉、不從輸贏抽成，我們沒有動機把任何一筆判定向「讓更多玩家輸」的方向偏。錯的判定會傷害品牌、引發監管查核、推高客服成本 — 三條都對 prophetica 有害。這不是道德承諾，是利益對齊。"
     }
   },
+  "accountAffiliate": {
+    "metadata": {
+      "title": "我的推薦中心 — prophetica",
+      "description": "查看你的推薦清單、累計獎勵與分享連結。SPEC-011 §5.1 玩家自助介面。"
+    },
+    "hero": {
+      "kicker": "我的推薦中心",
+      "headline": "你介紹的人，與你拿到的獎勵。",
+      "tagline": "推薦關係只有一層 — 你介紹的玩家。我們不做下線的下線。所有獎勵以站內點數計算，不可兌回現金。"
+    },
+    "demoBanner": {
+      "label": "資料暫無法載入。",
+      "unavailableBody": "推薦服務目前無法連線，畫面顯示為空白範本。實際資料會在連線恢復後自動更新；不影響你既有的獎勵紀錄。",
+      "notFoundBody": "我們在系統裡查不到你的推薦資料 — 可能你尚未取得推薦碼或帳號剛建立。完成 KYC Tier 1 並登入後即會自動產生推薦碼。"
+    },
+    "summary": {
+      "heading": "獎勵總覽",
+      "subtitle": "依 SPEC-011 §4 計算：介紹獎勵延遲 30 天發放 + 持續 12 個月內的交易佣金。",
+      "footnote": "獎勵金額以站內點數呈現（1 點 = TWD 1 等值，不可兌回現金）；交易佣金每日批次入帳、介紹獎勵於觀察期到期後一次發放。",
+      "count": {
+        "kicker": "成功介紹",
+        "label": "已通過觀察期 + 達標的推薦人數"
+      },
+      "total": {
+        "kicker": "累計獎勵",
+        "label": "介紹獎勵 + 交易佣金合計"
+      },
+      "last30d": {
+        "kicker": "近 30 天",
+        "label": "本期入帳獎勵"
+      },
+      "last12m": {
+        "kicker": "近 12 個月",
+        "label": "近 12 個月入帳獎勵"
+      }
+    },
+    "share": {
+      "heading": "分享連結",
+      "intro": "你的專屬推薦碼於註冊時生成（BLAKE3 雜湊 + 隨機後綴），不會洩漏你的 username。把連結貼給朋友，他們完成 KYC + 首儲後計入觀察期。",
+      "codeLabel": "推薦碼",
+      "codePlaceholder": "尚未生成",
+      "linkLabel": "分享連結",
+      "linkPlaceholder": "尚未生成",
+      "copyCode": "複製推薦碼",
+      "copyLink": "複製分享連結",
+      "copyCodeAria": "複製推薦碼到剪貼簿",
+      "copyLinkAria": "複製分享連結到剪貼簿",
+      "copied": "已複製",
+      "disclaimer": "分享連結僅在第一次點擊綁定推薦關係（first-touch attribution）。被推薦人若已被其他人介紹，本連結不會覆蓋既有關係。"
+    },
+    "referrals": {
+      "heading": "推薦清單",
+      "subtitle": "你介紹的人 — 一層、不分層、不形成樹狀結構（呼應 SPEC-011 §2.2）。",
+      "count": "{count} 位",
+      "empty": "目前還沒有人透過你的連結註冊。",
+      "fields": {
+        "username": "被推薦人",
+        "date": "註冊日",
+        "status": "狀態",
+        "commission": "累計佣金"
+      },
+      "statuses": {
+        "pending": "觀察期中",
+        "qualified": "已達標",
+        "disqualified": "未達標",
+        "pending_review": "待 Compliance 審核",
+        "pending_eddreview": "待 EDD 審核"
+      },
+      "disclaimer": "username 以「前 3 字 + 後 1 字」遮蔽顯示，避免 PII 過度揭露（SPEC-011 §5.1）；累計佣金為已通過反作弊規則並入帳之金額。"
+    },
+    "notMlm": {
+      "kicker": "法律邊界",
+      "headline": "這是單層推薦，不是多層次傳銷。",
+      "body": "所有獎勵來自平台手續費分潤，與「介紹下線的下線」無關。你看不到、也拿不到第二層之後的數字 — 因為它根本不存在。如果你看到任何聲稱「prophetica 多層代理」的廣告，那是詐騙。"
+    }
+  },
   "affiliate": {
     "metadata": {
       "title": "代理計畫 — prophetica",

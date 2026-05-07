@@ -1,12 +1,20 @@
 pub const SERVICE_NAME: &str = "referral-service";
 pub const DEFAULT_PORT: u16 = 8092;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
+use axum::{
+    Json, Router,
+    extract::{Path, Query, State},
+    http::StatusCode,
+    routing::get,
+};
 use sdk::{
     ledger::{LedgerAmount, LedgerEntryDraft, LedgerTransactionDraft},
     referral::code::ReferralCodeError,
 };
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 const QUALIFICATION_DEPOSIT_MINOR_UNITS: i64 = 50_000;
@@ -208,6 +216,235 @@ pub struct CommissionAccrual {
     pub accrued_at_day: i64,
     pub paid_out_txn_id: Option<i64>,
     pub paid_out_at_day: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AffiliateReferralListItem {
+    pub referred_id: String,
+    pub masked_username: String,
+    pub referred_at_day: i64,
+    pub status: String,
+    pub cumulative_commission_minor_units: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AffiliateCommissionSummary {
+    pub successful_referrals_count: u32,
+    pub signup_bonus_minor_units: i64,
+    pub trade_commission_minor_units: i64,
+    pub total_rewards_minor_units: i64,
+    pub last_30d_commission_minor_units: i64,
+    pub last_12m_commission_minor_units: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AffiliateDashboardResponse {
+    pub user_id: String,
+    pub referral_code: String,
+    pub share_url: String,
+    pub summary: AffiliateCommissionSummary,
+    pub referrals: Vec<AffiliateReferralListItem>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AffiliateQuery {
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApiErrorResponse {
+    pub error: &'static str,
+    pub message: String,
+}
+
+#[async_trait]
+pub trait AffiliateDashboardStore {
+    async fn referral_code_for_user(&self, user_id: &str) -> Result<String, ReferralStoreError>;
+
+    async fn list_referrals_for_referrer(
+        &self,
+        referrer_id: &str,
+        limit: usize,
+    ) -> Result<Vec<AffiliateReferralListItem>, ReferralStoreError>;
+
+    async fn commission_summary_for_referrer(
+        &self,
+        referrer_id: &str,
+    ) -> Result<AffiliateCommissionSummary, ReferralStoreError>;
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum ReferralStoreError {
+    #[error("affiliate data not found")]
+    NotFound,
+    #[error("affiliate store unavailable: {0}")]
+    Unavailable(String),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryAffiliateDashboardStore {
+    referral_codes_by_user: HashMap<String, String>,
+    referrals_by_referrer: HashMap<String, Vec<AffiliateReferralListItem>>,
+    summaries_by_referrer: HashMap<String, AffiliateCommissionSummary>,
+}
+
+impl InMemoryAffiliateDashboardStore {
+    #[must_use]
+    pub fn new(
+        referral_codes_by_user: HashMap<String, String>,
+        referrals_by_referrer: HashMap<String, Vec<AffiliateReferralListItem>>,
+        summaries_by_referrer: HashMap<String, AffiliateCommissionSummary>,
+    ) -> Self {
+        Self {
+            referral_codes_by_user,
+            referrals_by_referrer,
+            summaries_by_referrer,
+        }
+    }
+}
+
+#[async_trait]
+impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
+    async fn referral_code_for_user(&self, user_id: &str) -> Result<String, ReferralStoreError> {
+        self.referral_codes_by_user
+            .get(user_id)
+            .cloned()
+            .ok_or(ReferralStoreError::NotFound)
+    }
+
+    async fn list_referrals_for_referrer(
+        &self,
+        referrer_id: &str,
+        limit: usize,
+    ) -> Result<Vec<AffiliateReferralListItem>, ReferralStoreError> {
+        Ok(self
+            .referrals_by_referrer
+            .get(referrer_id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .take(limit)
+            .collect())
+    }
+
+    async fn commission_summary_for_referrer(
+        &self,
+        referrer_id: &str,
+    ) -> Result<AffiliateCommissionSummary, ReferralStoreError> {
+        Ok(self
+            .summaries_by_referrer
+            .get(referrer_id)
+            .cloned()
+            .unwrap_or_else(|| AffiliateCommissionSummary {
+                successful_referrals_count: 0,
+                signup_bonus_minor_units: 0,
+                trade_commission_minor_units: 0,
+                total_rewards_minor_units: 0,
+                last_30d_commission_minor_units: 0,
+                last_12m_commission_minor_units: 0,
+            }))
+    }
+}
+
+pub fn router<S>(store: S) -> Router
+where
+    S: AffiliateDashboardStore + Clone + Send + Sync + 'static,
+{
+    let state = Arc::new(store);
+    Router::new()
+        .route(
+            "/internal/referrals/users/:user_id/affiliate-dashboard",
+            get(get_affiliate_dashboard::<S>),
+        )
+        .route(
+            "/internal/referrals/users/:user_id/referrals",
+            get(list_affiliate_referrals::<S>),
+        )
+        .route(
+            "/internal/referrals/users/:user_id/commission-summary",
+            get(get_affiliate_commission_summary::<S>),
+        )
+        .with_state(state)
+}
+
+async fn get_affiliate_dashboard<S>(
+    State(store): State<Arc<S>>,
+    Path(user_id): Path<String>,
+    Query(query): Query<AffiliateQuery>,
+) -> Result<Json<AffiliateDashboardResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let referral_code = store
+        .referral_code_for_user(&user_id)
+        .await
+        .map_err(|error| api_error(&error))?;
+    let summary = store
+        .commission_summary_for_referrer(&user_id)
+        .await
+        .map_err(|error| api_error(&error))?;
+    let referrals = store
+        .list_referrals_for_referrer(&user_id, limit)
+        .await
+        .map_err(|error| api_error(&error))?;
+
+    Ok(Json(AffiliateDashboardResponse {
+        user_id,
+        share_url: format!("https://proph.net/?ref={referral_code}"),
+        referral_code,
+        summary,
+        referrals,
+    }))
+}
+
+async fn list_affiliate_referrals<S>(
+    State(store): State<Arc<S>>,
+    Path(user_id): Path<String>,
+    Query(query): Query<AffiliateQuery>,
+) -> Result<Json<Vec<AffiliateReferralListItem>>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let referrals = store
+        .list_referrals_for_referrer(&user_id, limit)
+        .await
+        .map_err(|error| api_error(&error))?;
+    Ok(Json(referrals))
+}
+
+async fn get_affiliate_commission_summary<S>(
+    State(store): State<Arc<S>>,
+    Path(user_id): Path<String>,
+) -> Result<Json<AffiliateCommissionSummary>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let summary = store
+        .commission_summary_for_referrer(&user_id)
+        .await
+        .map_err(|error| api_error(&error))?;
+    Ok(Json(summary))
+}
+
+fn api_error(error: &ReferralStoreError) -> (StatusCode, Json<ApiErrorResponse>) {
+    match error {
+        ReferralStoreError::NotFound => (
+            StatusCode::NOT_FOUND,
+            Json(ApiErrorResponse {
+                error: "affiliate_not_found",
+                message: error.to_string(),
+            }),
+        ),
+        ReferralStoreError::Unavailable(_) => (
+            StatusCode::BAD_GATEWAY,
+            Json(ApiErrorResponse {
+                error: "affiliate_store_unavailable",
+                message: error.to_string(),
+            }),
+        ),
+    }
 }
 
 #[derive(Debug, Default)]
@@ -747,10 +984,21 @@ impl From<ReferralCodeError> for ReferralError {
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::{
-        AffiliateCommissionEngine, AffiliateKinshipSignals, AntiAbuseFlags, CommissionEvent,
-        QualificationEvent, ReferralError, ReferralRecord, ReferralStatus,
+        AffiliateCommissionEngine, AffiliateCommissionSummary, AffiliateKinshipSignals,
+        AffiliateReferralListItem, AntiAbuseFlags, CommissionEvent,
+        InMemoryAffiliateDashboardStore, QualificationEvent, ReferralError, ReferralRecord,
+        ReferralStatus, router,
     };
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt;
+    use serde_json::{Value, json};
+    use tower::ServiceExt;
 
     #[test]
     fn first_touch_referral_rejects_self_and_duplicate_referred_user() {
@@ -774,6 +1022,71 @@ mod tests {
 
         let self_referral = engine.record_referral("user_same", "user_same", "same_A1b2", 12);
         assert_eq!(self_referral, Err(ReferralError::SelfReferral));
+    }
+
+    #[tokio::test]
+    async fn affiliate_dashboard_handler_returns_code_summary_and_flat_referrals() {
+        let app = router(sample_dashboard_store());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/internal/referrals/users/user_referrer/affiliate-dashboard?limit=1")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["referral_code"], json!("a3f9c12be801_X9PK"));
+        assert_eq!(
+            body["share_url"],
+            json!("https://proph.net/?ref=a3f9c12be801_X9PK")
+        );
+        assert_eq!(body["summary"]["successful_referrals_count"], json!(2));
+        assert_eq!(body["summary"]["total_rewards_minor_units"], json!(42_000));
+        assert_eq!(body["referrals"].as_array().map(Vec::len), Some(1));
+        assert_eq!(body["referrals"][0]["masked_username"], json!("ali*e"));
+    }
+
+    #[tokio::test]
+    async fn affiliate_referrals_and_commission_summary_are_queryable_separately() {
+        let app = router(sample_dashboard_store());
+
+        let referrals = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/internal/referrals/users/user_referrer/referrals?limit=10")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(referrals.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(referrals).await.as_array().map(Vec::len),
+            Some(2)
+        );
+
+        let summary = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/internal/referrals/users/user_referrer/commission-summary")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(summary.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(summary).await["trade_commission_minor_units"],
+            json!(22_000)
+        );
     }
 
     #[test]
@@ -1062,6 +1375,52 @@ mod tests {
             anti_abuse: AntiAbuseFlags::default(),
             referrer_group_id: None,
         }
+    }
+
+    async fn response_json(response: axum::response::Response) -> Value {
+        let collected = response
+            .into_body()
+            .collect()
+            .await
+            .unwrap_or_else(|error| panic!("response body should collect: {error}"));
+        serde_json::from_slice(&collected.to_bytes())
+            .unwrap_or_else(|error| panic!("response should be json: {error}"))
+    }
+
+    fn sample_dashboard_store() -> InMemoryAffiliateDashboardStore {
+        InMemoryAffiliateDashboardStore::new(
+            HashMap::from([("user_referrer".to_owned(), "a3f9c12be801_X9PK".to_owned())]),
+            HashMap::from([(
+                "user_referrer".to_owned(),
+                vec![
+                    AffiliateReferralListItem {
+                        referred_id: "user_referred_1".to_owned(),
+                        masked_username: "ali*e".to_owned(),
+                        referred_at_day: 10,
+                        status: "qualified".to_owned(),
+                        cumulative_commission_minor_units: 30_000,
+                    },
+                    AffiliateReferralListItem {
+                        referred_id: "user_referred_2".to_owned(),
+                        masked_username: "bo*".to_owned(),
+                        referred_at_day: 20,
+                        status: "pending".to_owned(),
+                        cumulative_commission_minor_units: 0,
+                    },
+                ],
+            )]),
+            HashMap::from([(
+                "user_referrer".to_owned(),
+                AffiliateCommissionSummary {
+                    successful_referrals_count: 2,
+                    signup_bonus_minor_units: 20_000,
+                    trade_commission_minor_units: 22_000,
+                    total_rewards_minor_units: 42_000,
+                    last_30d_commission_minor_units: 12_000,
+                    last_12m_commission_minor_units: 42_000,
+                },
+            )]),
+        )
     }
 
     #[test]

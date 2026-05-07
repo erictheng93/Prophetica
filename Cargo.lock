@@ -2008,9 +2008,16 @@ name = "referral-service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "axum 0.7.9",
+ "http-body-util",
  "sdk",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tokio",
+ "tower 0.5.3",
+ "tracing",
 ]
 
 [[package]]
