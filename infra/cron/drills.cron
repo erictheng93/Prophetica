@@ -1,0 +1,8 @@
+# Weekly engine pod kill drill.
+13 18 * * 1 /opt/prophetica/tools/scripts/drills/engine-pod-kill.sh
+
+# Monthly DB primary failover drill.
+29 18 3 * * /opt/prophetica/tools/scripts/drills/db-primary-failover.sh
+
+# Quarterly Tokyo -> Singapore region failover automation dry run.
+47 18 4 1,4,7,10 * /opt/prophetica/tools/scripts/drills/region-failover-tokyo-singapore.sh

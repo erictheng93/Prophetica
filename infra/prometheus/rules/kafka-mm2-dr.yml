@@ -1,0 +1,32 @@
+groups:
+  - name: kafka-mm2-dr
+    rules:
+      - alert: KafkaMirrorMakerLagP1
+        expr: kafka_mm2_lag_seconds > 3
+        for: 0m
+        labels:
+          severity: P1
+          service: kafka
+        annotations:
+          summary: Kafka MirrorMaker 2 lag exceeds 3 seconds
+          description: "Cross-region RPO is approaching the SPEC-008 5s boundary for {{ $labels.topic }}."
+
+      - alert: KafkaMirrorMakerLagP0
+        expr: kafka_mm2_lag_seconds > 5
+        for: 0m
+        labels:
+          severity: P0
+          service: kafka
+        annotations:
+          summary: Kafka MirrorMaker 2 lag exceeds 5 seconds
+          description: "Cross-region RPO has exceeded SPEC-008 for {{ $labels.topic }}."
+
+      - alert: DrReconciliationMismatchP0
+        expr: increase(dr_reconciliation_mismatch_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: P0
+          service: dr-reconciliation
+        annotations:
+          summary: DR reconciliation mismatch detected
+          description: "Primary/DR ledger counts or Kafka offset lag violated SPEC-008 B-6."

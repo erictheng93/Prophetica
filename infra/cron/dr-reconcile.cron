@@ -1,0 +1,2 @@
+# SPEC-008 B-6 daily DR reconciliation.
+17 18 * * * /opt/prophetica/tools/scripts/dr/dr-reconcile.sh
