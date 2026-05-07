@@ -30,9 +30,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
       - uses: mozilla-actions/sccache-action@v0.0.6
+      # pnpm version is sourced from `packageManager` in root package.json
+      # (currently pnpm@9.12.0). Specifying `version:` here too triggers
+      # ERR_PNPM_BAD_PM_VERSION in pnpm/action-setup@v4.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
