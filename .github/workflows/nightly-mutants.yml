@@ -7,8 +7,8 @@ on:
 
 jobs:
   mutants:
-    # SPEC-017 v0.2.5 §11.2.10 T-8: ubuntu-latest-4-cores
-    runs-on: ubuntu-latest-4-cores
+    # Use the default GitHub-hosted runner unless a larger runner is explicitly configured.
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4

@@ -222,7 +222,7 @@
 - 12 個 service 各自獨立 main.rs binary（與 §4 表一致）
 - 不存在 `services/_binaries/` 目錄
 - 每個 service 透過 `crates/sdk` 之 `service_stub` 模組統一 §6 五要素（healthz / metrics / signal handling / JSON log）
-- CI 在單一 `cargo build --workspace` 跑通 16 個 crates（12 services + 2 sdk/proto + 2 mocks），cold cache `ubuntu-latest-4-cores` runner 預期 < 15 min（SPEC-017 §11.2.10 T-8）
+- CI 在單一 `cargo build --workspace` 跑通 16 個 crates（12 services + 2 sdk/proto + 2 mocks）；未設定 GitHub larger runner 時使用 `ubuntu-latest`，若 org/repo 已配置 `ubuntu-latest-4-cores` 才可切換並預期 cold cache < 15 min（SPEC-017 §11.2.10 T-8）
 
 採 12-binary 之 acceptance 補強：
 

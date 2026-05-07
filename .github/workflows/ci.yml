@@ -7,8 +7,8 @@ on:
 
 jobs:
   lint-and-test:
-    # SPEC-017 v0.2.5 §11.2.10 T-8: ubuntu-latest-4-cores 為 CI 預設（< 15 min cold cache）
-    runs-on: ubuntu-latest-4-cores
+    # Use the default GitHub-hosted runner unless a larger runner is explicitly configured.
+    runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16-alpine
@@ -88,8 +88,8 @@ jobs:
           retention-days: 30
 
   sentinel-scan:
-    # SPEC-017 v0.2.5 §11.2.10 T-8: ubuntu-latest-4-cores 為 CI 預設
-    runs-on: ubuntu-latest-4-cores
+    # Use the default GitHub-hosted runner unless a larger runner is explicitly configured.
+    runs-on: ubuntu-latest
     needs: lint-and-test
     steps:
       - uses: actions/checkout@v4

@@ -7,7 +7,7 @@
 
 > **v0.2.6 變更**：§11 新增 §11.3「PR #1 動工前 PoC gating」，明示 PoC-A（EdDSA / LIFF）+ PoC-B（Cloudflare Edge runtime 5 場景）為 PR #1 acceptance check 之前置 gating，PoC 結果未回填即拒絕 merge；連結至 [`docs/poc/PRE-FLIGHT-POCS.md`](../docs/poc/PRE-FLIGHT-POCS.md)。
 >
-> **v0.2.5 變更**：(1) **T-7 mutation testing 門檻分階段**：§3.3 R-4 由「caught rate ≥ 75% 否則發 alert」修正為「MVP 起步 ≥ 60%、每季度 +5%、6 個月內達 75%」分階段門檻；(2) **T-8 CI runner**：§11.2.10 規模預期表新增 GitHub Actions `ubuntu-latest-4-cores` runner 為 CI 預設選擇（< 15 min cold cache），standard `ubuntu-22.04` 2-core runner 降為 fallback（< 30 min）；補 runner 選擇說明。
+> **v0.2.5 變更**：(1) **T-7 mutation testing 門檻分階段**：§3.3 R-4 由「caught rate ≥ 75% 否則發 alert」修正為「MVP 起步 ≥ 60%、每季度 +5%、6 個月內達 75%」分階段門檻；(2) **T-8 CI runner**：§11.2.10 規模預期表新增 GitHub Actions larger runner `ubuntu-latest-4-cores` 為已配置時的加速選項（< 15 min cold cache）；未配置 larger runner 的 repo 使用標準 `ubuntu-latest` fallback，避免 workflow indefinite queued。
 >
 > **v0.2.4 erratum（2026-05-07）**：修正 §2 file tree 註解與 §8 CI workflow 中遺留的 Rust 1.78 化石標註，與 §3 toolchain 表 / §4.2.1 `rust-toolchain.toml` 之 `1.85`（edition 2024）對齊。發現過程：跨檔審視 H-2 版本一致性議題（SPEC-000 v0.2.4 sweep round 3）。
 >
@@ -903,12 +903,13 @@ make test
 |------|------|
 | PR diff（不含 gen/ 與 lock 檔） | 5,000 – 9,000 行 |
 | Commit 數 | 8 – 15（建議按 §11.2.1 ~ §11.2.8 分階段） |
-| CI 首次 cold cache 時間（**`ubuntu-latest-4-cores` runner**）| < 15 分鐘（暖快取 < 5 分鐘） |
+| CI 首次 cold cache 時間（標準 **`ubuntu-latest` runner**）| < 30 分鐘（暖快取 < 10 分鐘） |
+| CI 首次 cold cache 時間（已配置 **`ubuntu-latest-4-cores` larger runner**）| < 15 分鐘（暖快取 < 5 分鐘） |
 | CI 首次 cold cache 時間（標準 `ubuntu-22.04` 2-core runner，僅 fallback）| < 30 分鐘（暖快取 < 10 分鐘）|
 | review 預估輪次 | 2 – 3 輪（Tech Lead + 4-eye for ledger / engine stub，呼應 SPEC-010 §9.3 MS-10）|
 | Reject 紅線 | 任一 §11.2.1 ~ §11.2.7 缺項；任何 unsafe block；任何 hardcoded secret；任何業務邏輯 |
 
-> **Runner 選擇（T-8）**：CI 預設使用 GitHub Actions `ubuntu-latest-4-cores` runner（4 vCPU / 16GB RAM，計費為標準 runner 2x）。原 `ubuntu-22.04` 標準 runner（2 vCPU）冷快取下 12 services × `cargo build` 接近 25 分鐘上限沒有 buffer，4-cores runner 並行編譯後降至 ~12-15 分鐘。standard runner 僅作為 fallback（large runner 配額耗盡時降級）。`.github/workflows/ci.yml` 之 `runs-on: ubuntu-latest-4-cores`。
+> **Runner 選擇（T-8）**：CI 在未設定 GitHub larger runner / self-hosted runner label 時必須使用標準 `ubuntu-latest`，否則 job 會因找不到 runner 長時間 queued。若 repo/org 已明確配置 `ubuntu-latest-4-cores`（4 vCPU / 16GB RAM，計費為標準 runner 2x），可在 `.github/workflows/ci.yml` 將 `runs-on` 切回該 label，預期 cold cache 約 12-15 分鐘；標準 runner 作為安全預設。
 
 ### 11.3 PR #1 動工前 PoC gating（T-9 / T-10）
 
