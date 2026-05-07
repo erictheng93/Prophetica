@@ -1,7 +1,7 @@
 # SPEC-000 — 規格總索引（Master Index）
 
 > **prophetica** — 趣味預測娛樂遊戲平台
-> 文件版本：v0.2.7 · 最後更新：2026-05-07 · 維護人：Tech Lead
+> 文件版本：v0.2.8 · 最後更新：2026-05-07 · 維護人：Tech Lead
 
 ---
 
@@ -39,7 +39,7 @@
 | [SPEC-004](./SPEC-004-settlement-dispute.md) | 結算與爭議處理 | Oracle、結算狀態機、申訴窗口、batch 500 + off-peak（T-12）| 🟢 v0.1.2 |
 | [SPEC-015](./SPEC-015-market-lifecycle.md) | 市場生命週期管理 | 市場創建、上架審查、內容紅線、開盤排程、強制下架 | 🟢 v0.1.1 |
 | [SPEC-016](./SPEC-016-payment-gateway.md) | 支付通路整合 | 通路選型、Webhook、Chargeback ≥ 1 統一封號（H-5）、跨幣別、PCI 範圍 | 🟢 v0.1.1 |
-| [SPEC-017](./SPEC-017-monorepo-bootstrap.md) | Monorepo Bootstrap & Local Dev | Repo 骨架、Docker Compose、Makefile、CI bootstrap、PR #1 acceptance checklist、Mutation 門檻分階段（T-7）、CI runner 4-cores（T-8） | 🟢 v0.2.5（Rust） |
+| [SPEC-017](./SPEC-017-monorepo-bootstrap.md) | Monorepo Bootstrap & Local Dev | Repo 骨架、Docker Compose、Makefile、CI bootstrap、PR #1 acceptance checklist、Mutation 門檻分階段（T-7）、CI runner 4-cores（T-8）、§11.3 PoC gating（T-9 / T-10） | 🟢 v0.2.6（Rust） |
 
 ### P1 — 必須在公開 Beta 之前完成
 
@@ -50,7 +50,7 @@
 | [SPEC-007](./SPEC-007-observability.md) | 可觀測性與監控 | Metrics/Log/Tracing、SLO、告警、**§6.4 跨服務 Latency Budget**（下單熱路徑 11 hop × P99 時間預算）| 🟢 v0.2.0 |
 | [SPEC-008](./SPEC-008-disaster-recovery.md) | 災備與高可用 | **RTO/RPO 拆 region-local + cross-region 兩層（T-2）**、跨區備援、Failover 演練 | 🟢 v0.2.0 |
 | [SPEC-009](./SPEC-009-dmm-liquidity.md) | DMM 與流動性 | 做市商計畫、API、rebate；**§5 冷啟動補貼整段移除（R-2）** | 🟢 v0.2.1（Rust） |
-| [SPEC-010](./SPEC-010-security-antifraud.md) | 安全與反作弊 | 裝置指紋、行為分析、洗售偵測、**§9.3 Multi-sig 治理中央表**、EdDSA mobile PoC（T-9）、sqlx 編譯時 SQL（H-4）、Chargeback ≥ 1（H-5）| 🟢 v0.2.1 |
+| [SPEC-010](./SPEC-010-security-antifraud.md) | 安全與反作弊 | 裝置指紋、行為分析、洗售偵測、**§9.3 Multi-sig 治理中央表**、EdDSA mobile PoC（T-9，PoC plan 落地）、sqlx 編譯時 SQL（H-4）、Chargeback ≥ 1（H-5）| 🟢 v0.2.2 |
 
 ### P2 — 公開 Beta 後 90 天內完成
 
@@ -64,7 +64,7 @@
 
 | ID | 標題 | 摘要 | 狀態 |
 |----|------|------|------|
-| [SPEC-014](./SPEC-014-tech-architecture.md) | 整體技術架構 | 服務拓撲、技術棧（Rust 1.85 / edition 2024）、Repo 結構、§3.2.1 Cloudflare Pages Edge runtime PoC（T-10）、§4.1 MVP 合併部署 advisory（T-1）| 🟢 v0.2.4 |
+| [SPEC-014](./SPEC-014-tech-architecture.md) | 整體技術架構 | 服務拓撲、技術棧（Rust 1.85 / edition 2024，**ADR-0005 governance**）、Repo 結構、§3.2.1 Cloudflare Pages Edge runtime PoC（T-10，PoC plan 落地）、§4.1 MVP 合併部署 advisory（T-1）| 🟢 v0.2.5 |
 
 ## 3. 全域名詞表（Glossary）
 
@@ -87,6 +87,7 @@
 
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
+| 2026-05-07 | v0.2.8 | Tech Lead | **動工前最後兩件 round 6**（ADR-0005 retroactive + PoC plan 文件化）：(1) **ADR-0005 新增（Accepted, retroactive）**：補做 SPEC-014 v0.2.0「後端 Go → Rust」切換之 governance ADR。涵蓋 driver（GC pause / 不變式型別化 / 業界對標 Kalshi）、4 個 considered options（維持 Go / Rust+Go 混搭 / 全 Rust / C++ hot path）、為何選全 Rust 之具體論證（單語言 SDK 維運成本 < CRUD borrow checker 成本）、Negative consequences 與 Mitigation Plan、Notes for Codex 6 條紀律。SPEC-014 §3.1 v0.2.0 變更說明補 cross-ref 至 ADR-0005；SPEC-014 v0.2.4 → v0.2.5。(2) **PoC plan 文件落地**：建立 [`docs/poc/PRE-FLIGHT-POCS.md`](../docs/poc/PRE-FLIGHT-POCS.md)，涵蓋 PoC-A（EdDSA / LIFF SDK 三步驟驗證 + 退路）+ PoC-B（Cloudflare Edge runtime 5 場景驗證 + 退路）+ §5 PoC 完成後 SPEC 回填規則 + §6 失敗 escalation 流程；SPEC-010 §3.1.2 / SPEC-014 §3.2.1 補 cross-ref；SPEC-017 §11.3 新增「PR #1 動工前 PoC gating」明示 PoC 結果未回填即拒絕 merge PR #1；SPEC-010 v0.2.1 → v0.2.2、SPEC-017 v0.2.5 → v0.2.6。(3) ADR README 索引補 ADR-0005。本輪後**所有動工前清單已 closed**：兩條紅線清除（R-1 / R-2）+ 跨檔一致性（H-1~H-6）+ 跨檔治理（M-1, M-3, multi-sig 中央表）+ 12 個技術風險點（T-1~T-12）+ ADR-0001 §6 patch + ADR-0005 retroactive + ADR-0006 INV-6 + PoC plan 文件化。Codex 拿到 SPEC + ADR + PoC plan 即可依 SPEC-017 §11.3 跑 PoC，PoC 通過後依 §11.2 開 PR #1。 |
 | 2026-05-07 | v0.2.7 | Tech Lead | **動工前剩餘待辦清除 round 5**（ADR governance + T-1 ~ T-8 落地）：(1) **ADR-0001 v1.0.2**：§6「唯一例外」carve-out 撤除（連動 R-2），補 `probability_symmetry` / `auto_hedge` 禁字；(2) **ADR-0006 新增（Accepted）**：擴展 ADR-0003 §5 INV 集合 INV-1 ~ INV-5 → INV-1 ~ INV-6，正式 governance 追認 INV-2/INV-4 含 Frozen 子科目（v0.1.1 SPEC drift 補正），新增 INV-6 outflow whitelist（連動 R-1）+ plpgsql trigger template + application/DB/CI 三層保護；(3) **ADR-0003 v1.0.3**：§5 標 partial superseded by ADR-0006；(4) **ADR README**：索引補 ADR-0006，ADR-0001 / ADR-0003 狀態加註修訂；(5) **T-1 service 拓撲**：SPEC-014 §4.1 advisory 建議 MVP 7-binary 合併部署（保留 12 service crate 結構），DAU > 5k 後再拆；(6) **T-2 RPO 拆兩層**：SPEC-008 §2 RTO/RPO 表 RPO 拆「region-local（synchronous standby + WAL fdatasync + Kafka acks=all → RPO=0）」+「cross-region（async streaming → RPO ≤ 5s）」；新增 §2.1/§2.2 三重保證 + SLA 邊界；SPEC-008 v0.1.0 → v0.2.0；(7) **T-3 partition 策略修正**：SPEC-002 §12 OQ #2 改為「Phase 1 從 day 1 即 monthly partition by `created_at` (pg_partman) + BRIN + cold detach」，撤銷原「不分區後 migrate」設計；(8) **T-4 hostNetwork 路由**：SPEC-003 §17.2 落地 etcd-driven consistent hash routing（24 virtual nodes）+ 5 種觸發場景 + 跨服務銜接 + MVP-Scale-up-Scale-out 演進；(9) **T-5 最終一致性窗口**：SPEC-002 §9.3 明示 ~100ms eventual consistency 語意 + 前端 optimistic UI + 後端 `?at_seq=N` / `?consistent=true` API + OTel 監控；(10) **T-6 Thread model 分流**：SPEC-003 §17.3 落地「熱市場（前 5%）獨佔 node + current_thread + core pinning」vs「冷市場 multiplex + multi-thread + work-stealing」+ 動態升降級 + 兩 binary 拆分；(11) **T-7 Mutation 門檻分階段**：SPEC-017 §3.3 R-4 改為「MVP 60% 起步、每季 +5%、6 個月達 75%」；(12) **T-8 CI runner**：SPEC-017 §11.2.10 預設改 `ubuntu-latest-4-cores`（< 15 min cold cache），standard 2-core fallback。版本 bump：SPEC-002 v0.1.6 → v0.1.7、SPEC-003 v0.2.2 → v0.2.3、SPEC-008 v0.1.0 → v0.2.0、SPEC-014 v0.2.3 → v0.2.4、SPEC-017 v0.2.4 → v0.2.5；ADR-0001 v1.0.1 → v1.0.2、ADR-0003 v1.0.2 → v1.0.3、ADR-0006 首版 v1.0 Accepted。 |
 | 2026-05-07 | v0.2.6 | Tech Lead | **技術可實現性收斂 round 4**（T-9 ~ T-12 + H-3 ~ H-6 + 新增 latency budget SPEC）：(1) **T-12 Settlement batch**：SPEC-004 §7.4 batch size 1000 → 500 + 新增 §7.5 強制 off-peak 排程（UTC 18-22 / 台北 02-06），降低 transaction window 與撮合 ledger worker lock contention；SPEC-004 v0.1.1 → v0.1.2。(2) **T-11 SLO 表補漏 + 新增 §6.4 Latency Budget**：SPEC-007 §6.1 補 wallet-ledger / market-service 兩個 P0 service SLO；Matching Engine SLO 拆「引擎內部 < 5ms」+「下單端到端 < 30ms」雙層；新增 §6.4 跨服務 Latency Budget（11 hop × P99 預算分解 + OTel span 對照 + 違反處理 + budget 變更管控），明示「各 service P99 達標但加總超標」之 SDD 防呆設計；SPEC-007 v0.1.0 → v0.2.0。(3) **T-10 Cloudflare Edge runtime PoC**：SPEC-014 新增 §3.2.1 列五個動工前必驗證場景（KYC iframe / WS fan-out / Server Actions / fetch / env binding），含已知限制與退路選項（Node.js runtime / 後端 BFF）；SPEC-014 v0.2.2 → v0.2.3。(4) **T-9 EdDSA mobile PoC**：SPEC-010 §3.1.2 補 LIFF SDK / mobile / browser 之 Ed25519 相容性 PoC 表，含 RS256 後備策略；SPEC-010 v0.2.0 → v0.2.1。(5) **H-3 CI gate 對齊**：SPEC-013 §3.1 改為「SPEC-017 §8 之超集」明示繼承全部 bootstrap gate（pnpm/cargo/sqlx/buf/clippy/nextest/deny/geiger/sentinel-scan）+ prod gate（SAST/SCA/image scan/IaC/secret/migration/E2E）；§3.2 必過 gate 表 19 列每列標來源；nightly 加 cargo-mutants / macos-latest / terraform plan diff；prod approval cross-ref MS-12。(6) **H-4 ORM → sqlx**：SPEC-010 §3.2 OWASP A03 由「ORM + parameterized」修為「`sqlx::query!` 編譯時檢查 SQL + parameterized binding」，對齊 SPEC-014 §3.1 不引入 ORM 決議。(7) **H-5 Chargeback 門檻統一**：SPEC-016 §6.1（≥ 1）/ SPEC-010 §6.2（> 1 → ≥ 1）/ SPEC-002 §8.1（補上門檻）三處對齊為「累計 chargeback **≥ 1** 永久封號 + 黑名單」；SPEC-002 v0.1.5 → v0.1.6、SPEC-010 v0.2.0 → v0.2.1、SPEC-016 v0.1.0 → v0.1.1。(8) **H-6 Coverage 分層**：SPEC-013 §3.3 新增覆蓋率分層表（ledger/撮合 ≥ 95% / 結算 ≥ 90% / 安全敏感 ≥ 85% / 其他 ≥ 80% / web ≥ 70% / mocks 不檢查），消除 SPEC-013（80%）vs SPEC-003 §16.1（100%）vs SPEC-003 §18（≥ 95%）三處內部矛盾；SPEC-003 §16.1 對齊修為「≥ 95% baseline + 100% stretch」；SPEC-013 v0.1.0 → v0.2.0、SPEC-013「依賴」加 SPEC-017。 |
 | 2026-05-07 | v0.2.5 | Tech Lead | **R-1 / R-2 兩條合規紅線清除**（業主 2026-05-07 拍板）：(1) **R-1 點數回兌紅線**：SPEC-011 §6 整節重寫為 4 子節（B2B 簽約獨立法律關係 / 雙身份隔離 / 帳本層 INV-6 強制 / 會計科目分離）；§5.2 / §7.1 同步修正誤導描述；SPEC-002 §4.2 Chart of Accounts 補 `Liability.AccountsPayable.{partner_id}` / `Expense.AffiliatePartnerFee` / `Bank.OperatingAccount.{currency}`；SPEC-002 §5 新增 INV-6（`Player.Wallet.*` outflow 白名單，DB CONSTRAINT TRIGGER 強制 + CI sentinel-scan grep gate），ADR-0006 待落地擴展 ADR-0003 §5 INV 集合；SPEC-002 v0.1.4 → v0.1.5、SPEC-011 v0.1.0 → v0.2.0、SPEC-011「依賴」清單加 SPEC-010。(2) **R-2 平台下場紅線**：SPEC-009 §5 「冷啟動補貼」整段移除（保留 placeholder 章節說明移除理由與替代方案 — DMM rebate 放大）；SPEC-009 §9 OQ #5 標 Resolved；SPEC-003 §12.1.1 sentinel `system.platform_announcement` (uid=4) 移除並加入 `RESERVED_REMOVED_USER_IDS` 防重用集合 + 兩個 unit test；SPEC-003 §12.1.4「例外情況」整段刪除（改為「**無**」）；SPEC-003 v0.2.1 → v0.2.2、SPEC-009 v0.2.0 → v0.2.1。(3) 本檔 §5 新增 R-1 / R-2 governance 條目（採 🔴 → ✅ 圖示保留 deal-breaker 痕跡供未來 audit）；§5.1 圖示說明補新狀態。(4) **後續落地**：ADR-0001 §6 「唯一例外」描述待新 ADR 標記為 superseded；ADR-0006 待業主審閱後落地。 |

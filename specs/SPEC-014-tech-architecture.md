@@ -1,7 +1,9 @@
 # SPEC-014 — 整體技術架構（Tech Architecture）
 
 > 優先級：跨章節（被多份 SPEC 依賴）
-> 版本：v0.2.4 · 最後更新：2026-05-07
+> 版本：v0.2.5 · 最後更新：2026-05-07
+>
+> **v0.2.5 變更**：(1) §3.1 v0.2.0 變更說明補 cross-ref 至 [ADR-0005](../docs/architecture/decisions/ADR-0005-backend-language-rust-over-go.md)（後端 Go → Rust 之 retroactive ADR 落地）；(2) §3.2.1 補 cross-ref 至 [`docs/poc/PRE-FLIGHT-POCS.md §4`](../docs/poc/PRE-FLIGHT-POCS.md)（Cloudflare Pages Edge runtime PoC 詳細 plan）。
 >
 > **v0.2.4 變更**：(1) **T-1 service 拓撲 advisory**：§4 新增 §4.1「MVP 合併部署 advisory」，建議 MVP / 公開 Beta 階段將 12 個 service binary 合併為 7 個（保留 service crate 結構不變，僅合併 binary）；列拆分時機 + 合併好處（latency budget 寬鬆 / onboarding -40% / CI -30%）+ 代價（scaling 顆粒度）+ Codex PR #1 落地建議。本節為 advisory 不強制；(2) §4 service 表補 cross-ref 至 SPEC-003 §17.2 routing 與 §17.3 thread model 分流。
 > **v0.2.3 變更（T-10）**：§3.2 新增 §3.2.1「Cloudflare Pages Edge runtime 限制」，明列 KYC iframe / WebSocket fan-out / Server Actions / fetch 行為 / env binding 五個動工前必須完成 E2E PoC 之場景，含已知限制與退路選項（Node.js runtime / 後端 BFF）。
@@ -10,7 +12,7 @@
 >
 > **v0.2.1 變更**：§3.1 補硬性決議 R-1 TLS（rustls 為預設 + rdkafka OpenSSL 例外）、撮合引擎 runtime topology（current_thread + per-market LocalSet + core_affinity）、其餘 service multi-thread runtime、unsafe 全域 forbid + cargo geiger 監測。MSRV 由 1.78 改為 **1.85**（edition 2024）。
 >
-> **v0.2.0 變更（重大）**：後端語言由 Go 1.22 切換至 **Rust 1.85+ stable**（edition 2024）。所有 12 個 service 改以 Rust 實作，HTTP 層採 axum，gRPC 採 tonic，async runtime tokio，DB 採 sqlx（compile-time checked SQL）。撮合引擎不再保留「未來切 Rust」之選項——直接 Rust first。`go.work` → Cargo workspace；`go-sdk/` → `crates/sdk/`；§14 OQ #5「撮合切 Rust」隨之 Resolved。
+> **v0.2.0 變更（重大）**：後端語言由 Go 1.22 切換至 **Rust 1.85+ stable**（edition 2024）。所有 12 個 service 改以 Rust 實作，HTTP 層採 axum，gRPC 採 tonic，async runtime tokio，DB 採 sqlx（compile-time checked SQL）。撮合引擎不再保留「未來切 Rust」之選項——直接 Rust first。`go.work` → Cargo workspace；`go-sdk/` → `crates/sdk/`；§14 OQ #5「撮合切 Rust」隨之 Resolved。**本決策之 governance 已於 2026-05-07 由 [ADR-0005](../docs/architecture/decisions/ADR-0005-backend-language-rust-over-go.md) 補做追溯化記錄**（含 driver / 為何全 Rust 而非混搭 / 為何 Rust 而非 C++ / mitigation 細節）。
 >
 > **v0.1.2 變更**：前端框架由 Nuxt 3 (Vue 3) 切換至 Next.js 15 (React 19)，元件庫採用 Cloudflare Kumo（`@cloudflare/kumo`，建立於 Base UI）。狀態管理 Pinia → Zustand；表單 VeeValidate → React Hook Form。理由詳見 `design/COMPONENTS.md`。
 
@@ -132,7 +134,7 @@
 
 #### 3.2.1 Cloudflare Pages Edge runtime 限制（T-10，動工前 PoC）
 
-`apps/web` 透過 [`@cloudflare/next-on-pages`](https://github.com/cloudflare/next-on-pages) 部署至 Cloudflare Pages（Workers runtime）。Edge runtime 與標準 Node.js runtime 行為差異會在以下場景踩坑，動工前需完成 E2E PoC 驗證：
+`apps/web` 透過 [`@cloudflare/next-on-pages`](https://github.com/cloudflare/next-on-pages) 部署至 Cloudflare Pages（Workers runtime）。Edge runtime 與標準 Node.js runtime 行為差異會在以下場景踩坑，動工前需完成 E2E PoC 驗證（**詳細 PoC plan 見 [PRE-FLIGHT-POCS §4](../docs/poc/PRE-FLIGHT-POCS.md)**）：
 
 | 場景 | 已知限制 | PoC 驗證項 |
 |------|---------|-----------|

@@ -1,10 +1,12 @@
 # SPEC-010 — 安全與反作弊（Security & Anti-Fraud）
 
 > 優先級：**P1**
-> 版本：v0.2.1 · 最後更新：2026-05-07
+> 版本：v0.2.2 · 最後更新：2026-05-07
 > 依賴：SPEC-001, SPEC-005
 > 被依賴：SPEC-009, SPEC-002, SPEC-004, SPEC-008, SPEC-012, SPEC-013, SPEC-015, SPEC-016, SPEC-017
 
+> **v0.2.2 變更**：§3.1.2 PoC 表補 cross-ref 至 [`docs/poc/PRE-FLIGHT-POCS.md §3`](../docs/poc/PRE-FLIGHT-POCS.md)（EdDSA / LIFF SDK 相容性 PoC 詳細 plan）。
+>
 > **v0.2.1 變更**：(1) §3.1.2 補 EdDSA mobile / LIFF SDK 相容性 PoC 要求（T-9），動工前需驗證 LIFF SDK 對 Ed25519 token 之支援；不支援則對 LIFF route 回退 RS256 token；(2) §3.2 OWASP A03 Injection 對策由「ORM + parameterized query」修正為「`sqlx::query!` 編譯時檢查 SQL + parameterized binding」（H-4），對齊 SPEC-014 §3.1「不引入 ORM」決議；(3) §6.2 chargeback 永久封號門檻由「> 1」修正為「**≥ 1**」（H-5），與 SPEC-016 §6.1 / SPEC-002 §8.1 統一；(4) §6.2 帳本反沖 cross-ref 補至 SPEC-002 §8.2。
 > **v0.2.0 變更**：新增 §9.3 Multi-sig 治理中央表（M-3）。集中所有跨 SPEC 之 multi-sig governance（MS-1 ~ MS-17）+ 已 Resolved 不入表決策（hedge / 計價 / 數據主權）+ Admin UI 實作要求 + 為何集中。原 SPEC-002 §4.2.1 / §8.1、SPEC-004 §3 §6.1、SPEC-008 §9.3、SPEC-012 §11、SPEC-013 §3.1 §6、SPEC-015 §7.2 §8.3 §9.2、SPEC-017 §3.3、SPEC-016 §13 之簽核要求皆改以「呼應 SPEC-010 §9.3 MS-N」方式引用本表。被依賴 SPEC 列表由原本 SPEC-009 擴增為 9 份，反映本檔成為 governance 中央表。
 
@@ -72,7 +74,7 @@ Storage:     HTTP-only Secure SameSite=Lax cookie
              （SPA 使用時透過 /api/auth/session 取 access token，不直接 expose 給 JS）
 ```
 
-> **Client 相容性 PoC（T-9，動工前驗證）**：Ed25519 簽章 / 驗證性能優於 RS256 ~10x，但部分 mobile / browser JWT lib 預設僅支援 RS256 / HS256。動工前必須完成以下 PoC：
+> **Client 相容性 PoC（T-9，動工前驗證）**：Ed25519 簽章 / 驗證性能優於 RS256 ~10x，但部分 mobile / browser JWT lib 預設僅支援 RS256 / HS256。動工前必須完成以下 PoC（**詳細 PoC plan 見 [PRE-FLIGHT-POCS §3](../docs/poc/PRE-FLIGHT-POCS.md)**）：
 >
 > | Client | 驗證項目 | 後備 |
 > |--------|---------|------|

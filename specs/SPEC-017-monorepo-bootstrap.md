@@ -1,10 +1,12 @@
 # SPEC-017 — Monorepo Bootstrap & Local Dev Environment
 
 > 優先級：**P0（必須在第一行業務 code 之前完成）**
-> 版本：v0.2.5 · 最後更新：2026-05-07
+> 版本：v0.2.6 · 最後更新：2026-05-07
 > 依賴：SPEC-014（架構定義）
 > 被依賴：所有 SPEC（實作載體）
 
+> **v0.2.6 變更**：§11 新增 §11.3「PR #1 動工前 PoC gating」，明示 PoC-A（EdDSA / LIFF）+ PoC-B（Cloudflare Edge runtime 5 場景）為 PR #1 acceptance check 之前置 gating，PoC 結果未回填即拒絕 merge；連結至 [`docs/poc/PRE-FLIGHT-POCS.md`](../docs/poc/PRE-FLIGHT-POCS.md)。
+>
 > **v0.2.5 變更**：(1) **T-7 mutation testing 門檻分階段**：§3.3 R-4 由「caught rate ≥ 75% 否則發 alert」修正為「MVP 起步 ≥ 60%、每季度 +5%、6 個月內達 75%」分階段門檻；(2) **T-8 CI runner**：§11.2.10 規模預期表新增 GitHub Actions `ubuntu-latest-4-cores` runner 為 CI 預設選擇（< 15 min cold cache），standard `ubuntu-22.04` 2-core runner 降為 fallback（< 30 min）；補 runner 選擇說明。
 >
 > **v0.2.4 erratum（2026-05-07）**：修正 §2 file tree 註解與 §8 CI workflow 中遺留的 Rust 1.78 化石標註，與 §3 toolchain 表 / §4.2.1 `rust-toolchain.toml` 之 `1.85`（edition 2024）對齊。發現過程：跨檔審視 H-2 版本一致性議題（SPEC-000 v0.2.4 sweep round 3）。
@@ -907,6 +909,24 @@ make test
 | Reject 紅線 | 任一 §11.2.1 ~ §11.2.7 缺項；任何 unsafe block；任何 hardcoded secret；任何業務邏輯 |
 
 > **Runner 選擇（T-8）**：CI 預設使用 GitHub Actions `ubuntu-latest-4-cores` runner（4 vCPU / 16GB RAM，計費為標準 runner 2x）。原 `ubuntu-22.04` 標準 runner（2 vCPU）冷快取下 12 services × `cargo build` 接近 25 分鐘上限沒有 buffer，4-cores runner 並行編譯後降至 ~12-15 分鐘。standard runner 僅作為 fallback（large runner 配額耗盡時降級）。`.github/workflows/ci.yml` 之 `runs-on: ubuntu-latest-4-cores`。
+
+### 11.3 PR #1 動工前 PoC gating（T-9 / T-10）
+
+> 詳細 PoC plan 見 [`docs/poc/PRE-FLIGHT-POCS.md`](../docs/poc/PRE-FLIGHT-POCS.md)。本節為 acceptance hook：以下 PoC **必須先完成**並回填結果至 PoC 文件 §3.5 / §4.4，才能正式啟動 Codex PR #1 之 §11.2 acceptance check。
+
+| PoC | 對象 | 阻擋之 PR #1 部件 | Acceptance |
+|-----|------|------------------|-----------|
+| **PoC-A** | EdDSA mobile / LIFF SDK 相容性（T-9）| §11.2.4 LIFF stub 之 `liff.init()` 整合；user-service JWT signing 演算法定版 | LINE iPhone + Android webview 內 `crypto.subtle.generateKey({name:'Ed25519'})` 成功；或退路啟用 RS256 dual-algo / fallback，對應 SPEC-010 §3.1.2 patch 完成 |
+| **PoC-B** | Cloudflare Pages Edge runtime 限制（T-10）| §11.2.4 `apps/web` 之 next.config.mjs 部署模式定版（Edge / Node.js / Hybrid）| 5 個子場景（KYC iframe / WS / Server Actions / fetch / env binding）pass；任一失敗對應退路啟用，SPEC-014 §3.2.1 patch 完成 |
+
+**Codex PR #1 之 PR description 必須在開頭明示**：
+
+```
+PoC-A 結果: ✅ Pass / ⚠️ Dual-algo / ❌ RS256 fallback (link: docs/poc/PRE-FLIGHT-POCS.md §3.5)
+PoC-B 結果: ✅ Pass / ❌ 退路啟用: <選項> (link: docs/poc/PRE-FLIGHT-POCS.md §4.4)
+```
+
+PoC plan 文件之 §3.5 / §4.4 PoC 紀錄欄位仍為 Pending → CI / review pipeline **拒絕** merge PR #1。
 
 ---
 
