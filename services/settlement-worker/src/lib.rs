@@ -169,6 +169,16 @@ impl SettlementBatchRunner {
         let halted = snapshot.enabled;
         self.run_with_retry_and_halt_check(progress, move || halted, execute)
     }
+
+    pub fn run_with_retry_and_halt_reader(
+        self,
+        progress: SettlementProgress,
+        reader: &impl sdk::feature_flags::EngineHaltFlagReader,
+        execute: impl FnMut(&SettlementBatch) -> Result<(), SettlementExecutionError>,
+    ) -> SettlementProgress {
+        let snapshot = reader.engine_halt_snapshot();
+        self.run_with_retry_and_halt_snapshot(progress, &snapshot, execute)
+    }
 }
 
 #[must_use]
@@ -452,6 +462,34 @@ mod tests {
         let progress = SettlementBatchRunner::new(batches).run_with_retry_and_halt_snapshot(
             SettlementProgress::default(),
             &snapshot,
+            |_batch| {
+                executed += 1;
+                Ok(())
+            },
+        );
+
+        assert_eq!(executed, 0);
+        assert!(progress.records.is_empty());
+    }
+
+    #[test]
+    fn batch_runner_pauses_when_shared_halt_reader_is_enabled() {
+        let flags = sdk::feature_flags::InMemoryFeatureFlagStore::default();
+        sdk::feature_flags::EngineHaltFlagWriter::halt_engine(
+            &flags,
+            "incident-123",
+            "ops incident",
+            "senior-1",
+        );
+        let batches = build_settlement_batches(
+            "mkt-election",
+            [Position::new("pos-1", "user_01", Outcome::Yes, 1, 50)],
+        );
+        let mut executed = 0;
+
+        let progress = SettlementBatchRunner::new(batches).run_with_retry_and_halt_reader(
+            SettlementProgress::default(),
+            &flags,
             |_batch| {
                 executed += 1;
                 Ok(())

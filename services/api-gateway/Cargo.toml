@@ -18,5 +18,12 @@ tokio.workspace = true
 tower = "0.5"
 tracing.workspace = true
 
+[dev-dependencies]
+matching-engine = { path = "../matching-engine" }
+proto = { path = "../../crates/proto" }
+settlement-worker = { path = "../settlement-worker" }
+tonic.workspace = true
+ws-gateway = { path = "../ws-gateway" }
+
 [lints]
 workspace = true

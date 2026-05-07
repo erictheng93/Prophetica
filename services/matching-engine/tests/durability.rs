@@ -50,7 +50,7 @@ async fn synchronous_standby_loss_makes_primary_fail_closed_and_alerts() {
             .metadata()
             .get("x-error-code")
             .and_then(|value| value.to_str().ok()),
-        Some("ERROR_CODE_FAILED_PRECONDITION")
+        Some("ERROR_CODE_ENGINE_READ_ONLY")
     );
     assert_eq!(
         guard.events(),
@@ -113,7 +113,7 @@ async fn engine_applies_shared_halt_flag_snapshot_from_control_plane() {
     let guard = EngineDurabilityGuard::default();
     flags.halt_engine("incident-123", "ops incident", "senior-1");
 
-    guard.apply_engine_halt_snapshot(&flags.engine_halt_snapshot());
+    guard.apply_engine_halt_reader(&flags);
 
     assert!(guard.is_read_only());
     assert!(guard.events().contains(&DurabilityEvent::EngineHalted));

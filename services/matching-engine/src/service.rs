@@ -464,7 +464,7 @@ impl InMemoryEngineService {
             let error_code = if self.durability.is_engine_halted() {
                 "ERROR_CODE_MARKET_HALTED"
             } else {
-                "ERROR_CODE_FAILED_PRECONDITION"
+                "ERROR_CODE_ENGINE_READ_ONLY"
             };
             return Err(status_with_error_code(
                 tonic::Code::FailedPrecondition,

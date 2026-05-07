@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use sdk::feature_flags::HaltFlagSnapshot;
+use sdk::feature_flags::{EngineHaltFlagReader, HaltFlagSnapshot};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DurabilityEvent {
@@ -69,6 +69,10 @@ impl EngineDurabilityGuard {
             }
             state.engine_halted = snapshot.enabled;
         }
+    }
+
+    pub fn apply_engine_halt_reader(&self, reader: &impl EngineHaltFlagReader) {
+        self.apply_engine_halt_snapshot(&reader.engine_halt_snapshot());
     }
 
     #[must_use]

@@ -45,6 +45,13 @@ pub const fn engine_state_payload_from_halt_snapshot(
 }
 
 #[must_use]
+pub fn engine_state_payload_from_halt_reader(
+    reader: &impl sdk::feature_flags::EngineHaltFlagReader,
+) -> Option<EngineStatePayload> {
+    engine_state_payload_from_halt_snapshot(&reader.engine_halt_snapshot())
+}
+
+#[must_use]
 pub fn settlement_status_payload(
     market_id: impl Into<String>,
     status: impl Into<String>,
@@ -129,5 +136,22 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn shared_halt_reader_drives_engine_state_payload() {
+        let flags = sdk::feature_flags::InMemoryFeatureFlagStore::default();
+        sdk::feature_flags::EngineHaltFlagWriter::halt_engine(
+            &flags,
+            "incident-123",
+            "ops incident",
+            "senior-1",
+        );
+
+        let Some(payload) = super::engine_state_payload_from_halt_reader(&flags) else {
+            panic!("enabled halt reader should produce a broadcast payload");
+        };
+
+        assert_eq!(payload.state, "HALTED");
     }
 }
