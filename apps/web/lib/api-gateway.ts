@@ -5,6 +5,8 @@ import type {
   WalletClient,
 } from "@prophetica/ts-sdk";
 
+import { tracedFetch } from "./observability/trace.js";
+
 export const API_GATEWAY_FALLBACK_USER_ID = "user_01";
 
 const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
@@ -53,7 +55,9 @@ export async function fetchWalletOverview(
     options.baseUrl ?? process.env.API_GATEWAY_BASE_URL ?? DEFAULT_API_GATEWAY_BASE_URL,
   );
   const userId = options.userId ?? process.env.PROPHETICA_DEV_USER_ID ?? API_GATEWAY_FALLBACK_USER_ID;
-  const fetcher = options.fetcher ?? fetch;
+  // Default fetcher injects W3C traceparent (SPEC-007 §5.1). Tests pass an
+  // explicit fetcher and bypass propagation by design.
+  const fetcher = options.fetcher ?? ((input, init) => tracedFetch(input, init));
   const ledgerLimit = options.ledgerLimit ?? DEFAULT_LEDGER_LIMIT;
   const walletClientFactory = options.walletClientFactory ?? (await loadWalletClientFactory());
   const walletClient = walletClientFactory({
