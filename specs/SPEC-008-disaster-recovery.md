@@ -1,9 +1,11 @@
 # SPEC-008 — 災備與高可用（Disaster Recovery & HA）
 
 > 優先級：**P1**
-> 版本：v0.1.0 · 最後更新：2026-05-05
+> 版本：v0.2.0 · 最後更新：2026-05-07
 > 依賴：SPEC-002, SPEC-003, SPEC-007
 > 被依賴：SPEC-013
+
+> **v0.2.0 變更（T-2 RPO 拆兩層）**：§2 RTO/RPO 表將 RPO 拆為「Region-local RPO（Tokyo 同 region synchronous standby + WAL fdatasync + Kafka acks=all）」+「Cross-region RPO ≤ 5 秒（async streaming replication 至 Singapore DR）」雙欄，消除原 v0.1「RPO=0」與 §3 跨區 async replication 之物理矛盾；新增 §2.1 Region-local RPO=0 三重保證實作要求 + §2.2 Cross-region RPO ≤ 5 秒 SLA 邊界與玩家通知策略。
 
 ---
 
@@ -13,17 +15,35 @@
 
 ## 2. RTO / RPO 目標
 
-| 服務 | RPO（資料丟失容忍）| RTO（恢復時間）| 優先級 |
-|------|------------------|---------------|--------|
-| 帳本（Ledger）| 0 | < 5 分鐘 | P0 |
-| 撮合引擎 | < 1 秒 | < 30 秒 / 市場 | P0 |
-| 玩家錢包 | 0 | < 5 分鐘 | P0 |
-| 結算服務 | < 1 分鐘 | < 30 分鐘 | P1 |
-| 客戶 KYC 資料 | 0 | < 1 小時 | P1 |
-| 撮合事件流（WAL）| 0 | < 5 分鐘 | P0 |
-| WebSocket 推播 | < 5 秒 | < 5 分鐘 | P1 |
-| 行銷頁面 | < 1 小時 | < 2 小時 | P3 |
-| 報表 / 分析 | < 24 小時 | < 24 小時 | P3 |
+> **RPO 分兩層**（T-2，2026-05-07 修正）：原本「帳本 RPO = 0」與 §3.1 / §5.1 之 async streaming replication（跨區延遲 ~70-100ms）物理矛盾；本表將 RPO 拆為「**Region-local RPO**」與「**Cross-region RPO**」兩欄。Tokyo Primary 之同 region synchronous standby 提供 RPO=0，跨區 Singapore DR 為 async replication 提供 RPO ≤ 5 秒。Failover 至 DR 區接受最多 5 秒資料丟失之 SLA。
+
+| 服務 | Region-local RPO（Tokyo 同 region）| Cross-region RPO（Tokyo → Singapore DR）| RTO（恢復時間）| 優先級 |
+|------|---------------------------------|-------------------------------------|---------------|--------|
+| 帳本（Ledger）| **0**（synchronous standby + WAL fdatasync + Kafka acks=all）| **≤ 5 秒**（async streaming replication）| < 5 分鐘 | P0 |
+| 撮合引擎 | < 1 秒（per-market WAL + Kafka acks=all）| ≤ 5 秒（Kafka MirrorMaker 2 lag）| < 30 秒 / 市場 | P0 |
+| 玩家錢包 | **0**（同 ledger）| **≤ 5 秒**（同 ledger）| < 5 分鐘 | P0 |
+| 結算服務 | < 1 分鐘（saga checkpoints）| ≤ 5 分鐘 | < 30 分鐘 | P1 |
+| 客戶 KYC 資料 | **0**（R2 Object Lock 雙寫 EU + Singapore）| **0**（R2 全球複製，呼應 SPEC-001 §4.1）| < 1 小時 | P1 |
+| 撮合事件流（WAL）| **0**（fdatasync 每 100 events 或 50ms）| ≤ 5 秒（Kafka MirrorMaker）| < 5 分鐘 | P0 |
+| WebSocket 推播 | < 5 秒（in-memory subscriber state）| < 30 秒（reconnect + gap detect）| < 5 分鐘 | P1 |
+| 行銷頁面 | < 1 小時 | < 1 小時 | < 2 小時 | P3 |
+| 報表 / 分析 | < 24 小時 | < 24 小時 | < 24 小時 | P3 |
+
+### 2.1 Region-local RPO=0 實作要求（撮合 + ledger + wallet）
+
+「Region-local RPO=0」之達成需要**雙重保證**，缺一不可：
+
+1. **PostgreSQL synchronous standby（同 region）**：Tokyo Primary 至少配置一個 same-region synchronous standby（`synchronous_commit = on` + `synchronous_standby_names = 'standby1'`），commit 必須等該 standby 確認 WAL 接收才返回。失去 standby 時系統進入 fail-closed（Primary 拒寫）而非 fail-open。
+2. **撮合引擎 WAL fdatasync**：per-market WAL 每 100 events 或 50ms（取先到者）`fdatasync()`，呼應 SPEC-003 §8.2。
+3. **Kafka acks=all + replication.factor=3**：撮合事件 publish 至 Kafka 採同步多副本確認，呼應 SPEC-003 §8.1。
+
+任一機制失效 → P0 告警 + Primary 進入 read-only mode 等待修復；不允許「降級為 RPO ≤ 5 秒同 region」之操作。
+
+### 2.2 Cross-region RPO ≤ 5 秒之 SLA 邊界
+
+- DR failover 至 Singapore 時，**接受**最近 ≤ 5 秒之撮合事件 / ledger entries / wallet 異動丟失
+- 對玩家通知策略：failover 後若偵測到丟失，自動寄出「事故說明 + 受影響交易明細」郵件，並由客服 follow up 個案處理
+- 此 5 秒 RPO 為**業務 SLA 上限**；技術 SLO（async replication lag）平時應 < 1 秒，> 3 秒觸發 P1 告警，> 5 秒持續觸發 P0 + DR 區介入
 
 ## 3. 多區架構
 

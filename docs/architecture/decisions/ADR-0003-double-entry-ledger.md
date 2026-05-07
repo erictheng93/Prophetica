@@ -231,14 +231,17 @@ E 否決。但本決策中採納其**設計理念**：SPEC-002 §4.2 的 Chart o
 ## 5. 雙簿記的核心不變式（Invariant Reaffirmation）
 
 > 此節為 SPEC-002 §5 的決策層級複述，目的是讓這些不變式從「實作要求」升格為「架構紅線」。
+>
+> **§5 INV 集合自 v1.0.2 起由 [ADR-0006](./ADR-0006-ledger-invariant-set-extension-inv6.md) §4.1 擴展為 INV-1 ~ INV-6**：(a) INV-2 公式擴展含 `Player.Frozen.*`；(b) INV-4 範圍擴展含 `Player.Frozen.X`；(c) 新增 INV-6 `Player.Wallet.*` outflow 白名單（連動 R-1 紅線清除）。本表保留原 v1.0 形式作為 ADR-0003 之歷史紀錄；**現行有效 INV 集合請以 ADR-0006 §4.1 為準**。
 
-| ID | 不變式 | 機械化檢查方式 |
+| ID | 不變式（v1.0 原文，已被 ADR-0006 §4.1 擴展）| 機械化檢查方式 |
 |----|--------|---------------|
 | **INV-1** | 每個 ledger_transaction 之 entries 借貸代數和為 0 | DB CONSTRAINT TRIGGER（每筆 commit 時檢查）|
-| **INV-2** | Σ(Player.Wallet.\*) + Σ(Player.Locked.\*) = 平台對玩家負債總額 | 每 5 分鐘對帳腳本 |
+| **INV-2** | Σ(Player.Wallet.\*) + Σ(Player.Locked.\*) = 平台對玩家負債總額（**ADR-0006 §4.1 擴展含 Frozen**）| 每 5 分鐘對帳腳本 |
 | **INV-3** | Bank.TrustAccount + Σ(Revenue.\*) - Σ(Expense.\*) = 平台對玩家負債總額 | 每日 T+1 對帳 |
-| **INV-4** | Player.Wallet.X 任意時刻 ≥ 0（chargeback 反沖外）| application + DB CHECK |
+| **INV-4** | Player.Wallet.X 任意時刻 ≥ 0（chargeback 反沖外，**ADR-0006 §4.1 擴展含 Player.Frozen.X**）| application + DB CHECK |
 | **INV-5** | 每個 ledger_entry 一旦寫入不可 UPDATE / DELETE | DB role 權限 + audit |
+| **INV-6** | （ADR-0006 §4.1 新增）`Player.Wallet.*` outflow 白名單，禁止流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` 等任何兌現科目 | DB CONSTRAINT TRIGGER + CI sentinel-scan grep gate |
 
 任何違反 → 系統進入 P0 安全模式（停盤、凍結出帳）→ 工程 + Compliance 介入。
 
@@ -388,3 +391,4 @@ V-1 ~ V-2 標記為 **must-resolve**（影響第一個 migration script），需
 | 2026-05-05 | v1.0 | Tech Lead | 首版 Accepted |
 | 2026-05-05 | v1.0.1 | Tech Lead | typo-level：§1 對 SPEC-002 不變式的引用由「INV-3」修正為「INV-1」，以對齊本 ADR §5 之編號（SPEC-002 §5 同步重排）。決策內容無變動。 |
 | 2026-05-05 | v1.0.2 | Tech Lead | typo-level：§11「Open Questions」改名為「Pre-Execution Validation Items」並重組為驗證表格，將跨檔決策議題改由 SPEC-000 §5 中央追蹤表收斂。決策內容無變動。 |
+| 2026-05-07 | v1.0.3 | Tech Lead | **§5 INV 集合 partial superseded by [ADR-0006](./ADR-0006-ledger-invariant-set-extension-inv6.md)**：(a) INV-2 公式擴展含 `Player.Frozen.*`（事後 governance 追認 SPEC-002 v0.1.1 自我排除 / Compliance 凍結 / EDD 待審子科目）；(b) INV-4 範圍擴展含 `Player.Frozen.X`（同上）；(c) 新增 INV-6 `Player.Wallet.*` outflow 白名單（連動 [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.md) 紅線清除）。本表保留原 v1.0 形式作為歷史紀錄，現行有效 INV 集合請以 ADR-0006 §4.1 為準。本次屬於「INV 集合擴展」而非「決策反轉」（雙簿記主決策維持 Accepted），故不採 Superseded 狀態；嚴格論本次已超出「typo-level」範疇但屬於「事後 governance 追認 + 紅線強化」之 boundary case，比照 ADR-0001 v1.0.2 處理。 |

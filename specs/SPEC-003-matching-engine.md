@@ -1,10 +1,11 @@
 # SPEC-003 — 撮合引擎詳規（Matching Engine）
 
 > 優先級：**P0**
-> 版本：v0.2.2 · 最後更新：2026-05-07
+> 版本：v0.2.3 · 最後更新：2026-05-07
 > 依賴：SPEC-002
 > 被依賴：SPEC-004, SPEC-007, SPEC-009
 
+> **v0.2.3 變更**：(1) **T-4 hostNetwork 市場路由機制落地**：§17.2 重寫為「市場路由與分配機制」，含 etcd-driven consistent hash routing / 路由架構圖 / 路由決策表（5 種觸發場景）/ 跨服務銜接 / MVP-Scale-up-Scale-out 演進路徑；補 SPEC-007 §6.4 之 etcd lookup 0.5ms hop budget；(2) **T-6 Thread / Runtime 模型分流**：§17.3 重寫，明示「熱市場（前 5%）獨佔 node + current_thread runtime + core pinning」vs「冷市場 multiplex node + multi-thread runtime + work-stealing」之分流策略；含動態升降級流程與 SPEC-017 §6.1.1 範例對齊註記（兩個 binary 或單 binary env-dispatched）；(3) §17.5 升級流程補「升級期間凍結 reroute 決策」防止誤判。
 > **v0.2.2 變更（R-2 紅線清除）**：依業主決議移除 §12.1.1 sentinel `system.platform_announcement` (uid=4)，連帶 §12.1.4「例外情況」整段內容刪除（改為「**無**」）；新增 `RESERVED_REMOVED_USER_IDS` 集合與兩個 unit test 防止 uid=4 未來被重用；對齊 SPEC-009 §5 整段移除冷啟動補貼。對應 [SPEC-000 §5 R-2](./SPEC-000-index.md)；ADR-0001 §6 「唯一例外」描述待新 ADR 更新為「無例外」。
 > **v0.2.1 變更**：(1) §12 加 hedge 允許註記（呼應 [SPEC-000 §5 Q-7](./SPEC-000-index.md) Resolved），明示**不**加 `HEDGE_NOT_ALLOWED` pre-trade 檢查；(2) §12.1.1 sentinel 常數 / §12.1.2 引擎入口檢查 / §12.1.3 CI 靜態掃描三節之 Go 程式碼樣板改寫為 Rust（sorted const slice + `binary_search_by_key`、`tracing::error` audit log、`rg --type rust`），對齊 SPEC-014 v0.2.0 後端切 Rust；(3) §15 `orderbook.rs` Rust 範例取代原 `internal/engine/orderbook.go` Go 範例；(4) §16 測試策略改 Rust 工具鏈（`cargo nextest` 取代 `goleak`、`proptest` 取代 `gopter`、新增 §16.6 mutation testing 對齊 SPEC-017 §3.3 R-4）；(5) §3.1 `Market` struct / §3.2 `Outcome` enum / §14.2 金額計算亦由 Go 改寫為 Rust（型別契約清理）。注意 §6 ~ §11 之 `\`\`\`go` 程式區塊仍保留為**演算法 pseudo-code**，由 §6 開頭註記說明，本次不動。
 > **v0.2.0 變更**：跟隨 SPEC-014 後端切 Rust，本檔之 Go 程式碼示例改寫為 Rust（per-market goroutine → per-market tokio task；`type OrderID = uint64` → 之後直接落地為 ULID `[u8; 16]`，不再經過 PR #1 之 Go→Rust 過渡）。撮合熱路徑在 Rust 下進一步無 GC、無 runtime 抖動，§12 P99 < 5ms SLO 不變但目標達成路徑更直接。
@@ -882,19 +883,102 @@ fn can_cross(taker: &Order, level: &PriceLevel) -> bool {
 - 或：bare-metal Linux server，systemd 管理
 - 不放在 sidecar / sidecar mesh 內（避免 Envoy 引入延遲）
 
-### 17.2 一個市場一個分片，跨機器分配
+### 17.2 市場路由與分配機制（T-4）
+
+> 撮合引擎走 hostNetwork DaemonSet 模式（§17.1），意味著每個 K8s node 上有一個撮合 process；不能用標準 K8s Service load balancer，需自訂市場路由機制。
+
+#### 17.2.1 路由架構
 
 ```
-Machine 1: markets ['m1', 'm2', ..., 'm50']  (per-process load balanced)
-Machine 2: markets ['m51', ..., 'm100']
+                                     ┌─────────────────────┐
+                                     │   etcd cluster      │
+                                     │  /market-routing/   │
+                                     │  {market_id} = node │
+                                     └──────────┬──────────┘
+                                                │
+                                                │ watch
+                                                ▼
+                  ┌──────────────────────────────────────────────────────┐
+                  │             market-service                            │
+                  │    (consistent_hash with virtual nodes; 24×replicas)  │
+                  │     publishes routing decisions to etcd               │
+                  └──────────┬─────────────────────┬─────────────────────┘
+                             │                     │
+              POST /orders   │ lookup              │ event: market.routing.changed
+                             ▼                     ▼
+                ┌────────────────────┐   ┌────────────────────┐
+                │   api-gateway      │   │  matching-engine   │
+                │  forwards to       │   │  pod on selected   │
+                │  designated node   │   │  node (hostPort)   │
+                └────────────────────┘   └────────────────────┘
 ```
 
-熱市場（成交量 > 閾值）獨佔一個 process，避免 GC 拖累其他市場。
+#### 17.2.2 路由決策
 
-### 17.3 升級
+| 階段 | 機制 |
+|------|------|
+| **市場創建（DRAFT → SCHEDULED）**| market-service 計算 `consistent_hash(market_id, virtual_nodes=24)` 對應到當前 active node 集合；寫入 etcd `/market-routing/{market_id} = {node_ip, hostPort}` |
+| **市場開盤（SCHEDULED → OPEN）**| matching-engine pod watch etcd 該 key，被指派之 pod 從 SPEC-008 §6.1 snapshot + WAL 還原 OrderBook，載入 in-memory；ingress ready 後寫 `/market-routing/{market_id}/state = ready` |
+| **下單路由**| api-gateway 查 etcd（cached 30s）取得目標 node IP + hostPort；轉發 gRPC 至該 node 之撮合引擎；若 etcd state 不為 ready，回 503 + Retry-After header |
+| **node failure**| Kubernetes node failure detector（kubelet liveness）+ market-service 同步偵測 etcd lease expiry → 觸發該 node 之所有市場 reroute；新 node 從 snapshot + Kafka WAL replay 還原（呼應 SPEC-008 §4.2 RTO < 5 分鐘）|
+| **node 添加（scale up）**| 新 node 加入後，market-service 重新計算 consistent hash；**僅** rebalance 受影響之 1/N 市場（virtual nodes 設計使 rebalance 量最小）；rebalance 時市場進入 `MIGRATING` 狀態，拒收新 order 直至新 node ready |
+| **熱 / 冷市場分類**| 每日 cron 計算前 24 小時各市場成交量；前 5% 之熱市場標記為 `hot`，獨佔一個 K8s node（hostPort + node taint + affinity）；冷市場 multiplex 共享 node |
+
+#### 17.2.3 跨服務銜接
+
+- market-service 之路由決策邏輯位於 `services/market-service/src/routing.rs`
+- etcd client 採 `etcd-client` crate（tokio-async）
+- routing 變更事件透過 Kafka topic `market.routing` broadcast（呼應 SPEC-014 §6.2）
+- 路由決策之 hot path P99 budget：api-gateway → etcd cache lookup ≤ 0.5ms（呼應 SPEC-007 §6.4 將 hop budget 補為 etcd lookup 之 0.5ms 而非 default 0ms）
+
+#### 17.2.4 演進路徑
+
+- **MVP（< 100 markets）**：consistent hash + 單 etcd cluster
+- **Scale-up（100-1000 markets）**：考慮加 routing cache 至 api-gateway（Redis）；reduce etcd watch fan-out
+- **Scale-out（> 1000 markets）**：考慮多區 etcd（federation）；本 SPEC 不細化，留待規模確認後新 ADR
+
+### 17.3 Thread / Runtime 模型（T-6）
+
+> SPEC-017 §6.1.1 範例之「每 market 一個 thread + core_affinity pin」假設**僅在熱市場 ≤ CPU cores 時成立**。實務上 100 market on 16 cores 時，`core_affinity::set_for_current` 退化為「群組親和性」，多 thread 仍會被 OS scheduler 在共用 core 上切換，P99 抖動仍會發生。本節定義熱 / 冷市場分流策略。
+
+#### 17.3.1 熱市場（trade volume > 閾值，標記為 `hot`）
+
+- **獨佔 K8s node**：透過 §17.2.2 hot 標記 + node taint + pod affinity，確保該 node 上僅運行該熱市場的 matching-engine pod
+- **單一 process + tokio current_thread runtime + LocalSet + core_affinity**：呼應 SPEC-017 §6.1.1 / SPEC-014 R-3 原始設計
+- **CPU pinning**：thread pin 到 node 上的單一 core（透過 `taskset` 或 K8s `cpuManagerPolicy: static`）
+- **適用場景**：成交量前 5% 之熱市場，P99 對 tail latency 敏感
+- **預估規模**：MVP 階段熱市場 ≤ 10 個（每個獨佔一台中等規格 node：8 vCPU / 16GB / NVMe SSD）
+
+#### 17.3.2 冷市場（其餘 95%）
+
+- **multiplex 共享 node**：每 node 運行一個 matching-engine pod，承載多個冷市場
+- **tokio multi-thread runtime + per-market `tokio::task`**（不採 LocalSet，避免 OS thread 數爆炸）
+- **無 CPU pinning**：work-stealing 適用於冷市場（成交量不集中、scheduling jitter 影響可忽略）
+- **適用場景**：長尾市場、剛上架市場、低成交量市場
+- **預估規模**：MVP 階段每 node 承載 ~50 冷市場
+
+#### 17.3.3 動態升降級
+
+- **冷 → 熱**：每日 cron 偵測前 24 小時成交量 ≥ 熱市場閾值 → 自動觸發 promotion 流程：(a) 新 node 啟動專屬 pod；(b) snapshot + WAL replay 還原 OrderBook；(c) 流量切換；(d) 舊 node 上該市場 evict
+- **熱 → 冷**：連續 7 天成交量低於熱閾值 → 自動 demotion，反向流程
+- **promotion / demotion governance**：每次升降級寫 audit log，week-over-week 報表給 Compliance
+
+#### 17.3.4 SPEC-017 §6.1.1 之範例對齊
+
+SPEC-017 §6.1.1 之 `main.rs` 範例（每 market 一 thread + core_affinity）對應**熱市場**之撮合引擎 binary。冷市場 binary 為**獨立 main.rs**，採 `#[tokio::main]` multi-thread runtime + `tokio::spawn` per-market task。兩個 binary 共用 `crates/sdk` + `services/matching-engine/src/{book,match}` 核心邏輯。
+
+實作落地：
+- `services/matching-engine-hot/src/main.rs` — 熱市場 binary
+- `services/matching-engine-cold/src/main.rs` — 冷市場 binary
+- `services/matching-engine/` — 共用 core lib crate（不含 main.rs）
+
+或者單一 binary 透過 env var (`PROPH_ENGINE_MODE=hot|cold`) 在 main.rs 啟動時 dispatch — 取決於 Codex PR #1 之拆分粒度決議；SPEC-017 §11.2 acceptance check 應反映此選擇。
+
+### 17.5 升級
 
 - 滾動升級：新機器啟動 → 從 snapshot + WAL 恢復 → ingress 切換 → 舊機器排乾
 - 強制 graceful shutdown：拒收新 order，處理完佇列後 snapshot 並退出
+- 升級期間市場路由由 market-service 暫時凍結 reroute 決策（避免升級中誤判 node failure 觸發不必要 rebalance）
 
 ## 18. 驗收條件
 

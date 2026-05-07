@@ -1,10 +1,12 @@
 # SPEC-017 — Monorepo Bootstrap & Local Dev Environment
 
 > 優先級：**P0（必須在第一行業務 code 之前完成）**
-> 版本：v0.2.4 · 最後更新：2026-05-07
+> 版本：v0.2.5 · 最後更新：2026-05-07
 > 依賴：SPEC-014（架構定義）
 > 被依賴：所有 SPEC（實作載體）
 
+> **v0.2.5 變更**：(1) **T-7 mutation testing 門檻分階段**：§3.3 R-4 由「caught rate ≥ 75% 否則發 alert」修正為「MVP 起步 ≥ 60%、每季度 +5%、6 個月內達 75%」分階段門檻；(2) **T-8 CI runner**：§11.2.10 規模預期表新增 GitHub Actions `ubuntu-latest-4-cores` runner 為 CI 預設選擇（< 15 min cold cache），standard `ubuntu-22.04` 2-core runner 降為 fallback（< 30 min）；補 runner 選擇說明。
+>
 > **v0.2.4 erratum（2026-05-07）**：修正 §2 file tree 註解與 §8 CI workflow 中遺留的 Rust 1.78 化石標註，與 §3 toolchain 表 / §4.2.1 `rust-toolchain.toml` 之 `1.85`（edition 2024）對齊。發現過程：跨檔審視 H-2 版本一致性議題（SPEC-000 v0.2.4 sweep round 3）。
 >
 > **v0.2.3 erratum（2026-05-05）**：修正 §3 toolchain 表與 §3.2 對 `@cloudflare/kumo` 套件來源的錯誤假設 —— Kumo 發佈於**公開 npm registry**，非 Cloudflare 私有 registry。連帶移除 `KUMO_NPM_TOKEN` 從 `.npmrc` / `make doctor` / CI secret / Vault 的依賴。發現過程：實作 `apps/web` 期間直接讀取 `github.com/cloudflare/kumo` README，並由 `pnpm add @cloudflare/kumo` 從公開 npm registry 解析成功（`v2.0.3`）雙重驗證。落地：`.npmrc` 移除 `@cloudflare:registry` 與 `_authToken` 兩行；`turbo.json` 移除 `KUMO_NPM_TOKEN` 從 `env` 列表；本 SPEC §3 第 114 列 `@cloudflare/kumo` 鎖定方式重寫；§3.2 整節重寫。
@@ -157,7 +159,7 @@ pnpm add @cloudflare/kumo @phosphor-icons/react react react-dom
 | **R-1 TLS** | **rustls** 為預設；sqlx / fred / reqwest / tonic / opentelemetry 皆 `rustls-tls` feature。`rdkafka` 為唯一例外，沿用 librdkafka OpenSSL（cmake-build + ssl feature）。CI Linux runner 須安裝 `libssl-dev cmake clang lld` | §4.2 `[workspace.dependencies]` 及 §8 CI install step |
 | **R-2 Edition** | Rust **edition 2024** + MSRV **1.85+ stable**。新專案直接採最新 edition，避免日後 migrate 成本 | §4.2 `[workspace.package].edition = "2024"`；§4.2.1 `channel = "1.85"` |
 | **R-3 Runtime topology** | 撮合引擎走 `tokio` **current_thread runtime + per-market `LocalSet` + `core_affinity` thread pinning**；其餘 11 個 service 走預設 multi-thread runtime（`#[tokio::main]`） | §6.1.1 撮合引擎 `main` 範例；SPEC-003 §7 詳述 |
-| **R-4 Mutation testing** | `cargo-mutants` **僅針對核心邏輯 crate**（`crates/sdk/ledger`、`services/wallet-ledger-service/src/ledger`、`services/matching-engine/src/{book,match}`）；走 **Nightly CI**（cron），不阻塞 PR；門檻：caught mutation rate ≥ 75% 否則發 Slack alert | §8.2 nightly workflow |
+| **R-4 Mutation testing** | `cargo-mutants` **僅針對核心邏輯 crate**（`crates/sdk/ledger`、`services/wallet-ledger-service/src/ledger`、`services/matching-engine/src/{book,match}`）；走 **Nightly CI**（cron），不阻塞 PR；門檻**分階段**達標：MVP 起步 **≥ 60%**（首 4 週為 baseline）；每季度 +5%；6 個月內達 **≥ 75%**；caught rate 持續低於當期門檻 → Slack alert + 開 issue 由負責人補測試 | §8.2 nightly workflow |
 | **R-5 Unsafe policy** | workspace 全域 `#![forbid(unsafe_code)]`；例外須 (a) crate-level `#![allow(unsafe_code)]` 屬性、(b) 對應 ADR、(c) SPEC-010 §9 4-eye review。CI 跑 `cargo geiger` 統計 unsafe 行數，新增 unsafe block 觸發 review-required label | §4.2 `[workspace.lints.rust]`；§8 CI cargo geiger gate |
 | **R-6 sqlx offline cache** | `.sqlx/` 目錄 **commit 進 git**；`SQLX_OFFLINE=true` 為 CI 預設，無需 DB 即可編譯。schema drift 由 `make migrate` + sqlx-cli `prepare --check` 在 CI 捕捉 | `.gitignore` 不排除 `.sqlx/`；§8 CI `cargo sqlx prepare --check --workspace` |
 
@@ -899,9 +901,12 @@ make test
 |------|------|
 | PR diff（不含 gen/ 與 lock 檔） | 5,000 – 9,000 行 |
 | Commit 數 | 8 – 15（建議按 §11.2.1 ~ §11.2.8 分階段） |
-| CI 首次 cold cache 時間 | < 25 分鐘（暖快取後 < 8 分鐘） |
-| review 預估輪次 | 2 – 3 輪（Tech Lead + 4-eye for ledger / engine stub）|
+| CI 首次 cold cache 時間（**`ubuntu-latest-4-cores` runner**）| < 15 分鐘（暖快取 < 5 分鐘） |
+| CI 首次 cold cache 時間（標準 `ubuntu-22.04` 2-core runner，僅 fallback）| < 30 分鐘（暖快取 < 10 分鐘）|
+| review 預估輪次 | 2 – 3 輪（Tech Lead + 4-eye for ledger / engine stub，呼應 SPEC-010 §9.3 MS-10）|
 | Reject 紅線 | 任一 §11.2.1 ~ §11.2.7 缺項；任何 unsafe block；任何 hardcoded secret；任何業務邏輯 |
+
+> **Runner 選擇（T-8）**：CI 預設使用 GitHub Actions `ubuntu-latest-4-cores` runner（4 vCPU / 16GB RAM，計費為標準 runner 2x）。原 `ubuntu-22.04` 標準 runner（2 vCPU）冷快取下 12 services × `cargo build` 接近 25 分鐘上限沒有 buffer，4-cores runner 並行編譯後降至 ~12-15 分鐘。standard runner 僅作為 fallback（large runner 配額耗盡時降級）。`.github/workflows/ci.yml` 之 `runs-on: ubuntu-latest-4-cores`。
 
 ---
 

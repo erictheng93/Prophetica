@@ -1,10 +1,11 @@
 # SPEC-002 — 資金安全與虛擬點數帳本
 
 > 優先級：**P0**  
-> 版本：v0.1.6 · 最後更新：2026-05-07  
+> 版本：v0.1.7 · 最後更新：2026-05-07  
 > 依賴：SPEC-001  
 > 被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011
 
+> **v0.1.7 變更**：(1) §5 INV-6 governance 標註更新 — [ADR-0006](../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md) 已落地（Accepted 2026-05-07），擴展 ADR-0003 §5 INV 集合為 INV-1 ~ INV-6；移除 v0.1.5 「待 ADR-0006 落地」與「migration 不得加 CHECK constraint」之過渡標註，wallet-ledger-service migration 可依 ADR-0006 §4.2.1 plpgsql template 實作 INV-6 trigger。(2) **T-3 partition 策略**：§12 OQ #2 由「Phase 1 不分區後 migrate」修正為「Phase 1 從 day 1 即採 monthly range partition by `created_at`（pg_partman）+ BRIN index + 12 個月以上 cold partition detach 至 R2 + foreign table」，避免事後 online migration 高風險操作。(3) **T-5 最終一致性窗口**：§9 新增 §9.3 「撮合 → ledger 最終一致性窗口」，明示 ~100ms eventual consistency 之語意 + 前端 optimistic UI 處理 + 後端 API 提供 `?at_seq=N` / `?consistent=true` 兩種一致性語意 + OTel span 監控（`proph_ledger_event_lag_seconds`）。
 > **v0.1.6 變更（H-5）**：§8.1 chargeback 場景補「累計 ≥ 1 立即永久封號 + 黑名單」門檻，cross-ref SPEC-010 §6.2 / SPEC-016 §6.1；系統故障 reversal 補 cross-ref 至 SPEC-010 §9.3 MS-6（4-eye）。
 > **v0.1.5 變更（R-1 紅線清除）**：(1) §4.2 Chart of Accounts 補新子科目 `Liability.AccountsPayable.{partner_id}`（B2B 業務應付）/ `Expense.AffiliatePartnerFee`（業務現金酬勞）/ `Bank.OperatingAccount.{currency}`（營運帳戶，禁止接收玩家儲值），三者皆與玩家錢包零交集；(2) §5 新增 INV-6：`Player.Wallet.*` outflow 目的地白名單，禁止流向應付帳款 / 營運帳戶 / 業務酬勞等任何「兌現」科目，由 DB CONSTRAINT TRIGGER 強制 + CI sentinel-scan 雙保險；(3) INV-6 ADR governance：code 實作前需先落地 ADR-0006 將 ADR-0003 §5 之 INV 集合從 INV-1 ~ INV-5 擴展為 INV-1 ~ INV-6。對應 [SPEC-000 §5 R-1](./SPEC-000-index.md) 與 SPEC-011 §6.3。
 > **v0.1.4 變更**：§4.4.4 NOTE 3 加 cross-ref 至 [SPEC-000 §5 Q-7](./SPEC-000-index.md)，明示 hedge 政策已 Resolved 為「允許」；本 SPEC 既有逐 `position_id` 結算邏輯維持不變，現由 Q-7 正式背書。
@@ -330,11 +331,11 @@ Txn: settle, idempotency_key='market-X-settle:position-B-001:NO'
 | INV-3 | `Bank.TrustAccount + Σ(Revenue.*) − Σ(Expense.*) = 平台對玩家負債總額` | 每日 T+1 對帳 | 凍結出帳、啟動人工稽核 |
 | INV-4 | `每個 Player.Wallet.X 任意時刻 ≥ 0`（chargeback 反沖外） | 每筆變動 | 拋 INSUFFICIENT_FUNDS；chargeback 例外見 §8.2 |
 | INV-5 | `每個 ledger_entry 一旦寫入不可 UPDATE / DELETE` | 持續 | DB role 權限分離（`ledger_app` 僅 INSERT）+ audit |
-| INV-6 | `Player.Wallet.{user_id}` 之 outflow 目的地白名單：僅限 `Player.Locked.{user_id}` / `Player.Frozen.{user_id}` / `Revenue.TradingFee` / `Revenue.SettlementFee` / `Player.Wallet.{other_user_id}`（限 trade settlement，需 `settle_txn_id` 不空）。**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何銀行 / 支付通路 / 外部錢包科目 | 每筆 commit | DB CONSTRAINT TRIGGER 強制（拒絕 commit）+ CI sentinel-scan grep gate；呼應 SPEC-001 §1.1 ① 「點數不可回兌」與 SPEC-011 §6.3 R-1 紅線 |
+| INV-6 | `Player.Wallet.{user_id}` 之 outflow 目的地白名單：僅限 `Player.Locked.{user_id}` / `Player.Frozen.{user_id}` / `Revenue.TradingFee` / `Revenue.SettlementFee` / `Player.Wallet.{other_user_id}`（限 trade settlement，需 `settle_txn_id` 不空）。**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何銀行 / 支付通路 / 外部錢包科目 | 每筆 commit | DB CONSTRAINT TRIGGER 強制（拒絕 commit，SQLSTATE `40004`）+ CI sentinel-scan grep gate；呼應 SPEC-001 §1.1 ① 「點數不可回兌」與 SPEC-011 §6.3 R-1 紅線；落地 [ADR-0006 §4.2](../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md) |
 
 > **Player.Locked.X ≥ 0**：邏輯上隱含於 INV-1（鎖倉釋出與鎖入必為對沖），由 application 層在下單 / 成交路徑強制檢查。不再單獨列為頂層 INV，避免與 ADR-0003 編號衝突。
 >
-> **INV-6 ADR governance**：本 INV 為 v0.1.5 新增（**R-1 紅線清除**），不在 ADR-0003 §5 原始集合內。**code 實作前必須先完成 ADR-0006**（待業主審閱後落地），明示 ADR-0003 §5 之 INV 集合擴展為 INV-1 ~ INV-6；ADR-0006 應引用 SPEC-001 §1.1 ① 與 SPEC-011 §6.3 為 invariant 動機。在 ADR-0006 落地前，本 INV 可於 SPEC 中先行公布，但 wallet-ledger-service migration 不得加 CHECK constraint（避免破壞既有 INV 編號契約）。
+> **INV 集合 ADR governance**：INV-1 ~ INV-5 由 [ADR-0003 §5](../docs/architecture/decisions/ADR-0003-double-entry-ledger.md) v1.0 拍板；INV-2 / INV-4 公式擴展含 `Player.Frozen.*`（v0.1.1）+ INV-6 outflow 白名單（v0.1.5）由 [ADR-0006 §4.1](../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md) 正式 governance 追認與新增。INV-6 trigger 之 plpgsql function 範本見 ADR-0006 §4.2.1，wallet-ledger-service migration 可依此實作。任何進一步擴展（例如未來新增「合作戒癮機構捐贈」白名單目的地）須先寫新 ADR 標記 ADR-0006 §4.1 之 INV-6 為 partial superseded，附業主 + Compliance + Legal 三方簽核，**不可**直接改 trigger function。
 
 ## 6. Idempotency 與重試
 
@@ -436,6 +437,53 @@ ALTER TABLE ledger_entries
 2. 寫入時 invalidate
 3. cache miss 從 ledger 計算最新 balance（取最後一筆 entry 的 balance_after）
 
+### 9.3 撮合 → ledger 最終一致性窗口（T-5）
+
+> 撮合事件先寫 Kafka 後由 ledger worker 批次消費（§9.1 第 1-2 點），意味著「成交發生」與「玩家錢包餘額更新」之間存在 ~100ms 之最終一致性窗口。前後端必須對此明示處理，否則玩家會在「下單成功」後立即查餘額看不到變化，誤以為系統故障。
+
+#### 9.3.1 一致性語意
+
+| 路徑 | 一致性 | 玩家可觀察延遲 P99 |
+|------|--------|------------------|
+| 撮合 ingressCh → 撮合事件 publish 至 Kafka | strong（in-process）| < 1ms |
+| Kafka publish → wallet-ledger-service consume | strong（Kafka acks=all）| < 5ms |
+| ledger worker batch（100ms / 1000 events） → DB commit | **eventual**（受 batch window 限制）| **≤ 100ms** |
+| ledger DB commit → Redis cache invalidate | strong（同步 invalidate）| < 5ms |
+| Redis cache invalidate → 玩家 GET /wallet 看到新餘額 | strong（cache miss fallback to DB）| < 10ms |
+| **總端到端**（撮合成交 → 玩家查餘額）| **eventual**（≤ 100ms）| **≤ 130ms P99** |
+
+#### 9.3.2 前端 UX 處理（呼應 SPEC-014 §3.2）
+
+- **不依賴**「下單成功 → 立即 GET /wallet」之強一致路徑（會看到 stale balance）
+- **採 optimistic UI**：
+  1. 玩家下單 → API 回 `OrderAccepted` event（含本次預期之 balance delta）
+  2. 前端 local state 立即更新（樂觀 UI）
+  3. WS 訂閱 `wallet.events` topic（呼應 SPEC-003 §10.4 / SPEC-014 §6.2）：當 ledger commit 完成後 server push 真實 balance
+  4. 若 WS push 與 local state 不一致 → 以 server 為準 + UI flash 動畫提示
+- **拒絕模式**：若 risk pre-check 已 reject，立即 API 回 `OrderRejected`，前端不做 optimistic update
+
+#### 9.3.3 後端 API 處理
+
+- `POST /api/v1/orders` 之 response body **不**包含「最終 ledger balance」欄位（避免假裝強一致）
+- 提供 `GET /api/v1/me/wallet?at_seq=N`（撮合 seq）讓客戶端可選擇等到某 seq 之後再取（適用於 reconciliation）
+- 對帳 / 客服場景強制使用 `GET /wallet?consistent=true` flag，後端會等到該玩家之最近未消費 ledger event 全部 commit 才回（trade off latency 換 strong consistency）
+
+#### 9.3.4 不一致窗口監控
+
+呼應 SPEC-007 §6.4，OTel span 量測：
+
+```
+proph_ledger_event_lag_seconds  histogram, labels: stage
+  - stage="kafka_publish"        撮合 ingress → Kafka publish 完成
+  - stage="kafka_consume"        Kafka publish → ledger worker consume 開始
+  - stage="batch_wait"           consume 開始 → batch 觸發
+  - stage="db_commit"            batch 觸發 → DB transaction commit 完成
+  - stage="cache_invalidate"     DB commit → Redis cache invalidate 完成
+  - stage="end_to_end"           撮合 ingress → cache invalidate 完成
+```
+
+P99 端到端 lag > 500ms 持續 5 分鐘 → P1 告警；> 1s → P0。
+
 ## 10. 第三方審計準備
 
 ### 10.1 月度審計工作流
@@ -474,11 +522,13 @@ ALTER TABLE ledger_entries
    - **獨立擴容**：對帳腳本（§11）與 hash chain 驗證對 IO 與 CPU 需求顯著高於 user-service。
    - 落地：服務名 `wallet-ledger-service`，binary 位於 `services/wallet-ledger-service/`（已在 SPEC-014 §4.2 monorepo 結構落地）；對外僅暴露 gRPC（PostTransaction / GetBalance / Reconcile / GetEntries），不開 public REST。
    - 同步更新 [ADR-0003 §11 V-1](../docs/architecture/decisions/ADR-0003-double-entry-ledger.md) 為 Resolved。
-2. ~~**`ledger_entries` partition 策略**：每月 / 每週 / 每年？~~ ✅ **Resolved 2026-05-05**：**Phase 1 不分區**，待量達門檻再以 declarative monthly partition 切換。具體規則：
-   - **不分區門檻內條件**（任一觸及即啟動 partition migration）：(a) `ledger_entries` 行數 > 100M、(b) 單表大小 > 200 GB、(c) 月成長率 > 20M 行、(d) 對帳腳本（§11 每 5 分鐘對帳）執行時間 P95 > 60 秒、(e) hash chain 驗證（§10）30 天驗證 > 30 分鐘。任一觸發 → 開 PR 切 monthly partition。
-   - **Phase 1 預埋**：建表時 `ledger_entries.created_at` 加 `BRIN` index（為 partition pruning 鋪路）；schema migration 採 `pg_partman`-friendly 命名（避免未來 rename 痛點）。
-   - **未來分區策略確定**：採 **monthly range partition by `created_at`**（非 weekly：保留視窗管理成本太高；非 yearly：對帳腳本 hot partition 太大）。冷分區（> 12 個月）轉 R2 Object Lock + Postgres foreign table，呼應 SPEC-008 §6.1 雙寫策略。
-   - 同步更新 [ADR-0003 §11 V-2](../docs/architecture/decisions/ADR-0003-double-entry-ledger.md) 為 Resolved。
+2. ~~**`ledger_entries` partition 策略**：每月 / 每週 / 每年？~~ ✅ **Resolved 2026-05-07（v0.1.7 修正 T-3）**：**Phase 1 直接採 monthly range partition by `created_at`**（透過 `pg_partman`），**不留**「先不分區後 migrate」的技術債。具體規則：
+   - **Phase 1 從 day 1 啟用 monthly partition**：呼應 §9.1 「TPS 50,000 = 300,000 entry inserts/sec — 單一 PostgreSQL 寫不下」之自我估算 — 即便 1k orders/sec 之 baseline 流量，每日 ~5.2 億 entries × 6 entries/order，~3 天即達 100M 門檻；事後做 online partition migration 是高風險操作（鎖表、主從切換、index rebuild），動工前直接 partition 成本與不 partition 相當。
+   - **Partition 鍵與粒度**：`PARTITION BY RANGE (created_at)`，每月一個 partition；採 `pg_partman` 自動建立未來 3 個月之 partition + 自動 detach 12 個月以前之 cold partition。
+   - **冷分區（> 12 個月）**：detach 後 dump 至 R2 Object Lock（WORM）+ Postgres foreign table（postgres_fdw）保留可查詢性，呼應 SPEC-008 §6.1 雙寫策略。
+   - **`ledger_entries.created_at` index**：每個 partition 內走 BRIN（block range index）— 撮合事件之 created_at monotonic 增加，BRIN 對 range query 高效；不採 B-tree（避免每 partition × N 次寫入之 index overhead）。
+   - **Migration governance**：Phase 1 schema migration 由 wallet-ledger-service 之 sqlx migration 直接建立 partitioned table（非「先建普通表後改 partitioned」）；ADR-0003 §11 V-2 同步更新為 Resolved。
+   - **原 v0.1.2 / v0.1.3 之「Phase 1 不分區 + 觸發門檻」設計已撤回**（T-3）：經算量盤點該設計在熱市場下撐不到一週，事後 migration 風險高於前期 partition 設計成本。
 3. **WORM 儲存**：R2 Object Lock vs AWS S3 Glacier（呼應 SPEC-008 §6.1 已部分定案 R2 + S3 雙寫；本 SPEC §10.2 hash chain 寫入 R2 Object Lock 桶為定案，僅 cold archive 介質保留討論）。
 4. ~~**Player Wallet 帳戶在玩家自我排除（永久封號）後如何處理**~~ ✅ **Resolved 2026-05-05**：採 **(b) 轉 sub-account**，新增 `Player.Frozen.{user_id}` 子科目，詳見 §4.2.1；INV-2 / INV-4 同步擴展。
 5. **客服 compensation transaction 介面**：手動表單 vs Workflow 工具（Temporal / Airflow）？追蹤於 ADR-0003 §11 V-3。

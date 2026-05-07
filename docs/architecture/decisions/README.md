@@ -38,10 +38,11 @@ ADR 描述「**為什麼這樣決定 / 為什麼別的方案被否決**」，一
 
 | 編號 | 標題 | 狀態 | 領域 |
 |------|------|------|------|
-| [ADR-0001](./ADR-0001-order-book-with-dmm-over-lmsr.md) | 採用 Order Book + DMM，捨棄 LMSR 與平台造市腳本 | Accepted | matching-engine, liquidity, regulatory |
+| [ADR-0001](./ADR-0001-order-book-with-dmm-over-lmsr.md) | 採用 Order Book + DMM，捨棄 LMSR 與平台造市腳本 | Accepted（v1.0.2 §6 carve-out 撤除）| matching-engine, liquidity, regulatory |
 | [ADR-0002](./ADR-0002-three-company-corporate-structure.md) | 採用三公司架構（BVI Holdings + 離岸 Op Co. + 台灣 Tech Co.）| Accepted（待律師背書）| corporate-structure, legal, tax, regulatory |
-| [ADR-0003](./ADR-0003-double-entry-ledger.md) | 採用雙簿記帳本，捨棄單簿記與「balance += amount」捷徑 | Accepted | ledger, finance, audit, core-architecture, invariant |
+| [ADR-0003](./ADR-0003-double-entry-ledger.md) | 採用雙簿記帳本，捨棄單簿記與「balance += amount」捷徑 | Accepted（§5 INV 集合由 ADR-0006 擴展）| ledger, finance, audit, core-architecture, invariant |
 | [ADR-0004](./ADR-0004-react-stack-due-to-kumo.md) | 採用 Cloudflare Kumo 作為元件庫，前端框架由 Nuxt 3 / Vue 3 切換至 Next.js 15 / React 19 | Accepted | frontend, component-library, framework, accessibility, core-architecture |
+| [ADR-0006](./ADR-0006-ledger-invariant-set-extension-inv6.md) | 帳本不變式集合擴展：新增 INV-6（Player.Wallet outflow 白名單）+ INV-2 / INV-4 對齊 Frozen 子科目 | Accepted | ledger, finance, invariant, audit, compliance, core-architecture |
 
 ## 何時要寫 ADR
 

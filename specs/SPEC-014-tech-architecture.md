@@ -1,8 +1,9 @@
 # SPEC-014 — 整體技術架構（Tech Architecture）
 
 > 優先級：跨章節（被多份 SPEC 依賴）
-> 版本：v0.2.3 · 最後更新：2026-05-07
+> 版本：v0.2.4 · 最後更新：2026-05-07
 >
+> **v0.2.4 變更**：(1) **T-1 service 拓撲 advisory**：§4 新增 §4.1「MVP 合併部署 advisory」，建議 MVP / 公開 Beta 階段將 12 個 service binary 合併為 7 個（保留 service crate 結構不變，僅合併 binary）；列拆分時機 + 合併好處（latency budget 寬鬆 / onboarding -40% / CI -30%）+ 代價（scaling 顆粒度）+ Codex PR #1 落地建議。本節為 advisory 不強制；(2) §4 service 表補 cross-ref 至 SPEC-003 §17.2 routing 與 §17.3 thread model 分流。
 > **v0.2.3 變更（T-10）**：§3.2 新增 §3.2.1「Cloudflare Pages Edge runtime 限制」，明列 KYC iframe / WebSocket fan-out / Server Actions / fetch 行為 / env binding 五個動工前必須完成 E2E PoC 之場景，含已知限制與退路選項（Node.js runtime / 後端 BFF）。
 >
 > **v0.2.2 erratum（2026-05-07）**：修正 §3.1 表格首列遺留之「Rust 1.78+ stable」化石為「Rust 1.85+ stable（edition 2024）」，與 v0.2.1 變更說明一致。發現過程：跨檔審視 H-2 版本一致性議題（SPEC-000 v0.2.4 sweep round 3）。
@@ -160,6 +161,8 @@
 
 ## 4. 服務清單與職責
 
+> **Service 拓撲說明（T-1）**：本表為**目標形態**（DAU > 5,000 後之穩定態），共 12 個 backend services + 2 個 frontend apps。MVP / 公開 Beta 階段建議採 §4.1「合併部署」拓撲降低 onboarding 與 latency 成本，於 DAU > 5,000 或 service 內部複雜度溢出時再拆分為本表形態。
+
 | Service | 語言 | 職責 | 部署規模 |
 |---------|------|------|---------|
 | `api-gateway` | Rust (axum) | 邊緣 API、認證、路由 | 3+ replicas |
@@ -167,8 +170,8 @@
 | `user-service` | Rust (axum + sqlx) | 註冊、登入、profile、TOTP | 3+ replicas |
 | `kyc-service` | Rust | KYC 流程編排、SaaS 整合、webhook | 2+ replicas |
 | `wallet-ledger-service` | Rust (tonic + sqlx) | 雙簿記帳本、idempotency | 3+ replicas + leader |
-| `market-service` | Rust | 市場 CRUD、Oracle、結算狀態 | 2+ replicas |
-| `matching-engine` | Rust (per-market task on tokio runtime) | 撮合引擎（per-market async task）| DaemonSet, hostNetwork |
+| `market-service` | Rust | 市場 CRUD、Oracle、結算狀態、撮合 routing 決策（SPEC-003 §17.2）| 2+ replicas |
+| `matching-engine` | Rust (per-market task on tokio runtime) | 撮合引擎（per-market async task）；MVP 階段熱 / 冷 binary 分流（SPEC-003 §17.3）| DaemonSet, hostNetwork |
 | `position-service` | Rust | 持倉聚合 | 3+ replicas |
 | `settlement-worker` | Rust | 結算批次處理 | 1 active + standby |
 | `risk-antifraud-service` | Rust | 風控規則、行為分析 | 2+ replicas |
@@ -176,6 +179,35 @@
 | `notification-service` | Rust | Email / SMS / Push / 站內訊息 | 2+ replicas |
 | `web-app` | Next.js 15 (React 19) | 玩家前台 | Cloudflare Pages（`@cloudflare/next-on-pages`） |
 | `admin-app` | Next.js 15 (React 19) | 內部後台 | 私網 + mTLS |
+
+### 4.1 MVP 合併部署 advisory（T-1，建議性，非強制）
+
+> **動機**：12 service × 各自 sqlx migrations / OTel instrumentation / Helm chart / Argo CD application = 重複工程量 + onboarding 摩擦；下單熱路徑跨 5+ service hop 累計 P99 也容易超 SPEC-007 §6.4 latency budget。
+>
+> **建議**：MVP / 公開 Beta 階段先合併部署為 7 個 binary，service crate 結構（`services/*/`）保持本表 12 個分離（**Cargo workspace 不變**）但 build / deploy 為合併 binary。當 DAU > 5,000 或某 service 內部複雜度顯著（例如 KYC SaaS 整合需獨立 scaling）時再拆分。
+
+| MVP binary | 合併之 service crate | 拆分時機 |
+|-----------|---------------------|---------|
+| `core-api` | `api-gateway` + `user-service` + `market-service` + `position-service` + `referral-service` | DAU > 5k / referral 規模化（簽 B2B 業務 ≥ 10 家）|
+| `realtime-gateway` | `ws-gateway` | 一直獨立（WS 連線數 scaling 與 HTTP 不同）|
+| `wallet-ledger-service` | 保留獨立 | 帳本服務永遠獨立（attack surface + leader election） |
+| `matching-engine-{hot,cold}` | 保留獨立（兩 binary）| SPEC-003 §17.3 已落地分流 |
+| `settlement-worker` | 保留獨立（active / standby 模式） | — |
+| `kyc-service` | 保留獨立（SaaS 整合 + webhook 安全邊界） | — |
+| `notification-and-risk` | `notification-service` + `risk-antifraud-service` | risk 邏輯 ML 化 / 第三方整合複雜化 |
+
+**合併部署的好處**：
+- 下單熱路徑減少 4-5 個 gRPC hop → SPEC-007 §6.4 latency budget 更寬裕（風控 + wallet 從跨 service 變 in-process call）
+- 12 個 Helm chart → 7 個（onboarding 摩擦 -40%）
+- CI 編譯時間 -30%（fewer link units，shared dependencies）
+
+**合併部署的代價**：
+- 個別 service 之 scaling 不獨立（如 user-service 無法獨立 scale up）
+- attack surface 略增（合併 binary 內部隔離靠 module + workspace lints，不靠 process boundary）
+
+**Codex PR #1 落地建議**：採合併部署。`services/*/` crate 保留本表 12 個結構（lib crate）+ `services/_binaries/{core-api,realtime-gateway,...}/main.rs` 之 7 個 binary crate 引用對應 lib。SPEC-017 §11.2 acceptance check 應反映此拓撲選擇。
+
+> 本 §4.1 為 advisory，**不強制**Codex PR #1 採用；若 Codex 採本表 12-binary 形態實作，需在 PR description 引用 SPEC-007 §6.4 latency budget 並承諾跨 hop 壓測達標。
 
 ## 5. Repository 結構（Monorepo）
 

@@ -152,11 +152,20 @@ price_yes = exp(q_yes / b) / (exp(q_yes / b) + exp(q_no / b))
 - 由「平台帳戶」、「系統帳戶」、「平台公告錢包」自動產生的 NewOrder 訊息
 - 無玩家 user_id 對應、由系統內部產生的訂單
 - 「自動造市」「對沖機器人」「概率對稱」「market_balancer」
-  「auto_quote」「house_book」等字眼之類別 / 套件 / 函式名
+  「auto_quote」「house_book」「probability_symmetry」「auto_hedge」等字眼
+  之類別 / 套件 / 函式名
 - 在訂單簿 ingressCh 中接受 user_id 為內部 service account 的訂單
 ```
 
-> 唯一例外（且仍需 Compliance Officer 個案核准）：SPEC-009 §5「冷啟動補貼」極端情境。此例外必須對玩家完全揭露，UI 標記 `[Platform Bootstrap]`，並寫入月度監管報表。預設情況下**永不啟用**。
+> **無例外（v1.0.2 起）**：本紅線**無任何 carve-out**。原 v1.0.0 / v1.0.1 之「唯一例外：SPEC-009 §5『冷啟動補貼』極端情境」已於 2026-05-07 撤除（呼應業主決議與 [SPEC-000 §5 R-2](../../../specs/SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker)）。
+>
+> 平台**永遠不**在自家訂單簿掛單；不存在任何 feature flag、簽核流程、UI 標記、月度揭露機制可以啟用平台 order。流動性不足時，補貼預算改注入 [SPEC-009 §3.3](../../../specs/SPEC-009-dmm-liquidity.md) DMM rebate 放大或市場延後上架，由獨立第三方 DMM 在訂單簿掛單，平台始終維持中立中介角色。
+>
+> 連動清除清單：
+> - [SPEC-009 §5](../../../specs/SPEC-009-dmm-liquidity.md) 整節已移除（保留 placeholder 章節說明移除理由）
+> - [SPEC-003 §12.1.1](../../../specs/SPEC-003-matching-engine.md) sentinel `system.platform_announcement` (uid=4) 已移除並列入 `RESERVED_REMOVED_USER_IDS` 防重用集合
+> - [SPEC-003 §12.1.4](../../../specs/SPEC-003-matching-engine.md) 「例外情況」內容已改為「**無**」
+> - 本 ADR §6 「唯一例外」段落已撤除（v1.0.2）
 
 ## 7. Validation Criteria
 
@@ -201,3 +210,4 @@ price_yes = exp(q_yes / b) / (exp(q_yes / b) + exp(q_no / b))
 |------|------|------|------|
 | 2026-05-05 | v1.0 | Tech Lead | 首版 Accepted |
 | 2026-05-05 | v1.0.1 | Tech Lead | typo-level：§1 與 §8.1 引用之 PRD.md 已於 2026-05-05 隨 SPEC v0.1.1 升級時刪除，將連結改為 git history 回溯說明，避免 dead link。決策內容無變動。 |
+| 2026-05-07 | v1.0.2 | Tech Lead | **§6「唯一例外」carve-out 撤除**（業主決議 2026-05-07，呼應 [SPEC-000 §5 R-2](../../../specs/SPEC-000-index.md)）：原 v1.0.0 之「唯一例外：SPEC-009 §5『冷啟動補貼』」段落改寫為「**無例外**」；§6 禁字補 `probability_symmetry` / `auto_hedge` 兩個 v1.0 遺漏字串；連動清除清單涵蓋 SPEC-009 §5 / SPEC-003 §12.1.1 sentinel uid=4 / SPEC-003 §12.1.4。本次屬於 **carve-out 撤除**而非決策反轉（Order Book + DMM 主決策仍 Accepted），故維持 Status: Accepted；嚴格論本次已超出「typo-level」範疇但屬於「強化既有 Compliance 紅線」之 boundary case，紀錄於此供未來 audit。決策內容方向**未反轉**，僅將原本就是「強烈建議永不啟用」的 carve-out 改為「永不可啟用」，與 SPEC-001 §1.1 ② zero tolerance 原則對齊。 |
