@@ -13,7 +13,10 @@
     "tests/**/*.ts",
     "lib/api-gateway.ts",
     "lib/engine-api.ts",
+    "lib/idempotency.ts",
     "lib/market-api.ts",
-    "lib/position-api.ts"
+    "lib/position-api.ts",
+    "lib/ws-client.ts",
+    "lib/observability/**/*.ts"
   ]
 }

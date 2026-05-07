@@ -1849,6 +1849,22 @@
   "probabilityChart": {
     "ariaLabel": "YES 價格走勢"
   },
+  "connectionStatus": {
+    "retryCta": "重新嘗試連線",
+    "estimatedResumeLabel": "預估恢復：{ts}",
+    "ws-failed": {
+      "heading": "連線已中斷",
+      "description": "與市場資料的即時連線中斷。已切換為輪詢模式取得行情；下單功能暫時停用，請稍後再試或手動重試連線。"
+    },
+    "halted": {
+      "heading": "市場暫時停盤",
+      "description": "本平台已暫停所有撮合與結算動作，當前持倉維持不變。詳情請見公告；恢復後將以 email 通知。"
+    },
+    "offline": {
+      "heading": "裝置離線",
+      "description": "偵測到網路不可用。網路恢復後將自動重新連線；下單功能於離線期間停用。"
+    }
+  },
   "tradePanel": {
     "validation": {
       "priceInteger": "價格須為整數 cent",

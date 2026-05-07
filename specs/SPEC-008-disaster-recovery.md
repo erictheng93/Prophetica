@@ -1,10 +1,12 @@
 # SPEC-008 — 災備與高可用（Disaster Recovery & HA）
 
 > 優先級：**P1**
-> 版本：v0.2.0 · 最後更新：2026-05-07
-> 依賴：SPEC-002, SPEC-003, SPEC-007
+> 版本：v0.2.1 · 最後更新：2026-05-07
+> 依賴：SPEC-002, SPEC-003, SPEC-007, SPEC-010
 > 被依賴：SPEC-013
 
+> **v0.2.1 變更（F-1 ~ F-5 縫補）**：(1) **F-1**：§9.3 Kill switch 解除明示 cross-ref 至 SPEC-010 §9.3 **MS-9**（multi-sig 中央表為單一真相來源），admin UI 不得自刻一套流程；(2) **F-2**：§7.1 / §7.2 客戶端容錯由「描述性敘述」升級為**可執行技術契約**（exponential backoff 上下限 + jitter、sequence-number reconcile、Idempotency-Key 對齊 SPEC-002 §6.1、retry budget 呼應 SPEC-007 §6.4.4 反 pattern）；(3) **F-3**：§13 OQ #5 移除（已被 SPEC-001 §1.1 ③ 7 年 + Q-2 執照地律師覆蓋）；(4) **F-4**：§5.2 補 inline 註明「Lock / Idempotency 落 PG，**不**存 Redis」呼應 SPEC-002 §6.1；(5) **F-5**：§3.1 補 Cloudflare Edge layer 的 fallback semantics 待 PoC-B 完成後回填。
+>
 > **v0.2.0 變更（T-2 RPO 拆兩層）**：§2 RTO/RPO 表將 RPO 拆為「Region-local RPO（Tokyo 同 region synchronous standby + WAL fdatasync + Kafka acks=all）」+「Cross-region RPO ≤ 5 秒（async streaming replication 至 Singapore DR）」雙欄，消除原 v0.1「RPO=0」與 §3 跨區 async replication 之物理矛盾；新增 §2.1 Region-local RPO=0 三重保證實作要求 + §2.2 Cross-region RPO ≤ 5 秒 SLA 邊界與玩家通知策略。
 
 ---
@@ -51,7 +53,8 @@
 
 ```
             ┌──────────────── Cloudflare Anycast ────────────────┐
-            │                                                      │
+            │           （含 Edge runtime PoC 之靜態 / SSR 層）        │
+            │           （PoC-B 結果待 SPEC-014 §3.2.1 回填）          │
             ▼                                                      ▼
   ┌──────────────────┐                              ┌──────────────────┐
   │ Primary Region   │  ←── Streaming Replication →│ DR Region        │
@@ -64,6 +67,8 @@
   │ • Kafka Cluster  │                              │ • Kafka Cluster  │
   └──────────────────┘                              └──────────────────┘
 ```
+
+> **F-5 待補**：Cloudflare Edge runtime（SPEC-014 §3.2.1 PoC-B）通過後，需回填以下 fallback semantics：(a) 行銷頁面 / 公開市場列表之 Edge cache → Origin 退路；(b) Edge KV 與 Origin DB 之 staleness window；(c) Edge runtime 服務不可用時是否降級至直連 Origin。低優先；可隨 PoC-B 實機驗證結果一同 commit。
 
 ### 3.2 Active-Active vs Active-Passive
 
@@ -139,7 +144,8 @@ Tokyo Redis Cluster (3 master, 3 replica) ←─ async replication ─→ Singap
 
 - AOF + RDB 雙重持久化
 - AOF fsync=everysec（性能與持久性平衡）
-- 快取資料丟失可接受（重建自 PG）；Lock / Idempotency key 不可丟，存於 PG
+- 快取資料丟失可接受（重建自 PG）
+- **Lock / Idempotency key 不存 Redis**：呼應 SPEC-002 §6.1，所有 `Idempotency-Key` 與分散式 lock 落 PostgreSQL `idempotency_records` 表 / `pg_advisory_lock`；Redis **僅**作為熱資料 cache（市場列表 / WS subscriber state / leaderboard）。理由：Redis AOF fsync=everysec 在 worst case 可丟失最近 1 秒寫入，與 SPEC-002 §6 帳本入口的「精確一次」契約不相容
 
 ### 5.3 對帳
 
@@ -167,17 +173,66 @@ DR 區每日對帳：
 
 ## 7. 客戶端容錯
 
-### 7.1 Web 客戶端
+> **v0.2.1 升級**：本節由 v0.2.0 之描述性敘述（exponential backoff / reconcile / idempotency-key 三個名詞）升級為**可執行技術契約**。前端實作（apps/web、apps/liff）必須照本節 §7.1 / §7.2 / §7.3 落地，禁止三人三套；契約變更須 PR 修改本節 + 對應前端 lib 同步更新。
 
-- WebSocket 斷線自動重連（exponential backoff）
-- API 請求自動 retry（GET 冪等；POST 帶 idempotency-key）
-- 客戶端緩存最近狀態，重連後 reconcile
+### 7.1 Web 客戶端 — WebSocket 重連契約
 
-### 7.2 行動端（如有 LIFF）
+| 項目 | 契約 | 理由 |
+|------|------|------|
+| 演算法 | Exponential backoff with full jitter | 避免 thundering herd（後端故障恢復時） |
+| 初始延遲 | **500 ms** | 短於人眼可感知斷線（< 1s）|
+| 倍率 | **2.0** | 標準 binary backoff |
+| Jitter | **±20%（uniform random）** | 分散重連 spike |
+| Cap（單次最大延遲）| **30 s** | 對齊 §8 第三方 DR 切換 TTL；超過此值已脫離「容錯」進入「降級」 |
+| Max attempts | **30 次** | 約 ~10 分鐘總預算（含 jitter）；超過後進入 §7.3 fail-soft 模式 |
+| Heartbeat | client → server `ping` 每 **15 s**；server 30 s 無 pong → 主動關閉 + 觸發重連 | 偵測「TCP 半開連線」（NAT timeout / network partition）|
 
-- 與 Web 同樣自動重連
-- 離線狀態 UI 提示
-- 訂單操作必透過 server，不在 client 擱置
+實作參考：`apps/web/lib/ws-client.ts`（v0.2.1 隨 SPEC patch 落地）。
+
+### 7.2 Web 客戶端 — API retry 與 Idempotency-Key 契約
+
+| 方法 | retry 行為 | Idempotency-Key 要求 |
+|------|-----------|---------------------|
+| `GET` | 自動 retry up to **3 次**（連線級錯誤 / 5xx）；exponential 200ms / 400ms / 800ms | 不需要（讀操作天然冪等）|
+| `POST` / `PUT` / `DELETE`（寫帳本）| **必須**帶 `Idempotency-Key` header；retry 行為由 SPEC-002 §6.1 backend `idempotency_records` 處理；client 端 retry up to **3 次**，**重用同一 key** | **必須**：UUID v7（client-generated，128 bit）|
+| `POST` 非帳本（如 health probe）| 不 retry | 不需要 |
+
+Idempotency-Key 格式：
+
+- **算法**：UUID v7（time-ordered，48 bit unix ms timestamp + 74 bit randomness）
+- **格式**：標準 RFC 4122 字串（36 字元含 hyphen）
+- **生命週期**：每個玩家行為（單次下單、單次儲值、單次申訴）生成 1 個 key，retry 全程重用
+- **觀測性**：寫入 OTel span attribute `idempotency.key`，呼應 SPEC-007 §6.4 latency budget 追蹤
+
+### 7.3 Web 客戶端 — Reconcile 與 fail-soft
+
+**Reconcile 機制**（重連成功後）：
+
+1. WS 訊息 payload 必須帶 monotonic `seq` field（per-subscription 連續整數）
+2. Client 偵測 `seq` gap → 主動發 `GET /api/markets/{id}/snapshot?from_seq=N` 補洞
+3. Backend 應在 60 秒內保留 per-subscription event tail（用於 reconcile）
+4. Reconcile 失敗（gap 過大 / tail 過期）→ 客戶端強制重新訂閱
+
+**Fail-soft 模式**（max attempts 用盡後）：
+
+- 顯示「**連線已中斷**」橫幅（呼應 §9.2 HALTED 狀態 UI 同一 component；SPEC-008 v0.2.1 收斂為單一 `<ConnectionStatusBanner>`）
+- 自動降級為 polling：`GET /api/markets/{id}/book` 每 5 秒
+- **禁止**繼續送下單請求（client 主動 disable 下單按鈕，避免 backend 故障期間累積大量待 retry POST）
+- 提供「**手動重試連線**」按鈕讓玩家主動觸發新一輪 reconnect
+
+**Retry budget 反 pattern 警示**（呼應 SPEC-007 §6.4.4）：
+
+- ❌ 禁止：「永久重試」「無上限 retry」「retry 失敗時把延遲歸零重新算」
+- ❌ 禁止：retry storm — 同一玩家同一秒內超過 3 個 retry POST（client 端 token bucket 限流）
+- ❌ 禁止：對 4xx 錯誤 retry（這是 client bug，不是網路問題）
+
+### 7.4 行動端（LIFF）
+
+- WebSocket 重連契約**完全繼承** §7.1
+- Idempotency-Key 契約**完全繼承** §7.2（LIFF SDK 由 `apps/liff/lib/` 共用 `apps/web/lib/idempotency.ts`）
+- LINE app 切到背景 → WS 由 OS 自動斷開；返回前景時觸發重連，**不**累計成 max attempts
+- 離線狀態 UI 提示：用 `navigator.onLine` 偵測；offline 時直接進入 §7.3 fail-soft，不消耗 retry budget
+- **訂單操作必透過 server，不在 client 擱置**（保留原 v0.2.0 條款 — 對齊 SPEC-001 §1.1 ② 平台中立）
 
 ## 8. 第三方依賴災備
 
@@ -211,7 +266,11 @@ DR 區每日對帳：
 
 ### 9.3 解除
 
-需 **2 of 3** 高權限角色（CTO / Compliance / Senior Engineer）共同解除。
+**呼應 SPEC-010 §9.3 MS-9**（multi-sig 治理中央表）：Kill switch 解除需 **2-of-3** CTO / Compliance / Senior Engineer 共同簽核。
+
+> **重要 governance 約束**（v0.2.1 補）：admin / Compliance UI **不得**為 MS-9 自刻一套簽核流程；必須使用 SPEC-010 §9.3.3 規範之**單一** multi-sig component（schema 由 §9.3.1 規則總表驅動）。簽核者強制 hardware MFA（YubiKey / Passkey），對應 step-up MFA 過去 30 分鐘內仍有效。任何對 MS-9 簽核要求之變更（如改成 3-of-3、加入 RG Officer），須先 PR 修 SPEC-010 §9.3.1，本節僅為呼應引用。
+
+解除動作必須寫入 `audit_logs`（呼應 SPEC-012 §5.3），`metadata.ms_id = "MS-9"`、`action = "kill_switch_release"`、`subject_id` 為觸發停盤之事故 ID。
 
 ## 10. 演練計畫（Drill Schedule）
 
@@ -247,4 +306,5 @@ DR 區每日對帳：
 2. PostgreSQL 物理複製還是邏輯複製？跨雲建議邏輯複製
 3. Kafka MirrorMaker 2 vs Confluent Replicator？
 4. 緊急停盤是否同時影響 KYC / 客服流程？預設不影響，但需確認
-5. 監管要求最低備份保留期是多久？（依執照地）
+
+> **OQ #5 已 Resolved（v0.2.1，2026-05-07）**：「監管要求最低備份保留期」由 **SPEC-001 §1.1 ③ 7 年保留**（KYC / 帳本 / 撮合事件冷備）+ SPEC-000 §5 Q-2 執照地律師最終意見覆蓋（若執照地另有更長要求則以執照地為準，現有設計 §6.1 cold archive 7 年留有上修空間）。本檔不再追蹤此議題。
