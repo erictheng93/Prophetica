@@ -1,9 +1,11 @@
 # SPEC-007 — 可觀測性與監控（Observability & Monitoring）
 
 > 優先級：**P1**
-> 版本：v0.1.0 · 最後更新：2026-05-05
+> 版本：v0.2.0 · 最後更新：2026-05-07
 > 依賴：SPEC-003, SPEC-014
 > 被依賴：SPEC-008, SPEC-013
+
+> **v0.2.0 變更**：(1) **T-11 SLO 表補漏**：§6.1 補 `wallet-ledger-service`（gRPC P99 / 對帳腳本 / INV 違反）與 `market-service`（CRUD API / Review 處理 / OPEN-CLOSED 切換誤差）兩個 P0 service 之 SLO；Matching Engine SLO 拆「引擎內部 < 5ms」與「下單端到端 < 30ms」雙層，消除 SPEC-003 §11 P99 SLO 邊界含糊問題。(2) **新增 §6.4 跨服務 Latency Budget**：明示玩家下單熱路徑 11 個 hop 的 P99 時間預算（總和 18.5ms + 11.5ms safety margin = 30ms 端到端 SLO）；含撮合事件下游 fan-out budget；OTel span 對照表；budget 違反處理（P1 alert / release gate 阻擋）；budget 變更管控（不容忍自動放寬）。SDD 防呆設計：避免「各 service P99 都達標但加總超標」的金融撮合系統典型踩坑。
 
 ---
 
@@ -170,11 +172,16 @@ proph.txn_id
 | 服務 | SLI（量測） | SLO（目標）| 錯誤預算 / 月 |
 |------|-----------|-----------|--------------|
 | API Gateway | 5xx error rate | < 0.1% | 43 分鐘 |
-| Matching Engine | match latency P99 | < 5ms | 7.2 hours of degraded |
-| WebSocket | message delivery | > 99.9% | 43 分鐘 |
-| Payment Gateway | webhook processing | < 30s P99 | 4 小時 |
-| Settlement | batch completion | within 10min | 1 次 / 月 |
-| KYC Webhook | processing | < 1min P99 | 4 小時 |
+| Matching Engine | **撮合引擎內部** match latency P99（撮合事件接受 → 事件 publish 至 Kafka 前）| < 5ms | 7.2 hours of degraded |
+| Matching Engine（端到端）| 玩家下單 API receive → 撮合事件入 Kafka P99 | < 30ms | 4 hours of degraded |
+| **wallet-ledger-service**（T-11 補）| `PostTransaction` gRPC call latency P99；`Σ(Wallet)+Σ(Locked)+Σ(Frozen)` 對帳腳本（5 min 跑一次）執行時間 P99；INV-1 ~ INV-6 違反次數 | gRPC < 50ms / 對帳 < 60s / INV 違反 = 0 | gRPC 4 hours / 對帳 1 次 / INV 0 容忍 |
+| **market-service**（T-11 補）| 市場 CRUD API P99；REVIEW → SCHEDULED 中位處理時間；OPEN ↔ CLOSED 自動切換誤差 | API P99 < 200ms / Review < 24h / 切換誤差 < 5s | API 4h / 切換 30 min |
+| WebSocket | message delivery（gap-detected reconnect 不算 fail）| > 99.9% | 43 分鐘 |
+| Payment Gateway | webhook processing（HMAC verify → ledger commit）| < 30s P99 | 4 小時 |
+| Settlement | batch completion（10k-100k 持倉）| within 10min | 1 次 / 月 |
+| KYC Webhook | processing（SumSub webhook → user_kyc_records 更新）| < 1min P99 | 4 小時 |
+
+> SLO 量測自 OpenTelemetry span（呼應 §5.3 必含 attributes），由 Prometheus AlertManager 計算 burn rate。
 
 ### 6.2 錯誤預算政策
 
@@ -189,6 +196,102 @@ Grafana 統一 SLO Dashboard：
 - 每個 SLO 即時錯誤預算進度條
 - 30 / 90 / 365 天 burn rate
 - 預算耗盡預測
+
+### 6.4 跨服務 Latency Budget（下單熱路徑）
+
+> **動工前合約**：本節為「玩家下單」端到端熱路徑之 P99 時間預算分解。每一 hop 的預算是契約，service owner 對自己 hop 之 P99 達標負責；**任一 hop 超 budget 即觸發 P1 告警並阻擋 release**（呼應 SPEC-013 §4.4 Auto-rollback）。
+>
+> 金融撮合系統 SDD 最常被遺漏但動工後最容易踩到的就是「各 service P99 都達標但加總超標」。先把預算寫在 SPEC 上，OTel span 直接量測對照。
+
+#### 6.4.1 下單熱路徑（玩家 LIMIT order）
+
+```
+玩家瀏覽器
+  │ HTTPS POST /api/v1/markets/{id}/orders
+  │ Idempotency-Key + JWT cookie
+  ▼
+[Cloudflare Edge]                                    ─── budget P99 ≤ 5ms（含 TLS termination + WAF + 路由）
+  │
+  ▼
+[api-gateway]（axum）
+  ├─ JWT verify (Ed25519)                            ─── budget P99 ≤ 1ms
+  ├─ rate limit check (Redis)                        ─── budget P99 ≤ 1ms（Redis op P99 < 0.5ms × 2 hops）
+  ├─ idempotency lookup (PG)                         ─── budget P99 ≤ 2ms
+  └─ route to risk + wallet（並行）
+  ▼
+[risk-antifraud-service]（並行 ─ 不阻塞 wallet）       ─── budget P99 ≤ 3ms（規則引擎 in-memory + Redis behavior cache）
+  │
+  ▼
+[wallet-ledger-service]（必經串列）
+  ├─ Redis cache hit on wallet balance              ─── budget P99 ≤ 1ms（cache miss 時 +5ms 從 PG 取最後 entry）
+  └─ pre-trade lock check + funds available         ─── budget P99 ≤ 2ms（不寫 ledger，僅 reservation）
+  ▼
+[matching-engine]（per-market tokio task）
+  ├─ ingressCh enqueue                               ─── budget P99 ≤ 0.5ms（channel send）
+  ├─ apply_order to OrderBook（in-memory）          ─── budget P99 ≤ 1ms（撮合本身）
+  └─ publish events                                  ─── budget P99 ≤ 1ms（WAL fdatasync + Kafka acks=all）
+  ▼
+[api-gateway 回應 client]                            ─── budget P99 ≤ 1ms（response serialization）
+
+──────────────────────────────────────────────────────────────────────
+端到端 P99 budget 總和: ≤ 18.5ms（留 11.5ms safety margin to 30ms SLO）
+```
+
+#### 6.4.2 Latency Budget 表（OTel span name 對照）
+
+| Hop | OTel span | P99 budget | 來源 SPEC | 達標策略 |
+|-----|-----------|-----------|----------|---------|
+| Cloudflare edge | `cf.edge.process` | 5ms | SPEC-014 §3.3 | Anycast + WAF cache；不可控因素由 Cloudflare SLA 涵蓋 |
+| JWT verify | `auth.jwt.verify` | 1ms | SPEC-010 §3.1.2 | Ed25519 signature verify ~50μs；含 cookie parse + claim 檢查 |
+| Rate limit | `ratelimit.check` | 1ms | SPEC-010 §2.2 | Redis `INCRBY` + `EXPIRE`，pipeline 一次 RTT |
+| Idempotency lookup | `idempo.lookup` | 2ms | SPEC-002 §6.1 | PG primary key lookup；hot index in shared_buffers |
+| Risk pre-trade | `risk.precheck` | 3ms | SPEC-010 §4 | rules in-memory；Sift / Sardine 之 ML score 走 cache（5 min TTL）|
+| Wallet balance check | `wallet.balance.check` | 1ms（cache hit）/ 6ms（miss）| SPEC-002 §9.2 | Redis cache 命中為主；miss fallback 從 ledger 算 latest balance |
+| Wallet lock funds | `wallet.lock.reserve` | 2ms | SPEC-002 §6 | reservation API（不寫 ledger entry，僅 in-memory reservation + Redis lock）|
+| Engine ingress | `engine.ingress.enqueue` | 0.5ms | SPEC-003 §7.1 | mpsc channel send；back-pressure 時 reject |
+| Order apply | `engine.order.apply` | 1ms | SPEC-003 §11 | in-memory BTreeMap + VecDeque |
+| Event publish | `engine.event.publish` | 1ms | SPEC-003 §8 | WAL fdatasync 每 100 events 或 50ms；Kafka producer 走 async batch |
+| API response | `api.response.serialize` | 1ms | — | JSON serde |
+| **小計** | — | **18.5ms** | — | — |
+| Safety margin | — | 11.5ms | — | 應對 GC / scheduler jitter / network microburst |
+| **端到端 SLO** | `api.order.submit.e2e` | **30ms** | §6.1 SLO | — |
+
+#### 6.4.3 撮合事件下游 Fan-out Budget（撮合 → WS 推播 → client receive）
+
+```
+[matching-engine] event publish
+  │
+  ▼
+[Kafka cluster] replicate (acks=all, replication=3)   ─── budget P99 ≤ 5ms（同 region in-cluster）
+  │
+  ▼
+[ws-gateway] consume + fan-out to subscribers         ─── budget P99 ≤ 5ms（含 user_id → connection lookup + 序列化）
+  │
+  ▼
+[Cloudflare WS proxy]                                  ─── budget P99 ≤ 10ms（跨區 + TLS）
+  │
+  ▼
+[client receive]                                       ─── budget P99 ≤ 10ms（network + browser event loop）
+
+──────────────────────────────────────────────────────────────────────
+端到端 P99 budget 總和: ≤ 30ms（對齊 §6.1 WebSocket SLO）
+```
+
+#### 6.4.4 Budget 違反處理
+
+- **OTel span 必輸出 `latency.budget.{hop}` attribute**，標示該 hop 之 budget 與實測 P99
+- Prometheus alert：任一 hop 之實測 P99 > 1.5 × budget 持續 5 分鐘 → P1 告警；> 2 × budget → P0 告警
+- Grafana SLO Dashboard 新增「Latency Budget Heatmap」面板，按 hop × time 顯示 budget 使用率
+- **release gate**（SPEC-013 §4.4）：staging 壓測時各 hop P99 > budget 即阻擋 prod canary
+
+#### 6.4.5 Budget 變更管控
+
+- Latency budget 為**契約**，不是估算 — 任何 hop 之 budget 修改須 PR review + 對應 SPEC 章節更新
+- 若實測 P99 持續超 budget → **不**自動放寬 budget，先做以下三選一：
+  1. service owner 優化（DB index / Redis cache / 演算法）
+  2. 調整服務拓撲（合併 hop / 改 in-process call）
+  3. 若以上不可行，提 ADR 重新分配 budget（需另一 hop 讓出 buffer）
+- 「自動放寬 budget」是反 pattern — 一旦容忍 budget breach，下一個迭代的 budget 就會持續向上漂移，最終端到端 SLO 失守
 
 ## 7. 告警與 Runbook
 

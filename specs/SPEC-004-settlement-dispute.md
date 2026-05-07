@@ -1,9 +1,12 @@
 # SPEC-004 — 結算與爭議處理
 
 > 優先級：**P0**
-> 版本：v0.1.0 · 最後更新：2026-05-05
+> 版本：v0.1.2 · 最後更新：2026-05-07
 > 依賴：SPEC-002, SPEC-003
 > 被依賴：SPEC-007, SPEC-012
+
+> **v0.1.2 變更（T-12）**：§7.4 batch size 由 1000 → 500（降低 transaction window 與撮合 ledger worker 之 lock contention）；§7.5 新增結算排程強制 off-peak（UTC 18:00 ~ 22:00 / 台北 02:00 ~ 06:00）。
+> **v0.1.1 變更**：§4.2 `OracleSubmission` 型別由 Go struct 改寫為 Rust struct（`chrono::DateTime<Utc>` + `Vec<u8>` Ed25519 signature + `OutcomeResult` enum），對齊 SPEC-014 v0.2.0 後端切 Rust；DB schema 真相來源仍由 SPEC-015 §6.3 集中管理。
 
 ---
 
@@ -75,17 +78,25 @@
 
 ### 4.2 Oracle 提交流程
 
-```go
-type OracleSubmission struct {
-    MarketID       string
-    OutcomeResult  Outcome      // YES / NO / VOID
-    SubmittedBy    UserID
-    SubmittedAt    time.Time
-    EvidenceURLs   []string     // 證據連結
-    EvidenceHash   string       // 證據檔案 SHA256
-    Notes          string
-    Signature      string       // Operator 數位簽章
+> 本 struct 為應用層型別；DB schema 真相來源見 [SPEC-015 §6.3](./SPEC-015-market-lifecycle.md) 之 `oracle_submissions` 表。
+
+```rust
+use chrono::{DateTime, Utc};
+
+pub struct OracleSubmission {
+    pub market_id:       String,
+    pub outcome_result:  OutcomeResult,    // Yes / No / Void
+    pub submitted_by:    u64,              // user_id
+    pub submitted_at:    DateTime<Utc>,
+    pub evidence_urls:   Vec<String>,      // 證據連結
+    pub evidence_hash:   String,           // 證據檔案 SHA256（hex）
+    pub notes:           Option<String>,
+    pub signature:       Vec<u8>,          // Operator 數位簽章（Ed25519）
 }
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum OutcomeResult { Yes = 0, No = 1, Void = 2 }
 ```
 
 實作要求：
@@ -221,10 +232,19 @@ Response 201:
 
 當持倉數 > 10,000 時：
 
-- 拆分為多個 batch（每批 1000 筆）
+- 拆分為多個 batch（**每批 500 筆 ledger transactions**，呼應 [SPEC-002 §5 INV-1](./SPEC-002-funds-safety.md) DB CONSTRAINT TRIGGER 在 commit 時集中檢查；500 筆 × 3 entries/txn = 1500 entries，單 PG transaction window ≤ 1 秒）
 - 每批一個 transaction，互相獨立
 - 用 saga pattern 確保任何 batch 失敗時可逐批 retry
 - 每批之間進行 Σ(payout) 與預期值對帳
+
+> **batch size 由 1000 → 500 之歷史**（v0.1.2，2026-05-07）：原 1000 筆設計在 ledger_entries DEFERRABLE TRIGGER 下 transaction 窗口 ~1-3 秒，會與撮合 ledger worker 之 wallet 寫入發生 lock window 重疊；降至 500 筆使單 transaction window < 1s，降低 lock contention。
+
+### 7.5 結算排程（Off-Peak）
+
+- 結算批次**強制**排程於**台北時間 02:00 ~ 06:00 UTC+8**（即 UTC 18:00 ~ 22:00）執行，避開亞太市場交易高峰
+- 例外：市場 ClosesAt + 申訴窗口已過但落於高峰時段者，仍須等待下一個 off-peak 窗口
+- 例外規則由 market-service 的 settlement scheduler 管理，呼應 SPEC-015 §6 之 `settles_at` + ClockSchedule
+- 對玩家 UX：PENDING → SETTLING 之間可能等待至下一 off-peak 窗口，UI 顯示「預計 N 小時內結算」
 
 ## 8. 取消（CANCELLED）
 

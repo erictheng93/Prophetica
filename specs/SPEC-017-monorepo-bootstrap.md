@@ -1,10 +1,12 @@
 # SPEC-017 — Monorepo Bootstrap & Local Dev Environment
 
 > 優先級：**P0（必須在第一行業務 code 之前完成）**
-> 版本：v0.2.3 · 最後更新：2026-05-05
+> 版本：v0.2.4 · 最後更新：2026-05-07
 > 依賴：SPEC-014（架構定義）
 > 被依賴：所有 SPEC（實作載體）
 
+> **v0.2.4 erratum（2026-05-07）**：修正 §2 file tree 註解與 §8 CI workflow 中遺留的 Rust 1.78 化石標註，與 §3 toolchain 表 / §4.2.1 `rust-toolchain.toml` 之 `1.85`（edition 2024）對齊。發現過程：跨檔審視 H-2 版本一致性議題（SPEC-000 v0.2.4 sweep round 3）。
+>
 > **v0.2.3 erratum（2026-05-05）**：修正 §3 toolchain 表與 §3.2 對 `@cloudflare/kumo` 套件來源的錯誤假設 —— Kumo 發佈於**公開 npm registry**，非 Cloudflare 私有 registry。連帶移除 `KUMO_NPM_TOKEN` 從 `.npmrc` / `make doctor` / CI secret / Vault 的依賴。發現過程：實作 `apps/web` 期間直接讀取 `github.com/cloudflare/kumo` README，並由 `pnpm add @cloudflare/kumo` 從公開 npm registry 解析成功（`v2.0.3`）雙重驗證。落地：`.npmrc` 移除 `@cloudflare:registry` 與 `_authToken` 兩行；`turbo.json` 移除 `KUMO_NPM_TOKEN` 從 `env` 列表；本 SPEC §3 第 114 列 `@cloudflare/kumo` 鎖定方式重寫；§3.2 整節重寫。
 > **v0.2.2 變更**：§11 拆 §11.1（整體 DoD）+ §11.2（Codex PR #1 acceptance checklist，10 個子節 ~50 項，含規模預期與 reject 紅線）。
 > **v0.2.1 變更**：新增 §3.3 Rust 工具鏈硬性決議 R-1..R-6（rustls 預設 + rdkafka OpenSSL 例外、edition 2024 / 1.85 MSRV、撮合 current_thread + thread pinning、cargo-mutants nightly 限縮 ledger+撮合、`#![forbid(unsafe_code)]` + cargo geiger gate、`.sqlx/` commit + sqlx prepare --check）；§4.2 Cargo.toml 加 `[workspace.lints]`、rustls feature、core_affinity / async-trait 依賴；§6.1.1 撮合引擎 main 範例；§8 CI 加 sqlx prepare check + cargo geiger + rdkafka 系統依賴；§8.2 nightly mutation testing workflow。
@@ -87,7 +89,7 @@ prophetica/
 │       └── release.yml             tag 觸發
 ├── Cargo.toml                      ← workspace root
 ├── Cargo.lock
-├── rust-toolchain.toml             ← 鎖定 Rust 1.78+ stable
+├── rust-toolchain.toml             ← 鎖定 Rust 1.85+ stable（edition 2024）
 ├── .cargo/config.toml              ← sccache wrapper、profile 設定
 ├── pnpm-workspace.yaml
 ├── turbo.json
@@ -604,7 +606,7 @@ jobs:
       - uses: pnpm/action-setup@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.78'
+          toolchain: '1.85'
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2     # cargo registry / target cache
       - uses: mozilla-actions/sccache-action@v0.0.4

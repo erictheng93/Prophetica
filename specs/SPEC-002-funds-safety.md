@@ -1,10 +1,13 @@
 # SPEC-002 — 資金安全與虛擬點數帳本
 
 > 優先級：**P0**  
-> 版本：v0.1.3 · 最後更新：2026-05-05  
+> 版本：v0.1.6 · 最後更新：2026-05-07  
 > 依賴：SPEC-001  
 > 被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011
 
+> **v0.1.6 變更（H-5）**：§8.1 chargeback 場景補「累計 ≥ 1 立即永久封號 + 黑名單」門檻，cross-ref SPEC-010 §6.2 / SPEC-016 §6.1；系統故障 reversal 補 cross-ref 至 SPEC-010 §9.3 MS-6（4-eye）。
+> **v0.1.5 變更（R-1 紅線清除）**：(1) §4.2 Chart of Accounts 補新子科目 `Liability.AccountsPayable.{partner_id}`（B2B 業務應付）/ `Expense.AffiliatePartnerFee`（業務現金酬勞）/ `Bank.OperatingAccount.{currency}`（營運帳戶，禁止接收玩家儲值），三者皆與玩家錢包零交集；(2) §5 新增 INV-6：`Player.Wallet.*` outflow 目的地白名單，禁止流向應付帳款 / 營運帳戶 / 業務酬勞等任何「兌現」科目，由 DB CONSTRAINT TRIGGER 強制 + CI sentinel-scan 雙保險；(3) INV-6 ADR governance：code 實作前需先落地 ADR-0006 將 ADR-0003 §5 之 INV 集合從 INV-1 ~ INV-5 擴展為 INV-1 ~ INV-6。對應 [SPEC-000 §5 R-1](./SPEC-000-index.md) 與 SPEC-011 §6.3。
+> **v0.1.4 變更**：§4.4.4 NOTE 3 加 cross-ref 至 [SPEC-000 §5 Q-7](./SPEC-000-index.md)，明示 hedge 政策已 Resolved 為「允許」；本 SPEC 既有逐 `position_id` 結算邏輯維持不變，現由 Q-7 正式背書。
 > **v0.1.3 變更**：§3.2 內部儲存型別由 Go `int64` 同步為 Rust `i64`（語意等同）；對齊 SPEC-014 v0.2.0 後端切 Rust。
 > **v0.1.2 變更**：§12 OQ #2 `ledger_entries` partition 策略 Resolved（Phase 1 不分區 + 觸發門檻 + monthly partition 為未來方案）；§3.1 國際化說明明示永遠單幣別 TWD，多幣別已無啟用計畫。
 > **v0.1.1 變更**：(1) §3.1 點數計價 1 點 = TWD 1 由暫定改正式定案；(2) §4.2 帳戶體系新增 `Player.Frozen.{user_id}`；(3) §4.2.1 新章節定義凍結子科目流程；(4) §5 INV-2 公式擴展含 Frozen；(5) §12 OQ #1（ledger 獨立 service）與 OQ #4（凍結處理）Resolved。
@@ -91,14 +94,21 @@
   └─ Player.Locked.{user_id}     鎖倉中（掛單未成交、結算中）
   └─ Player.Frozen.{user_id}     已凍結（責任博弈自我排除 / Compliance 凍結 / EDD 待審）— 詳見 §4.2.1
 
+負債 — 應付帳款（Liabilities — Accounts Payable）
+  └─ Liability.AccountsPayable.{partner_id}   B2B 業務合約應付（與玩家錢包零交集，呼應 SPEC-011 §6.4）
+
 收入（Revenue）
   └─ Revenue.TradingFee          交易手續費收入
   └─ Revenue.SettlementFee       結算手續費收入
 
 費用（Expenses）
   └─ Expense.PaymentGatewayFee   支付通路手續費
-  └─ Expense.AffiliateCommission 代理分潤
+  └─ Expense.AffiliateCommission 玩家介紹獎勵 / 交易佣金（發放至 Player.Wallet 點數，呼應 SPEC-011 §4.1 / §4.2）
+  └─ Expense.AffiliatePartnerFee B2B 業務合約現金酬勞（對手方為 Liability.AccountsPayable.*，呼應 SPEC-011 §6.4）
   └─ Expense.LiquiditySubsidy    DMM 流動性補貼
+
+資產 — 銀行（Assets — Bank）
+  └─ Bank.OperatingAccount.{currency}         營運帳戶（**禁止**接收玩家儲值；專供 §6.4 業務酬勞 / 平台營運費出帳）
 
 特殊
   └─ Suspense.Reconciliation     對帳暫掛（差異追查中）
@@ -303,7 +313,7 @@ Txn: settle, idempotency_key='market-X-settle:position-B-001:NO'
 
 1. 本範例為**單一配對成交（trade pair）**之結算。實務上同一玩家可能持有多筆來自不同對手方的 trade pair；結算批次以 `position_id` 為單位逐筆處理，每筆三條 entry：`Locked.winner` / `Locked.loser` / `Wallet.winner`。`amount > 0` constraint 永遠成立。
 2. 若市場進入 `CANCELLED`（VOID），則退回為「各方退回原 escrow」：每個 position 寫入兩條 entry（`Locked.X +x`、`Wallet.X -x`）。
-3. 對於**同一玩家同時持 YES 與 NO**（hedge）情境，結算批次內仍以 `position_id` 為單位逐筆處理，避免 cross-position 抵銷導致 entry 數量驟減而難以稽核。
+3. 對於**同一玩家同時持 YES 與 NO**（hedge）情境，結算批次內仍以 `position_id` 為單位逐筆處理，避免 cross-position 抵銷導致 entry 數量驟減而難以稽核。**Hedge 政策已於 [SPEC-000 §5 Q-7](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) Resolved 為「允許」**（撤除 SPEC-015 §8.1 原禁令，SPEC-003 §12 風控前置層不加 `HEDGE_NOT_ALLOWED` 檢查）；潛在自我對沖刷量行為由 SPEC-010 §4.2.2 post-trade 偵測攔截。
 4. `settlement_logs` 額外記錄每筆 settle 的對應 `trade_id` / `position_id` / `oracle_submission_id` 來源，供爭議裁決回溯（呼應 SPEC-004 §6.3）。
 5. §4.4.3 已對齊本節對稱 escrow 模型（A 鎖 6,500 / B 鎖 3,500），不再為簡化版本。完整 trade 撮合與鎖倉公式詳見 SPEC-003 §14.2 與 SPEC-015 §10 之銜接點。
 
@@ -320,8 +330,11 @@ Txn: settle, idempotency_key='market-X-settle:position-B-001:NO'
 | INV-3 | `Bank.TrustAccount + Σ(Revenue.*) − Σ(Expense.*) = 平台對玩家負債總額` | 每日 T+1 對帳 | 凍結出帳、啟動人工稽核 |
 | INV-4 | `每個 Player.Wallet.X 任意時刻 ≥ 0`（chargeback 反沖外） | 每筆變動 | 拋 INSUFFICIENT_FUNDS；chargeback 例外見 §8.2 |
 | INV-5 | `每個 ledger_entry 一旦寫入不可 UPDATE / DELETE` | 持續 | DB role 權限分離（`ledger_app` 僅 INSERT）+ audit |
+| INV-6 | `Player.Wallet.{user_id}` 之 outflow 目的地白名單：僅限 `Player.Locked.{user_id}` / `Player.Frozen.{user_id}` / `Revenue.TradingFee` / `Revenue.SettlementFee` / `Player.Wallet.{other_user_id}`（限 trade settlement，需 `settle_txn_id` 不空）。**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何銀行 / 支付通路 / 外部錢包科目 | 每筆 commit | DB CONSTRAINT TRIGGER 強制（拒絕 commit）+ CI sentinel-scan grep gate；呼應 SPEC-001 §1.1 ① 「點數不可回兌」與 SPEC-011 §6.3 R-1 紅線 |
 
 > **Player.Locked.X ≥ 0**：邏輯上隱含於 INV-1（鎖倉釋出與鎖入必為對沖），由 application 層在下單 / 成交路徑強制檢查。不再單獨列為頂層 INV，避免與 ADR-0003 編號衝突。
+>
+> **INV-6 ADR governance**：本 INV 為 v0.1.5 新增（**R-1 紅線清除**），不在 ADR-0003 §5 原始集合內。**code 實作前必須先完成 ADR-0006**（待業主審閱後落地），明示 ADR-0003 §5 之 INV 集合擴展為 INV-1 ~ INV-6；ADR-0006 應引用 SPEC-001 §1.1 ① 與 SPEC-011 §6.3 為 invariant 動機。在 ADR-0006 落地前，本 INV 可於 SPEC 中先行公布，但 wallet-ledger-service migration 不得加 CHECK constraint（避免破壞既有 INV 編號契約）。
 
 ## 6. Idempotency 與重試
 
@@ -383,9 +396,9 @@ Layer 5 (月度)：第三方審計事務所抽樣對帳
 
 | 場景 | 退款路徑 |
 |------|---------|
-| 玩家刷卡爭議（Chargeback）| 點數 reverse + 錢包負餘額允許至銀行確認後回正 |
+| 玩家刷卡爭議（Chargeback）| 點數 reverse + 錢包負餘額允許至銀行確認後回正；**累計 chargeback ≥ 1 立即永久封號 + 黑名單**（呼應 SPEC-016 §6.1 / SPEC-010 §6.2，H-5 跨檔統一門檻） |
 | 市場取消 | 所有未結算持倉 reverse，回到 Wallet |
-| 系統故障結算錯誤 | 由 admin 提 reversal txn，需雙人複核 |
+| 系統故障結算錯誤 | 由 admin 提 reversal txn，需雙人複核（4-eye，呼應 SPEC-010 §9.3 MS-6）|
 
 ### 8.2 玩家錢包負餘額處理
 

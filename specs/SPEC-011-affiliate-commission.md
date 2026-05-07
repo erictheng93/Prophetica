@@ -1,9 +1,11 @@
 # SPEC-011 — 代理分潤體系
 
 > 優先級：**P2**
-> 版本：v0.1.0 · 最後更新：2026-05-05
-> 依賴：SPEC-001, SPEC-002, SPEC-005
+> 版本：v0.2.0 · 最後更新：2026-05-07
+> 依賴：SPEC-001, SPEC-002, SPEC-005, SPEC-010
 > 被依賴：—
+
+> **v0.2.0 變更（R-1 紅線清除）**：依業主決議移除原 §6 「業務帳戶可選擇將點數獎勵轉為 B2B 合約應付」設計，徹底切斷「Player.Wallet → 應付帳款 / 現金」之任何技術路徑。新章節結構：§6.1 業務 B2B 簽約模型（獨立法律關係，非玩家身份升級）/ §6.2 雙身份隔離（業務同時是玩家時的帳本軌跡分離）/ §6.3 帳本層強制執行（INV-6 + DB CONSTRAINT TRIGGER + CI sentinel-scan grep gate）/ §6.4 會計科目分離（`Expense.AffiliateCommission` 玩家點數獎勵 vs `Expense.AffiliatePartnerFee` 業務現金酬勞）。同步修正 §5.2 業務後台「提現申請」誤導描述、§7.1 「升級為業務」誤導描述。對應 [SPEC-000 §5 R-1](./SPEC-000-index.md)。
 
 ---
 
@@ -151,25 +153,103 @@ Txn: affiliate_commission
 
 - 細項 dashboard：每位被推薦人的活動、儲值、交易量、佣金
 - 月度報表 PDF 下載
-- 提現申請（業務從推薦獎勵點數提現走 B2B 合約走流程，**不**經玩家錢包出口）
+- B2B 酬勞月結（業務 invoice + Operating Co. 應付帳款流程，**現金**支付至業務指定銀行帳戶；**完全與玩家錢包點數無關** — 詳見 §6）
 - 稅務文件：發票上傳、扣繳憑單下載
+
+> **紅線提醒**：本後台**不**提供任何「玩家錢包點數 → 現金」轉換功能。業務若同時是平台玩家身份，其玩家錢包點數仍遵守 SPEC-001 §1.1 ① 「不可回兌」原則（呼應 §6.2）。
 
 ## 6. 業務 / 大型推廣方支付路徑
 
-> 這個區段**不**走玩家點數系統，**走 Operating Co. 應付帳款**。
+> **核心原則（R-1 紅線）**：業務 B2B 路徑與玩家點數系統**完全分離**，**永遠不**透過任何技術路徑將「玩家錢包點數」轉換為「法人應付帳款」或「現金」。SPEC-001 §1.1 ① 「點數不可回兌」為 **zero tolerance**，無任何例外（含 B2B 合約包裝、業務身份升級、自願捐贈等）。對應 [SPEC-000 §5 R-1](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker)。
+
+### 6.1 業務簽約模型（獨立法律關係）
+
+業務 B2B 為**全新獨立**之法律關係，**非**「玩家身份升級」：
 
 ```
-業務簽合約：每月行銷費 / 績效獎金 → Operating Co. 開立 BVI 法律下的 B2B 應付
-業務每月開立發票 / invoice
-Operating Co. 從營運帳戶（非託管帳戶）支付
+業務（自然人個人 / 公司法人）── 簽訂 B2B 合約 ──→ Operating Co.
+                                                    │
+                                                    ▼
+業務每月依合約 KPI 提交 invoice（介紹合格玩家數 × 單價 + 帶量階梯獎金等）
+                                                    │
+                                                    ▼
+Operating Co. 從**營運帳戶**（非託管帳戶）以**現金**支付至業務指定銀行帳戶
+                                                    │
+                                                    ▼
 業務自行報稅（境外收入或本地收入依其所在國法律）
 ```
 
-業務帳戶可選擇將點數獎勵轉為 B2B 合約應付：
+關鍵特徵：
 
-- 玩家身份 → 業務身份升級需正式簽約
-- 點數轉應付：1 點 = TWD 1 等值，計入應付帳款
-- 此**不違反**玩家無出金原則，因業務的法律地位是「推廣服務商」非玩家
+- 業務酬勞**不基於**該業務「玩家錢包」內任何點數餘額
+- 業務酬勞**不從**任何玩家錢包出口
+- 業務酬勞為獨立 KPI 計算結果，於 §6.4 之 `Expense.AffiliatePartnerFee` 會計科目記錄
+- 業務 B2B 合約由 Operating Co. 律師起草，明示「**不含**任何玩家點數轉換條款」
+
+### 6.2 雙身份隔離（業務同時是平台玩家）
+
+若同一自然人**同時**為「業務」與「平台玩家」：
+
+| 維度 | 玩家身份 | 業務身份 |
+|------|---------|---------|
+| user_id | 例：`user_42` | 例：`partner_007`（獨立 id）|
+| 帳本軌跡 | `Player.Wallet.42` 點數 | `Liability.AccountsPayable.partner_007` 應付帳款 |
+| 收入性質 | 點數遊戲獎勵（不可回兌）| 現金 KPI 酬勞 |
+| 支付通路 | 站內錢包（永不出口）| 銀行 API 匯款（營運帳戶）|
+| 稅務 | 玩家獎勵不需報稅（虛擬道具）| 業務酬勞須報稅 |
+
+執行要求：
+
+- 兩個身份在系統內為**完全獨立**之 user_id 與帳本軌跡，**不可**共用同一 wallet
+- 玩家身份之**錢包點數**遵守「不可回兌」原則 — 即便該人為簽約業務，**也不能**將其玩家錢包點數轉為現金 / 應付帳款 / 任何形式之兌換
+- 後台需強制 KYC 證件對照偵測「業務 partner_id」與「玩家 user_id」之自然人關聯，並於業務 KPI 計算 query 中**排除**「業務本人作為玩家」之自我介紹（防止套自身行為，呼應 §4.4 反作弊）
+
+### 6.3 帳本層強制執行（呼應 SPEC-002 §5 INV-6）
+
+> 為避免任何 application 層 bug、admin UI 誤操作、或日後設計變更將紅線下沉至 ledger invariant；CHECK constraint 比 application check 更強，連 admin 後台都繞不過。
+
+- **新 INV-6**（待 [SPEC-002 v0.1.5](./SPEC-002-funds-safety.md) 落地）：`Player.Wallet.{user_id}` 之 outflow（direction = +1，債務減少）目的地**白名單**僅限：
+  - `Player.Locked.{user_id}` — 鎖倉
+  - `Player.Frozen.{user_id}` — 凍結（自我排除 / Compliance / EDD）
+  - `Revenue.TradingFee` — 交易手續費
+  - `Revenue.SettlementFee` — 結算手續費
+  - `Player.Wallet.{other_user_id}` — **僅限**結算 trade pair（settle_txn_id 必填）
+
+- **任何**嘗試從 `Player.Wallet.*` 流向以下科目之 ledger entry **必由 PostgreSQL CHECK constraint + DB CONSTRAINT TRIGGER 強制 reject**：
+  - `Liability.AccountsPayable.*`（業務應付帳款）
+  - `Bank.OperatingAccount.*`（營運帳戶）
+  - `Expense.AffiliatePartnerFee`（業務酬勞）
+  - 任何銀行 / 支付通路科目
+  - 任何外部錢包 / 商品兌換科目
+
+- **CI sentinel-scan**（呼應 [SPEC-017 §8](./SPEC-017-monorepo-bootstrap.md) sentinel-scan job）加 grep gate：
+
+  ```bash
+  # R-1 紅線：禁止任何「玩家錢包 → 現金 / 應付」之 code path
+  rg -n -e 'Player\.Wallet.*->\s*AccountsPayable' \
+     -e 'Player\.Wallet.*->\s*OperatingAccount' \
+     -e 'Player\.Wallet.*->\s*Bank\.' \
+     -e 'wallet_to_payable|cash_out_player_pts|redeem_points_to_cash' \
+     --type rust services/ crates/ \
+     && echo "::error::R-1 紅線：禁止 Player.Wallet → 應付/現金 路徑（SPEC-001 §1.1 ①）" && exit 1
+  ```
+
+### 6.4 業務酬勞會計科目（與玩家獎勵嚴格分離）
+
+業務 B2B 酬勞與玩家獎勵在帳本層完全分離：
+
+```text
+費用（Expenses）
+  ├─ Expense.AffiliateCommission       玩家介紹獎勵 / 交易佣金
+  │                                    └─→ 對手方為 Player.Wallet.{referrer}
+  │                                        （仍是點數，不可回兌；呼應 §4.5）
+  │
+  └─ Expense.AffiliatePartnerFee       業務 B2B 合約酬勞
+                                       └─→ 對手方為 Liability.AccountsPayable.{partner_id}
+                                           （現金應付，與玩家錢包零交集；呼應 §6.1）
+```
+
+兩者**永遠不**相互轉換、相互抵銷、相互沖銷。月結時各自獨立揭露。SPEC-002 §4.2 Chart of Accounts 將同步補上 `Expense.AffiliatePartnerFee` 與 `Liability.AccountsPayable.*` 子科目。
 
 ## 7. 稅務處理
 
@@ -177,7 +257,7 @@ Operating Co. 從營運帳戶（非託管帳戶）支付
 
 - 玩家獲得的點數獎勵**不是現金所得**，依台灣稅法不需報稅
 - 但**B2B 業務**獲得的 B2B 收入須報稅
-- 玩家若達一定收入規模（每年介紹超過 X 人 / 收入超過 X 點）→ 系統提醒，建議升級為業務
+- 玩家若達一定推廣規模（每年介紹超過 X 人）→ 系統提醒可**另外**簽約 B2B 業務獲得現金 KPI 酬勞；此業務簽約**不會**將玩家現有錢包點數轉為現金（玩家錢包點數永遠不可回兌，呼應 [SPEC-001 §1.1 ①](./SPEC-001-legal-compliance.md)），業務酬勞為**新起算**之 B2B 合約收入（§6.1），與玩家身份的點數歷史完全分離
 
 ### 7.2 平台層級
 

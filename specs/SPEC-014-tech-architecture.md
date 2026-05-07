@@ -1,7 +1,11 @@
 # SPEC-014 — 整體技術架構（Tech Architecture）
 
 > 優先級：跨章節（被多份 SPEC 依賴）
-> 版本：v0.2.1 · 最後更新：2026-05-05
+> 版本：v0.2.3 · 最後更新：2026-05-07
+>
+> **v0.2.3 變更（T-10）**：§3.2 新增 §3.2.1「Cloudflare Pages Edge runtime 限制」，明列 KYC iframe / WebSocket fan-out / Server Actions / fetch 行為 / env binding 五個動工前必須完成 E2E PoC 之場景，含已知限制與退路選項（Node.js runtime / 後端 BFF）。
+>
+> **v0.2.2 erratum（2026-05-07）**：修正 §3.1 表格首列遺留之「Rust 1.78+ stable」化石為「Rust 1.85+ stable（edition 2024）」，與 v0.2.1 變更說明一致。發現過程：跨檔審視 H-2 版本一致性議題（SPEC-000 v0.2.4 sweep round 3）。
 >
 > **v0.2.1 變更**：§3.1 補硬性決議 R-1 TLS（rustls 為預設 + rdkafka OpenSSL 例外）、撮合引擎 runtime topology（current_thread + per-market LocalSet + core_affinity）、其餘 service multi-thread runtime、unsafe 全域 forbid + cargo geiger 監測。MSRV 由 1.78 改為 **1.85**（edition 2024）。
 >
@@ -78,7 +82,7 @@
 
 | 元件 | 選擇 | 替代 | 理由 |
 |------|------|------|------|
-| 語言 | **Rust 1.78+ stable** | Go / C++ | 撮合 / ledger 兩大 hot path 全平台受益於 zero-cost abstraction + 無 GC；型別系統（lifetimes / `Send + Sync`）天然鎖死雙簿記 INV 與撮合 single-writer 不變式 |
+| 語言 | **Rust 1.85+ stable**（edition 2024） | Go / C++ | 撮合 / ledger 兩大 hot path 全平台受益於 zero-cost abstraction + 無 GC；型別系統（lifetimes / `Send + Sync`）天然鎖死雙簿記 INV 與撮合 single-writer 不變式 |
 | Async Runtime | **tokio 1.x** | async-std / smol | 生態系實質單一選項；axum / tonic / sqlx / fred 全在 tokio 之上 |
 | HTTP framework | **axum 0.7** | actix-web / warp | tower 中介層生態、與 tonic 共用 service trait |
 | gRPC | **tonic 0.11** + prost | grpcio | tokio 原生、prost-build 與 buf 整合佳 |
@@ -124,6 +128,20 @@
 | LIFF / LINE | **LIFF SDK**（需 React wrapper） | — | PRD 確認 |
 | 表單 | **React Hook Form + Zod** | — | RHF 為 React 標準；Zod schema 與後端共用 |
 | 行為追蹤 | **Mixpanel + 自建 tracking** | Amplitude | 預測市場專屬 |
+
+#### 3.2.1 Cloudflare Pages Edge runtime 限制（T-10，動工前 PoC）
+
+`apps/web` 透過 [`@cloudflare/next-on-pages`](https://github.com/cloudflare/next-on-pages) 部署至 Cloudflare Pages（Workers runtime）。Edge runtime 與標準 Node.js runtime 行為差異會在以下場景踩坑，動工前需完成 E2E PoC 驗證：
+
+| 場景 | 已知限制 | PoC 驗證項 |
+|------|---------|-----------|
+| **KYC iframe 嵌入**（SumSub Web SDK）| Edge runtime 對 `Buffer` / `crypto` Node API 有限制；SumSub iframe 內部 postMessage 需 server-side relay 時必須走 Web Crypto API | iframe 載入 → 證件拍攝 → liveness → webhook → 通知前端流程端到端通過 |
+| **WebSocket fan-out**（撮合事件即時推播）| Cloudflare Workers 之 WebSocket 為「pair」模式（client ↔ Worker durable object），單一 connection 不可在多個 Worker 之間 share state；訂單簿 WS 推播實際上由 `ws-gateway`（K8s 上的 axum service）處理，**`apps/web` 自身不啟用 Workers WebSocket** | apps/web 連線至 ws-gateway 之 wss:// endpoint 跨 Cloudflare proxy 通過；reconnect / gap detection 行為符合 SPEC-003 §10.3 |
+| **Server Actions / RSC**（Next.js 15 App Router）| Edge runtime 不支援部分 Node.js APIs（`fs`、`net`、`tls`、`vm`）；某些 npm package 在 import 時即失敗 | server actions 中呼叫後端 gRPC（透過 fetch + tonic-web 或經 api-gateway REST proxy）通過 build + runtime |
+| **fetch 行為差異** | Edge runtime `fetch` 不支援 `keepalive: false`；`AbortController` 行為與 Node 略異 | TanStack Query 之 retry / cancel / abort 在 Edge runtime 下行為一致 |
+| **環境變數注入** | Cloudflare Pages 之 env binding 與 Next.js `process.env` 在 Edge runtime 行為不同；secret binding 走 `env.SECRET_NAME` | `.env.local` → `wrangler.toml` 之 [vars] 之 mapping 通過 build；secret 不誤入 client bundle |
+
+> 若 PoC 任一項無法滿足 → 退路選擇：(a) `apps/web` 改部署至 Cloudflare Pages 之 **Node.js runtime**（性能略降但相容性好）；(b) 該功能拆 server-only API endpoint 落在 K8s 上由 `api-gateway` / `bff-service` 處理，`apps/web` 僅做 SSR + 純前端互動。退路選擇需開新 ADR。
 
 ### 3.3 基礎設施
 
@@ -210,7 +228,7 @@ prophetica/
 │   └── workflows/              CI（ci.yml / release.yml）
 ├── Cargo.toml                  ← workspace root（[workspace] members = ["services/*", "crates/*"]）
 ├── Cargo.lock
-├── rust-toolchain.toml         ← 鎖定 Rust 1.78+ stable
+├── rust-toolchain.toml         ← 鎖定 Rust 1.85+ stable（edition 2024）
 ├── pnpm-workspace.yaml
 ├── turbo.json
 ├── Makefile

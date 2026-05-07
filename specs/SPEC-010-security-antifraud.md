@@ -1,9 +1,12 @@
 # SPEC-010 — 安全與反作弊（Security & Anti-Fraud）
 
 > 優先級：**P1**
-> 版本：v0.1.0 · 最後更新：2026-05-05
+> 版本：v0.2.1 · 最後更新：2026-05-07
 > 依賴：SPEC-001, SPEC-005
-> 被依賴：SPEC-009
+> 被依賴：SPEC-009, SPEC-002, SPEC-004, SPEC-008, SPEC-012, SPEC-013, SPEC-015, SPEC-016, SPEC-017
+
+> **v0.2.1 變更**：(1) §3.1.2 補 EdDSA mobile / LIFF SDK 相容性 PoC 要求（T-9），動工前需驗證 LIFF SDK 對 Ed25519 token 之支援；不支援則對 LIFF route 回退 RS256 token；(2) §3.2 OWASP A03 Injection 對策由「ORM + parameterized query」修正為「`sqlx::query!` 編譯時檢查 SQL + parameterized binding」（H-4），對齊 SPEC-014 §3.1「不引入 ORM」決議；(3) §6.2 chargeback 永久封號門檻由「> 1」修正為「**≥ 1**」（H-5），與 SPEC-016 §6.1 / SPEC-002 §8.1 統一；(4) §6.2 帳本反沖 cross-ref 補至 SPEC-002 §8.2。
+> **v0.2.0 變更**：新增 §9.3 Multi-sig 治理中央表（M-3）。集中所有跨 SPEC 之 multi-sig governance（MS-1 ~ MS-17）+ 已 Resolved 不入表決策（hedge / 計價 / 數據主權）+ Admin UI 實作要求 + 為何集中。原 SPEC-002 §4.2.1 / §8.1、SPEC-004 §3 §6.1、SPEC-008 §9.3、SPEC-012 §11、SPEC-013 §3.1 §6、SPEC-015 §7.2 §8.3 §9.2、SPEC-017 §3.3、SPEC-016 §13 之簽核要求皆改以「呼應 SPEC-010 §9.3 MS-N」方式引用本表。被依賴 SPEC 列表由原本 SPEC-009 擴增為 9 份，反映本檔成為 governance 中央表。
 
 ---
 
@@ -68,6 +71,16 @@ Lifetime:    15 minutes
 Storage:     HTTP-only Secure SameSite=Lax cookie
              （SPA 使用時透過 /api/auth/session 取 access token，不直接 expose 給 JS）
 ```
+
+> **Client 相容性 PoC（T-9，動工前驗證）**：Ed25519 簽章 / 驗證性能優於 RS256 ~10x，但部分 mobile / browser JWT lib 預設僅支援 RS256 / HS256。動工前必須完成以下 PoC：
+>
+> | Client | 驗證項目 | 後備 |
+> |--------|---------|------|
+> | LIFF SDK（LINE）| `liff.getIDToken()` 之 JWT 驗證鏈是否支援 EdDSA | 若不支援 → server 端為 LIFF route 改發 RS256 token，cookie 命名加 `_liff` 前綴區分 |
+> | iOS / Android（若未來開發 native app）| 主流 JWT lib（如 `jose`, `JOSESwift`）EdDSA 支援度 | 同上回退 RS256 |
+> | Browser（apps/web Next.js + axios / fetch）| 不需 client-side 驗證（cookie HTTP-only，Next.js middleware 走 server-side `jsonwebtoken` 0.9+）| 無需後備 |
+>
+> PoC 結果若任一回退，需開新 ADR（雙演算法 token 簽發策略）並更新本節。
 
 Claims（自定義 namespace 用 `proph_` 前綴避免與 RFC 7519 衝突）：
 
@@ -184,7 +197,7 @@ JWT 為 stateless，不主動驗證每個請求是否在黑名單。為兼顧效
 |------|------|
 | A01 Broken Access Control | RBAC + 每個 endpoint 顯式授權檢查 |
 | A02 Cryptographic Failures | 全鏈路 TLS、Vault 管金鑰、PII at-rest 加密 |
-| A03 Injection | ORM + parameterized query；DB user 最小權限 |
+| A03 Injection | **`sqlx::query!` 編譯時檢查 SQL**（呼應 SPEC-014 §3.1 不引入 ORM）+ parameterized binding；DB user 最小權限（schema-per-service，呼應 SPEC-014 §7.2） |
 | A04 Insecure Design | 此 SPEC 整體 |
 | A05 Security Misconfiguration | IaC + 配置審查 + Drift detection |
 | A06 Vulnerable Components | Renovate 自動更新 + SCA scan |
@@ -296,9 +309,9 @@ JWT 為 stateless，不主動驗證每個請求是否在黑名單。為兼顧效
 ### 6.2 應對
 
 - Chargeback 收到 → 立即凍結對應玩家
-- 帳本反沖儲值（呼應 SPEC-002）
+- 帳本反沖儲值（呼應 SPEC-002 §8.2）
 - 玩家 24 小時內可上訴
-- 累計 chargeback > 1 → 永久封號 + 黑名單
+- 累計 chargeback **≥ 1** → 永久封號 + 黑名單（H-5 跨檔對齊；呼應 SPEC-016 §6.1 / SPEC-002 §8）
 
 ## 7. 資安測試
 
@@ -362,6 +375,71 @@ JWT 為 stateless，不主動驗證每個請求是否在黑名單。為兼顧效
 - 認證 / 授權
 - KYC integration
 - DMM API
+
+### 9.3 Multi-sig 治理中央表（Single Source of Truth）
+
+> 為避免 SPEC-002 / 004 / 008 / 012 / 013 / 015 / 017 各自詮釋「4-eye」/「2-of-N」/「3-of-3」造成 admin / Compliance UI 流程分裂、監管稽核時無法給出單一答覆，本表為平台**所有**跨 SPEC multi-sig governance 的單一真相來源。
+>
+> 任何新增規則必須以 PR 形式入本表，並在原 SPEC 以「呼應 SPEC-010 §9.3 MS-N」方式引用；解除任一規則需先 PR 修改本表並在 ADR 中 superseded 對應原 SPEC 章節。
+
+#### 9.3.1 規則總表
+
+| ID | 場景 / 動作 | 觸發者 | 簽核要求 | 來源 SPEC |
+|----|------------|-------|---------|----------|
+| MS-1 | 市場上架審查（DRAFT → SCHEDULED）| Market Operator | **2-of-2** Compliance Reviewer + Legal Reviewer（獨立寫入 `market_reviews`，不可同人雙簽） | SPEC-015 §7.2 |
+| MS-2 | 市場排程變更（SCHEDULED 階段 OpensAt / ClosesAt）| Schedule Manager | **2-of-2** Schedule Manager + Compliance（4-eye）| SPEC-015 §8.3 |
+| MS-3 | 強制下架（任一階段 → CANCELLED）| Compliance Officer | **3-of-3** Compliance Officer + Tech Lead + Legal | SPEC-015 §9.2 |
+| MS-4 | Oracle 提交（CLOSED → PENDING）| Oracle Operator | **2-of-N** 獨立提交且 `outcome_result` 一致；不一致自動進 DISPUTED | SPEC-004 §3 / §4.2 / SPEC-015 §6.3 |
+| MS-5 | 申訴裁決（DISPUTED → SETTLING / CANCELLED）| Adjudicator | **3 名合議**：3:0 / 2:1 通過；1:1:1 三派分立升級至 Compliance Officer 拍板 | SPEC-004 §6.1 / SPEC-015 §6.5 |
+| MS-6 | 結算 reversal / 帳本 compensation transaction | T3 客服 | **4-eye** T3 + Compliance；寫入 `Txn type = 'cs_compensation'` | SPEC-002 §8.1 / SPEC-012 §11 |
+| MS-7 | Frozen 解凍（Compliance / EDD pending → Wallet）| Compliance | **4-eye** Compliance + RG Officer（呼應 SPEC-002 §4.2.1 metadata.approved_by）| SPEC-002 §4.2.1 |
+| MS-8 | 自我排除期滿解凍（自動）| RG Scheduler | 系統觸發；`approved_by = 'system:rg-scheduler'`（不需人工簽核但全程留痕）| SPEC-002 §4.2.1 / SPEC-006 §5 |
+| MS-9 | Kill switch 解除（停盤 → 恢復）| Senior Engineer | **2-of-3** CTO / Compliance / Senior Engineer | SPEC-008 §9.3 |
+| MS-10 | 安全敏感模組 PR merge（ledger / 撮合 / 結算 / 認證 / KYC / DMM）| PR Author | **4-eye** 兩名 reviewer 簽核（含一名 module owner）| SPEC-010 §9.2 |
+| MS-11 | unsafe block 新增（R-5 例外）| PR Author | **4-eye** + 對應 ADR + cargo geiger CI gate review-required label | SPEC-017 §3.3 R-5 |
+| MS-12 | Production release（prod deploy）| Release Manager | **3-of-5** release-managers team approval | SPEC-013 §3.1 |
+| MS-13 | Hotfix 直 prod canary（reduced gate）| Senior Engineer | Senior Engineer 簽核 + 事後 RCA 24h 內提交 | SPEC-013 §6 |
+| MS-14 | 新增 `PLATFORM_SYSTEM_USER_IDS` sentinel（撮合引擎禁字）| Tech Lead | **4-eye** + 對應 ADR + Compliance Officer review；CI sentinel-scan 同步更新 whitelist | SPEC-003 §12.1 / ADR-0001 §6 |
+| MS-15 | DMM 簽約 / 額度提升 | DMM 招募負責人 | **2-of-2** Compliance + Risk；額度提升另需 Tech Lead 對 in-flight position 風險意見 | SPEC-009 §3.6 / §3.7 |
+| MS-16 | 退款 API 內部呼叫（Chargeback / 系統故障）| T3 客服 | **4-eye** T3 + Compliance | SPEC-016 §13 |
+| MS-17 | 跨檔決策 Resolved（SPEC-000 §5）| Tech Lead 提案 | 業主 sign-off 1 名（影響合規時加 Legal 1 名）| SPEC-000 §5 維護規則 |
+
+#### 9.3.2 已 Resolved governance 決策（不入 multi-sig 表）
+
+下列決策已於 SPEC-000 §5 拍板，不需每次簽核但記於此供 audit：
+
+| 決策 | 內容 | 來源 |
+|------|------|------|
+| Hedge 政策 | **允許**同帳戶同市場同時持 YES + NO；風控前置層**不**加 `HEDGE_NOT_ALLOWED` 檢查；自我對沖刷量由 §4.2.2 post-trade 偵測 | [SPEC-000 §5 Q-7](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) |
+| 點數計價單位 | 1 點 = TWD 1（永遠單幣別 TWD） | SPEC-000 §5 Q-3 |
+| 數據主權 | KYC 證件 / WORM hash / 影像類資產一律 Cloudflare R2（EU bucket + Object Lock） | SPEC-000 §5 Q-6 |
+
+#### 9.3.3 Admin / Compliance UI 實作要求
+
+- 後台簽核 UI 必須**單一 component** 對應本表所有 MS 規則（schema 由本表驅動），**不允許**各功能各寫一套流程；新增 MS 規則 = 補本表 + 補 schema，**不**改 component 程式碼路徑。
+- 簽核失敗（單簽嘗試、自簽自核、利益衝突命中、權限不足）的拒絕行為由 component 集中處理，回 `errors.proto: ERROR_CODE_MULTISIG_REJECTED` 並附 MS-ID。
+- 所有 multi-sig 動作必須寫入 `audit_logs`（呼應 SPEC-012 §5.3），`metadata` 包含：
+  ```jsonc
+  {
+    "ms_id": "MS-3",
+    "action": "force_delist_market",
+    "subject_id": "mkt_2028_us_election",
+    "signers": [{"user_id": 12, "role": "compliance_officer", "ts": "..."},
+                {"user_id": 34, "role": "tech_lead", "ts": "..."},
+                {"user_id": 56, "role": "legal", "ts": "..."}],
+    "decision": "approve",
+    "reason": "..."
+  }
+  ```
+- 簽核者**強制 hardware MFA**（YubiKey / Passkey）—— 對齊 §3.1.5 step-up MFA 機制；MS-3 / MS-9 / MS-12 等高敏作業另要求 step-up 過去 30 分鐘內仍有效。
+- Compliance 後台首頁顯示「待簽核 multi-sig 工單」清單，依 MS-ID 分類，超過各自 SLA（MS-3 / MS-9 < 1h，MS-1 / MS-2 < 24h，其餘 < 4h）觸發告警。
+
+#### 9.3.4 為何集中
+
+- **避免 admin UI 分裂**：原本 SPEC-002 / 004 / 008 / 012 / 013 / 015 / 017 各自詮釋「4-eye」/「3-of-3」造成 12 個 service × 各自一套 UI；集中後一份 component 對應全部。
+- **監管稽核**：監管問詢「平台 multi-sig 治理為何」時提供單一答覆來源，不需翻閱七份 SPEC。
+- **新進 Compliance Officer onboarding**：本表為治理 SOP 入口；對應每條 MS 配套之操作手冊由 Compliance 團隊維護於 `infra/runbooks/multisig-{ms-id}.md`。
+- **演化追蹤**：簽核規則調整（例如未來 Compliance Officer 角色拆分為 AML Officer / RG Officer）只需改本表 + ADR，不需散彈式跨 SPEC patch。
 
 ## 10. 驗收條件
 

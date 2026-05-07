@@ -1,10 +1,12 @@
 # SPEC-003 — 撮合引擎詳規（Matching Engine）
 
 > 優先級：**P0**
-> 版本：v0.2.0 · 最後更新：2026-05-05
+> 版本：v0.2.2 · 最後更新：2026-05-07
 > 依賴：SPEC-002
 > 被依賴：SPEC-004, SPEC-007, SPEC-009
 
+> **v0.2.2 變更（R-2 紅線清除）**：依業主決議移除 §12.1.1 sentinel `system.platform_announcement` (uid=4)，連帶 §12.1.4「例外情況」整段內容刪除（改為「**無**」）；新增 `RESERVED_REMOVED_USER_IDS` 集合與兩個 unit test 防止 uid=4 未來被重用；對齊 SPEC-009 §5 整段移除冷啟動補貼。對應 [SPEC-000 §5 R-2](./SPEC-000-index.md)；ADR-0001 §6 「唯一例外」描述待新 ADR 更新為「無例外」。
+> **v0.2.1 變更**：(1) §12 加 hedge 允許註記（呼應 [SPEC-000 §5 Q-7](./SPEC-000-index.md) Resolved），明示**不**加 `HEDGE_NOT_ALLOWED` pre-trade 檢查；(2) §12.1.1 sentinel 常數 / §12.1.2 引擎入口檢查 / §12.1.3 CI 靜態掃描三節之 Go 程式碼樣板改寫為 Rust（sorted const slice + `binary_search_by_key`、`tracing::error` audit log、`rg --type rust`），對齊 SPEC-014 v0.2.0 後端切 Rust；(3) §15 `orderbook.rs` Rust 範例取代原 `internal/engine/orderbook.go` Go 範例；(4) §16 測試策略改 Rust 工具鏈（`cargo nextest` 取代 `goleak`、`proptest` 取代 `gopter`、新增 §16.6 mutation testing 對齊 SPEC-017 §3.3 R-4）；(5) §3.1 `Market` struct / §3.2 `Outcome` enum / §14.2 金額計算亦由 Go 改寫為 Rust（型別契約清理）。注意 §6 ~ §11 之 `\`\`\`go` 程式區塊仍保留為**演算法 pseudo-code**，由 §6 開頭註記說明，本次不動。
 > **v0.2.0 變更**：跟隨 SPEC-014 後端切 Rust，本檔之 Go 程式碼示例改寫為 Rust（per-market goroutine → per-market tokio task；`type OrderID = uint64` → 之後直接落地為 ULID `[u8; 16]`，不再經過 PR #1 之 Go→Rust 過渡）。撮合熱路徑在 Rust 下進一步無 GC、無 runtime 抖動，§12 P99 < 5ms SLO 不變但目標達成路徑更直接。
 
 ---
@@ -29,36 +31,44 @@
 
 ### 3.1 市場（Market）
 
-每個市場代表一個 **二元結果（Binary Outcome）** 事件。
+每個市場代表一個 **二元結果（Binary Outcome）** 事件。本 struct 由 SPEC-015 §6 之 `markets` 表序列化而來，注入撮合引擎 in-memory（呼應 SPEC-015 §10.1）。
 
-```go
-type Market struct {
-    ID            string         // 'mkt_2026_election_winner'
-    Title         string
-    Description   string
-    OutcomeYES    Outcome        // YES 腿
-    OutcomeNO     Outcome        // NO 腿
-    OpensAt       time.Time
-    ClosesAt      time.Time      // 截止下單
-    SettlesAt     time.Time      // 預計結算
-    Status        MarketStatus   // open / closed / settling / settled / cancelled
-    OracleSource  string         // 結果來源
-    MinTickPts    int64          // 最小價格單位（內部單位百分點），預設 1 = 0.01 點
-    MinLot        int64          // 最小股數，預設 1
-    MaxOrderQty   int64          // 單筆最大股數，防作弊
-    FeeBps        int            // 手續費 basis points，預設 200 (=2%)
+```rust
+use chrono::{DateTime, Utc};
+
+pub struct Market {
+    pub id:                String,            // 'mkt_2026_election_winner'
+    pub title:             String,
+    pub description:       String,
+    pub outcome_yes:       Outcome,           // YES 腿
+    pub outcome_no:        Outcome,           // NO 腿
+    pub opens_at:          DateTime<Utc>,
+    pub closes_at:         DateTime<Utc>,     // 截止下單
+    pub settles_at:        DateTime<Utc>,     // 預計結算
+    pub status:            MarketStatus,      // Open / Closed / Settling / Settled / Cancelled
+    pub oracle_source:     String,            // 結果來源
+    pub min_tick_pts:      i64,               // 最小價格單位（內部單位百分點），預設 1 = 0.01 點
+    pub min_lot:           i64,               // 最小股數，預設 1
+    pub max_order_qty:     i64,               // 單筆最大股數，防作弊
+    pub fee_bps:           u32,               // 手續費 basis points，預設 200 (=2%)
 }
 ```
 
 ### 3.2 結果腿（Outcome）
 
-```go
-type Outcome string
+```rust
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Outcome {
+    Yes = 0,
+    No  = 1,
+}
 
-const (
-    OutcomeYES Outcome = "YES"
-    OutcomeNO  Outcome = "NO"
-)
+impl Outcome {
+    pub const fn as_str(self) -> &'static str {
+        match self { Outcome::Yes => "YES", Outcome::No => "NO" }
+    }
+}
 ```
 
 ### 3.3 為何只用 YES 腿，不需要 NO 訂單簿？
@@ -518,6 +528,8 @@ ws://api.../ws/me/orders
 | 反作弊評分 | `risk_score < 80` | RISK_REJECTED |
 | **平台帳戶禁區** | `order.user_id ∉ PLATFORM_SYSTEM_USER_IDS`（呼應 ADR-0001 §6）| PLATFORM_USER_NOT_ALLOWED |
 
+> **Hedge 允許**：本表**不**包含 `HEDGE_NOT_ALLOWED` 檢查（呼應 [SPEC-000 §5 Q-7](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) Resolved）。同一玩家在同一市場同時持 YES + NO 為合法業務場景，由 SPEC-002 §4.4.4 NOTE 3 之逐 `position_id` 結算邏輯支撐；潛在 wash trading 由 SPEC-010 §4.2.2 post-trade 偵測攔截，刻意不在 hot path pre-trade 檢查（避免每張訂單 query position-service 增加 P99 1 hop）。
+
 風控前置在獨立 service 完成，撮合引擎假設輸入已通過。
 
 ### 12.1 PLATFORM_SYSTEM_USER_IDS Sentinel Set（Compliance 紅線）
@@ -526,96 +538,178 @@ ws://api.../ws/me/orders
 
 #### 12.1.1 常數定義（Rust）
 
-```go
-// services/matching-engine/internal/engine/sentinel.go
-package engine
+```rust
+// services/matching-engine/src/sentinel.rs
 
-// PLATFORM_SYSTEM_USER_IDS 列舉所有「禁止下單」之系統 user_id。
-// 任何 incoming order 的 user_id 命中本集合則直接拒絕。
-//
-// 紅線理由：
-//   - 平台不得在自家訂單簿掛單（SPEC-001 §1.1 ② No House Position）
-//   - ADR-0001 §6 列為靜態掃描禁字
-//
-// 新增 user_id 至本集合需要：
-//   1. ADR-XXXX 簽核
-//   2. Compliance Officer 4-eye review
-//   3. 與本檔案的 git blame 對照可追溯
-var PLATFORM_SYSTEM_USER_IDS = map[uint64]string{
-    1: "system.root",                  // bootstrap / migration only, never used at runtime
-    2: "system.compliance",            // 凍結 / 解凍帳戶之 audit shim, never trades
-    3: "system.settlement_oracle",     // Oracle 提交 shim, never trades
-    4: "system.platform_announcement", // 公告錢包（ADR-0001 §6 唯一例外，預設不啟用）
-    5: "system.cs_compensation",       // 客服補償帳戶，呼應 SPEC-002 §8
-    6: "system.suspense",              // 對帳暫掛，呼應 SPEC-002 §4.2
-    7: "system.affiliate_pool",        // 推薦獎勵發放暫存池，呼應 SPEC-011
-    8: "system.dmm_rebate_pool",       // DMM 補貼暫存池，呼應 SPEC-009
+//! `PLATFORM_SYSTEM_USER_IDS` 列舉所有「禁止下單」之系統 user_id。
+//! 任何 incoming order 的 `user_id` 命中本集合則直接拒絕。
+//!
+//! # 紅線理由
+//!   - 平台不得在自家訂單簿掛單（SPEC-001 §1.1 ② No House Position）
+//!   - ADR-0001 §6 列為靜態掃描禁字
+//!
+//! # 新增 user_id 至本集合需要
+//!   1. ADR-XXXX 簽核
+//!   2. Compliance Officer 4-eye review（呼應 SPEC-010 §9.3 MS-14）
+//!   3. 與本檔案的 git blame 對照可追溯
+
+/// Sentinel `user_id` → 用途註記。Sorted const slice，O(log N) lookup，零 alloc。
+///
+/// 註：uid=4 (`system.platform_announcement`) 已於 v0.2.2 移除（呼應 SPEC-009 §5 R-2 紅線清除）。
+/// 集合刻意保留 id 4 之 gap，**不**重新編號 5/6/7/8 為 4/5/6/7，避免歷史 audit log 與 DB 引用斷鏈。
+/// `binary_search_by_key` 對 sorted slice with gap 仍正確運作。
+pub const PLATFORM_SYSTEM_USER_IDS: &[(u64, &str)] = &[
+    (1, "system.root"),                  // bootstrap / migration only, never used at runtime
+    (2, "system.compliance"),            // 凍結 / 解凍帳戶之 audit shim, never trades
+    (3, "system.settlement_oracle"),     // Oracle 提交 shim, never trades
+    // uid=4 reserved (formerly system.platform_announcement; 已移除，永不重用)
+    (5, "system.cs_compensation"),       // 客服補償帳戶，呼應 SPEC-002 §8
+    (6, "system.suspense"),              // 對帳暫掛，呼應 SPEC-002 §4.2
+    (7, "system.affiliate_pool"),        // 推薦獎勵發放暫存池，呼應 SPEC-011
+    (8, "system.dmm_rebate_pool"),       // DMM 補貼暫存池，呼應 SPEC-009
+];
+
+/// `RESERVED_REMOVED_USER_IDS` 列舉曾經存在但已正式移除之 sentinel id；
+/// 任何嘗試重新註冊此集合中的 id（即便用途不同）必須 reject + 寫 critical audit log，
+/// 避免歷史 ledger / WAL 中之 `user_id=4` 紀錄被誤認為新 sentinel。
+pub const RESERVED_REMOVED_USER_IDS: &[(u64, &str)] = &[
+    (4, "formerly system.platform_announcement, removed 2026-05-07 per R-2"),
+];
+
+/// Returns `true` iff the given `user_id` is reserved as a platform sentinel
+/// and must **never** appear as an order placer.
+#[inline]
+pub fn is_platform_system_user(uid: u64) -> bool {
+    PLATFORM_SYSTEM_USER_IDS
+        .binary_search_by_key(&uid, |&(id, _)| id)
+        .is_ok()
 }
 
-// IsPlatformSystemUser returns true if the given user_id is reserved as a
-// platform sentinel and must NEVER appear as an order placer.
-func IsPlatformSystemUser(uid uint64) bool {
-    _, ok := PLATFORM_SYSTEM_USER_IDS[uid]
-    return ok
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sentinel_ids_are_sorted() {
+        // binary_search_by_key 之正確性前提：必須維持 sorted
+        let ids: Vec<u64> = PLATFORM_SYSTEM_USER_IDS.iter().map(|&(id, _)| id).collect();
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        assert_eq!(ids, sorted, "PLATFORM_SYSTEM_USER_IDS must be sorted by user_id");
+    }
+
+    #[test]
+    fn sentinel_ids_are_unique() {
+        use std::collections::HashSet;
+        let set: HashSet<u64> = PLATFORM_SYSTEM_USER_IDS.iter().map(|&(id, _)| id).collect();
+        assert_eq!(set.len(), PLATFORM_SYSTEM_USER_IDS.len(), "duplicate sentinel user_id");
+    }
+
+    #[test]
+    fn ordinary_user_is_not_sentinel() {
+        assert!(!is_platform_system_user(42));
+        assert!(!is_platform_system_user(1_000_000));
+    }
+
+    #[test]
+    fn all_sentinel_ids_match() {
+        for &(id, _) in PLATFORM_SYSTEM_USER_IDS {
+            assert!(is_platform_system_user(id));
+        }
+    }
+
+    #[test]
+    fn removed_uid_4_is_not_active_sentinel() {
+        // R-2: system.platform_announcement (uid=4) removed; must NOT be active.
+        // 但仍視為「系統保留」— 不應被一般 user 註冊使用。
+        assert!(!is_platform_system_user(4),
+            "uid=4 已於 v0.2.2 移除，不應作為 active sentinel");
+        assert!(RESERVED_REMOVED_USER_IDS.iter().any(|&(id, _)| id == 4),
+            "uid=4 必須記錄於 RESERVED_REMOVED_USER_IDS 防止重用");
+    }
+
+    #[test]
+    fn reserved_removed_ids_do_not_overlap_with_active() {
+        let active: std::collections::HashSet<u64> =
+            PLATFORM_SYSTEM_USER_IDS.iter().map(|&(id, _)| id).collect();
+        for &(id, _) in RESERVED_REMOVED_USER_IDS {
+            assert!(!active.contains(&id),
+                "removed uid {} must not reappear in active sentinel set", id);
+        }
+    }
 }
 ```
 
 #### 12.1.2 引擎入口檢查（強制）
 
-```go
-// services/matching-engine/internal/engine/ingress.go
-func (s *MarketShard) handleCommand(c command) {
-    if order, ok := c.(*PlaceOrderCmd); ok {
-        if engine.IsPlatformSystemUser(order.UserID) {
-            // 立即 reject，並產生 critical 等級 audit log
-            s.publishEvent(OrderRejected{
-                OrderID: order.ID,
-                Reason:  ReasonPlatformUserNotAllowed,
-            })
-            metrics.PlatformUserOrderBlocked.Inc()
-            audit.Critical("platform sentinel user attempted order", map[string]any{
-                "user_id":   order.UserID,
-                "order_id":  order.ID,
-                "market_id": order.MarketID,
-            })
-            return
+```rust
+// services/matching-engine/src/ingress.rs
+
+use tracing::error;
+
+use crate::events::{OrderRejected, RejectReason};
+use crate::metrics;
+use crate::sentinel::is_platform_system_user;
+use crate::shard::MarketShard;
+use crate::types::Command;
+
+impl MarketShard {
+    pub async fn handle_command(&mut self, cmd: Command) {
+        if let Command::PlaceOrder(order) = &cmd {
+            if is_platform_system_user(order.user_id) {
+                // 立即 reject，並產生 critical 等級 audit log
+                self.publish_event(OrderRejected {
+                    order_id: order.id,
+                    reason: RejectReason::PlatformUserNotAllowed,
+                });
+                metrics::PLATFORM_USER_ORDER_BLOCKED.inc();
+                error!(
+                    target: "audit.critical",
+                    user_id = order.user_id,
+                    order_id = ?order.id,
+                    market_id = %order.market_id,
+                    "platform sentinel user attempted order"
+                );
+                return;
+            }
         }
         // ... 進入正常撮合
+        self.dispatch(cmd).await;
     }
 }
 ```
 
 #### 12.1.3 CI 靜態掃描
 
-呼應 ADR-0001 §6，CI pipeline 必含以下檢查（在 SPEC-013 §3.2 列為阻斷 gate）：
+呼應 ADR-0001 §6 與 SPEC-017 §8 sentinel-scan job，CI pipeline 必含以下檢查（在 SPEC-013 §3.2 列為阻斷 gate）：
 
 ```bash
-# .github/workflows/sentinel-scan.yml （示意）
+# .github/workflows/sentinel-scan.yml （示意；對齊 SPEC-017 §8 sentinel-scan job）
 # 1. 禁字掃描（ADR-0001 §6）
 rg -n -e 'auto_quote|market_balancer|house_book|probability_symmetry|auto_hedge' \
-   --type go services/ packages/ \
+   --type rust services/ crates/ \
    && echo "ADR-0001 §6 forbidden words detected" && exit 1
 
-# 2. PLATFORM_SYSTEM_USER_IDS 集合不得在 ingressCh 路徑外被旁路
-rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type go services/matching-engine/ \
-   | grep -vE '(sentinel\.go|ingress\.go|sentinel_test\.go)' \
+# 2. PLATFORM_SYSTEM_USER_IDS 集合不得在 sentinel / ingress 路徑外被旁路
+rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type rust services/matching-engine/ \
+   | grep -vE '(sentinel\.rs|ingress\.rs|sentinel/tests\.rs|tests/sentinel)' \
    && echo "PLATFORM_SYSTEM_USER_IDS referenced outside whitelisted paths" && exit 1
 
 # 3. DMM session 檢查：DMM order 進入 engine 前必須轉換 user_id 為 DMM 法人帳戶
 #    （SPEC-009 §3.4），不可使用 system user_id
-rg -n -e 'PLATFORM_SYSTEM_USER_IDS\[.*\]' --type go services/dmm-gateway/ \
+rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type rust services/dmm-gateway/ \
    && echo "DMM gateway must not reference platform sentinel users" && exit 1
 ```
 
-#### 12.1.4 例外情況
+#### 12.1.4 例外情況：**無**
 
-唯一可能在訂單簿掛單的「系統相關」是 ADR-0001 §6 之 `system.platform_announcement`（user_id = 4）「冷啟動補貼」極端情境。本路徑：
-
-- **預設 `disabled` feature flag**
-- 啟用需 Compliance Officer + Tech Lead + CTO 三方簽核
-- 啟用後該帳戶之 order 在訂單簿 UI 強制標記 `[Platform Bootstrap]`（呼應 SPEC-009 §5）
-- 月度監管報表強制揭露
-- **強烈建議永不啟用**
+> **本節原描述「`system.platform_announcement` (uid=4) 為唯一例外」之冷啟動補貼路徑已於 v0.2.2 整段移除**（呼應 [SPEC-000 §5 R-2](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) 業主決議與 SPEC-009 §5 同步）。
+>
+> 平台**永遠不**在自家訂單簿掛單，**無**任何 feature flag、簽核流程、或 UI 標記可以啟用平台 order — 此設計層級紅線對齊 SPEC-001 §1.1 ② 「平台不下場」zero tolerance 原則。
+>
+> §12.1.1 sentinel 集合中 uid=4 已移除，並列入 `RESERVED_REMOVED_USER_IDS` 防止歷史紀錄與未來 user_id 撞號；§12.1.3 CI sentinel-scan 不需特別 whitelist。冷啟動流動性不足走 SPEC-009 §3.3 DMM rebate 放大或市場延後上架。
+>
+> ADR-0001 §6 「唯一例外」描述待新 ADR 標記為 superseded（後續落地）。
 
 ## 13. 自我成交防止（Self-Trade Prevention, STP）
 
@@ -645,15 +739,15 @@ DMM / 機構帳戶可設不同策略，零售玩家強制 `CANCEL_NEWEST` 防作
 
 ### 14.2 金額計算
 
-```go
+```rust
 // trade value (in 點 internal units, 100 = 1 點)
 // price_pts: 0-100, qty: 股數
 // trade_value = price_pts * qty  →  internal pts × 1
 // 例: 65 × 100 = 6500 internal pts = 65.00 點
-tradeValue := int64(price_pts) * int64(qty)
+let trade_value: i64 = i64::from(price_pts) * qty;
 
 // fee = trade_value * fee_bps / 10000
-fee := tradeValue * int64(feeBps) / 10000
+let fee: i64 = trade_value * i64::from(fee_bps) / 10_000;
 ```
 
 ### 14.3 NO 腿價格驗證
@@ -670,87 +764,115 @@ NO 訂單轉換為 YES 時：`yes_price = 100 - no_price`。轉換後價格必�
 
 ## 15. 程式碼風格範例
 
-```go
-// internal/engine/orderbook.go
+```rust
+// services/matching-engine/src/orderbook.rs
 
-package engine
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, HashMap};
 
-import (
-    "container/list"
-    "github.com/google/btree"
-)
+use crate::events::{Event, OrderAccepted, OrderResting};
+use crate::types::{Order, OrderId, OrderType, PriceLevel, Side};
 
-type OrderBook struct {
-    marketID   string
-    bids       *btree.BTreeG[*PriceLevel]
-    asks       *btree.BTreeG[*PriceLevel]
-    ordersByID map[OrderID]*orderHandle
-    seq        uint64
+pub struct OrderBook {
+    market_id: String,
+    bids: BTreeMap<Reverse<i64>, PriceLevel>,
+    asks: BTreeMap<i64, PriceLevel>,
+    orders_by_id: HashMap<OrderId, OrderHandle>,
+    seq: u64,
 }
 
-type orderHandle struct {
-    order  *Order
-    level  *PriceLevel
-    elem   *list.Element
+struct OrderHandle {
+    price_pts: i64,
+    side:      Side,
+    /// VecDeque tombstone marker — 撤單時不真的移除（O(N)），
+    /// 改 mark active=false，撮合時跳過已 cancel。
+    active:    bool,
 }
 
-// applyOrder is the only mutator. It must be called from the market's
-// dedicated goroutine; no locks taken. Returns events in order.
-func (b *OrderBook) applyOrder(o *Order) []Event {
-    b.seq++
-    o.SeqNo = b.seq
+impl OrderBook {
+    /// `apply_order` is the **only** mutator. It must be called from the
+    /// market's dedicated `tokio::task::LocalSet` runtime — no `Mutex`,
+    /// no `RwLock`, no `Arc<RefCell>`. Returns events in deterministic order.
+    pub fn apply_order(&mut self, mut order: Order) -> Vec<Event> {
+        self.seq += 1;
+        order.seq_no = self.seq;
 
-    events := []Event{OrderAccepted{Seq: b.seq, OrderID: o.ID}}
+        let mut events = Vec::with_capacity(4);
+        events.push(Event::OrderAccepted(OrderAccepted {
+            seq: self.seq,
+            order_id: order.id,
+        }));
 
-    opposite := b.oppositeBook(o.Side)
-    for o.QtyRemaining > 0 {
-        best, ok := peekBest(opposite, o.Side)
-        if !ok || !canCross(o, best) {
-            break
+        while order.qty_remaining > 0 {
+            let Some(best) = self.peek_best_opposite(order.side) else { break };
+            if !can_cross(&order, best) { break; }
+            events.extend(self.match_at_level(&mut order));
         }
-        ev := b.matchAtLevel(o, best)
-        events = append(events, ev...)
-    }
 
-    if o.QtyRemaining > 0 && o.Type == TypeLimit {
-        b.insertResting(o)
-        events = append(events, OrderResting{OrderID: o.ID})
+        if order.qty_remaining > 0 && order.kind == OrderType::Limit {
+            self.insert_resting(&order);
+            events.push(Event::OrderResting(OrderResting { order_id: order.id }));
+        }
+        events
     }
-    return events
+}
+
+fn can_cross(taker: &Order, level: &PriceLevel) -> bool {
+    match (taker.kind, taker.side) {
+        (OrderType::Market, _) => true,
+        (_, Side::Bid) => taker.price_pts >= level.price_pts,
+        (_, Side::Ask) => taker.price_pts <= level.price_pts,
+    }
 }
 ```
 
 ## 16. 測試策略
 
-### 16.1 單元測試（goleak）
+### 16.1 單元測試（cargo nextest）
 
-- `orderbook_test.go`：100% line coverage
-- 撮合 happy path
-- 自我成交防止
-- IOC / FOK / POST_ONLY 行為
-- 撤單 (rest / partial / 不存在)
+- 對應檔案：`services/matching-engine/src/orderbook.rs` 之 `#[cfg(test)] mod tests`
+- 撮合 hot path crate（`book` / `match` 模組）line coverage **≥ 95% baseline**（呼應 [SPEC-013 §3.3](./SPEC-013-cicd-release.md) 分層門檻 + §18 整體 ≥ 95%；H-6 跨檔對齊）；剩餘 ≤ 5% 須為**經 ADR 標註之 unreachable 分支**（如 `unreachable!()` / `panic!("invariant violated")`），不可為缺測之業務 path。stretch goal 100%（追蹤剩餘 5% 之 dead code / error path 並逐筆消除）
+- 涵蓋情境：
+  - 撮合 happy path（單筆 / 多檔位 sweep）
+  - 自我成交防止（STP 各策略：CANCEL_NEWEST / CANCEL_OLDEST / CANCEL_BOTH / DECREMENT_BOTH）
+  - IOC / FOK / POST_ONLY 行為
+  - 撤單（resting / partial fill 後撤 / 不存在 / 已 FILLED）
+- runner：`cargo nextest run -p matching-engine --locked`（對齊 SPEC-017 §4.5 Makefile 之 `make test`）
 
-### 16.2 屬性測試（property-based, gopter）
+### 16.2 屬性測試（[`proptest`](https://docs.rs/proptest)）
 
-- 任意訂單序列下，不變式皆成立：
-  - Σ(bid qty) + Σ(ask qty) + Σ(filled qty) = Σ(submit qty)
-  - best_bid < best_ask（無交叉）
-  - SeqNo 嚴格遞增
+針對任意訂單序列，不變式皆成立：
+
+- `Σ(bid qty) + Σ(ask qty) + Σ(filled qty) == Σ(submitted qty)`
+- 任意時刻 `best_bid < best_ask`（無交叉）
+- `seq` 嚴格遞增且無 gap
+- 撤單後 `total_qty` 與 queue 長度一致
+- POST_ONLY 不可成交，違反必觸發 `OrderRejected`
+
+採 `proptest::prop_compose!` 生成 `Order` 序列，shrink 失敗最小集；CI 跑種子固定（`PROPTEST_SEED`）以利重現。
 
 ### 16.3 重放確定性測試
 
-- 從 WAL 重放歷史事件，重建狀態必須與 snapshot byte-equal
+- 從 WAL 重放歷史事件，重建狀態必須與 snapshot byte-equal（對 `bincode` / `rmp-serde` 序列化結果做 SHA256 比對）
+- 跨 build 之 determinism：clippy `clippy::float_arithmetic = "deny"`（禁 float），確保不同 CPU 不會給出不同結果
 
 ### 16.4 壓力測試
 
-- 100 萬 orders、1 個市場：吞吐、P99
-- 100 個市場、每市場 10k orders：跨核擴展性
+- 100 萬 orders、1 個市場：吞吐、P99 latency 達 §11 SLO
+- 100 個市場、每市場 10k orders：跨核擴展性（per-market `tokio::task::LocalSet` + core_affinity，呼應 SPEC-014 §3.1 R-3）
+- 工具：`criterion` benchmark + `tokio-console` 觀測 task starvation
 
 ### 16.5 混沌測試
 
-- kill -9 + 自動 recovery：30 秒內必須完整恢復
-- 磁碟滿：必須拒收新訂單，已接受訂單持續處理
-- 網路分區：Kafka 不可達時 WAL 仍寫入磁碟
+- kill -9 + 自動 recovery：30 秒內必須完整恢復（從 snapshot + WAL replay）
+- 磁碟滿：必須拒收新訂單，已接受訂單持續處理至 graceful shutdown
+- 網路分區：Kafka 不可達時 WAL 仍寫入磁碟，待 Kafka 恢復後 producer 自動補送（呼應 SPEC-008 §4.2）
+
+### 16.6 Mutation testing（nightly）
+
+- 由 SPEC-017 §8.2 nightly workflow 限縮跑 `crates/sdk/ledger` + `services/matching-engine/src/{book,match}` + `services/wallet-ledger-service/src/ledger`
+- 門檻：caught mutation rate ≥ 75%（呼應 SPEC-017 §3.3 R-4）
+- 不阻塞 PR；持續 < 75% 開 issue 補測試
 
 ## 17. 部署與運維
 

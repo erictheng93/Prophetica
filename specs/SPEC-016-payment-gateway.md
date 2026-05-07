@@ -1,9 +1,11 @@
 # SPEC-016 — 支付通路整合（Payment Gateway Integration）
 
 > 優先級：**P0（必須在第一行 production code 之前完成）**
-> 版本：v0.1.0 · 最後更新：2026-05-05
+> 版本：v0.1.1 · 最後更新：2026-05-07
 > 依賴：SPEC-001, SPEC-002, SPEC-005, SPEC-010
 > 被依賴：SPEC-007, SPEC-008, SPEC-013
+
+> **v0.1.1 變更（H-5）**：§6.1 chargeback 永久封號門檻明示為「**≥ 1**」並補 cross-ref 至 SPEC-010 §6.2 / SPEC-002 §8.1，三檔統一門檻；H-5 跨檔對齊。
 
 ---
 
@@ -221,7 +223,8 @@ pub trait Driver: Send + Sync {
               （allowed 短暫負餘額 — 呼應 SPEC-002 §8.2）
                           │
                           ├─→ 玩家 24h 內可上訴（提供證據）
-                          └─→ 累計 chargeback ≥ 1 → 永久封號 + 黑名單
+                          └─→ 累計 chargeback **≥ 1** → 永久封號 + 黑名單
+                              （呼應 SPEC-010 §6.2 統一門檻；H-5 跨檔對齊）
 ```
 
 ### 6.2 退款流程（玩家主動 / 平台主動）

@@ -1,9 +1,12 @@
 # SPEC-009 — DMM 計畫與流動性策略
 
 > 優先級：**P1**
-> 版本：v0.1.0 · 最後更新：2026-05-05
+> 版本：v0.2.1 · 最後更新：2026-05-07
 > 依賴：SPEC-001, SPEC-003, SPEC-005
 > 被依賴：SPEC-011
+
+> **v0.2.1 變更（R-2 紅線清除）**：依業主決議移除原 §5「冷啟動補貼 / 平台公告錢包」整段內容，留 placeholder 章節說明移除理由與替代方案（DMM rebate 放大）；§9 OQ #5 標 Resolved；連動 SPEC-003 §12.1 sentinel `system.platform_announcement` (uid=4) 移除（SPEC-003 v0.2.2）；ADR-0001 §6 「唯一例外」描述待新 ADR 更新為「無例外」。對應 [SPEC-000 §5 R-2](./SPEC-000-index.md)。
+> **v0.2.0 變更**：跟隨 SPEC-014 v0.2.0 後端切 Rust，§7 程式碼風格範例之 `internal/liquidity/dmm_session.go` Go syntax 改寫為 Rust 等價（`tokio` + `tokio-rustls` + `thiserror`）；DMM session 之 limit 檢查邏輯不變。OQ #3「FIX 4.4 vs 自建 binary」隨 §3.4 已隱含 Resolved 為「自建 binary protobuf over TLS」，本次同步劃掉。
 
 ---
 
@@ -164,19 +167,29 @@ LM 最大風險是**自我成交 wash trading 套取 reward**。對策：
 - 7 日確認期過後轉為「available」
 - 計入收入帳戶 `Expense.LiquiditySubsidy`
 
-## 5. 冷啟動補貼（極端情境，預留設計）
+## 5. 冷啟動補貼（**已移除 v0.2.1**）
 
-> **預設不啟用**。本節僅為「若 DMM 與 LM 皆不足，新興市場流動性極差時」之最後手段。需 Compliance Officer 個案核准。
-
-機制：
-
-- 由「平台公告錢包」（位於 Operating Co. 控制下，**對玩家完全透明揭露**）
-- 限期掛入限量訂單（典型：< 1% 該市場預期成交量）
-- 每筆掛單在 UI 標記為 `[Platform Bootstrap]`
-- 成交後產生的 PnL 平台自吞，不分配給其他玩家
-- 需在月度報表中向監管揭露 bootstrap 訂單金額
-
-> 此設計仍會將平台短暫推向「下場」位置，**強烈建議避免**。優先依靠 DMM 與 LM。
+> **本節原規範「平台公告錢包」之冷啟動補貼路徑已於 2026-05-07 整段移除**（呼應 [SPEC-000 §5 R-2](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) 業主決議）。
+>
+> ### 移除理由
+>
+> SPEC-001 §1.1 ② 「平台不下場」為 **zero tolerance** 紅線。原設計即便標註「強烈建議避免」、「3-of-3 簽核啟用」、「UI 標記 `[Platform Bootstrap]`」、「月度揭露」，仍**保留了一條程式碼路徑**讓平台得以在自家訂單簿掛單。任何「條件式紅線」均構成監管問詢時的辯護空間，且律師在執照地審查時極可能要求徹底刪除此路徑。SDD 精神：**spec 上不存在的東西就不能在 code 中存在**。
+>
+> ### 替代方案：流動性不足時改注入 DMM rebate
+>
+> 流動性極差之新興市場，補貼預算改透過 §3.3 **DMM Maker Rebate** 放大（評估從 -0.1% 提高至 -0.2% / -0.3%，由 Compliance + 財務做財務模型評估），由**獨立第三方 DMM**在訂單簿掛單，平台始終維持中立中介角色，**永不下場**。若 DMM 仍不足，市場應**延後上架**而非由平台暫代造市。
+>
+> ### 後續落地清單
+>
+> - [x] SPEC-003 §12.1.1 sentinel `system.platform_announcement` (uid=4) 同步移除（SPEC-003 v0.2.2）
+> - [x] SPEC-003 §12.1.4「例外情況」整節刪除（SPEC-003 v0.2.2）
+> - [ ] **ADR-0001 §6 待 patch**：原描述「`system.platform_announcement` 為唯一例外」需更新為「**無例外** — 平台永遠不在訂單簿掛單」；需開新 ADR 標記 ADR-0001 §6 該條 superseded
+> - [x] SPEC-009 §9 OQ #5 Resolved 為「**完全禁用，不留彈性**」
+> - [ ] CI sentinel-scan 不必再為 `system.platform_announcement` 留 whitelist 例外（隨 SPEC-003 §12.1.3 grep gate 自動生效）
+>
+> ### 章節編號保留
+>
+> 為避免破壞既有 SPEC cross-reference（如其他 SPEC 引用「SPEC-009 §6 流動性指標」），本章節編號 §5 保留為 placeholder，§6 ~ §9 不重編。
 
 ## 6. 訂單簿流動性指標監控
 
@@ -193,40 +206,69 @@ proph_lm_reward_distributed_pts_total   counter
 
 ## 7. 程式碼風格範例
 
-```go
-// internal/liquidity/dmm_session.go
+```rust
+// services/dmm-gateway/src/session.rs
 
-package liquidity
+use std::collections::HashSet;
+use std::sync::Arc;
 
-type DMMSession struct {
-    DMMID    string
-    Conn     *tls.Conn
-    Limits   DMMLimits
-    Stats    *PerSessionStats
-    onAck    func(OrderAckMsg) error
-    onFill   func(FillMsg) error
+use thiserror::Error;
+use tokio::net::TcpStream;
+use tokio_rustls::server::TlsStream;
+
+use crate::engine::{EngineClient, EngineError};
+use crate::messages::NewOrderMsg;
+use crate::stats::PerSessionStats;
+
+pub struct DmmSession {
+    pub dmm_id: String,
+    pub conn:   TlsStream<TcpStream>,
+    pub limits: DmmLimits,
+    pub stats:  Arc<PerSessionStats>,
+    pub engine: EngineClient,
 }
 
-type DMMLimits struct {
-    MaxOpenOrdersPerMarket int
-    MaxPositionPts         int64
-    MaxOrderRatePerSec     int
-    AllowedMarkets         []string
+pub struct DmmLimits {
+    pub max_open_orders_per_market: u32,
+    pub max_position_pts:           i64,
+    pub max_order_rate_per_sec:     u32,
+    pub allowed_markets:            HashSet<String>,
 }
 
-// HandleNewOrder validates against DMM limits before forwarding
-// to the matching engine. Limits beyond engine-level pre-trade checks.
-func (s *DMMSession) HandleNewOrder(o NewOrderMsg) error {
-    if !contains(s.Limits.AllowedMarkets, o.MarketID) {
-        return ErrMarketNotAllowed
+#[derive(Debug, Error)]
+pub enum DmmError {
+    #[error("market not allowed for this DMM")]
+    MarketNotAllowed,
+    #[error("too many open orders for this market")]
+    TooManyOpenOrders,
+    #[error("DMM position limit exceeded")]
+    PositionLimitExceeded,
+    #[error(transparent)]
+    Engine(#[from] EngineError),
+}
+
+impl DmmSession {
+    /// `handle_new_order` validates against DMM-level limits **before**
+    /// forwarding to the matching engine. These limits are layered on top of
+    /// the engine-level pre-trade checks defined in SPEC-003 §12.
+    ///
+    /// DMM order 進入引擎前必須以 DMM 法人 user_id 標記（呼應
+    /// SPEC-003 §12.1.3 CI 靜態掃描第 3 條），不可使用 system sentinel id。
+    pub async fn handle_new_order(&self, msg: NewOrderMsg) -> Result<(), DmmError> {
+        if !self.limits.allowed_markets.contains(&msg.market_id) {
+            return Err(DmmError::MarketNotAllowed);
+        }
+        if self.stats.open_orders(&msg.market_id) >= self.limits.max_open_orders_per_market {
+            return Err(DmmError::TooManyOpenOrders);
+        }
+        if self.stats.position(&msg.market_id) + msg.qty > self.limits.max_position_pts {
+            return Err(DmmError::PositionLimitExceeded);
+        }
+        self.engine
+            .submit(crate::engine::to_engine_order(msg, &self.dmm_id))
+            .await?;
+        Ok(())
     }
-    if s.Stats.OpenOrders(o.MarketID) >= s.Limits.MaxOpenOrdersPerMarket {
-        return ErrTooManyOpenOrders
-    }
-    if s.Stats.Position(o.MarketID).Add(o.Qty) > s.Limits.MaxPositionPts {
-        return ErrPositionLimitExceeded
-    }
-    return s.engine.Submit(toEngineOrder(o, s.DMMID))
 }
 ```
 
@@ -243,6 +285,6 @@ func (s *DMMSession) HandleNewOrder(o NewOrderMsg) error {
 
 1. DMM 招募是公開招募還是邀請制？目標數量？
 2. DMM rebate 是 -0.1% 還是更激進（-0.2%）？需做財務模型
-3. DMM API 採用 FIX 4.4 標準還是自建 binary？
+3. ~~DMM API 採用 FIX 4.4 標準還是自建 binary？~~ ✅ **Resolved 2026-05-07**：採 **自建 binary protobuf over TLS**，§3.4 已落地 message 清單。理由：FIX 4.4 對 prediction market 雙腿合約語意支援不佳（FIX 為股票 / 期貨設計），且自建 protobuf 與內部 `packages/proto/v1/engine.proto` schema 共用，演化成本低。
 4. LM 從手續費提撥 30% 是否過高？需平衡平台收入
-5. 冷啟動補貼是否完全禁用？或保留極端情境彈性？
+5. ~~冷啟動補貼是否完全禁用？或保留極端情境彈性？~~ ✅ **Resolved 2026-05-07（業主決議）**：**完全禁用，不留彈性**。整段 §5「冷啟動補貼」已移除；SPEC-003 §12.1.1 sentinel `system.platform_announcement` (uid=4) 同步移除；ADR-0001 §6 「唯一例外」描述待新 ADR 更新為「無例外」。流動性不足走 §3.3 DMM rebate 放大或市場延後上架。對應 [SPEC-000 §5 R-2](./SPEC-000-index.md)。

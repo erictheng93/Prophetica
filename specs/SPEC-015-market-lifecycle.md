@@ -1,9 +1,11 @@
 # SPEC-015 — 市場生命週期管理（Market Lifecycle）
 
 > 優先級：**P0（必須在第一行 production code 之前完成）**
-> 版本：v0.1.0 · 最後更新：2026-05-05
+> 版本：v0.1.1 · 最後更新：2026-05-07
 > 依賴：SPEC-001, SPEC-003, SPEC-004
 > 被依賴：SPEC-002, SPEC-009, SPEC-010
+
+> **v0.1.1 變更**：§8.1 hedge 政策依 [SPEC-000 §5 Q-7](./SPEC-000-index.md) Resolved 為「允許」，刪除原「同一玩家不可同時持 YES + NO」禁令該行，改為呼應 SPEC-002 §4.4.4 NOTE 3 之 hedge 結算邏輯說明；自我對沖刷量交由 SPEC-010 §4.2.2 post-trade 偵測。
 
 ---
 
@@ -319,7 +321,7 @@ Operator 在 DRAFT 狀態必須填寫：
 - `closes_at - opens_at ≥ 1 hour`（最低 1 小時開放，避免人為操盤）
 - `closes_at < settles_at`（必須留時間給 Oracle）
 - `settles_at - closes_at ≥ 24 hours`（呼應 SPEC-004 §5.1 申訴窗口）
-- 同一玩家不可在同一市場上同時持 YES + NO（hedge 風險）— 由 SPEC-003 §12 風控前置層強制
+- **Hedge 允許**：同一玩家可在同一市場同時持 YES + NO（呼應 [SPEC-000 §5 Q-7](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) Resolved；結算邏輯見 SPEC-002 §4.4.4 NOTE 3）。風控前置層**不**加 `HEDGE_NOT_ALLOWED` 檢查；潛在自我對沖刷量由 SPEC-010 §4.2.2 wash trading post-trade 偵測處理。
 
 ### 8.2 自動狀態轉換
 
