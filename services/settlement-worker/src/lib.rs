@@ -159,6 +159,16 @@ impl SettlementBatchRunner {
 
         progress
     }
+
+    pub fn run_with_retry_and_halt_snapshot(
+        self,
+        progress: SettlementProgress,
+        snapshot: &sdk::feature_flags::HaltFlagSnapshot,
+        execute: impl FnMut(&SettlementBatch) -> Result<(), SettlementExecutionError>,
+    ) -> SettlementProgress {
+        let halted = snapshot.enabled;
+        self.run_with_retry_and_halt_check(progress, move || halted, execute)
+    }
 }
 
 #[must_use]
@@ -424,5 +434,31 @@ mod tests {
                 .completed_batches
                 .contains("mkt-election:batch:0001")
         );
+    }
+
+    #[test]
+    fn batch_runner_pauses_when_shared_halt_snapshot_is_enabled() {
+        let batches = build_settlement_batches(
+            "mkt-election",
+            [Position::new("pos-1", "user_01", Outcome::Yes, 1, 50)],
+        );
+        let mut executed = 0;
+        let snapshot = sdk::feature_flags::HaltFlagSnapshot::enabled(
+            "incident-123",
+            "ops incident",
+            "senior-1",
+        );
+
+        let progress = SettlementBatchRunner::new(batches).run_with_retry_and_halt_snapshot(
+            SettlementProgress::default(),
+            &snapshot,
+            |_batch| {
+                executed += 1;
+                Ok(())
+            },
+        );
+
+        assert_eq!(executed, 0);
+        assert!(progress.records.is_empty());
     }
 }

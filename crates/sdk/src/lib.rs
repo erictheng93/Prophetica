@@ -1,6 +1,7 @@
 pub mod config;
 pub mod dr;
 pub mod errors;
+pub mod feature_flags;
 pub mod ledger;
 pub mod observability;
 pub mod referral;

@@ -5,6 +5,7 @@ use std::{
 };
 
 use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
+use sdk::feature_flags::{EngineHaltFlagWriter, InMemoryFeatureFlagStore};
 use serde::{Deserialize, Serialize};
 
 pub trait HaltFlagStore {
@@ -250,6 +251,7 @@ impl AuditLogStoreError {
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryHaltFlagStore {
     state: Arc<Mutex<HaltFlagState>>,
+    feature_flags: InMemoryFeatureFlagStore,
 }
 
 #[derive(Debug, Default)]
@@ -259,6 +261,19 @@ struct HaltFlagState {
 }
 
 impl InMemoryHaltFlagStore {
+    #[must_use]
+    pub fn with_feature_flags(feature_flags: InMemoryFeatureFlagStore) -> Self {
+        Self {
+            state: Arc::new(Mutex::new(HaltFlagState::default())),
+            feature_flags,
+        }
+    }
+
+    #[must_use]
+    pub fn feature_flags(&self) -> InMemoryFeatureFlagStore {
+        self.feature_flags.clone()
+    }
+
     #[must_use]
     pub fn reason(&self) -> Option<String> {
         self.state.lock().map_or_else(
@@ -276,6 +291,8 @@ impl HaltFlagStore for InMemoryHaltFlagStore {
             .map_err(|error| HaltFlagStoreError::new(error.to_string()))?;
         state.engine_halted = true;
         state.reason = Some(reason.to_owned());
+        self.feature_flags
+            .halt_engine(reason, reason, "api-gateway:kill-switch");
         Ok(())
     }
 
@@ -292,6 +309,8 @@ impl HaltFlagStore for InMemoryHaltFlagStore {
             .clone()
             .ok_or_else(|| HaltFlagStoreError::new("engine halt subject is missing"))?;
         state.engine_halted = false;
+        self.feature_flags
+            .release_engine_halt("api-gateway:kill-switch");
         Ok(subject_id)
     }
 

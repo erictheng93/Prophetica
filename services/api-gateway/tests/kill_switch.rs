@@ -9,6 +9,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
+use sdk::feature_flags::EngineHaltFlagReader;
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime};
 use tower::ServiceExt;
@@ -228,6 +229,52 @@ async fn valid_release_route_clears_halt_flag_and_writes_audit_log() {
     assert_eq!(records[0].action, "kill_switch_release");
     assert_eq!(records[0].subject_id, "incident-123");
     assert_eq!(records[0].metadata.ms_id, "MS-9");
+}
+
+#[tokio::test]
+async fn halt_and_release_routes_update_shared_feature_flag_store() {
+    let store = InMemoryHaltFlagStore::default();
+    let flags = store.feature_flags();
+    let app = internal_admin_router(store.clone(), InMemoryAuditLogStore::default());
+
+    let halt_response = app
+        .clone()
+        .oneshot(json_post(
+            "/api/internal/admin/halt",
+            &json!({ "reason": "incident-123" }),
+        ))
+        .await
+        .expect("halt request should be handled");
+    assert_eq!(halt_response.status(), StatusCode::OK);
+    assert!(flags.engine_halt_snapshot().enabled);
+
+    let release_response = app
+        .oneshot(json_post(
+            "/api/internal/admin/halt/release",
+            &json!({
+                "reason": "incident resolved",
+                "evaluated_at_epoch_seconds": 120,
+                "signers": [
+                    {
+                        "user_id": "cto-1",
+                        "role": "CTO",
+                        "hardware_mfa": true,
+                        "mfa_verified_at_epoch_seconds": 60
+                    },
+                    {
+                        "user_id": "compliance-1",
+                        "role": "Compliance",
+                        "hardware_mfa": true,
+                        "mfa_verified_at_epoch_seconds": 90
+                    }
+                ]
+            }),
+        ))
+        .await
+        .expect("release request should be handled");
+
+    assert_eq!(release_response.status(), StatusCode::OK);
+    assert!(!flags.engine_halt_snapshot().enabled);
 }
 
 fn json_post(uri: &str, body: &Value) -> Request<Body> {

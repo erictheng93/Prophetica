@@ -11,6 +11,7 @@ use proto::proph::v1::{
     AuditMeta, MarketId, OrderType, PlaceOrderRequest, Side, TimeInForce, UserId,
     engine_service_server::EngineService,
 };
+use sdk::feature_flags::{EngineHaltFlagReader, EngineHaltFlagWriter, InMemoryFeatureFlagStore};
 
 fn place_order_request() -> PlaceOrderRequest {
     PlaceOrderRequest {
@@ -45,6 +46,13 @@ async fn synchronous_standby_loss_makes_primary_fail_closed_and_alerts() {
     assert_eq!(error.code(), tonic::Code::FailedPrecondition);
     assert_eq!(error.message(), "engine primary is read-only");
     assert_eq!(
+        error
+            .metadata()
+            .get("x-error-code")
+            .and_then(|value| value.to_str().ok()),
+        Some("ERROR_CODE_FAILED_PRECONDITION")
+    );
+    assert_eq!(
         guard.events(),
         vec![DurabilityEvent::SynchronousStandbyLost {
             alert: "engine.synchronous_standby_lost"
@@ -78,6 +86,13 @@ async fn engine_halt_flag_rejects_new_orders_but_keeps_reads_available() {
         .expect_err("halted engine should reject new orders");
     assert_eq!(error.code(), tonic::Code::FailedPrecondition);
     assert_eq!(error.message(), "engine primary is read-only");
+    assert_eq!(
+        error
+            .metadata()
+            .get("x-error-code")
+            .and_then(|value| value.to_str().ok()),
+        Some("ERROR_CODE_MARKET_HALTED")
+    );
 
     service
         .get_book_snapshot(tonic::Request::new(
@@ -90,6 +105,35 @@ async fn engine_halt_flag_rejects_new_orders_but_keeps_reads_available() {
         ))
         .await
         .expect("halted engine should keep broadcast/read surfaces available");
+}
+
+#[tokio::test]
+async fn engine_applies_shared_halt_flag_snapshot_from_control_plane() {
+    let flags = InMemoryFeatureFlagStore::default();
+    let guard = EngineDurabilityGuard::default();
+    flags.halt_engine("incident-123", "ops incident", "senior-1");
+
+    guard.apply_engine_halt_snapshot(&flags.engine_halt_snapshot());
+
+    assert!(guard.is_read_only());
+    assert!(guard.events().contains(&DurabilityEvent::EngineHalted));
+
+    flags.release_engine_halt("cto-1");
+    guard.apply_engine_halt_snapshot(&flags.engine_halt_snapshot());
+
+    assert!(!guard.is_read_only());
+}
+
+#[tokio::test]
+async fn releasing_shared_halt_flag_does_not_clear_synchronous_standby_read_only() {
+    let flags = InMemoryFeatureFlagStore::default();
+    let guard = EngineDurabilityGuard::default();
+    guard.mark_synchronous_standby_lost();
+    flags.release_engine_halt("cto-1");
+
+    guard.apply_engine_halt_snapshot(&flags.engine_halt_snapshot());
+
+    assert!(guard.is_read_only());
 }
 
 #[test]

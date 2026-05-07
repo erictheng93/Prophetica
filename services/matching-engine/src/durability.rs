@@ -1,5 +1,7 @@
 use std::sync::{Arc, Mutex};
 
+use sdk::feature_flags::HaltFlagSnapshot;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DurabilityEvent {
     SynchronousStandbyLost { alert: &'static str },
@@ -14,7 +16,8 @@ pub struct EngineDurabilityGuard {
 
 #[derive(Debug, Default)]
 struct DurabilityState {
-    read_only: bool,
+    synchronous_standby_lost: bool,
+    engine_halted: bool,
     events: Vec<DurabilityEvent>,
 }
 
@@ -29,12 +32,14 @@ impl Default for EngineDurabilityGuard {
 impl EngineDurabilityGuard {
     #[must_use]
     pub fn is_read_only(&self) -> bool {
-        self.state.lock().map_or(true, |state| state.read_only)
+        self.state.lock().map_or(true, |state| {
+            state.synchronous_standby_lost || state.engine_halted
+        })
     }
 
     pub fn mark_synchronous_standby_lost(&self) {
         if let Ok(mut state) = self.state.lock() {
-            state.read_only = true;
+            state.synchronous_standby_lost = true;
             state.events.push(DurabilityEvent::SynchronousStandbyLost {
                 alert: "engine.synchronous_standby_lost",
             });
@@ -43,7 +48,7 @@ impl EngineDurabilityGuard {
 
     pub fn mark_synchronous_standby_healthy(&self) {
         if let Ok(mut state) = self.state.lock() {
-            state.read_only = false;
+            state.synchronous_standby_lost = false;
             state
                 .events
                 .push(DurabilityEvent::SynchronousStandbyRecovered);
@@ -52,9 +57,23 @@ impl EngineDurabilityGuard {
 
     pub fn mark_engine_halted(&self) {
         if let Ok(mut state) = self.state.lock() {
-            state.read_only = true;
+            state.engine_halted = true;
             state.events.push(DurabilityEvent::EngineHalted);
         }
+    }
+
+    pub fn apply_engine_halt_snapshot(&self, snapshot: &HaltFlagSnapshot) {
+        if let Ok(mut state) = self.state.lock() {
+            if snapshot.enabled && !state.engine_halted {
+                state.events.push(DurabilityEvent::EngineHalted);
+            }
+            state.engine_halted = snapshot.enabled;
+        }
+    }
+
+    #[must_use]
+    pub fn is_engine_halted(&self) -> bool {
+        self.state.lock().map_or(true, |state| state.engine_halted)
     }
 
     #[must_use]
