@@ -2,11 +2,11 @@
 
 > **動工前必跑之 PoC 清單**。Codex PR #1（SPEC-017 §11.2）merge 之前，本文件所列之 PoC 必須由前端 / 全端工程師跑通並回填 PoC 結果至本文件 §3 / §4。任一 PoC 失敗 → 觸發退路選項並更新對應 SPEC 章節，再續進 PR #1。
 
-| 文件版本 | v1.0 |
+| 文件版本 | v1.1 |
 | --- | --- |
 | 最後更新 | 2026-05-07 |
 | 維護人 | Tech Lead |
-| 狀態 | 🟡 Pending（兩個 PoC 待執行）|
+| 狀態 | 🟢 Desk Research Done · 🟡 Live Verification Pending（artifacts 已就緒於 [`eddsa/`](./eddsa/) 與 [`edge-runtime/`](./edge-runtime/)，工程師可即時跑 live verification 並回填 §3.5 / §4.4）|
 
 ---
 
@@ -99,27 +99,38 @@ LIFF webview 內執行 §Step 1 之 `crypto.subtle.generateKey(Ed25519)`：
 | iOS Safari < 17 user 比例顯著 | 全平台改 RS256 | SPEC-010 §3.1.2 改演算法 |
 | 僅 Android 部分版本踩坑 | feature-detect + RS256 fallback | SPEC-010 §3.1.2 加 fallback 註記 |
 
-### 3.5 PoC 執行紀錄（待回填）
+### 3.5 PoC 執行紀錄（desk research 完成 + live verification 待跑）
+
+> **Artifacts 已就緒**：見 [`eddsa/README.md`](./eddsa/README.md) playbook、[`eddsa/check-support.html`](./eddsa/check-support.html) 環境檢測、[`eddsa/server-token-sample.rs`](./eddsa/server-token-sample.rs) 伺服器端 reference。
 
 ```
-Status: ⏳ Pending
-Executor: TBD (前端工程師)
-Started: TBD
-Completed: TBD
+Status: 🟢 Desk Research Done · 🟡 Live Verification Pending
+Desk Research Date: 2026-05-07
+Live Executor: TBD (前端 / 全端工程師)
+Live Started: TBD
+Live Completed: TBD
 
-Step 1 結果:
-  iOS Safari 17+: TBD
-  Android Chrome 110+: TBD
+Desk Research 結論（preliminary，無實機驗證）：
+  ✅ iOS Safari 17+ — Web Crypto Ed25519 supported（per WebKit Feature Status）
+  ✅ Android Chrome（Chrome 137+ 完整支援；舊版本可能需 polyfill）
+  ✅ Cloudflare Workers — Ed25519 supported via subtle.subtle（自 2024 H2）
+  ✅ jsonwebtoken (Rust 0.9+) / jose (npm 4+) / Apple CryptoKit / Android BouncyCastle 1.78+ 皆支援
+  ⚠️ LINE LIFF webview — webview engine = host Safari/Chrome；舊裝置（iOS 15- / Android 9-）為已知風險點，必須實機驗證
 
-Step 2 結果:
-  iPhone LINE app: TBD
-  Android LINE app: TBD
-
-Step 3 結果:
-  Token issuance: TBD
-  Cross-env verification: TBD
+Live Verification 結果（執行後回填）：
+  Step 1 (check-support.html，無需 LIFF channel):
+    iPhone Safari:        ☐ Pass / ☐ Fail
+    Android Chrome:       ☐ Pass / ☐ Fail
+  Step 2 (LIFF channel 實機):
+    iPhone LINE app:      ☐ Pass / ☐ Fail (note: ___)
+    Android LINE app:     ☐ Pass / ☐ Fail (note: ___)
+  Step 3 (server token round-trip with eddsa-poc-server):
+    Token issuance:       ☐ OK
+    Cross-env GET /me:    ☐ OK
+    Refresh rotation:     ☐ OK
 
 Final decision: [ ] Proceed with EdDSA  [ ] Dual-algo  [ ] Fallback to RS256
+Commit SHA of live verification: ___
 ```
 
 ---
@@ -223,21 +234,52 @@ Final decision: [ ] Proceed with EdDSA  [ ] Dual-algo  [ ] Fallback to RS256
 | 場景 D：fetch 行為異常 | 改用 native fetch + 自寫 abort logic，捨棄 TanStack Query | SPEC-014 §3.2 改 data fetching 選擇 |
 | 場景 E：secret 洩漏 client bundle | 強制 secret 走 server-only API route，client 永不接觸 | SPEC-010 §3.3 加註；不影響架構 |
 
-### 4.4 PoC 執行紀錄（待回填）
+### 4.4 PoC 執行紀錄（desk research 完成 + live verification 待跑）
+
+> **Artifacts 已就緒**：見 [`edge-runtime/README.md`](./edge-runtime/README.md) playbook、[`edge-runtime/scenarios.md`](./edge-runtime/scenarios.md) 5 場景 code snippets。
 
 ```
-Status: ⏳ Pending
-Executor: TBD (前端工程師 + DevOps)
-Started: TBD
-Completed: TBD
+Status: 🟢 Desk Research Done · 🟡 Live Verification Pending
+Desk Research Date: 2026-05-07
+Live Executor: TBD (前端工程師 + DevOps)
+Live Started: TBD
+Live Completed: TBD
 
-場景 A (KYC iframe): TBD
-場景 B (WebSocket): TBD
-場景 C (Server Actions): TBD
-場景 D (fetch): TBD
-場景 E (env binding): TBD
+Desk Research 結論（preliminary，無實機 deployment）：
+  ✅ Scenario A (KYC iframe)        — Likely Pass（SumSub iframe 走 Web Crypto；Workers V8 已支援）
+  ✅ Scenario B (WebSocket fan-out) — Likely Pass（client connect 走 Cloudflare proxy 為 well-known pattern）
+  ⚠️ Scenario C (Server Actions)    — Partial Risk（Edge runtime 不支援 fs/net/tls/vm；某些 SaaS SDK 仍會 build fail）
+  ✅ Scenario D (fetch behaviour)   — Likely Pass（TanStack Query v5 abstracted；minor edge cases acceptable）
+  ✅ Scenario E (env binding)       — Likely Pass（next-on-pages 已 bridge wrangler.toml ↔ process.env 差異）
 
-Final decision: [ ] Proceed with Edge runtime  [ ] Switch to Node.js runtime  [ ] Hybrid (apps/web Edge + apps/web-bff Node.js)
+Live Verification 結果（執行後回填）：
+  Scenario A (KYC iframe):
+    iframe load:        ☐ OK
+    HMAC verify:        ☐ OK
+    P95 < 60s:          ☐ OK
+  Scenario B (WebSocket fan-out):
+    HTTP 101 upgrade:   ☐ OK
+    seq monotonic:      ☐ OK
+    reconnect + gap:    ☐ OK
+    P99 < 30ms:         ☐ OK
+  Scenario C (Server Actions):
+    pnpm build clean:   ☐ OK / ☐ Fail (offending package: ___)
+    Action renders:     ☐ OK / ☐ Fail
+  Scenario D (fetch):
+    AbortController:    ☐ OK
+    TanStack retry:     ☐ OK
+  Scenario E (env binding):
+    PUBLIC_FOO client:  ☐ OK
+    SECRET_KEY server:  ☐ OK
+    no client leakage:  ☐ OK (grep .next/static/ 結果)
+
+Final decision:
+  [ ] Proceed with Edge runtime (all 5 scenarios pass)
+  [ ] Switch to Node.js runtime (any scenario fails build)
+  [ ] Hybrid (apps/web Edge + apps/web-bff Node.js for failing scenarios)
+
+Commit SHA of live verification: ___
+ADR (if Node.js / Hybrid chosen): ADR-XXXX
 ```
 
 ---

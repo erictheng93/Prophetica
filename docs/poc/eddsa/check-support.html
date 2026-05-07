@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PoC-A Step 1: Web Crypto Ed25519 support check</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; max-width: 720px; margin: 0 auto; }
+    pre { background: #f6f8fa; padding: 12px; border-radius: 8px; overflow-x: auto; }
+    .pass { color: #16a34a; font-weight: 600; }
+    .fail { color: #dc2626; font-weight: 600; }
+    .info { color: #6b7280; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>PoC-A · Web Crypto Ed25519 support check</h1>
+  <p class="info">
+    Open this page on each target environment (iPhone Safari, Android Chrome, iPhone LINE LIFF
+    webview, Android LINE LIFF webview, Cloudflare Workers preview). Capture the console output
+    or screenshot below. See <a href="./README.md">README §2.2</a> for acceptance criteria.
+  </p>
+
+  <h2>User Agent</h2>
+  <pre id="ua"></pre>
+
+  <h2>Test 1 — generateKey for Ed25519</h2>
+  <pre id="genkey"></pre>
+
+  <h2>Test 2 — sign + verify round-trip</h2>
+  <pre id="signverify"></pre>
+
+  <h2>Test 3 — importKey from raw bytes</h2>
+  <pre id="importkey"></pre>
+
+  <h2>Final Result</h2>
+  <pre id="final"></pre>
+
+  <script type="module">
+    // Render verdict using textContent + className (no innerHTML; avoids XSS).
+    const $ = (id) => document.getElementById(id);
+    const log = (id, ok, msg) => {
+      const el = $(id);
+      el.textContent = '';
+      const tag = document.createElement('span');
+      tag.className = ok ? 'pass' : 'fail';
+      tag.textContent = ok ? 'PASS' : 'FAIL';
+      el.appendChild(tag);
+      el.appendChild(document.createTextNode(' ' + msg));
+    };
+
+    // Surface UA for cross-platform debugging
+    $('ua').textContent = navigator.userAgent;
+
+    // -- Test 1: generateKey ----------------------------------------------------
+    let keyPair = null;
+    try {
+      keyPair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+      log('genkey', true, `crypto.subtle.generateKey({name:'Ed25519'}) returned a CryptoKeyPair`);
+    } catch (err) {
+      log('genkey', false, `${err.name}: ${err.message}`);
+    }
+
+    // -- Test 2: sign + verify --------------------------------------------------
+    if (keyPair) {
+      try {
+        const data = new TextEncoder().encode('prophetica:poc-a:check-support');
+        const signature = await crypto.subtle.sign({ name: 'Ed25519' }, keyPair.privateKey, data);
+        const ok = await crypto.subtle.verify({ name: 'Ed25519' }, keyPair.publicKey, signature, data);
+        log('signverify', ok, ok ? 'sign + verify round-trip succeeded' : 'verify returned false');
+      } catch (err) {
+        log('signverify', false, `${err.name}: ${err.message}`);
+      }
+    } else {
+      log('signverify', false, 'skipped (Test 1 failed)');
+    }
+
+    // -- Test 3: importKey ------------------------------------------------------
+    // Tests whether server-issued public-key bytes can be imported on the client.
+    // Format: raw 32-byte Ed25519 public key (here: deterministic test vector).
+    try {
+      const rawPubHex = '8c93256ce3a3c9c0a0d8b73d62e08b4b9e6c9bafc69d57a47c54b3c0db61f1c8';
+      const raw = new Uint8Array(rawPubHex.match(/.{2}/g).map((b) => parseInt(b, 16)));
+      const pubKey = await crypto.subtle.importKey('raw', raw, { name: 'Ed25519' }, true, ['verify']);
+      log('importkey', true, `importKey('raw', 32-byte Ed25519 pubkey) succeeded; key.algorithm=${pubKey.algorithm.name}`);
+    } catch (err) {
+      log('importkey', false, `${err.name}: ${err.message}`);
+    }
+
+    // -- Final summary ----------------------------------------------------------
+    const tests = ['genkey', 'signverify', 'importkey'];
+    const allPass = tests.every((id) => $(id).querySelector('.pass'));
+    if (allPass) {
+      log('final', true, 'Ed25519 fully supported on this environment. Record this in PRE-FLIGHT-POCS.md §3.5.');
+    } else {
+      log('final', false, 'Ed25519 support incomplete. See README §2.4 for fallback path (dual-algo or RS256).');
+    }
+  </script>
+</body>
+</html>
