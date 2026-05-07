@@ -1,7 +1,9 @@
 # SPEC-014 — 整體技術架構（Tech Architecture）
 
 > 優先級：跨章節（被多份 SPEC 依賴）
-> 版本：v0.2.5 · 最後更新：2026-05-07
+> 版本：v0.2.6 · 最後更新：2026-05-07
+>
+> **v0.2.6 變更**：§4.1 新增 §4.1.1「目前實作狀態」+ §4.1.1.1「轉 7-binary 之觸發條件」，紀錄 round 7 程式碼驗證結果（當前採 12-binary 拓撲）+ 後續轉換時機之 4 條觸發條件 + 簡述轉換流程；採 12-binary 之 acceptance 補強寫入。SDD 紀律：spec 反映現況。
 >
 > **v0.2.5 變更**：(1) §3.1 v0.2.0 變更說明補 cross-ref 至 [ADR-0005](../docs/architecture/decisions/ADR-0005-backend-language-rust-over-go.md)（後端 Go → Rust 之 retroactive ADR 落地）；(2) §3.2.1 補 cross-ref 至 [`docs/poc/PRE-FLIGHT-POCS.md §4`](../docs/poc/PRE-FLIGHT-POCS.md)（Cloudflare Pages Edge runtime PoC 詳細 plan）。
 >
@@ -210,6 +212,39 @@
 **Codex PR #1 落地建議**：採合併部署。`services/*/` crate 保留本表 12 個結構（lib crate）+ `services/_binaries/{core-api,realtime-gateway,...}/main.rs` 之 7 個 binary crate 引用對應 lib。SPEC-017 §11.2 acceptance check 應反映此拓撲選擇。
 
 > 本 §4.1 為 advisory，**不強制**Codex PR #1 採用；若 Codex 採本表 12-binary 形態實作，需在 PR description 引用 SPEC-007 §6.4 latency budget 並承諾跨 hop 壓測達標。
+
+#### 4.1.1 目前實作狀態（2026-05-07，round 7 程式碼驗證）
+
+> **現況：採 12-binary 拓撲**（每個 `services/*/` 為獨立 binary crate）。本節記錄當前實作選擇 + 後續轉 7-binary 之觸發條件。SDD 紀律：spec 應反映現況。
+
+當前實作選擇：
+
+- 12 個 service 各自獨立 main.rs binary（與 §4 表一致）
+- 不存在 `services/_binaries/` 目錄
+- 每個 service 透過 `crates/sdk` 之 `service_stub` 模組統一 §6 五要素（healthz / metrics / signal handling / JSON log）
+- CI 在單一 `cargo build --workspace` 跑通 16 個 crates（12 services + 2 sdk/proto + 2 mocks），cold cache `ubuntu-latest-4-cores` runner 預期 < 15 min（SPEC-017 §11.2.10 T-8）
+
+採 12-binary 之 acceptance 補強：
+
+- Codex PR #1 description 必須宣告「採 12-binary，下單熱路徑跨 5+ hop 將於 staging 完成 SPEC-007 §6.4 latency budget 壓測」
+- 壓測結果若超 budget → 觸發 §4.1.1.1 轉 7-binary 路徑
+
+##### 4.1.1.1 轉 7-binary 之觸發條件（將來）
+
+下列任一成立時，啟動轉 7-binary 拓撲之 PR：
+
+1. **Latency budget 違反**：staging 壓測下單熱路徑 P99 > 30ms（SPEC-007 §6.4 端到端 SLO）持續 7 天以上
+2. **CI cold cache > 25 min**：4-cores runner 編譯時間超預期，需減少 link unit 數
+3. **DAU < 5,000 且 service hop 占 P99 > 50%**：成本不效益，合併方為更佳 ROI
+4. **Compliance Officer / Tech Lead 評估**：跨 service log / trace 對 Compliance 個案調查造成顯著摩擦
+
+轉換流程（簡述，詳細待轉換時開新 ADR）：
+
+- 建立 `services/_binaries/{core-api, realtime-gateway, notification-and-risk}/main.rs` 對應本節合併方案
+- 12 個 service crate 之 `Cargo.toml` 改為 lib-only（`[lib]` 取代 `[[bin]]`）
+- 對應 7 個 binary crate 引用合併之 lib crates
+- Helm chart / Argo CD application 由 12 個合併為 7 個
+- CI ci.yml 之 deploy step 對齊新拓撲
 
 ## 5. Repository 結構（Monorepo）
 

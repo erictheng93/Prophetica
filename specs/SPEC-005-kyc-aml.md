@@ -1,16 +1,20 @@
 # SPEC-005 — KYC / AML 整合
 
 > 優先級：**P1**
-> 版本：v0.1.2 · 最後更新：2026-05-06
+> 版本：v0.1.3 · 最後更新：2026-05-07
 > 依賴：SPEC-001
 > 被依賴：SPEC-006, SPEC-010, SPEC-011
-> 實作狀態：✅ 可視為完成（工程驗證通過，2026-05-06）
+> 實作狀態：⚠️ **Backend 工程完成 / Frontend SumSub iframe 待整合**（v0.1.3 修正 v0.1.2 過度樂觀標記）
 
 ---
 
 ## 0. Implementation Status
 
-**Status: ✅ Complete / 可視為完成（2026-05-06）**
+**Status: ⚠️ Backend Complete / Frontend Pending SumSub Integration（2026-05-07 重新校準）**
+
+> **v0.1.3 校準說明**：v0.1.2 標記「✅ Complete」過度樂觀，未區分 backend 工程驗證 vs 前端真實 SumSub 整合。round 7 程式碼驗證掃描發現 `apps/web/app/kyc/tier-2/page.tsx:82-95` 之 SumSub 區塊為「虛框 + 按鈕佔位」（未載入真實 iframe），故降級為「⚠️ Backend Complete / Frontend Pending」。SPEC 應誠實反映現況（SDD 紀律），便於 Codex / 監管 / 新進工程師準確掌握實作狀態。
+
+### 0.1 已完成（Backend ✅）
 
 SPEC-005 的工程實作已落地於 `kyc-service`、`mock-sumsub`、`packages/ts-sdk`、`apps/web` 與 `tools/scripts/seed.sh`。目前覆蓋 Tier 1 本地證件 hash / duplicate check、Tier 2/3 upgrade、SumSub webhook HMAC + idempotency、sanctions / PEP rescan、AML / SAR candidate、monthly report、前端 KYC status / submission flow，以及對應 SDK 與 mock webhook。
 
@@ -25,7 +29,25 @@ SPEC-005 的工程實作已落地於 `kyc-service`、`mock-sumsub`、`packages/t
 - `rtk pnpm --filter @prophetica/web test`
 - `rtk pnpm --filter @prophetica/web lint`
 
-外部供應商合約、真實 SumSub / Onfido sandbox 帳號、監管報表提交管道與 Compliance Officer 實際作業配置屬營運啟用項；不阻塞本 SPEC 於目前 codebase 中被視為工程完成。
+### 0.2 待完成（Frontend / 整合 ⏳）
+
+| 項目 | 狀態 | 阻擋 |
+|------|------|------|
+| **真實 SumSub Web SDK iframe 載入** | ⏳ Tier-2 page 仍為「虛框 + 按鈕佔位」（[`apps/web/app/kyc/tier-2/page.tsx:82-95`](../apps/web/app/kyc/tier-2/page.tsx)）| 需先跑 [PoC-B Cloudflare Edge runtime](../docs/poc/PRE-FLIGHT-POCS.md) §4.2.1 確認 iframe 在 Edge runtime 下載入 |
+| **Tier 2/3 OCR / Liveness / EDD** | ⏳ kyc-service 僅 Tier 1 本地驗證實作；Tier 2/3 完整流程需 SumSub iframe + webhook 端到端 | 同上 |
+| **Self-exclusion 名單比對** | ⏳ §2.4.1 step 3「對 self-excluded 名單比對」未在 kyc-service 實作 | 待 SPEC-006 §5.4 落地後跨 service 整合 |
+| **Daily batch screening rescan scheduler** | ⏳ `/internal/screening/rescans` 為手動 API；§6 「每日 batch」cron 排程未實作 | 動工排程基礎設施（Temporal / Airflow / cron）後接入 |
+| **Income stale 標記（12 個月未更新）** | ⏳ §2.1.1 提及但無實作 | 動態 query 計算或加 cron |
+| **EdDSA / LIFF 相容性 PoC** | ⏳ T-9 PoC-A 待跑（[PRE-FLIGHT-POCS §3](../docs/poc/PRE-FLIGHT-POCS.md)）| 阻擋 PR #1 §11.3 |
+| **真實 SumSub sandbox 帳號 + 合約** | ⏳ 營運啟用項 | 不阻擋工程，但阻擋實際 KYC 流程上線 |
+| **監管報表提交管道**（執照地 FIU 整合）| ⏳ 營運啟用項 | 不阻擋工程 |
+
+### 0.3 進入 PR #1 acceptance 之條件
+
+- 不阻擋 PR #1（§0.1 backend 完整、§0.2 待完成項目都屬「PR #1 後」工作）
+- 但 SPEC-005 §0 不可再標 ✅ Complete，避免誤導 Compliance / 監管面試陳述
+- PR #1 merge 後第一輪 sprint 之優先級：跑 PoC-B → 整合真實 SumSub iframe → §0.2 第一列轉 ✅
+- 外部供應商合約、真實 SumSub / Onfido sandbox 帳號、監管報表提交管道與 Compliance Officer 實際作業配置屬營運啟用項；不阻塞本 SPEC 之 backend 工程完成
 
 ## 1. Objective
 
