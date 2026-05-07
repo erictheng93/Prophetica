@@ -166,6 +166,38 @@ impl ProjectionSink for InMemoryProjectionSink {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KafkaProducerSettings {
+    pub acks: &'static str,
+    pub enable_idempotence: bool,
+    pub message_timeout_ms: u64,
+}
+
+impl KafkaProducerSettings {
+    #[must_use]
+    pub const fn spec_008() -> Self {
+        Self {
+            acks: "all",
+            enable_idempotence: true,
+            message_timeout_ms: 5_000,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KafkaTopicDurabilityPolicy {
+    pub replication_factor: i16,
+}
+
+impl KafkaTopicDurabilityPolicy {
+    #[must_use]
+    pub const fn spec_008() -> Self {
+        Self {
+            replication_factor: 3,
+        }
+    }
+}
+
 #[cfg(feature = "kafka")]
 pub struct KafkaProjectionSink {
     producer: BaseProducer,
@@ -179,11 +211,22 @@ impl KafkaProjectionSink {
     ///
     /// Returns a Kafka error when the producer cannot be constructed from the provided brokers.
     pub fn from_brokers(brokers: &str) -> Result<Self, rdkafka::error::KafkaError> {
+        let settings = KafkaProducerSettings::spec_008();
         let producer = ClientConfig::new()
             .set("bootstrap.servers", brokers)
-            .set("acks", "all")
-            .set("enable.idempotence", "true")
-            .set("message.timeout.ms", "5000")
+            .set("acks", settings.acks)
+            .set(
+                "enable.idempotence",
+                if settings.enable_idempotence {
+                    "true"
+                } else {
+                    "false"
+                },
+            )
+            .set(
+                "message.timeout.ms",
+                settings.message_timeout_ms.to_string(),
+            )
             .create()?;
 
         Ok(Self { producer })
@@ -542,5 +585,25 @@ pub fn project_engine_event(envelope: EngineEvent) -> Vec<ProjectionEvent> {
             filled_qty: filled_now,
             remaining_qty: remaining,
         }],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{KafkaProducerSettings, KafkaTopicDurabilityPolicy};
+
+    #[test]
+    fn kafka_producer_settings_require_all_acks_and_idempotence() {
+        let settings = KafkaProducerSettings::spec_008();
+
+        assert_eq!(settings.acks, "all");
+        assert!(settings.enable_idempotence);
+    }
+
+    #[test]
+    fn kafka_topic_durability_policy_requires_three_replicas() {
+        let policy = KafkaTopicDurabilityPolicy::spec_008();
+
+        assert_eq!(policy.replication_factor, 3);
     }
 }
