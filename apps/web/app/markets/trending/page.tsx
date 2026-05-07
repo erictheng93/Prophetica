@@ -1,23 +1,30 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { ProphTile } from "@prophetica/ui";
 import { MarketCard } from "@/components/market-card";
 import { fetchTrendingMarkets } from "@/lib/market-api";
 
-export const metadata: Metadata = {
-  title: "熱門市場 — prophetica",
-  description: "依 24 小時成交量排序的熱門對局。",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("markets.trending.metadata");
+  return {
+    title: t("title"),
+    description: t("description"),
+  };
+}
 
 export default async function MarketsTrendingPage() {
-  const { markets } = await fetchTrendingMarkets();
+  const [{ markets }, t] = await Promise.all([
+    fetchTrendingMarkets(),
+    getTranslations("markets.trending"),
+  ]);
 
   return (
     <>
       <ProphTile
         surface="light"
-        kicker="市場 / 熱門"
-        headline="玩家最關注的對局。"
-        tagline="依過去 24 小時成交量排序。成交量大代表市場意見正在收斂，但不必然代表共識正確。"
+        kicker={t("kicker")}
+        headline={t("headline")}
+        tagline={t("tagline")}
       />
 
       <section className="bg-proph-canvas">

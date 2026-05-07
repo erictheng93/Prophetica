@@ -277,7 +277,7 @@ function SubmissionForm({ t }: { t: DisputesCopy }) {
             <input
               type="text"
               name="marketId"
-              placeholder="例如：fomc-2026-06-rate-cut"
+              placeholder={t("form.fields.marketIdPlaceholder")}
               className="mt-1 w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
             />
             <span className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
@@ -287,7 +287,7 @@ function SubmissionForm({ t }: { t: DisputesCopy }) {
 
           <label className="block">
             <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
-              你認為應判定的結果
+              {t("form.fields.claimedOutcome")}
             </span>
             <select
               name="claimedOutcome"

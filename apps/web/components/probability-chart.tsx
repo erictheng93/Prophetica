@@ -16,7 +16,7 @@ interface Props {
   data: ProbabilityPoint[];
   /** Height in px; the chart fills container width responsively. */
   height?: number;
-  ariaLabel?: string;
+  ariaLabel: string;
 }
 
 /*
@@ -46,7 +46,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function ProbabilityChart({ data, height = 280, ariaLabel = "YES 價格走勢" }: Props) {
+export function ProbabilityChart({ data, height = 280, ariaLabel }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);

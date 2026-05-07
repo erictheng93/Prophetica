@@ -7,20 +7,56 @@ const messages = JSON.parse(
   readFileSync(join(process.cwd(), "messages/zh-Hant.json"), "utf8"),
 ) as Record<string, unknown>;
 
+// Files that have completed next-intl migration. The assertion below scans
+// each for CJK characters in *runtime* code — comments are stripped first so
+// that SPEC references like `// SPEC-006 §3.1 — "無上限" intentionally absent.`
+// stay legal documentation without breaking the gate.
 const migratedFiles = [
   "app/auth/sign-in/page.tsx",
+  "app/kyc/layout.tsx",
+  "app/kyc/page.tsx",
+  "app/kyc/privacy-notice/page.tsx",
+  "app/kyc/tier-2/page.tsx",
   "app/legal/aml/page.tsx",
   "app/legal/geo-block/page.tsx",
   "app/legal/privacy/page.tsx",
   "app/legal/terms/page.tsx",
+  "app/markets/[id]/not-found.tsx",
+  "app/markets/[id]/page.tsx",
+  "app/markets/layout.tsx",
+  "app/markets/new/page.tsx",
+  "app/markets/page.tsx",
+  "app/markets/settled/page.tsx",
+  "app/markets/trending/page.tsx",
+  "app/page.tsx",
+  "app/responsible-gaming/layout.tsx",
+  "app/responsible-gaming/limits/page.tsx",
+  "app/responsible-gaming/page.tsx",
+  "app/support/disputes/page.tsx",
+  "app/topup/page.tsx",
+  "components/market-card.tsx",
+  "components/probability-chart.tsx",
   "components/stub-page.tsx",
+  "components/tier-stepper.tsx",
+  "components/trade-panel.tsx",
 ];
 
-test("migrated auth, legal, and shared placeholder copy is sourced from messages", () => {
+// Strip /* ... */ block comments and // line comments. Heuristic — does not
+// understand strings containing `//`, but we don't write URL literals with
+// hard-coded protocols in this codebase. Good enough to keep CJK comments
+// (SPEC references, design notes) out of the runtime-string check.
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1");
+}
+
+test("migrated copy is sourced from messages, not inline literals", () => {
   for (const file of migratedFiles) {
     const source = readFileSync(join(process.cwd(), file), "utf8");
+    const runtime = stripComments(source);
 
-    assert.doesNotMatch(source, /[\u4e00-\u9fff]/, file);
+    assert.doesNotMatch(runtime, /[一-鿿]/, file);
   }
 });
 

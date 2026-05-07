@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import {
   categoryLabel,
   formatCloseAt,
@@ -7,8 +8,9 @@ import {
 } from "@/lib/mock-markets";
 import { ProbabilityBar } from "./probability-bar";
 
-export function MarketCard({ market }: { market: Market }) {
+export async function MarketCard({ market }: { market: Market }) {
   const isSettled = market.status === "settled";
+  const t = await getTranslations("marketCard");
 
   return (
     <a
@@ -40,7 +42,7 @@ export function MarketCard({ market }: { market: Market }) {
 
       <div className="mt-5">
         {isSettled && market.resolvedOutcome ? (
-          <SettledBadge outcome={market.resolvedOutcome} />
+          <SettledBadge outcome={market.resolvedOutcome} label={t("settledOutcomeLabel")} />
         ) : (
           <ProbabilityBar yesCents={market.yesPriceCents} size="compact" />
         )}
@@ -49,7 +51,7 @@ export function MarketCard({ market }: { market: Market }) {
       <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-proph-divider-soft pt-4 text-proph-ink-muted-80">
         <div>
           <dt className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-            24h 成交量
+            {t("volume24hLabel")}
           </dt>
           <dd className="mt-1 font-text text-[14px] tracking-[-0.224px]">
             {formatPoints(market.volume24hPoints)}
@@ -57,7 +59,7 @@ export function MarketCard({ market }: { market: Market }) {
         </div>
         <div className="text-right">
           <dt className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-            {isSettled ? "結算日" : "關盤日"}
+            {isSettled ? t("settledDateLabel") : t("closeDateLabel")}
           </dt>
           <dd className="mt-1 font-text text-[14px] tracking-[-0.224px]">
             {formatCloseAt(isSettled && market.resolvedAt ? market.resolvedAt : market.closeAt)}
@@ -68,12 +70,12 @@ export function MarketCard({ market }: { market: Market }) {
   );
 }
 
-function SettledBadge({ outcome }: { outcome: "YES" | "NO" }) {
+function SettledBadge({ outcome, label }: { outcome: "YES" | "NO"; label: string }) {
   const isYes = outcome === "YES";
   return (
     <div className="flex items-center justify-between rounded-proph-md border border-proph-divider-soft bg-proph-canvas-parchment px-4 py-3">
       <span className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-        最終結果
+        {label}
       </span>
       <span
         className={

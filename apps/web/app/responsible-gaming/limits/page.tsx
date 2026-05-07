@@ -21,12 +21,15 @@ const mockState = {
   lastChangeAt: "2026-04-12",
 };
 
-const formatPoints = (n: number) => `${n.toLocaleString("zh-Hant")} 點`;
 
 type LimitsCopy = Awaited<ReturnType<typeof getTranslations<"responsibleGaming.limits">>>;
 
 export default async function LimitsPage() {
-  const t = await getTranslations("responsibleGaming.limits");
+  const [t, tFmt] = await Promise.all([
+    getTranslations("responsibleGaming.limits"),
+    getTranslations("common.format"),
+  ]);
+  const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
   return (
     <>
       <ProphTile
@@ -35,13 +38,19 @@ export default async function LimitsPage() {
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
-      <CurrentLimitCard t={t} />
+      <CurrentLimitCard t={t} formatPoints={formatPoints} />
       <AdjustForm t={t} />
     </>
   );
 }
 
-function CurrentLimitCard({ t }: { t: LimitsCopy }) {
+function CurrentLimitCard({
+  t,
+  formatPoints,
+}: {
+  t: LimitsCopy;
+  formatPoints: (n: number) => string;
+}) {
   const usagePct = Math.min(100, (mockState.thisMonthUsed / mockState.currentLimit) * 100);
   const nearLimit = usagePct >= 80;
 

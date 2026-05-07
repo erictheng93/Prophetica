@@ -87,14 +87,21 @@
           }
         }
       }
+    },
+    "format": {
+      "points": "{n} 點"
     }
   },
   "sectionNav": {
     "markets": {
+      "ariaLabel": "市場 區段導覽",
       "all": "全部",
       "trending": "熱門",
       "new": "新上架",
       "settled": "已結算"
+    },
+    "responsibleGaming": {
+      "ariaLabel": "責任博弈 區段導覽"
     },
     "support": {
       "ariaLabel": "客服 區段導覽",
@@ -494,6 +501,7 @@
           "categoryOption": "{label}（{priority}）",
           "marketId": "相關市場 ID（如有）",
           "marketIdHint": "結算 / 交易爭議請務必填寫，可在市場頁網址列複製。",
+          "marketIdPlaceholder": "例如：fomc-2026-06-rate-cut",
           "claimedOutcome": "你認為應判定的結果",
           "body": "詳細說明",
           "bodyPlaceholder": "請描述發生時間、預期行為、實際行為、你已嘗試的步驟。",
@@ -1831,6 +1839,135 @@
   "stubPage": {
     "tagline": "這個頁面正在準備中，將在後續版本上線。感謝你的耐心。",
     "backLabel": "回首頁"
+  },
+  "marketCard": {
+    "volume24hLabel": "24h 成交量",
+    "settledDateLabel": "結算日",
+    "closeDateLabel": "關盤日",
+    "settledOutcomeLabel": "最終結果"
+  },
+  "probabilityChart": {
+    "ariaLabel": "YES 價格走勢"
+  },
+  "tradePanel": {
+    "validation": {
+      "priceInteger": "價格須為整數 cent",
+      "priceMin": "最低 1¢",
+      "priceMax": "最高 99¢",
+      "qtyInteger": "數量須為整數股",
+      "qtyPositive": "數量須大於 0",
+      "qtyMax": "單次下單上限 100,000 股"
+    },
+    "flashMock": "(後端待接) 已收到 {side} × {quantity} 股 @ {price}¢ 的下單請求。",
+    "summary": {
+      "openLabel": "開啟下單面板",
+      "stockUnitTemplate": "{side} · {price}¢ × {quantity} 股",
+      "maxCostTemplate": "最大成本 {amount} 點",
+      "submitCta": "下單"
+    },
+    "panel": {
+      "ariaLabel": "下單面板",
+      "heading": "下單",
+      "backdropLabel": "關閉下單面板",
+      "closeAriaLabel": "關閉",
+      "closeLabel": "關閉",
+      "complianceNote": "SPEC-003 撮合送單前須通過責任博弈評分（SPEC-006 §4）與 KYC 層級檢查。",
+      "sideLegend": "選擇下單方向",
+      "priceLabel": "價格（cent）",
+      "priceHint": "目前 {side} 的最佳報價 {quote}¢",
+      "qtyLabel": "數量（股）",
+      "qtyHint": "1 股 = 1 點面額；結算為 YES 時每股入帳 100 點",
+      "maxCostLabel": "最大成本",
+      "pointsTemplate": "{amount} 點",
+      "submitting": "送出中…",
+      "submit": "送出訂單（後端待接）",
+      "footnote": "下單前請確認你已完成 KYC 層級驗證、設定月儲值上限。違反者由 SPEC-003 撮合層直接拒收。"
+    }
+  },
+  "markets": {
+    "all": {
+      "metadata": {
+        "title": "全部市場 — prophetica",
+        "description": "瀏覽所有開放中的預測市場。"
+      },
+      "kicker": "市場",
+      "headline": "所有開放中的對局。",
+      "tagline": "每個市場都是 YES / NO 二元問題，由 prophetica 中立撮合，玩家以站內點數對結果表態。",
+      "countLabel": "{count} 個開放中",
+      "sortLabel": "排序：依預設順序"
+    },
+    "trending": {
+      "metadata": {
+        "title": "熱門市場 — prophetica",
+        "description": "依 24 小時成交量排序的熱門對局。"
+      },
+      "kicker": "市場 / 熱門",
+      "headline": "玩家最關注的對局。",
+      "tagline": "依過去 24 小時成交量排序。成交量大代表市場意見正在收斂，但不必然代表共識正確。"
+    },
+    "new": {
+      "metadata": {
+        "title": "新上架 — prophetica",
+        "description": "最近開盤的預測市場。"
+      },
+      "kicker": "市場 / 新上架",
+      "headline": "剛開放的對局。",
+      "tagline": "這些市場都通過 SPEC-015 雙簽審查，並在過去數天內開盤。流動性可能還在累積。"
+    },
+    "settled": {
+      "metadata": {
+        "title": "已結算 — prophetica",
+        "description": "近期完成 Oracle 結算的市場。"
+      },
+      "kicker": "市場 / 已結算",
+      "headline": "結果出爐的對局。",
+      "tagline": "已通過 Oracle 判定並結算的市場。所有玩家持倉於結算當下入帳，可在個人持倉頁查看。",
+      "emptyState": "目前沒有已結算市場可顯示。"
+    },
+    "notFound": {
+      "kicker": "找不到這個市場",
+      "headline": "這個市場可能已下架，或網址有誤。",
+      "tagline": "請從市場列表重新進入，或聯繫客服。",
+      "backLabel": "回市場列表",
+      "contactLabel": "聯繫客服"
+    }
+  },
+  "marketDetail": {
+    "metadataNotFound": "找不到市場 — prophetica",
+    "pricingExplainer": "價格為 YES 一股的最後成交價（單位：cent，1 cent = 0.01 點）。買入 YES 一股表示「我認為會發生」，結算為 YES 時每股入帳 100 點。",
+    "chart": {
+      "title": "YES 價格走勢",
+      "subtitle": "過去 30 天，每日收盤價（單位：cent）。資料目前為示意；後端時間序列就緒後即時更新。"
+    },
+    "resolved": {
+      "eyebrow": "最終結果",
+      "body": "於 {date} 由 Oracle 判定並進入結算流水線。持倉已自動兌換為點數，可於個人持倉頁查看。"
+    },
+    "orderBook": {
+      "title": "YES 訂單簿",
+      "subtitle": "顯示 YES 一邊的買賣盤；NO 訂單簿為其鏡像（NO 價 = 100 − YES 價）。",
+      "bidsHeading": "買盤（Bids）",
+      "asksHeading": "賣盤（Asks）",
+      "priceHeader": "價格",
+      "qtyHeader": "數量"
+    },
+    "recentTrades": {
+      "title": "近期成交",
+      "timeHeader": "時間",
+      "sideHeader": "方向",
+      "priceHeader": "價格",
+      "qtyHeader": "數量"
+    },
+    "info": {
+      "heading": "市場資訊",
+      "fields": {
+        "oracleSource": "Oracle 來源",
+        "openedAt": "開盤",
+        "closeAt": "關盤",
+        "volumeTotal": "累計成交量"
+      },
+      "complianceNote": "市場合規邊界遵循 SPEC-015 §5；Oracle 結算流程與申訴窗口遵循 SPEC-004。如對結算結果有疑問，請於結算後 24 小時內透過<disputes>申訴流程</disputes>提起。"
+    }
   },
   "auth": {
     "signIn": {

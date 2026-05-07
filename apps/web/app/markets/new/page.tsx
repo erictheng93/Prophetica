@@ -1,23 +1,30 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { ProphTile } from "@prophetica/ui";
 import { MarketCard } from "@/components/market-card";
 import { fetchNewestMarkets } from "@/lib/market-api";
 
-export const metadata: Metadata = {
-  title: "新上架 — prophetica",
-  description: "最近開盤的預測市場。",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("markets.new.metadata");
+  return {
+    title: t("title"),
+    description: t("description"),
+  };
+}
 
 export default async function MarketsNewPage() {
-  const { markets } = await fetchNewestMarkets();
+  const [{ markets }, t] = await Promise.all([
+    fetchNewestMarkets(),
+    getTranslations("markets.new"),
+  ]);
 
   return (
     <>
       <ProphTile
         surface="light"
-        kicker="市場 / 新上架"
-        headline="剛開放的對局。"
-        tagline="這些市場都通過 SPEC-015 雙簽審查，並在過去數天內開盤。流動性可能還在累積。"
+        kicker={t("kicker")}
+        headline={t("headline")}
+        tagline={t("tagline")}
       />
 
       <section className="bg-proph-canvas">

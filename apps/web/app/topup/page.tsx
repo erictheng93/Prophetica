@@ -42,17 +42,18 @@ const mockState = {
   kycTier: 1,
 };
 
-const formatPoints = (n: number): string => `${n.toLocaleString("zh-Hant")} 點`;
 const formatTwd = (n: number): string => `TWD ${n.toLocaleString("zh-Hant")}`;
 
 type TopupCopy = Awaited<ReturnType<typeof getTranslations<"topup">>>;
 
 export default async function TopUpPage() {
-  const [t, sectionFooterColumns, walletOverview] = await Promise.all([
+  const [t, tFmt, sectionFooterColumns, walletOverview] = await Promise.all([
     getTranslations("topup"),
+    getTranslations("common.format"),
     getFooterColumns(["responsibleGaming", "legal", "support"]),
     fetchWalletOverview(),
   ]);
+  const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
   const { monthlyDeposited, monthlyLimit, kycTier } = mockState;
   const currentBalance = walletOverview.balance.availablePoints;
   const usagePct = Math.min(100, (monthlyDeposited / monthlyLimit) * 100);
@@ -91,9 +92,15 @@ export default async function TopUpPage() {
         atLimit={atLimit}
         kycTier={kycTier}
         walletSource={walletOverview.source}
+        formatPoints={formatPoints}
       />
 
-      <AmountSection t={t} atLimit={atLimit} remainingPoints={remainingPoints} />
+      <AmountSection
+        t={t}
+        atLimit={atLimit}
+        remainingPoints={remainingPoints}
+        formatPoints={formatPoints}
+      />
       <ChannelSection t={t} />
       <ConfirmSection t={t} atLimit={atLimit} />
       <RGReminder t={t} />
@@ -114,6 +121,7 @@ interface BalanceBlockProps {
   atLimit: boolean;
   kycTier: number;
   walletSource: string;
+  formatPoints: (n: number) => string;
 }
 
 function BalanceBlock(props: BalanceBlockProps) {
@@ -128,6 +136,7 @@ function BalanceBlock(props: BalanceBlockProps) {
     atLimit,
     kycTier,
     walletSource,
+    formatPoints,
   } = props;
 
   const tierCap =
@@ -215,10 +224,12 @@ function AmountSection({
   t,
   atLimit,
   remainingPoints,
+  formatPoints,
 }: {
   t: TopupCopy;
   atLimit: boolean;
   remainingPoints: number;
+  formatPoints: (n: number) => string;
 }) {
   return (
     <section className="bg-proph-canvas">

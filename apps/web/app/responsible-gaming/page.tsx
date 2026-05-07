@@ -28,7 +28,6 @@ const mockSnapshot = {
   netSettlementPoints: -1240,
 };
 
-const formatPoints = (n: number) => `${n.toLocaleString("zh-Hant")} 點`;
 
 type ToolsCopy = Awaited<ReturnType<typeof getTranslations<"responsibleGaming.overview.tools">>>;
 type SnapshotCopy = Awaited<
@@ -36,11 +35,13 @@ type SnapshotCopy = Awaited<
 >;
 
 export default async function ResponsibleGamingPage() {
-  const [tHero, tSnapshot, tTools] = await Promise.all([
+  const [tHero, tSnapshot, tTools, tFmt] = await Promise.all([
     getTranslations("responsibleGaming.overview.hero"),
     getTranslations("responsibleGaming.overview.monthlySnapshot"),
     getTranslations("responsibleGaming.overview.tools"),
+    getTranslations("common.format"),
   ]);
+  const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
 
   return (
     <>
@@ -55,13 +56,19 @@ export default async function ResponsibleGamingPage() {
         tagline={tHero("tagline")}
       />
 
-      <MonthlySnapshot t={tSnapshot} />
+      <MonthlySnapshot t={tSnapshot} formatPoints={formatPoints} />
       <ToolsGrid t={tTools} />
     </>
   );
 }
 
-function MonthlySnapshot({ t }: { t: SnapshotCopy }) {
+function MonthlySnapshot({
+  t,
+  formatPoints,
+}: {
+  t: SnapshotCopy;
+  formatPoints: (n: number) => string;
+}) {
   const usagePct = Math.min(100, (mockSnapshot.depositPoints / mockSnapshot.depositLimit) * 100);
   return (
     <section className="bg-proph-canvas-parchment">

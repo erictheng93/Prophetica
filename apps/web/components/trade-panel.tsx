@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useTranslations } from "next-intl";
 import { TrendDown, TrendUp } from "@phosphor-icons/react";
 import type { Market } from "@/lib/mock-markets";
 
@@ -20,26 +21,28 @@ import type { Market } from "@/lib/mock-markets";
  *                     bottom sheet. Same form instance, CSS-positioned only.
  */
 
-const tradeSchema = z.object({
-  side: z.enum(["YES", "NO"]),
-  priceCents: z.coerce
-    .number()
-    .int("價格須為整數 cent")
-    .min(1, "最低 1¢")
-    .max(99, "最高 99¢"),
-  quantity: z.coerce
-    .number()
-    .int("數量須為整數股")
-    .positive("數量須大於 0")
-    .max(100_000, "單次下單上限 100,000 股"),
-});
-
-// Coerce schemas have separate input (raw form values, unknown) and output
-// (post-coerce, number) types. RHF v8+ exposes both as generic params.
-type TradeInput = z.input<typeof tradeSchema>;
-type TradeOutput = z.output<typeof tradeSchema>;
-
 export function TradePanel({ market }: { market: Market }) {
+  const tValidation = useTranslations("tradePanel.validation");
+  const tFlash = useTranslations("tradePanel");
+  const tSummary = useTranslations("tradePanel.summary");
+  const tPanel = useTranslations("tradePanel.panel");
+
+  const tradeSchema = z.object({
+    side: z.enum(["YES", "NO"]),
+    priceCents: z.coerce
+      .number()
+      .int(tValidation("priceInteger"))
+      .min(1, tValidation("priceMin"))
+      .max(99, tValidation("priceMax")),
+    quantity: z.coerce
+      .number()
+      .int(tValidation("qtyInteger"))
+      .positive(tValidation("qtyPositive"))
+      .max(100_000, tValidation("qtyMax")),
+  });
+  type TradeInput = z.input<typeof tradeSchema>;
+  type TradeOutput = z.output<typeof tradeSchema>;
+
   const [sheetOpen, setSheetOpen] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
@@ -75,7 +78,11 @@ export function TradePanel({ market }: { market: Market }) {
     // Mock latency that mimics the real backend round-trip.
     await new Promise((r) => setTimeout(r, 600));
     setFlash(
-      `(後端待接) 已收到 ${values.side} × ${values.quantity.toLocaleString()} 股 @ ${values.priceCents}¢ 的下單請求。`,
+      tFlash("flashMock", {
+        side: values.side,
+        quantity: values.quantity.toLocaleString(),
+        price: values.priceCents,
+      }),
     );
     setSheetOpen(false);
     setTimeout(() => setFlash(null), 5000);
@@ -93,18 +100,22 @@ export function TradePanel({ market }: { market: Market }) {
           "fixed inset-x-0 bottom-0 z-30 flex items-center justify-between border-t border-proph-hairline bg-proph-canvas/95 px-5 py-3 backdrop-blur lg:hidden " +
           (sheetOpen ? "hidden" : "")
         }
-        aria-label="開啟下單面板"
+        aria-label={tSummary("openLabel")}
       >
         <span className="flex flex-col items-start">
           <span className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-            {sideLabel} · {priceCents || sideQuote}¢ × {quantity || 0} 股
+            {tSummary("stockUnitTemplate", {
+              side: sideLabel,
+              price: priceCents || sideQuote,
+              quantity: quantity || 0,
+            })}
           </span>
           <span className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-proph-ink">
-            最大成本 {maxCost.toLocaleString("zh-Hant")} 點
+            {tSummary("maxCostTemplate", { amount: maxCost.toLocaleString("zh-Hant") })}
           </span>
         </span>
         <span className="rounded-proph-pill bg-proph-primary px-5 py-2 font-text text-[14px] tracking-[-0.224px] text-proph-on-primary">
-          下單
+          {tSummary("submitCta")}
         </span>
       </button>
 
@@ -113,7 +124,7 @@ export function TradePanel({ market }: { market: Market }) {
         <button
           type="button"
           onClick={() => setSheetOpen(false)}
-          aria-label="關閉下單面板"
+          aria-label={tPanel("backdropLabel")}
           className="fixed inset-0 z-40 bg-proph-ink/40 lg:hidden"
         />
       ) : null}
@@ -125,7 +136,7 @@ export function TradePanel({ market }: { market: Market }) {
        *   - Desktop:        relative, sticky aside in the right column.
        */}
       <aside
-        aria-label="下單面板"
+        aria-label={tPanel("ariaLabel")}
         className={
           "fixed inset-x-0 bottom-0 z-50 max-h-[88vh] overflow-y-auto rounded-t-proph-lg border-t border-proph-hairline bg-proph-canvas p-6 transition-transform duration-300 " +
           (sheetOpen ? "translate-y-0" : "translate-y-full") +
@@ -133,24 +144,26 @@ export function TradePanel({ market }: { market: Market }) {
         }
       >
         <div className="flex items-baseline justify-between">
-          <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">下單</h2>
+          <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">
+            {tPanel("heading")}
+          </h2>
           <button
             type="button"
             onClick={() => setSheetOpen(false)}
-            aria-label="關閉"
+            aria-label={tPanel("closeAriaLabel")}
             className="font-text text-[14px] text-proph-ink-muted-48 hover:text-proph-ink lg:hidden"
           >
-            關閉
+            {tPanel("closeLabel")}
           </button>
         </div>
         <p className="mt-1 font-text text-[12px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-48">
-          SPEC-003 撮合送單前須通過責任博弈評分（SPEC-006 §4）與 KYC 層級檢查。
+          {tPanel("complianceNote")}
         </p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-5" noValidate>
           {/* Side selector — sr-only radios + has-[:checked] visual */}
           <fieldset>
-            <legend className="sr-only">選擇下單方向</legend>
+            <legend className="sr-only">{tPanel("sideLegend")}</legend>
             <div className="grid grid-cols-2 gap-2">
               <label className="cursor-pointer rounded-proph-md border border-proph-hairline bg-proph-canvas p-4 has-[:checked]:border-proph-primary has-[:checked]:bg-proph-canvas-parchment">
                 <input type="radio" {...register("side")} value="YES" className="sr-only" />
@@ -182,8 +195,8 @@ export function TradePanel({ market }: { market: Market }) {
           </fieldset>
 
           <FormField
-            label="價格（cent）"
-            hint={`目前 ${sideLabel} 的最佳報價 ${sideQuote}¢`}
+            label={tPanel("priceLabel")}
+            hint={tPanel("priceHint", { side: sideLabel, quote: sideQuote })}
             error={errors.priceCents?.message}
           >
             <input
@@ -199,8 +212,8 @@ export function TradePanel({ market }: { market: Market }) {
           </FormField>
 
           <FormField
-            label="數量（股）"
-            hint="1 股 = 1 點面額；結算為 YES 時每股入帳 100 點"
+            label={tPanel("qtyLabel")}
+            hint={tPanel("qtyHint")}
             error={errors.quantity?.message}
           >
             <input
@@ -216,10 +229,10 @@ export function TradePanel({ market }: { market: Market }) {
 
           <div className="flex items-baseline justify-between border-t border-proph-divider-soft pt-4">
             <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-              最大成本
+              {tPanel("maxCostLabel")}
             </span>
             <span className="font-mono text-[21px] font-semibold tabular-nums text-proph-ink">
-              {maxCost.toLocaleString("zh-Hant")} 點
+              {tPanel("pointsTemplate", { amount: maxCost.toLocaleString("zh-Hant") })}
             </span>
           </div>
 
@@ -237,11 +250,11 @@ export function TradePanel({ market }: { market: Market }) {
             disabled={!isValid || isSubmitting}
             className="w-full inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary transition-transform duration-150 ease-out active:scale-[0.95] disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
           >
-            {isSubmitting ? "送出中…" : "送出訂單（後端待接）"}
+            {isSubmitting ? tPanel("submitting") : tPanel("submit")}
           </button>
 
           <p className="font-text text-[12px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-48">
-            下單前請確認你已完成 KYC 層級驗證、設定月儲值上限。違反者由 SPEC-003 撮合層直接拒收。
+            {tPanel("footnote")}
           </p>
         </form>
       </aside>

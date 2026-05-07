@@ -17,10 +17,16 @@ const sectionItems = [
   { key: "settled", href: "/markets/settled" },
 ];
 
-function MarketsSectionNav({ links }: { links: SiteNavLink[] }) {
+function MarketsSectionNav({
+  links,
+  ariaLabel,
+}: {
+  links: SiteNavLink[];
+  ariaLabel: string;
+}) {
   return (
     <nav
-      aria-label="市場 區段導覽"
+      aria-label={ariaLabel}
       className="border-b border-proph-divider-soft bg-proph-canvas-parchment"
     >
       <div className="mx-auto max-w-proph overflow-x-auto px-6 md:px-10">
@@ -54,7 +60,7 @@ export default async function MarketsLayout({ children }: { children: ReactNode 
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
-      <MarketsSectionNav links={sectionLinks} />
+      <MarketsSectionNav links={sectionLinks} ariaLabel={tNav("ariaLabel")} />
       {children}
       <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
     </main>

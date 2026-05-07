@@ -40,7 +40,6 @@ const tierCards: TierCardData[] = [
   },
 ];
 
-const formatPoints = (n: number) => `${n.toLocaleString("zh-Hant")} 點`;
 
 type KycOverviewCopy = Awaited<
   ReturnType<typeof getTranslations<"kyc.overview">>
@@ -49,9 +48,11 @@ type KycOverviewCopy = Awaited<
 function CurrentStatusBlock({
   t,
   overview,
+  formatPoints,
 }: {
   t: KycOverviewCopy;
   overview: KycOverview;
+  formatPoints: (n: number) => string;
 }) {
   const thisMonthDeposit = 0;
   const monthlyLimit = overview.monthlyLimitPoints ?? 0;
@@ -168,10 +169,12 @@ function TierCards({
 }
 
 export default async function KYCOverviewPage() {
-  const [t, overview] = await Promise.all([
+  const [t, tFmt, overview] = await Promise.all([
     getTranslations("kyc.overview"),
+    getTranslations("common.format"),
     fetchKycOverview(),
   ]);
+  const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
 
   return (
     <>
@@ -181,7 +184,7 @@ export default async function KYCOverviewPage() {
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
-      <CurrentStatusBlock t={t} overview={overview} />
+      <CurrentStatusBlock t={t} overview={overview} formatPoints={formatPoints} />
       <TierCards t={t} overview={overview} />
     </>
   );

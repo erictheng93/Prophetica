@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { ProphTile } from "@prophetica/ui";
 import { ProbabilityBar } from "@/components/probability-bar";
 import { ProbabilityChart } from "@/components/probability-chart";
@@ -24,8 +25,11 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const { market } = await fetchMarketById(id);
-  if (!market) return { title: "找不到市場 — prophetica" };
+  const [{ market }, t] = await Promise.all([
+    fetchMarketById(id),
+    getTranslations("marketDetail"),
+  ]);
+  if (!market) return { title: t("metadataNotFound") };
   return {
     title: `${market.title} — prophetica`,
     description: market.brief,
@@ -39,6 +43,7 @@ export default async function MarketDetailPage({ params }: PageProps) {
 
   const isSettled = market.status === "settled";
   const isOpen = market.status === "open" || market.status === "closing";
+  const t = await getTranslations("marketDetail");
 
   return (
     <>
@@ -57,8 +62,7 @@ export default async function MarketDetailPage({ params }: PageProps) {
             <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-8">
               <ProbabilityBar yesCents={market.yesPriceCents} size="lg" />
               <p className="mt-4 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-                價格為 YES 一股的最後成交價（單位：cent，1 cent = 0.01 點）。買入 YES 一股表示「我認為會發生」，
-                結算為 YES 時每股入帳 100 點。
+                {t("pricingExplainer")}
               </p>
             </article>
           )}
@@ -74,33 +78,35 @@ export default async function MarketDetailPage({ params }: PageProps) {
   );
 }
 
-function ChartSection({ market }: { market: Market }) {
+async function ChartSection({ market }: { market: Market }) {
   const data = getChartSeries(market);
+  const t = await getTranslations("marketDetail.chart");
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
         <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
           <header className="mb-4 flex items-baseline justify-between">
             <div>
-              <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">YES 價格走勢</h2>
+              <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">{t("title")}</h2>
               <p className="mt-1 font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
-                過去 30 天，每日收盤價（單位：cent）。資料目前為示意；後端時間序列就緒後即時更新。
+                {t("subtitle")}
               </p>
             </div>
           </header>
-          <ProbabilityChart data={data} />
+          <ProbabilityChart data={data} ariaLabel={t("title")} />
         </article>
       </div>
     </section>
   );
 }
 
-function ResolvedBanner({ market }: { market: Market }) {
+async function ResolvedBanner({ market }: { market: Market }) {
   const isYes = market.resolvedOutcome === "YES";
+  const t = await getTranslations("marketDetail.resolved");
   return (
     <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-8">
       <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-        最終結果
+        {t("eyebrow")}
       </div>
       <div
         className={
@@ -111,8 +117,7 @@ function ResolvedBanner({ market }: { market: Market }) {
         {market.resolvedOutcome}
       </div>
       <p className="mt-3 font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
-        於 {formatCloseAt(market.resolvedAt ?? market.closeAt)} 由 Oracle 判定並進入結算流水線。
-        持倉已自動兌換為點數，可於個人持倉頁查看。
+        {t("body", { date: formatCloseAt(market.resolvedAt ?? market.closeAt) })}
       </p>
     </article>
   );
@@ -137,26 +142,27 @@ async function OpenMarketBody({ market }: { market: Market }) {
   );
 }
 
-function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
+async function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
+  const t = await getTranslations("marketDetail.orderBook");
   return (
     <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
       <header className="border-b border-proph-divider-soft px-6 py-4">
-        <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">YES 訂單簿</h2>
+        <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">{t("title")}</h2>
         <p className="mt-1 font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
-          顯示 YES 一邊的買賣盤；NO 訂單簿為其鏡像（NO 價 = 100 − YES 價）。
+          {t("subtitle")}
         </p>
       </header>
 
       <div className="grid grid-cols-2 divide-x divide-proph-divider-soft">
         <div className="p-6">
           <h3 className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-            買盤（Bids）
+            {t("bidsHeading")}
           </h3>
           <table className="mt-3 w-full font-mono text-[14px] tabular-nums">
             <thead>
               <tr className="border-b border-proph-divider-soft text-left text-[12px] text-proph-ink-muted-48">
-                <th className="pb-2">價格</th>
-                <th className="pb-2 text-right">數量</th>
+                <th className="pb-2">{t("priceHeader")}</th>
+                <th className="pb-2 text-right">{t("qtyHeader")}</th>
               </tr>
             </thead>
             <tbody>
@@ -172,13 +178,13 @@ function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
 
         <div className="p-6">
           <h3 className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-            賣盤（Asks）
+            {t("asksHeading")}
           </h3>
           <table className="mt-3 w-full font-mono text-[14px] tabular-nums">
             <thead>
               <tr className="border-b border-proph-divider-soft text-left text-[12px] text-proph-ink-muted-48">
-                <th className="pb-2">價格</th>
-                <th className="pb-2 text-right">數量</th>
+                <th className="pb-2">{t("priceHeader")}</th>
+                <th className="pb-2 text-right">{t("qtyHeader")}</th>
               </tr>
             </thead>
             <tbody>
@@ -196,30 +202,31 @@ function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
   );
 }
 
-function RecentTradesTable({ trades }: { trades: RecentTrade[] }) {
+async function RecentTradesTable({ trades }: { trades: RecentTrade[] }) {
+  const t = await getTranslations("marketDetail.recentTrades");
   return (
     <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
       <header className="border-b border-proph-divider-soft px-6 py-4">
-        <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">近期成交</h2>
+        <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">{t("title")}</h2>
       </header>
       <table className="w-full font-mono text-[14px] tabular-nums">
         <thead>
           <tr className="border-b border-proph-divider-soft text-left text-[12px] text-proph-ink-muted-48">
-            <th className="px-6 py-3">時間</th>
-            <th className="px-6 py-3">方向</th>
-            <th className="px-6 py-3 text-right">價格</th>
-            <th className="px-6 py-3 text-right">數量</th>
+            <th className="px-6 py-3">{t("timeHeader")}</th>
+            <th className="px-6 py-3">{t("sideHeader")}</th>
+            <th className="px-6 py-3 text-right">{t("priceHeader")}</th>
+            <th className="px-6 py-3 text-right">{t("qtyHeader")}</th>
           </tr>
         </thead>
         <tbody>
-          {trades.map((t, i) => (
+          {trades.map((trade, i) => (
             <tr key={i} className="border-b border-proph-divider-soft last:border-0">
-              <td className="px-6 py-2 text-proph-ink-muted-48">{t.ago}</td>
-              <td className={"px-6 py-2 " + (t.side === "YES" ? "text-proph-primary" : "text-proph-ink")}>
-                {t.side}
+              <td className="px-6 py-2 text-proph-ink-muted-48">{trade.ago}</td>
+              <td className={"px-6 py-2 " + (trade.side === "YES" ? "text-proph-primary" : "text-proph-ink")}>
+                {trade.side}
               </td>
-              <td className="px-6 py-2 text-right text-proph-ink">{t.priceCents}¢</td>
-              <td className="px-6 py-2 text-right text-proph-ink-muted-80">{t.qty}</td>
+              <td className="px-6 py-2 text-right text-proph-ink">{trade.priceCents}¢</td>
+              <td className="px-6 py-2 text-right text-proph-ink-muted-80">{trade.qty}</td>
             </tr>
           ))}
         </tbody>
@@ -228,25 +235,27 @@ function RecentTradesTable({ trades }: { trades: RecentTrade[] }) {
   );
 }
 
-function MarketInfoBlock({ market }: { market: Market }) {
+async function MarketInfoBlock({ market }: { market: Market }) {
+  const t = await getTranslations("marketDetail.info");
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-8 font-display text-[40px] font-semibold leading-[1.1]">市場資訊</h2>
+        <h2 className="mb-8 font-display text-[40px] font-semibold leading-[1.1]">{t("heading")}</h2>
         <dl className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <Field label="Oracle 來源" value={market.oracleSource} />
-          <Field label="開盤" value={formatCloseAt(market.openedAt)} />
-          <Field label="關盤" value={formatCloseAt(market.closeAt)} />
-          <Field label="累計成交量" value={formatPoints(market.volumeTotalPoints)} />
+          <Field label={t("fields.oracleSource")} value={market.oracleSource} />
+          <Field label={t("fields.openedAt")} value={formatCloseAt(market.openedAt)} />
+          <Field label={t("fields.closeAt")} value={formatCloseAt(market.closeAt)} />
+          <Field label={t("fields.volumeTotal")} value={formatPoints(market.volumeTotalPoints)} />
         </dl>
 
         <p className="mt-8 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-48">
-          市場合規邊界遵循 SPEC-015 §5；Oracle 結算流程與申訴窗口遵循 SPEC-004。
-          如對結算結果有疑問，請於結算後 24 小時內透過{" "}
-          <a href="/support/disputes" className="text-proph-primary underline">
-            申訴流程
-          </a>
-          提起。
+          {t.rich("complianceNote", {
+            disputes: (chunks) => (
+              <a href="/support/disputes" className="text-proph-primary underline">
+                {chunks}
+              </a>
+            ),
+          })}
         </p>
       </div>
     </section>

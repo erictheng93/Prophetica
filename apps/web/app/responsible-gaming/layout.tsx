@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphSubNav } from "@prophetica/ui";
 import { RGHelpline } from "@/components/rg-helpline";
 import {
@@ -21,10 +22,10 @@ import {
  * directly above page content. Horizontally scrollable on narrow viewports;
  * each chip is a regular anchor.
  */
-function RGSectionNav({ links }: { links: SiteNavLink[] }) {
+function RGSectionNav({ links, ariaLabel }: { links: SiteNavLink[]; ariaLabel: string }) {
   return (
     <nav
-      aria-label="責任博弈 區段導覽"
+      aria-label={ariaLabel}
       className="border-b border-proph-divider-soft bg-proph-canvas-parchment"
     >
       <div className="mx-auto max-w-proph overflow-x-auto px-6 md:px-10">
@@ -46,16 +47,17 @@ function RGSectionNav({ links }: { links: SiteNavLink[] }) {
 }
 
 export default async function ResponsibleGamingLayout({ children }: { children: ReactNode }) {
-  const [rgColumn, footerColumns] = await Promise.all([
+  const [rgColumn, footerColumns, tNav] = await Promise.all([
     getFooterColumn("responsibleGaming"),
     getFooterColumns(["responsibleGaming", "legal", "support"]),
+    getTranslations("sectionNav.responsibleGaming"),
   ]);
 
   return (
     <main className="min-h-screen bg-proph-canvas">
       <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
 
-      <RGSectionNav links={rgColumn.links} />
+      <RGSectionNav links={rgColumn.links} ariaLabel={tNav("ariaLabel")} />
 
       {children}
 
