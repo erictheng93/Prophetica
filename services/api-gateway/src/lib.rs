@@ -471,6 +471,7 @@ where
         .with_state(Arc::new(AppStateWithEngine::new(wallet_ledger, engine)))
 }
 
+#[tracing::instrument(fields(service.name = SERVICE_NAME, proph.user_id = %auth.user_id), skip(state))]
 async fn get_my_wallet_balance<C>(
     State(state): State<Arc<AppState<C>>>,
     auth: AuthContext,
@@ -500,9 +501,10 @@ where
     Ok(Json(balance))
 }
 
+#[tracing::instrument(fields(service.name = SERVICE_NAME, proph.user_id = %auth.user_id), skip(state))]
 async fn list_ledger_entries<C>(
     State(state): State<Arc<AppState<C>>>,
-    _auth: AuthContext,
+    auth: AuthContext,
     Query(query): Query<LedgerEntriesQuery>,
 ) -> Result<Json<LedgerEntriesResponse>, ApiError>
 where
@@ -533,6 +535,7 @@ where
     Ok(Json(LedgerEntriesResponse { entries }))
 }
 
+#[tracing::instrument(fields(service.name = SERVICE_NAME, proph.user_id = %auth.user_id, proph.market_id = %market_id, latency.budget.api_order_submit_e2e = 0.030), skip(state, request))]
 async fn place_order<W, E>(
     State(state): State<Arc<AppStateWithEngine<W, E>>>,
     auth: AuthContext,
@@ -550,6 +553,7 @@ where
     Ok(Json(response))
 }
 
+#[tracing::instrument(fields(service.name = SERVICE_NAME, proph.user_id = %auth.user_id), skip(state))]
 async fn cancel_order<W, E>(
     State(state): State<Arc<AppStateWithEngine<W, E>>>,
     auth: AuthContext,
@@ -563,6 +567,7 @@ where
     Ok(Json(response))
 }
 
+#[tracing::instrument(fields(service.name = SERVICE_NAME, proph.market_id = %market_id), skip(state))]
 async fn get_book_snapshot<W, E>(
     State(state): State<Arc<AppStateWithEngine<W, E>>>,
     Path(market_id): Path<String>,
@@ -582,6 +587,7 @@ where
 /// # Errors
 ///
 /// Returns an error when configuration loading, socket binding, or serving fails.
+#[tracing::instrument(fields(service.name = SERVICE_NAME), skip_all)]
 pub async fn run_http() -> anyhow::Result<()> {
     observability::init_json_tracing(SERVICE_NAME);
     let config = ServiceConfig::from_env(SERVICE_NAME, DEFAULT_PORT)?;

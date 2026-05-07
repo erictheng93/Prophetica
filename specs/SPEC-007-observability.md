@@ -7,6 +7,8 @@
 
 > **v0.2.0 變更**：(1) **T-11 SLO 表補漏**：§6.1 補 `wallet-ledger-service`（gRPC P99 / 對帳腳本 / INV 違反）與 `market-service`（CRUD API / Review 處理 / OPEN-CLOSED 切換誤差）兩個 P0 service 之 SLO；Matching Engine SLO 拆「引擎內部 < 5ms」與「下單端到端 < 30ms」雙層，消除 SPEC-003 §11 P99 SLO 邊界含糊問題。(2) **新增 §6.4 跨服務 Latency Budget**：明示玩家下單熱路徑 11 個 hop 的 P99 時間預算（總和 18.5ms + 11.5ms safety margin = 30ms 端到端 SLO）；含撮合事件下游 fan-out budget；OTel span 對照表；budget 違反處理（P1 alert / release gate 阻擋）；budget 變更管控（不容忍自動放寬）。SDD 防呆設計：避免「各 service P99 都達標但加總超標」的金融撮合系統典型踩坑。
 
+> **v0.2.1 draft close-out（A1-A6 + B1-B4）**: A1 SDK JSON tracing now wires an OTLP exporter when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. A2 SDK exposes a Prometheus registry and `/metrics` bootstrap metrics with `proph_*` names. A3 SDK service stubs expose `/healthz/live`, `/healthz/ready`, and `/healthz/startup`. A4 all 12 Rust services inherit HTTP trace spans from the SDK stub, with hot-path handlers adding domain span attributes. A5 Prometheus scrapes all 12 service targets. A6 P0 runbooks live under `runbooks/`. B1 OTel Collector config exists at `infra/otel-collector/otel-collector.yaml`. B2 tail-based sampling is configured for errors, order hot path traces, latency budget breaches, and 1% baseline sampling. B3 latency budget alert rules are checked in at `infra/prometheus/rules/latency-budget.yml`. B4 local compose routes OTLP traffic through the collector to Tempo.
+
 ---
 
 ## 1. Objective

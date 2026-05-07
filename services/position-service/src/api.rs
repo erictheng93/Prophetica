@@ -51,6 +51,7 @@ pub fn router(positions: impl IntoIterator<Item = Position>) -> Router {
 /// # Errors
 ///
 /// Returns an error when configuration loading, socket binding, or serving fails.
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
 pub async fn run_http() -> anyhow::Result<()> {
     let config = sdk::config::ServiceConfig::from_env(crate::SERVICE_NAME, crate::DEFAULT_PORT)?;
     tracing::info!(?config, "position service config loaded");
@@ -66,6 +67,7 @@ pub async fn run_http() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state))]
 async fn list_positions(
     State(state): State<AppState>,
     Path(user_id): Path<String>,

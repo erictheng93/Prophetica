@@ -1,9 +1,29 @@
 global:
   scrape_interval: 15s
 
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
-  - job_name: "prophetica-bootstrap"
+  - job_name: "prophetica-mocks"
     static_configs:
       - targets:
           - "mock-sumsub:8081"
           - "mock-payment:8082"
+
+  - job_name: "prophetica-services"
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "api-gateway:8080"
+          - "ws-gateway:8083"
+          - "user-service:8084"
+          - "kyc-service:8085"
+          - "wallet-ledger-service:8086"
+          - "market-service:8087"
+          - "matching-engine:8088"
+          - "position-service:8089"
+          - "settlement-worker:8090"
+          - "risk-antifraud-service:8091"
+          - "referral-service:8092"
+          - "notification-service:8093"

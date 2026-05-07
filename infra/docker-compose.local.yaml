@@ -92,11 +92,21 @@ services:
     ports: ["9090:9090"]
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/healthy"]
       interval: 3s
       timeout: 3s
       retries: 10
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    command: ["--config=/etc/otel-collector.yaml"]
+    ports: ["4317:4317", "4318:4318"]
+    volumes:
+      - ./otel-collector/otel-collector.yaml:/etc/otel-collector.yaml:ro
+    depends_on:
+      - tempo
 
   grafana:
     image: grafana/grafana:latest
@@ -113,7 +123,7 @@ services:
   tempo:
     image: grafana/tempo:latest
     command: ["-config.file=/etc/tempo.yaml"]
-    ports: ["4317:4317"]
+    ports: ["3200:3200"]
     volumes:
       - ./tempo/tempo.yaml:/etc/tempo.yaml:ro
     healthcheck:

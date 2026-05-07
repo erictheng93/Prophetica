@@ -178,6 +178,7 @@ where
         .with_state(store)
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(store))]
 async fn get_status<S>(
     State(store): State<S>,
     Path(user_id): Path<String>,
@@ -189,6 +190,7 @@ where
     Ok(Json(status_response(&user_id, record.as_ref())))
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(store, request))]
 async fn verify_tier_one<S>(
     State(store): State<S>,
     Path(user_id): Path<String>,
@@ -227,6 +229,7 @@ where
     ))
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(store, request))]
 async fn start_upgrade<S>(
     State(store): State<S>,
     Path(user_id): Path<String>,
@@ -265,6 +268,7 @@ where
     ))
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(store, headers, body))]
 async fn sumsub_webhook<S>(
     State(store): State<S>,
     headers: HeaderMap,
@@ -315,6 +319,7 @@ where
     }))
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(store, request))]
 async fn record_aml_event<S>(
     State(store): State<S>,
     Json(request): Json<AmlEventRequest>,

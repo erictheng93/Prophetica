@@ -89,6 +89,7 @@ where
         .with_state(LedgerService::new(store))
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(service, request))]
 async fn post_transaction<S>(
     State(service): State<LedgerService<S>>,
     Json(request): Json<PostTransactionRequest>,
@@ -106,6 +107,7 @@ where
     }))
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(service))]
 async fn get_wallet_balance<S>(
     State(service): State<LedgerService<S>>,
     Path(user_id): Path<String>,
@@ -134,6 +136,7 @@ where
     }))
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(service))]
 async fn list_entries<S>(
     State(service): State<LedgerService<S>>,
     Query(query): Query<ListEntriesQuery>,

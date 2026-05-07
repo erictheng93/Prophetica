@@ -228,6 +228,7 @@ pub fn router(markets: impl IntoIterator<Item = Market>) -> Router {
 /// # Errors
 ///
 /// Returns an error when configuration loading, socket binding, or serving fails.
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
 pub async fn run_http() -> anyhow::Result<()> {
     let config = sdk::config::ServiceConfig::from_env(crate::SERVICE_NAME, crate::DEFAULT_PORT)?;
     tracing::info!(?config, "market service config loaded");
@@ -243,6 +244,7 @@ pub async fn run_http() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(state))]
 async fn list_markets(
     State(state): State<AppState>,
     Query(query): Query<ListMarketsQuery>,
@@ -272,6 +274,7 @@ async fn list_markets(
     Json(ListMarketsResponse { markets })
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.market_id = %market_id), skip(state))]
 async fn get_market(
     State(state): State<AppState>,
     Path(market_id): Path<String>,

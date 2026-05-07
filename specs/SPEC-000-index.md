@@ -47,7 +47,7 @@
 |----|------|------|------|
 | [SPEC-005](./SPEC-005-kyc-aml.md) | KYC/AML 整合 | 分層 KYC、SaaS 整合、制裁名單篩查 | ⚠️ Backend Complete / Frontend Pending · v0.1.3 |
 | [SPEC-006](./SPEC-006-responsible-gaming.md) | 責任博弈機制 | 自我排除、限額、冷靜期 | 🟢 v0.1 |
-| [SPEC-007](./SPEC-007-observability.md) | 可觀測性與監控 | Metrics/Log/Tracing、SLO、告警、**§6.4 跨服務 Latency Budget**（下單熱路徑 11 hop × P99 時間預算）| 🟢 v0.2.0 |
+| [SPEC-007](./SPEC-007-observability.md) | 可觀測性與監控 | Metrics/Log/Tracing、SLO、告警、**§6.4 跨服務 Latency Budget**（下單熱路徑 11 hop × P99 時間預算）| 🟢 v0.2.1 draft |
 | [SPEC-008](./SPEC-008-disaster-recovery.md) | 災備與高可用 | **RTO/RPO 拆 region-local + cross-region 兩層（T-2）**、跨區備援、Failover 演練、§7 客戶端容錯可執行契約（v0.2.1 F-2）、§9.3 cross-ref SPEC-010 §9.3 MS-9（v0.2.1 F-1）| 🟢 v0.2.1 |
 | [SPEC-009](./SPEC-009-dmm-liquidity.md) | DMM 與流動性 | 做市商計畫、API、rebate；**§5 冷啟動補貼整段移除（R-2）** | 🟢 v0.2.1（Rust） |
 | [SPEC-010](./SPEC-010-security-antifraud.md) | 安全與反作弊 | 裝置指紋、行為分析、洗售偵測、**§9.3 Multi-sig 治理中央表**、EdDSA mobile PoC（T-9，PoC plan 落地）、sqlx 編譯時 SQL（H-4）、Chargeback ≥ 1（H-5）| 🟢 v0.2.2 |

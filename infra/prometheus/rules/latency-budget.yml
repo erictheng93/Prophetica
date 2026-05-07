@@ -1,0 +1,80 @@
+groups:
+  - name: prophetica-latency-budget
+    interval: 30s
+    rules:
+      - alert: PropheticaOrderSubmitE2ELatencyBudgetP0
+        expr: |
+          histogram_quantile(0.99, sum(rate(proph_latency_budget_hop_seconds_bucket{span="api.order.submit.e2e"}[5m])) by (le, span)) > 0.060
+        for: 2m
+        labels:
+          severity: P0
+          spec: SPEC-007-6.4.4
+          runbook: runbooks/latency-budget-breach.md
+        annotations:
+          summary: Order submit E2E P99 is above 2x the 30ms budget.
+          description: SPEC-007 §6.4.4 requires P0 when latency budget usage is above 2x budget.
+
+      - alert: PropheticaLatencyBudgetHopP1
+        expr: |
+          (
+            histogram_quantile(0.99, sum(rate(proph_latency_budget_hop_seconds_bucket[5m])) by (le, span))
+            > on (span) group_left
+            (1.5 * proph_latency_budget_hop_budget_seconds)
+          )
+        for: 5m
+        labels:
+          severity: P1
+          spec: SPEC-007-6.4.4
+          runbook: runbooks/latency-budget-breach.md
+        annotations:
+          summary: A latency budget hop is above 1.5x its P99 budget.
+          description: Investigate the span owner before widening any latency budget.
+
+      - alert: PropheticaLatencyBudgetHopP0
+        expr: |
+          (
+            histogram_quantile(0.99, sum(rate(proph_latency_budget_hop_seconds_bucket[5m])) by (le, span))
+            > on (span) group_left
+            (2 * proph_latency_budget_hop_budget_seconds)
+          )
+        for: 2m
+        labels:
+          severity: P0
+          spec: SPEC-007-6.4.4
+          runbook: runbooks/latency-budget-breach.md
+        annotations:
+          summary: A latency budget hop is above 2x its P99 budget.
+          description: Freeze release promotion and follow the latency budget runbook.
+
+  - name: prophetica-p0-alerts
+    interval: 30s
+    rules:
+      - alert: PropheticaLedgerImbalance
+        expr: increase(proph_ledger_txn_failed_total{reason="imbalance"}[1m]) > 0
+        labels:
+          severity: P0
+          runbook: runbooks/ledger-imbalance.md
+        annotations:
+          summary: Ledger imbalance detected.
+
+      - alert: PropheticaEngineP99Over50ms
+        expr: histogram_quantile(0.99, sum(rate(proph_engine_match_latency_seconds_bucket[1m])) by (le)) > 0.050
+        for: 1m
+        labels:
+          severity: P0
+          runbook: runbooks/engine-p99-over-50ms.md
+        annotations:
+          summary: Matching engine P99 exceeded 50ms.
+
+      - alert: PropheticaApi5xxHigh
+        expr: |
+          sum(rate(proph_http_requests_total{status=~"5.."}[2m]))
+          /
+          clamp_min(sum(rate(proph_http_requests_total[2m])), 1)
+          > 0.05
+        for: 2m
+        labels:
+          severity: P0
+          runbook: runbooks/api-5xx-high.md
+        annotations:
+          summary: API 5xx rate exceeded 5%.

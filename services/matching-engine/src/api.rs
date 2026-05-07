@@ -130,6 +130,7 @@ pub fn service_router(service: InMemoryEngineService) -> Router {
 /// # Errors
 ///
 /// Returns an error when either HTTP or gRPC serving fails.
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
 pub async fn run() -> anyhow::Result<()> {
     let ((), ()) = tokio::try_join!(run_http(), run_grpc())?;
     Ok(())
@@ -140,6 +141,7 @@ pub async fn run() -> anyhow::Result<()> {
 /// # Errors
 ///
 /// Returns an error when configuration loading, socket binding, or serving fails.
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
 pub async fn run_http() -> anyhow::Result<()> {
     let config = sdk::config::ServiceConfig::from_env(crate::SERVICE_NAME, crate::DEFAULT_PORT)?;
     tracing::info!(?config, "matching engine config loaded");
@@ -162,6 +164,7 @@ pub async fn run_http() -> anyhow::Result<()> {
 /// # Errors
 ///
 /// Returns an error when socket binding or serving fails.
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
 pub async fn run_grpc() -> anyhow::Result<()> {
     let bind_addr = grpc_bind_addr_from_env();
     tracing::info!(addr = %bind_addr, "matching engine grpc listening");
@@ -185,6 +188,7 @@ pub async fn run_grpc_on_addr(
     Ok(())
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.market_id = %market_id), skip(state))]
 async fn get_book_snapshot(
     State(state): State<AppState>,
     Path(market_id): Path<String>,
@@ -207,6 +211,7 @@ async fn get_book_snapshot(
     })
 }
 
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.market_id = %market_id), skip(state, headers, payload))]
 async fn place_order_http(
     State(state): State<ServiceState>,
     Path(market_id): Path<String>,
