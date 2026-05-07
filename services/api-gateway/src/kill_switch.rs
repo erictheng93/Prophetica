@@ -15,7 +15,30 @@ pub trait HaltFlagStore {
     /// Returns an error when the flag store cannot be updated.
     fn halt(&self, reason: &str) -> Result<(), HaltFlagStoreError>;
 
+    /// Clears `engine.halted` after MS-9 approval and returns the original halt subject.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the flag store cannot be updated or no halt is active.
+    fn release(&self) -> Result<String, HaltFlagStoreError>;
+
+    /// Returns the incident or subject associated with the active halt.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no halt subject is available.
+    fn current_subject_id(&self) -> Result<String, HaltFlagStoreError>;
+
     fn is_engine_halted(&self) -> bool;
+}
+
+pub trait AuditLogStore {
+    /// Persists a kill-switch governance audit log.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the audit log cannot be written.
+    fn append(&self, record: AuditLogRecord) -> Result<(), AuditLogStoreError>;
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,6 +49,12 @@ struct HaltRequest {
 #[derive(Debug, Serialize)]
 struct HaltResponse {
     engine_halted: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ReleaseResponse {
+    engine_halted: bool,
+    audit_log: AuditLogRecord,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,24 +77,36 @@ struct ErrorResponse {
     error: &'static str,
 }
 
-pub fn internal_admin_router<S>(store: S) -> Router
-where
-    S: HaltFlagStore + Clone + Send + Sync + 'static,
-{
-    Router::new()
-        .route("/api/internal/admin/halt", post(halt::<S>))
-        .route("/api/internal/admin/halt/release", post(release::<S>))
-        .with_state(store)
+#[derive(Clone)]
+struct KillSwitchState<H, A> {
+    halt_store: H,
+    audit_store: A,
 }
 
-async fn halt<S>(
-    State(store): State<S>,
+pub fn internal_admin_router<H, A>(halt_store: H, audit_store: A) -> Router
+where
+    H: HaltFlagStore + Clone + Send + Sync + 'static,
+    A: AuditLogStore + Clone + Send + Sync + 'static,
+{
+    let state = KillSwitchState {
+        halt_store,
+        audit_store,
+    };
+    Router::new()
+        .route("/api/internal/admin/halt", post(halt::<H, A>))
+        .route("/api/internal/admin/halt/release", post(release::<H, A>))
+        .with_state(state)
+}
+
+async fn halt<H, A>(
+    State(state): State<KillSwitchState<H, A>>,
     Json(request): Json<HaltRequest>,
 ) -> Result<Json<HaltResponse>, (StatusCode, Json<ErrorResponse>)>
 where
-    S: HaltFlagStore,
+    H: HaltFlagStore,
+    A: AuditLogStore,
 {
-    store.halt(&request.reason).map_err(|_| {
+    state.halt_store.halt(&request.reason).map_err(|_| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -74,16 +115,17 @@ where
         )
     })?;
     Ok(Json(HaltResponse {
-        engine_halted: store.is_engine_halted(),
+        engine_halted: state.halt_store.is_engine_halted(),
     }))
 }
 
-async fn release<S>(
-    State(_store): State<S>,
+async fn release<H, A>(
+    State(state): State<KillSwitchState<H, A>>,
     Json(request): Json<ReleaseRequest>,
-) -> Result<Json<AuditLogMetadata>, (StatusCode, Json<ErrorResponse>)>
+) -> Result<Json<ReleaseResponse>, (StatusCode, Json<ErrorResponse>)>
 where
-    S: HaltFlagStore,
+    H: HaltFlagStore,
+    A: AuditLogStore,
 {
     let signers = request
         .signers
@@ -96,7 +138,40 @@ where
         SystemTime::UNIX_EPOCH + Duration::from_secs(request.evaluated_at_epoch_seconds),
         &request.reason,
     );
-    release.evaluate().map(Json).map_err(|_| multisig_error())
+    let metadata = release.evaluate().map_err(|_| multisig_error())?;
+    let subject_id = state.halt_store.current_subject_id().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_INTERNAL",
+            }),
+        )
+    })?;
+    let audit_log = AuditLogRecord {
+        action: "kill_switch_release".to_owned(),
+        subject_id,
+        metadata,
+    };
+    state.audit_store.append(audit_log.clone()).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_INTERNAL",
+            }),
+        )
+    })?;
+    state.halt_store.release().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_INTERNAL",
+            }),
+        )
+    })?;
+    Ok(Json(ReleaseResponse {
+        engine_halted: state.halt_store.is_engine_halted(),
+        audit_log,
+    }))
 }
 
 impl ReleaseSignerRequest {
@@ -141,6 +216,32 @@ pub struct HaltFlagStoreError {
 
 impl HaltFlagStoreError {
     #[must_use]
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditLogStoreError {
+    message: String,
+}
+
+impl AuditLogStoreError {
+    #[must_use]
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+
+    #[must_use]
     pub fn message(&self) -> &str {
         &self.message
     }
@@ -169,16 +270,73 @@ impl InMemoryHaltFlagStore {
 
 impl HaltFlagStore for InMemoryHaltFlagStore {
     fn halt(&self, reason: &str) -> Result<(), HaltFlagStoreError> {
-        let mut state = self.state.lock().map_err(|error| HaltFlagStoreError {
-            message: error.to_string(),
-        })?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|error| HaltFlagStoreError::new(error.to_string()))?;
         state.engine_halted = true;
         state.reason = Some(reason.to_owned());
         Ok(())
     }
 
+    fn release(&self) -> Result<String, HaltFlagStoreError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|error| HaltFlagStoreError::new(error.to_string()))?;
+        if !state.engine_halted {
+            return Err(HaltFlagStoreError::new("engine halt is not active"));
+        }
+        let subject_id = state
+            .reason
+            .clone()
+            .ok_or_else(|| HaltFlagStoreError::new("engine halt subject is missing"))?;
+        state.engine_halted = false;
+        Ok(subject_id)
+    }
+
+    fn current_subject_id(&self) -> Result<String, HaltFlagStoreError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|error| HaltFlagStoreError::new(error.to_string()))?;
+        if !state.engine_halted {
+            return Err(HaltFlagStoreError::new("engine halt is not active"));
+        }
+        state
+            .reason
+            .clone()
+            .ok_or_else(|| HaltFlagStoreError::new("engine halt subject is missing"))
+    }
+
     fn is_engine_halted(&self) -> bool {
         self.state.lock().map_or(true, |state| state.engine_halted)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryAuditLogStore {
+    records: Arc<Mutex<Vec<AuditLogRecord>>>,
+}
+
+impl InMemoryAuditLogStore {
+    #[must_use]
+    pub fn records(&self) -> Vec<AuditLogRecord> {
+        self.records.lock().map_or_else(
+            |poisoned| poisoned.into_inner().clone(),
+            |records| records.clone(),
+        )
+    }
+}
+
+impl AuditLogStore for InMemoryAuditLogStore {
+    fn append(&self, record: AuditLogRecord) -> Result<(), AuditLogStoreError> {
+        let mut records = self
+            .records
+            .lock()
+            .map_err(|error| AuditLogStoreError::new(error.to_string()))?;
+        records.push(record);
+        Ok(())
     }
 }
 
@@ -230,6 +388,13 @@ pub struct AuditLogMetadata {
     pub signers: Vec<String>,
     pub decision: MultiSigDecision,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AuditLogRecord {
+    pub action: String,
+    pub subject_id: String,
+    pub metadata: AuditLogMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

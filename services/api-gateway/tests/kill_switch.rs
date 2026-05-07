@@ -1,8 +1,8 @@
 #![allow(clippy::expect_used)]
 
 use api_gateway::kill_switch::{
-    AuditLogMetadata, HaltFlagStore, InMemoryHaltFlagStore, MultiSigDecision,
-    MultiSigReleaseRequest, MultiSigRole, SignerApproval, internal_admin_router,
+    AuditLogMetadata, HaltFlagStore, InMemoryAuditLogStore, InMemoryHaltFlagStore,
+    MultiSigDecision, MultiSigReleaseRequest, MultiSigRole, SignerApproval, internal_admin_router,
 };
 use axum::{
     body::Body,
@@ -131,7 +131,7 @@ fn two_of_three_valid_ms9_release_writes_audit_metadata() {
 #[tokio::test]
 async fn halt_route_sets_feature_flag() {
     let store = InMemoryHaltFlagStore::default();
-    let app = internal_admin_router(store.clone());
+    let app = internal_admin_router(store.clone(), InMemoryAuditLogStore::default());
 
     let response = app
         .oneshot(json_post(
@@ -150,7 +150,8 @@ async fn halt_route_sets_feature_flag() {
 async fn release_route_rejects_single_signer() {
     let store = InMemoryHaltFlagStore::default();
     store.halt("ops incident").expect("halt should write flag");
-    let app = internal_admin_router(store);
+    let audit_store = InMemoryAuditLogStore::default();
+    let app = internal_admin_router(store.clone(), audit_store.clone());
 
     let response = app
         .oneshot(json_post(
@@ -172,10 +173,61 @@ async fn release_route_rejects_single_signer() {
         .expect("release request should be handled");
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(store.is_engine_halted());
+    assert!(audit_store.records().is_empty());
     assert_eq!(
         response_json(response).await["error"],
         json!("ERROR_CODE_MULTISIG_REJECTED")
     );
+}
+
+#[tokio::test]
+async fn valid_release_route_clears_halt_flag_and_writes_audit_log() {
+    let store = InMemoryHaltFlagStore::default();
+    store.halt("incident-123").expect("halt should write flag");
+    let audit_store = InMemoryAuditLogStore::default();
+    let app = internal_admin_router(store.clone(), audit_store.clone());
+
+    let response = app
+        .oneshot(json_post(
+            "/api/internal/admin/halt/release",
+            &json!({
+                "reason": "incident resolved",
+                "evaluated_at_epoch_seconds": 120,
+                "signers": [
+                    {
+                        "user_id": "cto-1",
+                        "role": "CTO",
+                        "hardware_mfa": true,
+                        "mfa_verified_at_epoch_seconds": 60
+                    },
+                    {
+                        "user_id": "compliance-1",
+                        "role": "Compliance",
+                        "hardware_mfa": true,
+                        "mfa_verified_at_epoch_seconds": 90
+                    }
+                ]
+            }),
+        ))
+        .await
+        .expect("release request should be handled");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(!store.is_engine_halted());
+
+    let body = response_json(response).await;
+    assert_eq!(body["engine_halted"], json!(false));
+    assert_eq!(body["audit_log"]["action"], json!("kill_switch_release"));
+    assert_eq!(body["audit_log"]["subject_id"], json!("incident-123"));
+    assert_eq!(body["audit_log"]["metadata"]["ms_id"], json!("MS-9"));
+    assert_eq!(body["audit_log"]["metadata"]["decision"], json!("Approved"));
+
+    let records = audit_store.records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].action, "kill_switch_release");
+    assert_eq!(records[0].subject_id, "incident-123");
+    assert_eq!(records[0].metadata.ms_id, "MS-9");
 }
 
 fn json_post(uri: &str, body: &Value) -> Request<Body> {

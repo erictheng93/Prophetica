@@ -120,14 +120,23 @@ impl SettlementBatchRunner {
 
     pub fn run_with_retry(
         self,
+        progress: SettlementProgress,
+        execute: impl FnMut(&SettlementBatch) -> Result<(), SettlementExecutionError>,
+    ) -> SettlementProgress {
+        let halted = self.halted;
+        self.run_with_retry_and_halt_check(progress, move || halted, execute)
+    }
+
+    pub fn run_with_retry_and_halt_check(
+        self,
         mut progress: SettlementProgress,
+        mut is_halted: impl FnMut() -> bool,
         mut execute: impl FnMut(&SettlementBatch) -> Result<(), SettlementExecutionError>,
     ) -> SettlementProgress {
-        if self.halted {
-            return progress;
-        }
-
         for batch in self.batches {
+            if is_halted() {
+                return progress;
+            }
             if progress.completed_batches.contains(&batch.batch_id) {
                 continue;
             }
@@ -384,5 +393,36 @@ mod tests {
 
         assert_eq!(executed, 0);
         assert!(progress.records.is_empty());
+    }
+
+    #[test]
+    fn batch_runner_checks_runtime_halt_before_each_batch() {
+        let batches = build_settlement_batches(
+            "mkt-election",
+            [
+                Position::new("pos-1", "user_01", Outcome::Yes, 1, 50),
+                Position::new("pos-2", "user_02", Outcome::Yes, 1, 50),
+            ],
+        );
+        let halt_after_first_batch = std::cell::Cell::new(false);
+        let mut executed = 0;
+
+        let progress = SettlementBatchRunner::new(batches).run_with_retry_and_halt_check(
+            SettlementProgress::default(),
+            || halt_after_first_batch.get(),
+            |_batch| {
+                executed += 1;
+                halt_after_first_batch.set(true);
+                Ok(())
+            },
+        );
+
+        assert_eq!(executed, 1);
+        assert_eq!(progress.records.len(), 1);
+        assert!(
+            progress
+                .completed_batches
+                .contains("mkt-election:batch:0001")
+        );
     }
 }
