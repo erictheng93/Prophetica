@@ -2,7 +2,7 @@
 
 > 優先級：**P1**
 > 版本：v0.2.2 · 最後更新：2026-05-07
-> 依賴：SPEC-001, SPEC-005
+> 依賴：SPEC-005
 > 被依賴：SPEC-009, SPEC-002, SPEC-004, SPEC-008, SPEC-012, SPEC-013, SPEC-015, SPEC-016, SPEC-017
 
 > **v0.2.2 變更**：§3.1.2 PoC 表補 cross-ref 至 [`docs/poc/PRE-FLIGHT-POCS.md §3`](../docs/poc/PRE-FLIGHT-POCS.md)（EdDSA / LIFF SDK 相容性 PoC 詳細 plan）。
@@ -26,7 +26,7 @@
 | Rate Limiting | per-IP / per-user 多層 |
 | Bot Management | challenge unknown bots |
 | DDoS L3/4/7 | 自動緩解 |
-| Geo-rules | 拒絕 🔴 名單地區（呼應 SPEC-001）|
+| Geo-rules | 拒絕 🔴 名單地區 |
 | TLS | 強制 1.3，HSTS preload |
 | API Shield | mTLS for DMM API（SPEC-009）|
 | Logpush | 全部 access log push 至 R2 + Loki |

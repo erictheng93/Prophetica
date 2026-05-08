@@ -893,7 +893,7 @@ make test
 
 - [ ] PR description 引用 **SPEC-017 §11.2** 並逐項勾選對應 commit
 - [ ] 若 PR 過程衍生新決策（例如 axum middleware 順序、sqlx pool size 預設），開新 ADR 落入 `docs/architecture/decisions/`
-- [ ] 不修改任何業務 SPEC（SPEC-001 ~ 016）；若發現 SPEC 與本 PR 衝突，先開獨立 SPEC patch PR 對齊後再續本 PR
+- [ ] 不修改任何業務 SPEC（SPEC-002 ~ 016）；若發現 SPEC 與本 PR 衝突，先開獨立 SPEC patch PR 對齊後再續本 PR
 
 #### 11.2.10 規模與時間預期（Tech Lead review hint）
 

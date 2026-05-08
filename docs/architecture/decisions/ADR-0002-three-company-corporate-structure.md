@@ -156,7 +156,7 @@ E 列為**第 12–18 月**升級選項，待 MVP 驗證商業模式且首張執
 
 ## 5. 三公司職能分工矩陣
 
-> 本節為三公司架構在工程實作中的職能拆分依據。SPEC-001 v0.1.1 起已將「經營主體架構」整節移除並由本 ADR 唯一持有，故此處不再引用 SPEC-001 對應章節。
+> 本節為三公司架構在工程實作中的職能拆分依據，並由本 ADR 唯一持有。
 
 | 職能 | Holdings (BVI) | Operating Co. (執照地) | Tech Service Co. (Taiwan) |
 |------|---------------|----------------------|--------------------------|
@@ -326,7 +326,7 @@ V-1 ~ V-3 標記為 **deal-breaker class**（任一未過則暫停 §10 第一�
 
 ### 12.1 內部文件
 
-- [SPEC-001 §1.1](../../../specs/SPEC-001-legal-compliance.md#11-合規黃金三原則non-negotiable) — 合規黃金三原則（本 ADR 之上位約束）
+- [SPEC-000 §5](../../../specs/SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) — 跨檔決策追蹤
 - [ADR-0001](./ADR-0001-order-book-with-dmm-over-lmsr.md) — 撮合機制（共構平台基本面）
 - [SPEC-002 §4.2](../../../specs/SPEC-002-funds-safety.md) — Chart of Accounts（託管帳戶 ledger account 分離設計）
 
@@ -349,7 +349,7 @@ V-1 ~ V-3 標記為 **deal-breaker class**（任一未過則暫停 §10 第一�
 3. **靜態檔案 / 法律文件**：ToS / Privacy Policy 之文件儲存須帶版本與 issuing entity，記錄為 Op Co. 名義
 4. **Email From / Sender**：所有對玩家發信的 sender 須為 Op Co. 之 domain，禁止用 Tech Co. domain
 5. **客服系統**：Zendesk / Freshdesk 帳戶歸 Op Co. 名下，Tech Co. 員工以 contractor 身份登入處理
-6. **Audit log 中的 operator**：每筆 admin 操作記錄需註明執行者所屬法人（Op Co. employee vs Tech Co. contractor），對齊 [SPEC-001 §1.1 ③ Full Audit Trail](../../../specs/SPEC-001-legal-compliance.md#11-合規黃金三原則non-negotiable) 之留痕原則
+6. **Audit log 中的 operator**：每筆 admin 操作記錄需註明執行者所屬法人（Op Co. employee vs Tech Co. contractor），對齊本 ADR 的職能拆分與稽核留痕原則
 7. **域名 ownership**：主域名（propheticanet.com 之類）由 Holdings 持有，Op Co. 透過 IP 授權使用
 
 ## 14. Revision History
@@ -358,4 +358,4 @@ V-1 ~ V-3 標記為 **deal-breaker class**（任一未過則暫停 §10 第一�
 |------|------|------|------|
 | 2026-05-05 | v1.0 | Tech Lead | 首版 Accepted（待法律意見書最終背書）|
 | 2026-05-05 | v1.0.1 | Tech Lead | typo-level：§11「Open Questions」改名為「Pre-Execution Validation Items」並重組為驗證表格，將跨檔決策議題改由 SPEC-000 §5 中央追蹤表收斂。決策內容無變動。 |
-| 2026-05-05 | v1.0.2 | Tech Lead | typo-level：因 SPEC-001 v0.1.1 起精簡（移除 §1.2 / §2 / §3.1 / §5.1 / §6 / §8.1 / §9 / §10 / §11），本 ADR 對 SPEC-001 §2 / §2.2 / §8.3 / §10 與 SPEC-002 §2.1 之引用全部修正：去除 dead link、改指 SPEC-001 §1.1 三原則或宣告由本 ADR 唯一持有公司結構。決策內容無變動。 |
+| 2026-05-05 | v1.0.2 | Tech Lead | typo-level：本 ADR 對外部 SPEC dead link 進行修正，並宣告公司結構由本 ADR 唯一持有。決策內容無變動。 |

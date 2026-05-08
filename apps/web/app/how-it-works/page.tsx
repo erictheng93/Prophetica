@@ -17,7 +17,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const PRINCIPLE_IDS = ["noCashout", "noHouse", "auditTrail"] as const;
+const PRINCIPLE_IDS = ["points", "orderbook", "events"] as const;
 const STEP_IDS = [
   { id: "register", num: "01", href: "/auth/sign-in" },
   { id: "rg", num: "02", href: "/responsible-gaming/limits" },
@@ -295,12 +295,6 @@ export default async function HowItWorksPage() {
             <ProphLinkButton variant="primary" href="/responsible-gaming">
               {t("compliance.ctaPrimary")}
             </ProphLinkButton>
-            <a
-              href="/legal/geo-block"
-              className="font-text text-[17px] tracking-[-0.374px] text-proph-primary-on-dark hover:underline"
-            >
-              {t("compliance.geoBlockLink")} →
-            </a>
             <a
               href="/kyc"
               className="font-text text-[17px] tracking-[-0.374px] text-proph-primary-on-dark hover:underline"

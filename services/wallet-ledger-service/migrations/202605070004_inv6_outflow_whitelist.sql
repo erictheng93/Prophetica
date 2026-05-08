@@ -2,7 +2,7 @@
 --
 -- 紅線：玩家錢包點數之 outflow（debit, direction = +1，債務減少）目的地僅限白名單；
 -- 禁止流向 Liability.AccountsPayable.* / Bank.OperatingAccount.* / Expense.AffiliatePartnerFee
--- 等任何「兌現」科目。連動 [SPEC-001 §1.1 ① 不可回兌] 與 [SPEC-011 §6.3 R-1 紅線清除]。
+-- 等任何「兌現」科目。連動 [SPEC-011 §6.3 R-1 紅線清除]。
 --
 -- Whitelist:
 --   - Player.Locked.{user_id}     鎖倉
@@ -65,7 +65,7 @@ BEGIN
             'INV-6 violation in txn %: Player.Wallet outflow targets non-whitelisted account "%"',
             NEW.txn_id, v_violation_account
         USING ERRCODE = '40004',
-              HINT = 'See ADR-0006 §4.1 / SPEC-002 §5 INV-6; SPEC-001 §1.1 ① / SPEC-011 §6.3 for R-1 red line.';
+              HINT = 'See ADR-0006 §4.1 / SPEC-002 §5 INV-6; SPEC-011 §6.3 for R-1 red line.';
     END IF;
 
     RETURN NULL;

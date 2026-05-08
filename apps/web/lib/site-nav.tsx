@@ -93,8 +93,6 @@ const FOOTER_ITEM_DEFS: Record<FooterColumnId, FooterItemDef[]> = {
   legal: [
     { key: "terms", href: "/legal/terms" },
     { key: "privacy", href: "/legal/privacy" },
-    { key: "geoBlock", href: "/legal/geo-block" },
-    { key: "aml", href: "/legal/aml" },
   ],
   support: [
     { key: "center", href: "/support" },
@@ -192,10 +190,7 @@ export async function FooterLegalRow() {
         <a href="tel:1925" className="text-proph-primary underline">
           1925
         </a>
-        {t("helplineHours")} ·{" "}
-        <a href="/legal/geo-block" className="text-proph-primary underline">
-          {t("geoBlockLink")}
-        </a>
+        {t("helplineHours")}
       </span>
     </div>
   );

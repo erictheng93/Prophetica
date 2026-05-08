@@ -102,7 +102,7 @@ D 否決，但採納其**設計理念**：撮合 hot path 之 lock-free / cache-
 ### 5.1 Positive
 
 1. **撮合 P99 budget 寬鬆**：無 GC pause，撮合引擎內部 P99 < 5ms 達成路徑直接（不需 GC 調優、不需 sync.Pool 巧思）
-2. **不變式 compile-time enforcement**：SPEC-002 INV-1 ~ INV-6 / SPEC-003 single-writer / SPEC-001 §1.1 ① 點數紅線可透過 Rust 型別系統部分 / 大幅編譯時鎖死，降低 production bug 機率
+2. **不變式 compile-time enforcement**：SPEC-002 INV-1 ~ INV-6 / SPEC-003 single-writer / 點數出口紅線可透過 Rust 型別系統部分 / 大幅編譯時鎖死，降低 production bug 機率
 3. **單語言 SDK / observability**：12 個 service 共用 `crates/sdk`（observability / errors / config / ledger client），維運成本最小化
 4. **業界 Rust 生態正面循環**：sqlx / axum / tonic / fred / rdkafka 等核心套件成熟度高；新工具（如 cargo-mutants）採用率高
 5. **長期 production stability**：Rust 程式上線後，crash / memory leak / data race 機率顯著低於 Go（Rust 之 fearless concurrency 設計）

@@ -13,10 +13,9 @@
     },
     "footer": {
       "legal": {
-        "copyright": "© {year} prophetica. 趣味預測娛樂遊戲服務 · 18+ · 站內點數不可兌回現金 / 虛擬貨幣 / 實體商品。",
+        "copyright": "© {year} prophetica. 趣味預測平台 · 18+。",
         "helplinePrefix": "援助專線",
-        "helplineHours": "（24 小時）",
-        "geoBlockLink": "服務地區限制"
+        "helplineHours": "（24 小時）"
       },
       "columns": {
         "about": {
@@ -72,9 +71,7 @@
           "heading": "法律與合規",
           "items": {
             "terms": "服務條款",
-            "privacy": "隱私政策",
-            "geoBlock": "禁止地區",
-            "aml": "AML 政策"
+            "privacy": "隱私政策"
           }
         },
         "support": {
@@ -223,7 +220,7 @@
             },
             "multiAccount": {
               "q": "可以同時擁有多個帳號嗎？",
-              "a": "不可。SPEC-001 ToS-007 規定洗售 / 多帳號 / 操縱行為將永久停權。"
+              "a": "不可。洗售 / 多帳號 / 操縱行為將永久停權。"
             }
           }
         },
@@ -236,7 +233,7 @@
             },
             "cashout": {
               "q": "點數可以兌回現金嗎？",
-              "a": "<strong>不可。</strong> 站內點數僅限站內使用，不可兌回現金、虛擬貨幣或實體商品。這是 prophetica 的法律邊界（SPEC-001 §1.1 三原則之一）。"
+              "a": "站內點數用於顯示餘額、鎖倉與結算結果；實際使用規則請以服務條款為準。"
             },
             "monthlyLimit": {
               "q": "為什麼有月儲值上限？",
@@ -490,7 +487,7 @@
             "external": "你與其他平台的活動"
           }
         },
-        "auditNote": "每筆客服查詢都會寫入 audit_logs，包含操作員 ID、時間、動作類型，可被合規與監管稽核。"
+        "auditNote": "每筆客服查詢都會寫入 audit_logs，包含操作員 ID、時間、動作類型，方便後續追查。"
       },
       "form": {
         "heading": "提交申訴",
@@ -516,41 +513,41 @@
   },
   "about": {
     "metadata": {
-      "title": "關於 prophetica — 中立的趣味預測娛樂平台",
-      "description": "prophetica 不持倉、不下場，只做撮合與結算。三條法律邊界、三公司架構、為什麼是娛樂遊戲不是博弈。"
+      "title": "關於 prophetica — 趣味預測平台",
+      "description": "prophetica 以訂單簿撮合玩家對事件結果的看法，並提供結算、客服與技術支援。"
     },
     "hero": {
       "kicker": "關於 prophetica",
-      "headline": "我們做撮合與結算，平台不下場。",
-      "tagline": "prophetica 是趣味預測娛樂遊戲。我們把玩家的「我認為會發生」變成可以撮合的訂單，做為對局的中立中間人。手續費是我們唯一的收入。",
+      "headline": "我們把事件預測做成清楚的產品流程。",
+      "tagline": "prophetica 讓玩家用站內點數表達對事件結果的看法，系統負責市場頁、訂單簿、結算紀錄與客服流程。",
       "ctaPrimary": "看玩法說明",
       "ctaSecondary": "瀏覽市場"
     },
     "principles": {
-      "heading": "三條法律邊界",
-      "intro": "這些不是我們宣稱的「企業價值」。它們是 prophetica 存在的前提：違反任一條等同關站，創辦人負刑責。我們把這三條寫進系統設計、客服培訓、合規稽核，每一行 production code 都受其約束。",
+      "heading": "產品設計重點",
+      "intro": "以下是目前產品與技術實作的核心設計方向，讓玩家、客服與工程團隊對流程有一致理解。",
       "items": {
-        "noCashout": {
+        "points": {
           "kicker": "原則一",
-          "title": "點數不可兌回",
-          "body": "永遠不可兌回現金、虛擬貨幣或實體商品。"
+          "title": "站內點數",
+          "body": "玩家以站內點數參與市場，餘額、鎖倉與結算都透過帳本記錄。"
         },
-        "noHouse": {
+        "orderbook": {
           "kicker": "原則二",
-          "title": "平台不下場",
-          "body": "不持倉、不對賭、不從輸贏抽成。"
+          "title": "訂單簿撮合",
+          "body": "訂單依價格與時間優先排序，撮合結果可回溯。"
         },
-        "auditTrail": {
+        "events": {
           "kicker": "原則三",
-          "title": "全程稽核留痕",
-          "body": "金流 / 撮合 / 結算 / 判定皆寫入不可竄改事件流，保存 7 年以上。"
+          "title": "事件紀錄",
+          "body": "金流、撮合、結算與判定都以事件方式記錄，方便客服與工程追查。"
         }
       }
     },
     "neutrality": {
-      "kicker": "中立的承諾",
-      "headline": "手續費不靠玩家輸贏。",
-      "lead": "我們依交易量收手續費，不論玩家輸或贏。這個結構讓 prophetica 有動機讓<highlight>市場活絡</highlight>，而不是<highlight>玩家輸錢</highlight>。",
+      "kicker": "系統職責",
+      "headline": "市場流程可被追蹤。",
+      "lead": "系統將上架、下單、撮合、結算與申訴拆成明確狀態，讓<highlight>產品體驗</highlight>與<highlight>後台處理</highlight>都能對齊。",
       "items": {
         "oracle": {
           "title": "Oracle 來源透明",
@@ -558,11 +555,11 @@
         },
         "platformBan": {
           "title": "禁止平台帳戶下單",
-          "body": "後端強制白名單；任何 PLATFORM_SYSTEM_USER_IDS 不能成為訂單簿掛單者。"
+          "body": "後端保留系統帳號白名單，避免內部帳號誤進一般下單流程。"
         },
         "auditable": {
           "title": "結算可追溯",
-          "body": "從 Oracle 提交到玩家錢包入帳，每一步寫入事件流，可被監管稽核。"
+          "body": "從 Oracle 提交到玩家錢包入帳，每一步寫入事件流，客服與工程可追查。"
         }
       }
     },
@@ -590,24 +587,24 @@
         }
       }
     },
-    "notGambling": {
-      "heading": "為什麼說「娛樂遊戲」不是「博弈」？",
-      "intro": "差別不在玩家體驗，而在法律結構。下面三項共同構成「娛樂遊戲」的合規身份；缺一條就會被認定為博弈服務。",
+    "productScope": {
+      "heading": "產品邊界",
+      "intro": "以下是目前產品範圍的說明，用來幫助玩家理解站內點數、市場撮合與紀錄查詢的運作方式。",
       "items": {
-        "noCashValue": {
-          "title": "點數無現金價值",
-          "body": "無回兌通道。儲值是「購買遊戲服務」，不是「下注」。"
+        "points": {
+          "title": "站內點數",
+          "body": "餘額與結算結果以站內點數呈現。"
         },
-        "noHouse": {
-          "title": "平台不持倉",
-          "body": "平台不參與輸贏。玩家對玩家，不是玩家對莊家。"
+        "orderbook": {
+          "title": "撮合市場",
+          "body": "市場使用訂單簿處理玩家之間的買賣意圖。"
         },
-        "auditable": {
-          "title": "完整可稽核",
-          "body": "監管可隨時調閱完整資金流與決策軌跡，無黑箱。"
+        "records": {
+          "title": "紀錄完整",
+          "body": "資金流、判定與狀態轉換都保留操作紀錄。"
         }
       },
-      "footer": "這三點同時成立才能避開博弈法律。任何「未來會做的功能」如果違反其一，prophetica 不會做。"
+      "footer": "實際營運條款、服務地區與法律分類由業主與營運方另行維護。"
     },
     "contact": {
       "kicker": "聯繫",
@@ -709,7 +706,7 @@
     "hero": {
       "kicker": "我的推薦中心",
       "headline": "你介紹的人，與你拿到的獎勵。",
-      "tagline": "推薦關係只有一層 — 你介紹的玩家。我們不做下線的下線。所有獎勵以站內點數計算，不可兌回現金。"
+      "tagline": "推薦關係只有一層 — 你介紹的玩家。我們不做下線的下線。所有獎勵以站內點數計算。"
     },
     "demoBanner": {
       "label": "資料暫無法載入。",
@@ -719,7 +716,7 @@
     "summary": {
       "heading": "獎勵總覽",
       "subtitle": "依 SPEC-011 §4 計算：介紹獎勵延遲 30 天發放 + 持續 12 個月內的交易佣金。",
-      "footnote": "獎勵金額以站內點數呈現（1 點 = TWD 1 等值，不可兌回現金）；交易佣金每日批次入帳、介紹獎勵於觀察期到期後一次發放。",
+      "footnote": "獎勵金額以站內點數呈現；交易佣金每日批次入帳、介紹獎勵於觀察期到期後一次發放。",
       "count": {
         "kicker": "成功介紹",
         "label": "已通過觀察期 + 達標的推薦人數"
@@ -772,7 +769,7 @@
       "disclaimer": "username 以「前 3 字 + 後 1 字」遮蔽顯示，避免 PII 過度揭露（SPEC-011 §5.1）；累計佣金為已通過反作弊規則並入帳之金額。"
     },
     "notMlm": {
-      "kicker": "法律邊界",
+      "kicker": "設計邊界",
       "headline": "這是單層推薦，不是多層次傳銷。",
       "body": "所有獎勵來自平台手續費分潤，與「介紹下線的下線」無關。你看不到、也拿不到第二層之後的數字 — 因為它根本不存在。如果你看到任何聲稱「prophetica 多層代理」的廣告，那是詐騙。"
     }
@@ -872,7 +869,7 @@
       "footer": "稅務細節請以執照地與你的所在地當期法規為準。我們會在每年 1 月寄出前一年的扣繳憑單。"
     },
     "notMlm": {
-      "kicker": "法律邊界",
+      "kicker": "設計邊界",
       "headline": "這不是多層次傳銷（MLM）。",
       "body": "我們刻意避開「下線的下線也分潤」結構。介紹是一層，沒有第二層。如果你看到任何聲稱「prophetica 多層代理 / 鑽石經理 / 招募下線」之類的廣告，那是詐騙，不是我們。",
       "redFlags": {
@@ -896,34 +893,34 @@
     "hero": {
       "kicker": "玩法說明",
       "headline": "從註冊到結算，5 分鐘看懂。",
-      "tagline": "prophetica 是趣味預測娛樂遊戲。你用站內點數對未公開事件結果表態，與其他玩家對局。我們做撮合與結算，不下場。",
+      "tagline": "你用站內點數對未公開事件結果表態，與其他玩家形成訂單簿對局。系統負責撮合、結算與紀錄。",
       "ctaPrimary": "立即註冊",
       "ctaSecondary": "先看市場"
     },
     "principles": {
-      "heading": "三條法律邊界",
-      "intro": "這些不是「我們的承諾」，是 prophetica 的設計約束。違反任一條等同關站，創辦人負刑責。知道這三條，才知道 prophetica 是什麼、不是什麼。",
+      "heading": "三個設計重點",
+      "intro": "先理解點數、訂單簿與事件紀錄，再看市場價格會更直觀。",
       "items": {
-        "noCashout": {
+        "points": {
           "kicker": "原則一",
-          "title": "點數不可兌回。",
-          "body": "儲值取得的點數僅限站內使用，永遠不可兌回現金、虛擬貨幣或實體商品。這不是限制，是 prophetica 的法律邊界。"
+          "title": "站內點數。",
+          "body": "儲值取得的點數用於站內市場、鎖倉與結算顯示。"
         },
-        "noHouse": {
+        "orderbook": {
           "kicker": "原則二",
-          "title": "平台不下場。",
-          "body": "prophetica 不持倉、不對賭、不從你的輸贏中獲利。我們只收手續費，幫玩家彼此撮合。"
+          "title": "訂單簿撮合。",
+          "body": "系統依價格優先、時間優先撮合玩家訂單，並保留每筆成交紀錄。"
         },
-        "auditTrail": {
+        "events": {
           "kicker": "原則三",
-          "title": "全程稽核留痕。",
-          "body": "所有金流、撮合、結算、判定都寫入不可竄改的事件流，保存 7 年以上，可被監管單位稽核。"
+          "title": "事件紀錄。",
+          "body": "金流、撮合、結算與判定都寫入事件流，方便客服與工程追查。"
         }
       }
     },
     "startSteps": {
       "heading": "入場 4 步驟",
-      "intro": "前兩步是法律必經（年齡 + 責任博弈），第三第四步才是玩法相關。",
+      "intro": "前兩步是帳戶安全與保護設定，第三第四步才是玩法相關。",
       "items": {
         "register": {
           "title": "註冊帳戶",
@@ -950,16 +947,16 @@
     "matching": {
       "kicker": "撮合機制",
       "headline": "每一筆對局，都是玩家對玩家。",
-      "lead": "當你買 YES 一股，必有另一個玩家賣出（或同時有人買 NO 一股）。我們把訂單放進<strong>訂單簿</strong>，以價格優先、時間優先撮合。平台 <strong>不掛單、不報價、不從輸贏抽成</strong>。",
+      "lead": "當你買 YES 一股，系統會在<strong>訂單簿</strong>尋找可成交的對手單，並以價格優先、時間優先撮合。",
       "platformTakes": {
         "kicker": "平台收的",
         "title": "手續費（雙邊收取）",
         "body": "依交易量計算，與你的勝負無關。我們希望市場活絡，不希望某一邊輸太多。"
       },
       "platformDoesNot": {
-        "kicker": "平台不收的",
+        "kicker": "不在此流程內",
         "title": "玩家輸贏的差額",
-        "body": "SPEC-001 §1.1 第二原則：平台不下場。我們不靠玩家輸錢賺錢；那會把我們變成莊家，是法律紅線。"
+        "body": "成交與結算由訂單、持倉與 Oracle 判定共同決定，系統只呈現結果與紀錄。"
       },
       "cta": "看真實訂單簿範例"
     },
@@ -985,7 +982,7 @@
           "note": "每股入帳 0 點，全額成本損失"
         }
       },
-      "exit": "想中途離場？可以在訂單簿掛賣單，由其他玩家接手。沒有「平台買回」這件事，只有玩家對玩家。"
+      "exit": "想中途離場？可以在訂單簿掛賣單，等待其他玩家接手。"
     },
     "settlement": {
       "heading": "結算來自 Oracle",
@@ -1011,11 +1008,10 @@
       "cta": "申訴流程"
     },
     "compliance": {
-      "kicker": "合規邊界",
-      "headline": "不是所有人都能玩，這是設計，不是 bug。",
-      "body": "18 歲以下不可參與。部分司法管轄區因法律因素無法提供服務。月儲值上限強制設定。受過 RG 認證的客服處理沉迷個案。我們把這些邊界視為產品的一部分，不是阻力。",
+      "kicker": "保護設定",
+      "headline": "先完成帳戶設定，再開始使用市場。",
+      "body": "18 歲以下不可參與。月儲值上限、冷靜期與自我排除工具可協助玩家控制使用節奏。",
       "ctaPrimary": "責任博弈工具",
-      "geoBlockLink": "服務地區限制",
       "kycLink": "身份驗證分層"
     },
     "closing": {
@@ -1034,7 +1030,7 @@
     "hero": {
       "kicker": "個人持倉",
       "headline": "你目前的對局組合。",
-      "tagline": "進行中持倉以最後成交價即時計價，已結算持倉顯示實際損益。所有金額以站內點數表示，不可兌回現金。"
+      "tagline": "進行中持倉以最後成交價即時計價，已結算持倉顯示實際損益。所有金額以站內點數表示。"
     },
     "demoBanner": {
       "label": "示意數據。",
@@ -1193,7 +1189,7 @@
           "value": "5 分鐘內"
         }
       },
-      "consent": "我確認儲值取得的點數<strong>不可兌回</strong>現金、虛擬貨幣或實體商品，僅限站內娛樂使用。",
+      "consent": "我確認儲值取得的點數會以站內餘額、鎖倉與結算紀錄呈現。",
       "footnote": "支付完成將回到 prophetica；中途可取消但不退款部分流程已扣款情況。",
       "ctaPay": "前往支付（後端待接）",
       "ctaAtLimit": "已達月上限，無法儲值"
@@ -1561,7 +1557,7 @@
       },
       "countries": {
         "heading": "首發 5 國的證件規格",
-        "intro": "選擇你的國家後，在下方表單依對應格式輸入。不在這 5 國的玩家，請先閱讀<geoBlockLink>服務地區限制</geoBlockLink>。",
+        "intro": "選擇你的國家後，在下方表單依對應格式輸入。目前表單先支援下列 5 國。",
         "documentLabel": "證件",
         "formatLabel": "格式",
         "items": {
@@ -1784,8 +1780,8 @@
             "field": "姓名（與證件一致）",
             "collected": "Tier 1 / 2 / 3",
             "purpose": "建立法律意義上的帳戶身份；制裁名單比對；結算憑證。",
-            "retention": "帳戶生命週期 + 7 年（依 SPEC-001 §1.1 ③ 稽核留痕要求）。",
-            "access": "你本人 + 通過合規培訓的客服 + Compliance Officer + 受監管稽核機構。"
+            "retention": "帳戶生命週期 + 7 年。",
+            "access": "你本人 + 通過合規培訓的客服 + Compliance Officer + 授權稽核人員。"
           },
           "birthday": {
             "field": "生日",
@@ -1806,7 +1802,7 @@
             "collected": "Tier 2 / 3（透過 SumSub）",
             "purpose": "OCR 抽取資訊；審核時的真偽判定。",
             "retention": "SumSub Cloud（EU region）+ 我方 R2（EU）每日批次副本，AES-256 at-rest 加密，Object Lock 7 年。",
-            "access": "Compliance Officer + SumSub 審核員 + 受監管稽核機構。客服無法直接存取原始影像。"
+            "access": "Compliance Officer + SumSub 審核員 + 授權稽核人員。客服無法直接存取原始影像。"
           },
           "selfie": {
             "field": "自拍 + Liveness",
@@ -1834,7 +1830,7 @@
             "collected": "Tier 3",
             "purpose": "驗證申報月收入；AML 規則引擎。",
             "retention": "R2 加密儲存 7 年。",
-            "access": "Compliance Officer + 受監管稽核機構。"
+            "access": "Compliance Officer + 授權稽核人員。"
           }
         }
       },
@@ -1918,34 +1914,6 @@
       "privacy": {
         "kicker": "隱私政策",
         "headline": "我們如何處理你的資料。"
-      },
-      "aml": {
-        "kicker": "AML 政策",
-        "headline": "反洗錢框架說明。"
-      }
-    },
-    "geoBlock": {
-      "metadata": {
-        "title": "服務地區限制 — prophetica",
-        "description": "說明目前服務無法在部分地區提供，以及誤判時可聯繫客服協助確認。"
-      },
-      "nav": {
-        "supportCta": "聯繫客服"
-      },
-      "hero": {
-        "kicker": "服務地區限制",
-        "headline": "很抱歉，你目前所在的地區無法使用本服務。",
-        "body1": "根據我們偵測到的連線位置，prophetica 目前無法向你提供註冊、登入或市場服務。",
-        "body2": "這項限制是為了遵守適用法規與平台風險控管要求。"
-      },
-      "howDetected": {
-        "headline": "系統如何判定",
-        "body": "系統會依 IP、連線資訊與風險訊號判斷服務可用性。若資料顯示你的所在地不在目前開放範圍內，平台會暫停提供互動功能。"
-      },
-      "appeal": {
-        "headline": "認為判定有誤？",
-        "body": "如果你認為所在地判定錯誤，可以聯繫客服並提供可協助確認的資訊。客服僅能處理誤判申訴，無法提供規避地區限制的方法。",
-        "cta": "聯繫客服"
       }
     }
   },
@@ -2143,15 +2111,15 @@
       "signup": {
         "emailHint": "我們會寄驗證連結到此 Email。也是後續客服聯繫的主要管道。",
         "birthday": "生日",
-        "birthdayHint": "prophetica 為成年娛樂遊戲。生日 < 18 歲將立即拒絕註冊。",
+        "birthdayHint": "生日 < 18 歲將立即拒絕註冊。",
         "country": "所在國家",
         "countryPlaceholder": "— 請選擇 —",
-        "countryHint": "我們目前只開放這 5 國。其他國家請查看 <geoBlockLink>服務地區限制</geoBlockLink>。",
+        "countryHint": "目前註冊表單先支援這 5 國。",
         "disclosures": {
           "legend": "你必須了解三件事",
           "terms": "我已閱讀 <termsLink>服務條款</termsLink> 與 <privacyLink>隱私政策</privacyLink>，並同意 prophetica 依此處理我的資料。",
-          "points": "我了解 prophetica <strong>站內點數不可兌回</strong> 現金、虛擬貨幣或實體商品。所有儲值僅限站內娛樂使用。",
-          "entertainment": "我了解 prophetica 為娛樂遊戲，<strong>非投資工具</strong>。我願意設定月儲值上限作為自我保護機制，並隨時可使用冷靜期 / 自我排除工具。"
+          "points": "我了解 prophetica 使用站內點數呈現餘額、鎖倉與結算結果。",
+          "entertainment": "我了解 prophetica 是事件預測產品，<strong>非投資工具</strong>。我願意設定月儲值上限作為自我保護機制，並隨時可使用冷靜期 / 自我排除工具。"
         },
         "submitNote": "送出後將進入 4 步必經流程，最後才開帳戶。",
         "submit": "開始註冊（後端待接）",
@@ -2182,7 +2150,7 @@
       },
       "compliance": {
         "kicker": "請務必記得",
-        "headline": "18 歲以下不得參與。站內點數不可兌回。如已失控，撥打 <helplineLink>1925</helplineLink> 安心專線 24 小時免費。",
+        "headline": "18 歲以下不得參與。如已失控，撥打 <helplineLink>1925</helplineLink> 安心專線 24 小時免費。",
         "cta": "責任博弈資源"
       }
     }
@@ -2198,7 +2166,7 @@
     },
     "neutral": {
       "kicker": "平台中立",
-      "headline": "公平撮合，平台不下場。",
+      "headline": "公平撮合，清楚結算。",
       "tagline": "prophetica 僅提供撮合與結算服務，不持有合約倉位、不做造市商。所有對局都是玩家與玩家之間的眼光對決。",
       "cta": "看撮合機制",
       "media": "Order book illustration"
@@ -2206,7 +2174,7 @@
     "points": {
       "kicker": "點數即遊戲",
       "headline": "站內點數，純娛樂。",
-      "tagline": "儲值取得的點數僅可在站內使用，不可兌回現金、虛擬貨幣或實體商品。我們是娛樂遊戲服務，不是金融商品。",
+      "tagline": "儲值取得的點數會以站內餘額、鎖倉與結算紀錄呈現。",
       "ctaPrimary": "點數說明",
       "ctaSecondary": "服務條款",
       "media": "Points wallet"

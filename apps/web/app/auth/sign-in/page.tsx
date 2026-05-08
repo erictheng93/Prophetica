@@ -244,13 +244,7 @@ function SignupForm({ t }: { t: AuthCopy }) {
               ))}
             </select>
             <span className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
-              {t.rich("signup.countryHint", {
-                geoBlockLink: (chunks) => (
-                  <a href="/legal/geo-block" className="text-proph-primary underline">
-                    {chunks}
-                  </a>
-                ),
-              })}
+              {t("signup.countryHint")}
             </span>
           </label>
 

@@ -14,8 +14,7 @@ import {
 // (`landing.*` namespace). Other pages still use string literals; migrate
 // per the pattern here as catalogues mature (see Tech Lead followups).
 //
-// Compliance posture: SPEC-001 §1.1 三原則 — copy frames the product as
-// 趣味預測娛樂遊戲, never as gambling/wager; 站內點數 explicitly 不可兌回.
+// Product posture: copy frames the product as an event-prediction experience.
 
 const TileMedia = ({ label, surface }: { label: string; surface: "light" | "dark" }) => (
   <div

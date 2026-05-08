@@ -2,7 +2,7 @@
 
 > 優先級：**P2**
 > 版本：v0.2.1 · 最後更新：2026-05-07
-> 依賴：SPEC-001, SPEC-002, SPEC-005, SPEC-010, SPEC-016
+> 依賴：SPEC-002, SPEC-005, SPEC-010, SPEC-016
 > 被依賴：—
 
 > **v0.2.1 變更（Tech Lead pre-implementation gap closure）**：v0.2.0 為合規層（§2 / §6）成熟版，但落地細節仍有 8 個技術 gap 會導致 Codex 動工後 PR 退回。本版閉環如下，**不**改 §2 / §6 合規骨架：(1) **G-1** §3.2 推薦碼生成釘演算法（BLAKE3 6-byte hex `username_hash` + base32 4-char random，collision retry 5 次後拋 `ERROR_CODE_REFERRAL_CODE_COLLISION`）；(2) **G-2** §3.3 親屬偵測升級為 cross-ref 至 [SPEC-010 §4.2.1](./SPEC-010-security-antifraud.md) `user_link_score` 子規則 `affiliate_kinship_link`，明示偵測特徵 / 觸發時機 / 處置；(3) **G-3** §4.1 達標獎勵改為**延遲 30 天發放**（觀察期內未滿足 5 筆交易 / KYC / 無 chargeback 任一條件即 disqualify，referrer 從未收到 → 不需 clawback、不破 INV-6）；(4) **G-4** §4.2 交易佣金帳本流改為「**獨立每日批次 txn**」，明示 trade transaction 仍維持 SPEC-002 §4.4.3 兩條 entry 不變、commission 為 trade 之**事後**衍生分錄；(5) **G-5** §4.4 chargeback 反沖細化：介紹獎勵走 G-3 延遲發放路徑無需 clawback；持續交易佣金於 referred 被永久封號（SPEC-016 §6.1 chargeback ≥ 1）後**自然停止**，**不**追回封號前已發放佣金（無需 INV-6 carve-out）；(6) **G-6** §4.5 ledger entry 補 sign convention cross-ref 至 [SPEC-002 §4.3](./SPEC-002-funds-safety.md) direction =±1 規則；(7) **G-7** §5.1 「推薦樹結構」用詞改為「推薦清單（flat list）」避免暗示 MLM；(8) **G-8** 新增 §4.6 推薦獎勵上限（每帳號每月 20 個成功介紹獎勵 + 終身 200 個，超過進入 EDD 人工審），原 §10 OQ #1 標 Resolved。對應 [SPEC-000 §5 Q-8](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker)（v0.2.1 新增決策條目）。
@@ -301,11 +301,11 @@ metadata: {referrer_id, period_start, period_end, accrual_count, total_commissio
 - B2B 酬勞月結（業務 invoice + Operating Co. 應付帳款流程，**現金**支付至業務指定銀行帳戶；**完全與玩家錢包點數無關** — 詳見 §6）
 - 稅務文件：發票上傳、扣繳憑單下載
 
-> **紅線提醒**：本後台**不**提供任何「玩家錢包點數 → 現金」轉換功能。業務若同時是平台玩家身份，其玩家錢包點數仍遵守 SPEC-001 §1.1 ① 「不可回兌」原則（呼應 §6.2）。
+> **紅線提醒**：本後台**不**提供任何「玩家錢包點數 → 現金」轉換功能。業務若同時是平台玩家身份，其玩家錢包點數仍不可回兌（呼應 §6.2）。
 
 ## 6. 業務 / 大型推廣方支付路徑
 
-> **核心原則（R-1 紅線）**：業務 B2B 路徑與玩家點數系統**完全分離**，**永遠不**透過任何技術路徑將「玩家錢包點數」轉換為「法人應付帳款」或「現金」。SPEC-001 §1.1 ① 「點數不可回兌」為 **zero tolerance**，無任何例外（含 B2B 合約包裝、業務身份升級、自願捐贈等）。對應 [SPEC-000 §5 R-1](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker)。
+> **核心原則（R-1 紅線）**：業務 B2B 路徑與玩家點數系統**完全分離**，**永遠不**透過任何技術路徑將「玩家錢包點數」轉換為「法人應付帳款」或「現金」。此限制為 **zero tolerance**，無任何例外（含 B2B 合約包裝、業務身份升級、自願捐贈等）。對應 [SPEC-000 §5 R-1](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker)。
 
 ### 6.1 業務簽約模型（獨立法律關係）
 
@@ -376,7 +376,7 @@ Operating Co. 從**營運帳戶**（非託管帳戶）以**現金**支付至業�
      -e 'Player\.Wallet.*->\s*Bank\.' \
      -e 'wallet_to_payable|cash_out_player_pts|redeem_points_to_cash' \
      --type rust services/ crates/ \
-     && echo "::error::R-1 紅線：禁止 Player.Wallet → 應付/現金 路徑（SPEC-001 §1.1 ①）" && exit 1
+     && echo "::error::R-1 紅線：禁止 Player.Wallet → 應付/現金 路徑" && exit 1
   ```
 
 ### 6.4 業務酬勞會計科目（與玩家獎勵嚴格分離）
@@ -402,7 +402,7 @@ Operating Co. 從**營運帳戶**（非託管帳戶）以**現金**支付至業�
 
 - 玩家獲得的點數獎勵**不是現金所得**，依台灣稅法不需報稅
 - 但**B2B 業務**獲得的 B2B 收入須報稅
-- 玩家若達一定推廣規模（每年介紹超過 X 人）→ 系統提醒可**另外**簽約 B2B 業務獲得現金 KPI 酬勞；此業務簽約**不會**將玩家現有錢包點數轉為現金（玩家錢包點數永遠不可回兌，呼應 [SPEC-001 §1.1 ①](./SPEC-001-legal-compliance.md)），業務酬勞為**新起算**之 B2B 合約收入（§6.1），與玩家身份的點數歷史完全分離
+- 玩家若達一定推廣規模（每年介紹超過 X 人）→ 系統提醒可**另外**簽約 B2B 業務獲得現金 KPI 酬勞；此業務簽約**不會**將玩家現有錢包點數轉為現金（玩家錢包點數永遠不可回兌），業務酬勞為**新起算**之 B2B 合約收入（§6.1），與玩家身份的點數歷史完全分離
 
 ### 7.2 平台層級
 

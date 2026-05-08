@@ -5,7 +5,7 @@
 > 依賴：SPEC-002, SPEC-003, SPEC-007, SPEC-010
 > 被依賴：SPEC-013
 
-> **v0.2.1 變更（F-1 ~ F-5 縫補）**：(1) **F-1**：§9.3 Kill switch 解除明示 cross-ref 至 SPEC-010 §9.3 **MS-9**（multi-sig 中央表為單一真相來源），admin UI 不得自刻一套流程；(2) **F-2**：§7.1 / §7.2 客戶端容錯由「描述性敘述」升級為**可執行技術契約**（exponential backoff 上下限 + jitter、sequence-number reconcile、Idempotency-Key 對齊 SPEC-002 §6.1、retry budget 呼應 SPEC-007 §6.4.4 反 pattern）；(3) **F-3**：§13 OQ #5 移除（已被 SPEC-001 §1.1 ③ 7 年 + Q-2 執照地律師覆蓋）；(4) **F-4**：§5.2 補 inline 註明「Lock / Idempotency 落 PG，**不**存 Redis」呼應 SPEC-002 §6.1；(5) **F-5**：§3.1 補 Cloudflare Edge layer 的 fallback semantics 待 PoC-B 完成後回填。
+> **v0.2.1 變更（F-1 ~ F-5 縫補）**：(1) **F-1**：§9.3 Kill switch 解除明示 cross-ref 至 SPEC-010 §9.3 **MS-9**（multi-sig 中央表為單一真相來源），admin UI 不得自刻一套流程；(2) **F-2**：§7.1 / §7.2 客戶端容錯由「描述性敘述」升級為**可執行技術契約**（exponential backoff 上下限 + jitter、sequence-number reconcile、Idempotency-Key 對齊 SPEC-002 §6.1、retry budget 呼應 SPEC-007 §6.4.4 反 pattern）；(3) **F-3**：§13 OQ #5 移除（備份保留期改由本檔 §6.1 cold archive 策略與業主 / 運營要求覆蓋）；(4) **F-4**：§5.2 補 inline 註明「Lock / Idempotency 落 PG，**不**存 Redis」呼應 SPEC-002 §6.1；(5) **F-5**：§3.1 補 Cloudflare Edge layer 的 fallback semantics 待 PoC-B 完成後回填。
 >
 > **v0.2.0 變更（T-2 RPO 拆兩層）**：§2 RTO/RPO 表將 RPO 拆為「Region-local RPO（Tokyo 同 region synchronous standby + WAL fdatasync + Kafka acks=all）」+「Cross-region RPO ≤ 5 秒（async streaming replication 至 Singapore DR）」雙欄，消除原 v0.1「RPO=0」與 §3 跨區 async replication 之物理矛盾；新增 §2.1 Region-local RPO=0 三重保證實作要求 + §2.2 Cross-region RPO ≤ 5 秒 SLA 邊界與玩家通知策略。
 
@@ -25,7 +25,7 @@
 | 撮合引擎 | < 1 秒（per-market WAL + Kafka acks=all）| ≤ 5 秒（Kafka MirrorMaker 2 lag）| < 30 秒 / 市場 | P0 |
 | 玩家錢包 | **0**（同 ledger）| **≤ 5 秒**（同 ledger）| < 5 分鐘 | P0 |
 | 結算服務 | < 1 分鐘（saga checkpoints）| ≤ 5 分鐘 | < 30 分鐘 | P1 |
-| 客戶 KYC 資料 | **0**（R2 Object Lock 雙寫 EU + Singapore）| **0**（R2 全球複製，呼應 SPEC-001 §4.1）| < 1 小時 | P1 |
+| 客戶 KYC 資料 | **0**（R2 Object Lock 雙寫 EU + Singapore）| **0**（R2 全球複製）| < 1 小時 | P1 |
 | 撮合事件流（WAL）| **0**（fdatasync 每 100 events 或 50ms）| ≤ 5 秒（Kafka MirrorMaker）| < 5 分鐘 | P0 |
 | WebSocket 推播 | < 5 秒（in-memory subscriber state）| < 30 秒（reconnect + gap detect）| < 5 分鐘 | P1 |
 | 行銷頁面 | < 1 小時 | < 1 小時 | < 2 小時 | P3 |
@@ -232,7 +232,7 @@ Idempotency-Key 格式：
 - Idempotency-Key 契約**完全繼承** §7.2（LIFF SDK 由 `apps/liff/lib/` 共用 `apps/web/lib/idempotency.ts`）
 - LINE app 切到背景 → WS 由 OS 自動斷開；返回前景時觸發重連，**不**累計成 max attempts
 - 離線狀態 UI 提示：用 `navigator.onLine` 偵測；offline 時直接進入 §7.3 fail-soft，不消耗 retry budget
-- **訂單操作必透過 server，不在 client 擱置**（保留原 v0.2.0 條款 — 對齊 SPEC-001 §1.1 ② 平台中立）
+- **訂單操作必透過 server，不在 client 擱置**
 
 ## 8. 第三方依賴災備
 
@@ -307,4 +307,4 @@ Idempotency-Key 格式：
 3. Kafka MirrorMaker 2 vs Confluent Replicator？
 4. 緊急停盤是否同時影響 KYC / 客服流程？預設不影響，但需確認
 
-> **OQ #5 已 Resolved（v0.2.1，2026-05-07）**：「監管要求最低備份保留期」由 **SPEC-001 §1.1 ③ 7 年保留**（KYC / 帳本 / 撮合事件冷備）+ SPEC-000 §5 Q-2 執照地律師最終意見覆蓋（若執照地另有更長要求則以執照地為準，現有設計 §6.1 cold archive 7 年留有上修空間）。本檔不再追蹤此議題。
+> **OQ #5 已 Resolved（v0.2.1，2026-05-07）**：「最低備份保留期」由本檔 §6.1 cold archive 策略與 SPEC-000 §5 Q-2 業主 / 運營最終意見覆蓋；現有設計 §6.1 cold archive 7 年留有上修空間。本檔不再追蹤此議題。

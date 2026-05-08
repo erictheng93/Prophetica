@@ -546,7 +546,7 @@ ws://api.../ws/me/orders
 //! 任何 incoming order 的 `user_id` 命中本集合則直接拒絕。
 //!
 //! # 紅線理由
-//!   - 平台不得在自家訂單簿掛單（SPEC-001 §1.1 ② No House Position）
+//!   - 平台不得在自家訂單簿掛單
 //!   - ADR-0001 §6 列為靜態掃描禁字
 //!
 //! # 新增 user_id 至本集合需要
@@ -706,7 +706,7 @@ rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type rust services/dmm-gateway/ \
 
 > **本節原描述「`system.platform_announcement` (uid=4) 為唯一例外」之冷啟動補貼路徑已於 v0.2.2 整段移除**（呼應 [SPEC-000 §5 R-2](./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) 業主決議與 SPEC-009 §5 同步）。
 >
-> 平台**永遠不**在自家訂單簿掛單，**無**任何 feature flag、簽核流程、或 UI 標記可以啟用平台 order — 此設計層級紅線對齊 SPEC-001 §1.1 ② 「平台不下場」zero tolerance 原則。
+> 平台**永遠不**在自家訂單簿掛單，**無**任何 feature flag、簽核流程、或 UI 標記可以啟用平台 order。
 >
 > §12.1.1 sentinel 集合中 uid=4 已移除，並列入 `RESERVED_REMOVED_USER_IDS` 防止歷史紀錄與未來 user_id 撞號；§12.1.3 CI sentinel-scan 不需特別 whitelist。冷啟動流動性不足走 SPEC-009 §3.3 DMM rebate 放大或市場延後上架。
 >

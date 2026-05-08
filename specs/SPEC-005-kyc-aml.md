@@ -2,7 +2,7 @@
 
 > 優先級：**P1**
 > 版本：v0.1.4 · 最後更新：2026-05-08
-> 依賴：SPEC-001
+> 依賴：無
 > 被依賴：SPEC-006, SPEC-010, SPEC-011
 > 實作狀態：⚠️ **Backend in-memory contract 完成 / Secret hardening 完成 / Postgres 待 PR #1 後 P0 sprint / Frontend SumSub iframe 待整合**（v0.1.4 resolve §0.2 B3）
 
@@ -150,7 +150,7 @@ def effective_monthly_income(user) -> int | None:
 
 #### 2.4.2 不在首發 5 國的玩家
 
-- 「一般市場」名單外的玩家（紅名單地區）→ 由 [SPEC-001 §2.1](./SPEC-001-legal-compliance.md#21-技術實作層級) Geo-block Layer 1-3 在註冊前阻擋
+- 「一般市場」名單外的玩家（紅名單地區）→ 由註冊前 Geo-block、KYC 國籍 / 居住地檢查與風控規則阻擋
 - 首發 5 國以外、🟢 一般市場以外的中性國家（例如印尼、泰國）→ Tier 1 暫不開放，註冊時提示「您的所在國尚未支援，預計 Phase 2 開放」並導入 waiting list
 
 #### 2.4.3 SaaS 整合對應

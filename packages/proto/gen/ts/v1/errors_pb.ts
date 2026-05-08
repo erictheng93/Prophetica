@@ -406,21 +406,6 @@ export enum ErrorCode {
   MARKET_FORCE_DELISTED = 1103,
 
   /**
-   * @generated from enum value: ERROR_CODE_GEO_BLOCKED = 1200;
-   */
-  GEO_BLOCKED = 1200,
-
-  /**
-   * @generated from enum value: ERROR_CODE_VPN_DETECTED = 1201;
-   */
-  VPN_DETECTED = 1201,
-
-  /**
-   * @generated from enum value: ERROR_CODE_BIN_GEO_MISMATCH = 1202;
-   */
-  BIN_GEO_MISMATCH = 1202,
-
-  /**
    * @generated from enum value: ERROR_CODE_REFERRAL_DUPLICATE = 1300;
    */
   REFERRAL_DUPLICATE = 1300,

@@ -2,7 +2,7 @@
 
 > 優先級：**P0（必須在第一行 production code 之前完成）**
 > 版本：v0.1.1 · 最後更新：2026-05-07
-> 依賴：SPEC-001, SPEC-003, SPEC-004
+> 依賴：SPEC-003, SPEC-004
 > 被依賴：SPEC-002, SPEC-009, SPEC-010
 
 > **v0.1.1 變更**：§8.1 hedge 政策依 [SPEC-000 §5 Q-7](./SPEC-000-index.md) Resolved 為「允許」，刪除原「同一玩家不可同時持 YES + NO」禁令該行，改為呼應 SPEC-002 §4.4.4 NOTE 3 之 hedge 結算邏輯說明；自我對沖刷量交由 SPEC-010 §4.2.2 post-trade 偵測。
@@ -99,7 +99,7 @@
 
 ### 5.2 永久禁止的市場類別（紅線）
 
-> 違反任一條視同 SPEC-001 §1.1 三原則破口，立即下架 + Compliance 記錄。
+> 違反任一條立即下架 + Compliance 記錄。
 
 - ❌ **個人傷亡 / 健康事件**（如「某政治人物在某日前是否過世」）— 不論意圖，市場存在本身即構成倫理風險與激勵殺人 / 自殺
 - ❌ **特定個人犯罪 / 入獄 / 起訴結果**（如「某人是否被起訴」）— 司法程序博弈，多數司法區明文禁止
@@ -383,7 +383,7 @@ OPEN 後撮合參數**不可變更**（SPEC-003 §17.3 滾動升級不允許改�
 
 ### 11.2 全量留痕
 
-- `market_audit_logs` 7 年保留（呼應 [SPEC-001 §1.1 ③ Full Audit Trail](./SPEC-001-legal-compliance.md#11-合規黃金三原則non-negotiable)）
+- `market_audit_logs` 7 年保留
 - `market_reviews` 5 年保留
 - `markets.risk_assessment_url` 指向 R2 Object Lock，5 年不可竄改
 

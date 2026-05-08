@@ -16,7 +16,7 @@
 
 PRD v0 與 SPEC-014 v0.1.1 原指定前端棧為 **Nuxt 3 (Vue 3) + Pinia + TailwindCSS + ShadCN-Vue 風格化**。此選擇在無外部約束下可行，但 2026-05-05 業主決定**指定 Cloudflare Kumo（`@cloudflare/kumo`）作為本專案元件庫**，理由如下：
 
-1. **無障礙開箱即用**：Kumo 建立於 Base UI（headless React primitives），鍵盤導航、focus management、ARIA 屬性全自動處理，符合 SPEC-001 / SPEC-006 對玩家無障礙與責任博弈強制流程的要求
+1. **無障礙開箱即用**：Kumo 建立於 Base UI（headless React primitives），鍵盤導航、focus management、ARIA 屬性全自動處理，符合 SPEC-006 對玩家責任博弈強制流程的要求
 2. **CSS variables 暴露樣式**：可把 design system token（見 `design/DESIGN-{apple,airbnb,lamborghini}.md` 三候選方案）平移到主題層，免於 fork 元件
 3. **官方背書 + MIT license**：Cloudflare 維護、商用零障礙；本專案前端部署本就在 Cloudflare Pages，生態一致
 4. **Re-export Base UI primitives**：複雜場景（自訂 dropdown、撮合表單）可降到 Base UI，避免引入第二套 UI 庫
@@ -42,7 +42,7 @@ PRD v0 與 SPEC-014 v0.1.1 原指定前端棧為 **Nuxt 3 (Vue 3) + Pinia + Tail
 依重要性遞減：
 
 1. **業主指定的硬約束**：Kumo 為元件庫已是業主決策，本 ADR 範圍是「在此約束下的最佳框架選擇」，不重新討論元件庫選型
-2. **無障礙合規**：SPEC-001 §法遵可及性、SPEC-006 §責任博弈強制流程要求鍵盤導航與螢幕閱讀器支援
+2. **無障礙合規**：SPEC-006 §責任博弈強制流程要求鍵盤導航與螢幕閱讀器支援
 3. **SSR / SEO**：landing page、市場詳情頁面（`/markets/[id]`）需被搜尋引擎索引；首屏載入時間影響 SPEC-014 前端 SLO
 4. **WebSocket 即時性**：撮合報價需透過 WS 推播，框架必須能在 client component 內優雅整合
 5. **Cloudflare Pages 部署親和度**：本專案前端已定 deploy 至 Cloudflare Pages（SPEC-014 §4）
@@ -162,7 +162,7 @@ E 推翻「採用元件庫」這個前提。本 ADR 的範圍是接受業主指�
 
 ### 5.1 Positive
 
-1. **無障礙合規免費獲得**：Base UI 處理 ARIA / focus / 鍵盤，SPEC-001 / SPEC-006 的可及性要求 day-1 達標
+1. **無障礙合規免費獲得**：Base UI 處理 ARIA / focus / 鍵盤，SPEC-006 的可及性要求 day-1 達標
 2. **Cloudflare 生態一致性**：前端 (Pages) + 元件庫 (Kumo) + Object Store (R2) + WAF / CDN 全在同一供應商，故障排查 / billing / 支援單一窗口
 3. **設計 token 易切換**：三個 design 候選（Apple / Airbnb / Lamborghini）對 Kumo 而言只是 `theme.css` 的差異，不需動元件原始碼
 4. **TypeScript 與後端 schema 共用**：Zod schema 可由 protobuf 經 protoc-gen-zod 產出，前端 React Hook Form 與後端 Rust（serde + validator）皆消費同一份 .proto 為 source of truth（packages/ts-sdk）

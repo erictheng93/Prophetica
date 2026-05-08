@@ -17,10 +17,10 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const PRINCIPLE_IDS = ["noCashout", "noHouse", "auditTrail"] as const;
+const PRINCIPLE_IDS = ["points", "orderbook", "events"] as const;
 const NEUTRALITY_ITEM_IDS = ["oracle", "platformBan", "auditable"] as const;
 const COMPANY_IDS = ["holding", "op", "tech"] as const;
-const NOT_GAMBLING_ITEM_IDS = ["noCashValue", "noHouse", "auditable"] as const;
+const PRODUCT_SCOPE_ITEM_IDS = ["points", "orderbook", "records"] as const;
 
 export default async function AboutPage() {
   const [t, sectionFooterColumns] = await Promise.all([
@@ -168,30 +168,30 @@ export default async function AboutPage() {
       <section className="bg-proph-canvas-parchment">
         <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
           <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
-            {t("notGambling.heading")}
+            {t("productScope.heading")}
           </h2>
           <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
-            {t("notGambling.intro")}
+            {t("productScope.intro")}
           </p>
 
           <ul className="mt-8 space-y-3">
-            {NOT_GAMBLING_ITEM_IDS.map((id) => (
+            {PRODUCT_SCOPE_ITEM_IDS.map((id) => (
               <li
                 key={id}
                 className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5"
               >
                 <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">
-                  {t(`notGambling.items.${id}.title`)}
+                  {t(`productScope.items.${id}.title`)}
                 </h3>
                 <p className="mt-2 font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
-                  {t(`notGambling.items.${id}.body`)}
+                  {t(`productScope.items.${id}.body`)}
                 </p>
               </li>
             ))}
           </ul>
 
           <p className="mt-6 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
-            {t("notGambling.footer")}
+            {t("productScope.footer")}
           </p>
         </div>
       </section>

@@ -2,10 +2,10 @@
 
 > 優先級：**P0**  
 > 版本：v0.1.8 · 最後更新：2026-05-07  
-> 依賴：SPEC-001  
+> 依賴：無  
 > 被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011
 
-> **v0.1.8 變更**：§5 INV-6 白名單補充 chargeback carve-out — `Player.Wallet.*` outflow 允許目的地新增 (e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 §8.1 deposit 反向沖正）。Carve-out 動機：chargeback 為「玩家信用卡爭議 → 銀行抽走原儲值 → 平台對玩家負債歸零 + 託管帳餘額減少退回卡組織」之合法 reversal，**非**「點數變現」（玩家不取得現金），故不違反 SPEC-001 §1.1 ① 紅線。發現過程：實作 ledger CONSTRAINT TRIGGER 時跑 chargeback test 觸發 INV-6 偽陽性。同步落地：[`crates/sdk/src/ledger/mod.rs`](../crates/sdk/src/ledger/mod.rs) `is_inv6_whitelisted_target()` + [`migrations/202605070004_inv6_outflow_whitelist.sql`](../services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql) plpgsql trigger + [ADR-0006 §4.1 / §4.2.1](../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md) 同步擴展。
+> **v0.1.8 變更**：§5 INV-6 白名單補充 chargeback carve-out — `Player.Wallet.*` outflow 允許目的地新增 (e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 §8.1 deposit 反向沖正）。Carve-out 動機：chargeback 為「玩家信用卡爭議 → 銀行抽走原儲值 → 平台對玩家負債歸零 + 託管帳餘額減少退回卡組織」之合法 reversal，**非**「點數變現」（玩家不取得現金）。發現過程：實作 ledger CONSTRAINT TRIGGER 時跑 chargeback test 觸發 INV-6 偽陽性。同步落地：[`crates/sdk/src/ledger/mod.rs`](../crates/sdk/src/ledger/mod.rs) `is_inv6_whitelisted_target()` + [`migrations/202605070004_inv6_outflow_whitelist.sql`](../services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql) plpgsql trigger + [ADR-0006 §4.1 / §4.2.1](../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md) 同步擴展。
 > **v0.1.7 變更**：(1) §5 INV-6 governance 標註更新 — [ADR-0006](../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md) 已落地（Accepted 2026-05-07），擴展 ADR-0003 §5 INV 集合為 INV-1 ~ INV-6；移除 v0.1.5 「待 ADR-0006 落地」與「migration 不得加 CHECK constraint」之過渡標註，wallet-ledger-service migration 可依 ADR-0006 §4.2.1 plpgsql template 實作 INV-6 trigger。(2) **T-3 partition 策略**：§12 OQ #2 由「Phase 1 不分區後 migrate」修正為「Phase 1 從 day 1 即採 monthly range partition by `created_at`（pg_partman）+ BRIN index + 12 個月以上 cold partition detach 至 R2 + foreign table」，避免事後 online migration 高風險操作。(3) **T-5 最終一致性窗口**：§9 新增 §9.3 「撮合 → ledger 最終一致性窗口」，明示 ~100ms eventual consistency 之語意 + 前端 optimistic UI 處理 + 後端 API 提供 `?at_seq=N` / `?consistent=true` 兩種一致性語意 + OTel span 監控（`proph_ledger_event_lag_seconds`）。
 > **v0.1.6 變更（H-5）**：§8.1 chargeback 場景補「累計 ≥ 1 立即永久封號 + 黑名單」門檻，cross-ref SPEC-010 §6.2 / SPEC-016 §6.1；系統故障 reversal 補 cross-ref 至 SPEC-010 §9.3 MS-6（4-eye）。
 > **v0.1.5 變更（R-1 紅線清除）**：(1) §4.2 Chart of Accounts 補新子科目 `Liability.AccountsPayable.{partner_id}`（B2B 業務應付）/ `Expense.AffiliatePartnerFee`（業務現金酬勞）/ `Bank.OperatingAccount.{currency}`（營運帳戶，禁止接收玩家儲值），三者皆與玩家錢包零交集；(2) §5 新增 INV-6：`Player.Wallet.*` outflow 目的地白名單，禁止流向應付帳款 / 營運帳戶 / 業務酬勞等任何「兌現」科目，由 DB CONSTRAINT TRIGGER 強制 + CI sentinel-scan 雙保險；(3) INV-6 ADR governance：code 實作前需先落地 ADR-0006 將 ADR-0003 §5 之 INV 集合從 INV-1 ~ INV-5 擴展為 INV-1 ~ INV-6。對應 [SPEC-000 §5 R-1](./SPEC-000-index.md) 與 SPEC-011 §6.3。
@@ -120,7 +120,7 @@
 
 > 決議 2026-05-05：採 **(b) 帳本層轉子科目** 而非 metadata flag 或純 application freeze。理由：
 
-- **Audit Trail（SPEC-001 §1.1 ③）**：永久封號 / 自我排除為不可逆事件，必須在帳本留下明確 entry，metadata flag 無法滿足「不可竄改事件流」要求。
+- **Audit Trail**：永久封號 / 自我排除為不可逆事件，必須在帳本留下明確 entry，metadata flag 無法滿足「不可竄改事件流」要求。
 - **隔離 INV-1 / INV-2 計算**：凍結資產仍是平台對玩家之負債（不能歸 0），但不應出現在「可用餘額」對帳；以子科目分流可避免日常 wallet 查詢誤觸。
 - **可逆操作**：若凍結觸發條件解除（例如自我排除期滿、Compliance 釋出），由反向 entry 從 `Player.Frozen.{user_id}` 轉回 `Player.Wallet.{user_id}`，全程留痕。
 
@@ -332,7 +332,7 @@ Txn: settle, idempotency_key='market-X-settle:position-B-001:NO'
 | INV-3 | `Bank.TrustAccount + Σ(Revenue.*) − Σ(Expense.*) = 平台對玩家負債總額` | 每日 T+1 對帳 | 凍結出帳、啟動人工稽核 |
 | INV-4 | `每個 Player.Wallet.X 任意時刻 ≥ 0`（chargeback 反沖外） | 每筆變動 | 拋 INSUFFICIENT_FUNDS；chargeback 例外見 §8.2 |
 | INV-5 | `每個 ledger_entry 一旦寫入不可 UPDATE / DELETE` | 持續 | DB role 權限分離（`ledger_app` 僅 INSERT）+ audit |
-| INV-6 | `Player.Wallet.{user_id}` 之 outflow 目的地白名單，僅限：(a) `Player.Locked.{user_id}`、(b) `Player.Frozen.{user_id}`、(c) `Revenue.TradingFee` / `Revenue.SettlementFee`、(d) `Player.Wallet.{other_user_id}`（**僅限** `txn_type ∈ {trade, settle}`）、(e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 §8.1 deposit 反向沖正；非「點數變現」路徑，玩家不取得現金）。**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何其他銀行 / 支付通路 / 外部錢包科目 | 每筆 commit | DB CONSTRAINT TRIGGER 強制（拒絕 commit，SQLSTATE `40004`）+ CI sentinel-scan grep gate；呼應 SPEC-001 §1.1 ① 「點數不可回兌」與 SPEC-011 §6.3 R-1 紅線；落地 [ADR-0006 §4.2](../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md) |
+| INV-6 | `Player.Wallet.{user_id}` 之 outflow 目的地白名單，僅限：(a) `Player.Locked.{user_id}`、(b) `Player.Frozen.{user_id}`、(c) `Revenue.TradingFee` / `Revenue.SettlementFee`、(d) `Player.Wallet.{other_user_id}`（**僅限** `txn_type ∈ {trade, settle}`）、(e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 §8.1 deposit 反向沖正；非「點數變現」路徑，玩家不取得現金）。**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何其他銀行 / 支付通路 / 外部錢包科目 | 每筆 commit | DB CONSTRAINT TRIGGER 強制（拒絕 commit，SQLSTATE `40004`）+ CI sentinel-scan grep gate；呼應 SPEC-011 §6.3 R-1 紅線；落地 [ADR-0006 §4.2](../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md) |
 
 > **Player.Locked.X ≥ 0**：邏輯上隱含於 INV-1（鎖倉釋出與鎖入必為對沖），由 application 層在下單 / 成交路徑強制檢查。不再單獨列為頂層 INV，避免與 ADR-0003 編號衝突。
 >

@@ -20,8 +20,6 @@ const migratedFiles = [
   "app/kyc/tier-2/tier-2-launch-client.tsx",
   "app/kyc/tier-3/page.tsx",
   "app/kyc/tier-3/tier-3-launch-client.tsx",
-  "app/legal/aml/page.tsx",
-  "app/legal/geo-block/page.tsx",
   "app/legal/privacy/page.tsx",
   "app/legal/terms/page.tsx",
   "app/markets/[id]/not-found.tsx",

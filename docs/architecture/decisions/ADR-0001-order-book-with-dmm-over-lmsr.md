@@ -31,7 +31,7 @@ prophetica 需要為玩家提供一個進行二元（YES/NO）預測下注的市
 
 依重要性遞減排序：
 
-1. **不可下場原則**（SPEC-001 §1.1 第②條）：平台不得持有合約倉位、不得在自家訂單簿掛單、不得從玩家輸贏中獲利。
+1. **不可下場原則**：平台不得持有合約倉位、不得在自家訂單簿掛單、不得從玩家輸贏中獲利。
 2. **可被監管稽核**：方案必須在執照地（Malta MGA / Curaçao / PAGCOR）申照面試時可被一句話解釋，且不需依賴「但是其實我們有但是…」的詭辯。
 3. **流動性**：玩家點開平台時必須看到可下單的市場，不能空盤。
 4. **開發與維運成本**：MVP 必須在合理時程上線。
@@ -182,7 +182,7 @@ price_yes = exp(q_yes / b) / (exp(q_yes / b) + exp(q_no / b))
 
 ### 8.1 內部文件
 
-- [SPEC-001 §1.1](../../../specs/SPEC-001-legal-compliance.md) — 合規黃金三原則
+- [SPEC-000 §5 R-2](../../../specs/SPEC-000-index.md) — 平台下場紅線追蹤
 - [SPEC-003](../../../specs/SPEC-003-matching-engine.md) — 撮合引擎詳規（Order Book 實作）
 - [SPEC-009 §1](../../../specs/SPEC-009-dmm-liquidity.md) — DMM 紅線聲明
 - ~~PRD.md §3.2~~ — 原始「概率對稱」提案（已被本 ADR 否決；PRD.md 於 2026-05-05 刪除，git commit `6013b92` 之前可查）
@@ -210,4 +210,4 @@ price_yes = exp(q_yes / b) / (exp(q_yes / b) + exp(q_no / b))
 |------|------|------|------|
 | 2026-05-05 | v1.0 | Tech Lead | 首版 Accepted |
 | 2026-05-05 | v1.0.1 | Tech Lead | typo-level：§1 與 §8.1 引用之 PRD.md 已於 2026-05-05 隨 SPEC v0.1.1 升級時刪除，將連結改為 git history 回溯說明，避免 dead link。決策內容無變動。 |
-| 2026-05-07 | v1.0.2 | Tech Lead | **§6「唯一例外」carve-out 撤除**（業主決議 2026-05-07，呼應 [SPEC-000 §5 R-2](../../../specs/SPEC-000-index.md)）：原 v1.0.0 之「唯一例外：SPEC-009 §5『冷啟動補貼』」段落改寫為「**無例外**」；§6 禁字補 `probability_symmetry` / `auto_hedge` 兩個 v1.0 遺漏字串；連動清除清單涵蓋 SPEC-009 §5 / SPEC-003 §12.1.1 sentinel uid=4 / SPEC-003 §12.1.4。本次屬於 **carve-out 撤除**而非決策反轉（Order Book + DMM 主決策仍 Accepted），故維持 Status: Accepted；嚴格論本次已超出「typo-level」範疇但屬於「強化既有 Compliance 紅線」之 boundary case，紀錄於此供未來 audit。決策內容方向**未反轉**，僅將原本就是「強烈建議永不啟用」的 carve-out 改為「永不可啟用」，與 SPEC-001 §1.1 ② zero tolerance 原則對齊。 |
+| 2026-05-07 | v1.0.2 | Tech Lead | **§6「唯一例外」carve-out 撤除**（業主決議 2026-05-07，呼應 [SPEC-000 §5 R-2](../../../specs/SPEC-000-index.md)）：原 v1.0.0 之「唯一例外：SPEC-009 §5『冷啟動補貼』」段落改寫為「**無例外**」；§6 禁字補 `probability_symmetry` / `auto_hedge` 兩個 v1.0 遺漏字串；連動清除清單涵蓋 SPEC-009 §5 / SPEC-003 §12.1.1 sentinel uid=4 / SPEC-003 §12.1.4。本次屬於 **carve-out 撤除**而非決策反轉（Order Book + DMM 主決策仍 Accepted），故維持 Status: Accepted；嚴格論本次已超出「typo-level」範疇但屬於「強化既有紅線」之 boundary case，紀錄於此供未來 audit。決策內容方向**未反轉**，僅將原本就是「強烈建議永不啟用」的 carve-out 改為「永不可啟用」。 |

@@ -392,7 +392,7 @@ GET /healthz/startup   → 啟動是否完成（Startup）
 
 ## 11. 法遵指標暴露
 
-呼應 SPEC-001 / SPEC-005 / SPEC-006：
+呼應 SPEC-005 / SPEC-006：
 
 - `proph_aml_sar_pending_total`
 - `proph_kyc_tier_distribution`

@@ -7,21 +7,21 @@
 
 ## 產品概述 (Product Overview)
 
-Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站內**虛擬點數**對未公開事件結果（如選舉、體育賽事、經濟指標）進行預測。平台採用 **Order Book（訂單簿）** 機制（見 [ADR-0001](./docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md)），由平台審查上架市場、執行結算，玩家依自身對事件機率的判斷以價格下單，與其他玩家**對手撮合**——平台僅作為**中立中介**，不持倉、不造市、不下場（見 [SPEC-001 §1.1](./specs/SPEC-001-legal-compliance.md) 三原則）。
+Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站內**虛擬點數**對未公開事件結果（如選舉、體育賽事、經濟指標）進行預測。平台採用 **Order Book（訂單簿）** 機制（見 [ADR-0001](./docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md)），由平台審查上架市場、執行結算，玩家依自身對事件機率的判斷以價格下單，與其他玩家**對手撮合**。
 
 入金端整合在地化通路（超商代碼 / 虛擬帳號 / 信用卡，見 [SPEC-016](./specs/SPEC-016-payment-gateway.md)）；用戶獲取方面採多層代理分潤體系（見 [SPEC-011](./specs/SPEC-011-affiliate-commission.md)）。
 
-> 法律分類為**娛樂遊戲服務**——非博弈、非彩券、非衍生性金融商品。站內點數**不可兌回現金 / 加密貨幣 / 實體商品**（[SPEC-001 §1.1](./specs/SPEC-001-legal-compliance.md)）。
+> 站內點數用於顯示餘額、鎖倉與結算結果；實際使用規則由業主與營運方另行維護。
 
-## 法律定位三大原則
+## 技術邊界
 
-1. **No Cash-out**：站內點數絕對不可換回現金、加密貨幣、實體商品。
-2. **No House Position**：平台不持有任何合約倉位，不擔任造市商，不操作機器人下單。
-3. **Full Audit Trail**：所有金流、撮合、結算、判定保留 7 年以上不可竄改稽核軌跡。
+1. 站內點數以 ledger account、wallet balance、locked balance 與 settlement entry 表示。
+2. 撮合引擎以訂單簿處理玩家訂單，系統帳號保留在 sentinel set 中避免誤進一般下單流程。
+3. 金流、撮合、結算、判定保留事件紀錄，供客服、工程與授權稽核流程追查。
 
-詳見 [SPEC-001 法律合規與司法管轄](./specs/SPEC-001-legal-compliance.md)。
+法律分類與營運司法管轄事項由業主與營運方另行維護；本 repo 保留技術可實作規格。
 
-> ⚠️ 上述三原則為**監管紅線**，等同創辦人刑事責任邊界。任何 PR / 設計提案若觸及（例：點數兌換、平台造市腳本、Geo-block 規避、跳過 KYC、移除責任博弈流程），一律 reject，不討論性能或商業權衡。
+> 法律分類、服務地區與營運條款由業主與營運方另行維護；本 repo 僅保留技術可實作規格與工程約束。
 
 ## 開發方法論
 
@@ -40,7 +40,6 @@ Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站�
 
 | ID | 標題 |
 |----|------|
-| [SPEC-001](./specs/SPEC-001-legal-compliance.md) | 法律合規與司法管轄框架 |
 | [SPEC-002](./specs/SPEC-002-funds-safety.md) | 資金安全與虛擬點數帳本 |
 | [SPEC-003](./specs/SPEC-003-matching-engine.md) | 撮合引擎詳規 |
 | [SPEC-004](./specs/SPEC-004-settlement-dispute.md) | 結算與爭議處理 |

@@ -84,16 +84,7 @@ function CountryGuide({ t }: { t: Tier1Copy }) {
             {t("countries.heading")}
           </h2>
           <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
-            {t.rich("countries.intro", {
-              geoBlockLink: (chunks) => (
-                <a
-                  href="/legal/geo-block"
-                  className="text-proph-primary underline"
-                >
-                  {chunks}
-                </a>
-              ),
-            })}
+            {t("countries.intro")}
           </p>
         </header>
 

@@ -149,7 +149,7 @@ impl LedgerTransactionDraft {
     ///
     /// Any other counterpart account (e.g. `Liability.AccountsPayable.*`,
     /// `Bank.OperatingAccount.*`, `Expense.AffiliatePartnerFee`, any banking /
-    /// payment-rail account) violates the SPEC-001 §1.1 ① "no cash-out" red line.
+    /// payment-rail account) violates the no-cash-out red line.
     ///
     /// This is the application-layer mirror of the DB CONSTRAINT TRIGGER defined
     /// in `migrations/202605070004_inv6_outflow_whitelist.sql`. Both layers must
@@ -228,7 +228,7 @@ impl LedgerTransactionDraft {
         // Player.Wallet → Bank.TrustAccount.* 僅在 chargeback reversal 時允許
         // （呼應 SPEC-002 §8.1：玩家信用卡爭議 → 點數 reverse + 託管帳戶退款給卡組織）。
         // 這**不是**「點數變現」之路徑（玩家不取得現金），而是 deposit 之反向沖正，
-        // 故不違反 SPEC-001 §1.1 ① 紅線。
+        // 故不屬於點數變現路徑。
         if code.starts_with("Bank.TrustAccount.") {
             return matches!(self.txn_kind, LedgerTxnKind::Chargeback);
         }
@@ -290,10 +290,10 @@ pub enum LedgerValidationError {
     /// SPEC-002 §5 INV-6 / ADR-0006 §4.1: a `Player.Wallet.*` outflow targets
     /// an account outside the allow-list (e.g. `Liability.AccountsPayable.*`,
     /// `Bank.OperatingAccount.*`, `Expense.AffiliatePartnerFee`).
-    /// Connects to SPEC-001 §1.1 ① "no cash-out" red line and SPEC-011 §6.3.
+    /// Connects to the no-cash-out red line and SPEC-011 §6.3.
     #[error(
         "INV-6 violation: Player.Wallet outflow targets non-whitelisted account {account_code} \
-         (see ADR-0006 §4.1 / SPEC-001 §1.1 ① / SPEC-011 §6.3)"
+         (see ADR-0006 §4.1 / SPEC-011 §6.3)"
     )]
     Inv6Violation {
         /// Account code that is not in the INV-6 whitelist.

@@ -45,7 +45,7 @@ npx @cloudflare/kumo ls
 
 | 評估點 | 說明 |
 |---|---|
-| **無障礙開箱即用** | Base UI 處理 ARIA / 焦點 / 鍵盤 — 對 SPEC-001 §X 法遵可及性要求是天然加分 |
+| **無障礙開箱即用** | Base UI 處理 ARIA / 焦點 / 鍵盤 — 對無障礙要求是天然加分 |
 | **語意化色彩 token** | 容易把三套 design system 的 palette 對應到 Kumo CSS variables，不用魔改元件原始碼 |
 | **Tree-shaking** | 細粒度匯入，bundle size 友善 — 對應 SPEC-014 §X 對前端載入時間的要求 |
 | **Re-export Base UI primitives** | 進階情境（自訂 dropdown、複雜 form）可繞過 Kumo 直接用 Base UI |
