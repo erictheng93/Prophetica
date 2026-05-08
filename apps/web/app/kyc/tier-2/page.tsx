@@ -64,7 +64,7 @@ export default async function Tier2Page() {
         tagline={t("hero.tagline")}
       />
       <RequirementsBlock t={t} />
-      <Tier2LaunchClient userId={overview.userId} country={country} />
+      <Tier2LaunchClient country={country} />
     </>
   );
 }

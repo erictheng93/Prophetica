@@ -10,6 +10,10 @@ import {
   type KycPhase,
 } from "../lib/kyc-state-machine.js";
 import { buildKycIdempotencyKey } from "../lib/kyc-idempotency.js";
+import {
+  createKycWebhookPoller,
+  pollingActionForKycStatus,
+} from "../lib/kyc-webhook-polling.js";
 
 test("idle -> initializing on start", () => {
   const next = reduceKycPhase(initialKycPhase, { type: "start" });
@@ -97,6 +101,74 @@ test("status_passed from awaiting_webhook -> done; status_failed -> failed", () 
   assert.equal(failed.kind, "failed");
 });
 
+test("webhook polling maps completed backend statuses into phase actions", () => {
+  assert.deepEqual(pollingActionForKycStatus("passed"), {
+    type: "status_passed",
+  });
+  assert.deepEqual(pollingActionForKycStatus("rejected"), {
+    type: "status_failed",
+    reason: "rejected",
+  });
+  assert.deepEqual(pollingActionForKycStatus("frozen"), {
+    type: "status_failed",
+    reason: "frozen",
+  });
+  assert.deepEqual(pollingActionForKycStatus("expired"), {
+    type: "status_failed",
+    reason: "expired",
+  });
+  assert.equal(pollingActionForKycStatus("pending"), null);
+});
+
+test("webhook poller dispatches terminal backend status and stops polling", async () => {
+  const timers = createFakeTimers();
+  const actions: unknown[] = [];
+
+  createKycWebhookPoller({
+    submittedAtMs: 1_000,
+    refreshKycOverview: async () => ({ status: "passed" }),
+    dispatch: (action) => actions.push(action),
+    now: () => 2_000,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+  });
+
+  assert.equal(timers.pendingCount(), 1);
+  await timers.runNext();
+
+  assert.deepEqual(actions, [{ type: "status_passed" }]);
+  assert.equal(timers.pendingCount(), 0);
+});
+
+test("webhook poller times out and cleanup cancels pending tick", async () => {
+  const timeoutTimers = createFakeTimers();
+  const timeoutActions: unknown[] = [];
+
+  createKycWebhookPoller({
+    submittedAtMs: 0,
+    refreshKycOverview: async () => ({ status: "pending" }),
+    dispatch: (action) => timeoutActions.push(action),
+    now: () => 301_000,
+    setTimeout: timeoutTimers.setTimeout,
+    clearTimeout: timeoutTimers.clearTimeout,
+  });
+  await timeoutTimers.runNext();
+  assert.deepEqual(timeoutActions, [{ type: "polling_timeout" }]);
+
+  const cleanupTimers = createFakeTimers();
+  const poller = createKycWebhookPoller({
+    submittedAtMs: 1_000,
+    refreshKycOverview: async () => ({ status: "pending" }),
+    dispatch: () => {},
+    now: () => 2_000,
+    setTimeout: cleanupTimers.setTimeout,
+    clearTimeout: cleanupTimers.clearTimeout,
+  });
+  assert.equal(cleanupTimers.pendingCount(), 1);
+  poller.stop();
+  assert.equal(cleanupTimers.pendingCount(), 0);
+});
+
 test("isTerminalPhase / isRetryablePhase classifications", () => {
   assert.equal(isTerminalPhase({ kind: "done" }), true);
   assert.equal(isTerminalPhase({ kind: "failed", reason: "rejected" }), true);
@@ -170,3 +242,34 @@ test("isPollingTimeoutPhase distinguishes from other recoverable errors", () => 
   assert.equal(isPollingTimeoutPhase(networkLoss), false);
   assert.equal(isRetryablePhase(networkLoss), true);
 });
+
+function createFakeTimers() {
+  type Timer = {
+    id: number;
+    callback: () => void | Promise<void>;
+  };
+  const pending = new Map<number, Timer>();
+  let nextId = 1;
+
+  return {
+    setTimeout(callback: () => void | Promise<void>) {
+      const id = nextId;
+      nextId += 1;
+      pending.set(id, { id, callback });
+      return id;
+    },
+    clearTimeout(id: number | ReturnType<typeof setTimeout>) {
+      assert.equal(typeof id, "number");
+      pending.delete(Number(id));
+    },
+    pendingCount() {
+      return pending.size;
+    },
+    async runNext() {
+      const timer = pending.values().next().value;
+      assert.ok(timer, "expected pending timer");
+      pending.delete(timer.id);
+      await timer.callback();
+    },
+  };
+}

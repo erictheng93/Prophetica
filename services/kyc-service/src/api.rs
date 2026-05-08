@@ -193,11 +193,13 @@ where
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state))]
 async fn get_status<S>(
     State(state): State<ApiState<S>>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
 ) -> Result<Json<KycStatusResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
+    authorize_user_subject(&headers, &user_id)?;
     let record = state
         .store
         .current_record(&user_id)
@@ -209,12 +211,14 @@ where
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state, request))]
 async fn verify_tier_one<S>(
     State(state): State<ApiState<S>>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
     Json(request): Json<TierOneVerificationRequest>,
 ) -> Result<(StatusCode, Json<TierOneVerificationResponse>), (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
+    authorize_user_subject(&headers, &user_id)?;
     validate_tier_one(&request)?;
     let outcome = state
         .store
@@ -249,12 +253,14 @@ where
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state, request))]
 async fn start_upgrade<S>(
     State(state): State<ApiState<S>>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
     Json(request): Json<StartUpgradeRequest>,
 ) -> Result<(StatusCode, Json<StartUpgradeResponse>), (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
+    authorize_user_subject(&headers, &user_id)?;
     validate_start_upgrade(&request)?;
     let outcome = state
         .store
@@ -504,6 +510,30 @@ fn verify_sumsub_hmac(
     mac.update(body);
     mac.verify_slice(&expected_bytes)
         .map_err(|_| unauthorized_webhook())
+}
+
+fn authorize_user_subject(
+    headers: &HeaderMap,
+    path_user_id: &str,
+) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+    let Some(subject) = headers
+        .get("x-user-id")
+        .and_then(|value| value.to_str().ok())
+    else {
+        return Err(api_error(
+            StatusCode::UNAUTHORIZED,
+            "subject_missing",
+            "x-user-id auth context is required",
+        ));
+    };
+    if subject != path_user_id {
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "subject_mismatch",
+            "x-user-id auth context must match path user_id",
+        ));
+    }
+    Ok(())
 }
 
 fn parse_review_answer(raw: &str) -> Result<ReviewAnswer, (StatusCode, Json<ApiErrorResponse>)> {

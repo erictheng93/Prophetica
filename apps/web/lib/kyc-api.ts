@@ -3,10 +3,12 @@ import type {
   KycClient,
   KycStatus,
   KycStatusView,
+  KycTargetTier,
   KycTier,
   StartKycUpgradeResponse,
   VerifyTierOneResponse,
 } from "@prophetica/ts-sdk";
+import { buildKycIdempotencyKey } from "./kyc-idempotency.js";
 
 export const KYC_FALLBACK_USER_ID = "user_01";
 
@@ -48,12 +50,9 @@ export interface SubmitTierOneVerificationInput {
 }
 
 export interface StartKycUpgradeInput {
-  userId?: string;
-  targetTier: Exclude<KycTier, "TIER_0">;
+  targetTier: KycTargetTier;
   declaredMonthlyIncome?: number | null;
-  // SPEC-005a §5.3 — caller must pass a deterministic key; ts-sdk only
-  // falls back to UUIDv7 when this is undefined, which would defeat dedupe.
-  idempotencyKey?: string;
+  retryAttempt?: number;
 }
 
 export interface KycMutationOptions {
@@ -100,7 +99,7 @@ export async function submitTierOneVerification(
   input: SubmitTierOneVerificationInput,
   options: KycMutationOptions = {},
 ): Promise<VerifyTierOneResponse> {
-  const { userId, kycClient } = await mutationContext(input.userId, options);
+  const { userId, kycClient } = await mutationContext(options);
   return kycClient.verifyTierOne({
     userId,
     legalName: input.legalName,
@@ -115,12 +114,16 @@ export async function startKycUpgrade(
   input: StartKycUpgradeInput,
   options: KycMutationOptions = {},
 ): Promise<StartKycUpgradeResponse> {
-  const { userId, kycClient } = await mutationContext(input.userId, options);
+  const { userId, kycClient } = await mutationContext(options);
   return kycClient.startUpgrade({
     userId,
     targetTier: input.targetTier,
     declaredMonthlyIncome: input.declaredMonthlyIncome,
-    idempotencyKey: input.idempotencyKey,
+    idempotencyKey: buildKycIdempotencyKey({
+      userId,
+      targetTier: input.targetTier,
+      retryAttempt: input.retryAttempt,
+    }),
   });
 }
 
@@ -141,11 +144,11 @@ export function tierMonthlyLimitPoints(tier: KycTier): number | null {
   }
 }
 
-async function mutationContext(userIdOption: string | undefined, options: KycMutationOptions) {
+async function mutationContext(options: KycMutationOptions) {
   const baseUrl = trimTrailingSlash(
     options.baseUrl ?? process.env.KYC_SERVICE_BASE_URL ?? DEFAULT_KYC_SERVICE_BASE_URL,
   );
-  const userId = userIdOption ?? process.env.PROPHETICA_DEV_USER_ID ?? KYC_FALLBACK_USER_ID;
+  const userId = resolveKycUserId();
   const kycClientFactory = options.kycClientFactory ?? (await loadKycClientFactory());
 
   return {

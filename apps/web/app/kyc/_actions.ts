@@ -11,12 +11,17 @@ import {
   fetchKycOverview,
   startKycUpgrade,
   type KycOverview,
-  type StartKycUpgradeInput,
 } from "@/lib/kyc-api";
-import type { StartKycUpgradeResponse } from "@prophetica/ts-sdk";
+import type { KycTargetTier, StartKycUpgradeResponse } from "@prophetica/ts-sdk";
+
+export interface StartKycUpgradeActionInput {
+  targetTier: KycTargetTier;
+  declaredMonthlyIncome?: number | null;
+  retryAttempt?: number;
+}
 
 export async function startKycUpgradeAction(
-  input: StartKycUpgradeInput,
+  input: StartKycUpgradeActionInput,
 ): Promise<StartKycUpgradeResponse> {
   return startKycUpgrade(input);
 }

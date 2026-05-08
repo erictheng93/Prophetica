@@ -1,7 +1,7 @@
 # SPEC-005a — SumSub 前端整合契約
 
 > 優先級：**P1**（與 SPEC-005 相同）
-> 版本：v0.1.0 · 最後更新：2026-05-08
+> 版本：v0.1.1 · 最後更新：2026-05-08
 > 依賴：SPEC-005, SPEC-007, SPEC-008, SPEC-014
 > 被依賴：apps/web KYC 流程、未來其他 KYC provider 切換
 > 實作狀態：⚠️ **Contract 規格完成 / 實作待 PoC-B 通過後啟動**
@@ -232,10 +232,10 @@ export default function Tier2Page() {
   const handleStart = async (formData: FormData) => {
     setPhase("initializing");
     try {
-      const upgrade = await startKycUpgrade({
+      const upgrade = await startKycUpgradeAction({
         targetTier: "TIER_2",
         declaredMonthlyIncome: incomeBucketToMinorUnits(formData.get("incomeBucket")),
-        idempotencyKey: deterministicTier2Key(currentUserId),  // see §5.3
+        retryAttempt,
       });
       const provider = selectKycProvider({ sdkToken: upgrade.sdkToken });
       const handle = await provider.mount(containerRef.current!, {
@@ -255,17 +255,40 @@ export default function Tier2Page() {
 }
 ```
 
+### 5.2.1 Server action trust boundary（硬性契約）
+
+KYC server action 的 client input **不得包含使用者身份**，包含但不限於 `userId`、`externalUserId`、`applicantId`、或任何可推導 user subject 的欄位。唯一可信身份來源是 server-side session / auth context。
+
+`startKycUpgradeAction` 的 public input shape 只能包含：
+
+```ts
+{
+  targetTier: "TIER_2" | "TIER_3";
+  declaredMonthlyIncome?: number | null;
+  retryAttempt?: number;
+}
+```
+
+Server action 必須：
+
+1. 從 server-side session 解析 authenticated `userId`。
+2. 使用該 server-derived `userId` 建立 kyc-service client auth context（例如 `x-user-id`）。
+3. 在 server side 重建 idempotency key（見 §5.3）；不得接受 client 傳入的 key。
+4. 不把 client 傳入的 user-like 欄位 forward 到 kyc-service。
+
+kyc-service 仍必須在 service boundary enforce `Path(user_id)` 與 authenticated subject 一致；web action 的型別限制只是第一層防線。
+
 ### 5.3 Idempotency key 設計
 
 **問題**：使用者連點兩次 → ts-sdk 自動 generate UUIDv7（client.ts:91）→ 後端建兩個 pending record。
 
-**修正**：UI 必須用**確定性 key**：
+**修正**：server action 必須用 server-derived `userId` 產生**確定性 key**：
 
 ```
 idempotency_key = `kyc:${userId}:${targetTier}:${currentTier1RecordId}`
 ```
 
-意義：「user X 從目前 Tier 1 record 升級到 Tier 2」是同一語意操作，多次點擊應 dedupe 到同一 key。後端 `start_upgrade` 已實作以 idempotency_key 為主鍵的 dedupe（kyc.rs:461-472），會回 `replayed: true` 並回原 sdk_token。
+意義：「user X 從目前 Tier 1 record 升級到 Tier 2」是同一語意操作，多次點擊應 dedupe 到同一 key。後端 `start_upgrade` 已實作以 idempotency_key 為主鍵的 dedupe（kyc.rs:461-472），會回 `replayed: true` 並回原 sdk_token。client 不可自行計算或傳入此 key，避免偽造其他使用者 key 造成 collision / replay。
 
 > 若使用者在 SumSub 那端中斷後想重來，UI 應提供「重新驗證」按鈕，內部 bump 一個 `attempt` counter 加進 key 後綴：`kyc:${userId}:TIER_2:${tier1Id}:retry${n}`。SPEC-005 §8.2「24h 5 次」由後端執行（待實作，review M10）。
 
@@ -393,4 +416,5 @@ Mock provider **不**需要 CSP 開放，所有 dev / test 必須在 `script-src
 
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
+| 2026-05-08 | v0.1.1 | Tech Lead | 補 §5.2.1 server action trust boundary：client input 不得包含 user identity；server-side session 為唯一 source of truth；idempotency key 必須由 server action 以 server-derived `userId` 重建，kyc-service 仍需 enforce subject/path 一致。 |
 | 2026-05-08 | v0.1.0 | Tech Lead | 初版。回應 SPEC-005 review B2（流程結構錯置）+ SPEC-005 §0.3 第一列 placeholder 阻擋。定義 `KycIdentityProvider` 抽象、SumSub adapter 邊界、Tier 2 page state machine、idempotency key 確定性、polling fallback、PII log 紀律、CSP / Edge runtime 需求。 |

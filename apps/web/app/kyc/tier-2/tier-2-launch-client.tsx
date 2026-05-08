@@ -1,6 +1,6 @@
 "use client";
 
-// SPEC-005a §5 — Tier 2 launch surface. Owns:
+// SPEC-005a §5 ??Tier 2 launch surface. Owns:
 //   - Income bucket form (consent + optional declared income)
 //   - startKycUpgradeAction call with deterministic idempotency key
 //   - selectKycProvider + provider.mount lifecycle
@@ -25,16 +25,13 @@ import {
   refreshKycOverviewAction,
   startKycUpgradeAction,
 } from "../_actions";
-import { buildKycIdempotencyKey } from "@/lib/kyc-idempotency";
+import { useKycWebhookPolling } from "../use-kyc-webhook-polling";
 import {
   initialKycPhase,
   isRetryablePhase,
   reduceKycPhase,
   type KycPhase,
 } from "@/lib/kyc-state-machine";
-
-const POLL_INTERVAL_MS = 3_000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1_000;
 
 type IncomeBucketValue = "lt_30k" | "30k_60k" | "60k_100k" | "gt_100k" | "skip";
 
@@ -49,13 +46,12 @@ const incomeBuckets: ReadonlyArray<{
 ];
 
 export interface Tier2LaunchClientProps {
-  userId: string;
   /** Tier 1 country (ISO 3166-1 alpha-2). Falls back to "TW" while
    * KycStatusView does not surface country (SPEC-005a §11 open item). */
   country: string;
 }
 
-export function Tier2LaunchClient({ userId, country }: Tier2LaunchClientProps) {
+export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
   const t = useTranslations("kyc.tier2");
   const tPhase = useTranslations("kyc.tier2.phase");
   const locale = useLocale();
@@ -66,85 +62,25 @@ export function Tier2LaunchClient({ userId, country }: Tier2LaunchClientProps) {
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<KycSessionHandle | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useKycWebhookPolling(phase, dispatch, refreshKycOverviewAction);
 
   useEffect(() => {
     return () => {
       handleRef.current?.unmount();
       handleRef.current = null;
-      if (pollTimerRef.current !== null) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
     };
   }, []);
-
-  // SPEC-005a §6.1 — Phase 1 polling. Once the SDK reports `submitted`, the
-  // reducer parks at `awaiting_webhook` until kyc-service finishes processing
-  // the SumSub webhook. Tick every 3s, give up after 5 min and surface a
-  // recoverable error so the user can either come back later or retry.
-  useEffect(() => {
-    if (phase.kind !== "awaiting_webhook") {
-      return;
-    }
-    const submittedAtMs = phase.submittedAtMs;
-
-    const tick = async () => {
-      if (Date.now() - submittedAtMs > POLL_TIMEOUT_MS) {
-        dispatch({ type: "polling_timeout" });
-        return;
-      }
-
-      let overview;
-      try {
-        overview = await refreshKycOverviewAction();
-      } catch {
-        // Transient failure — keep polling until the budget expires.
-        pollTimerRef.current = setTimeout(tick, POLL_INTERVAL_MS);
-        return;
-      }
-
-      if (overview.status === "passed") {
-        dispatch({ type: "status_passed" });
-        return;
-      }
-      if (
-        overview.status === "rejected" ||
-        overview.status === "frozen" ||
-        overview.status === "expired"
-      ) {
-        dispatch({ type: "status_failed", reason: overview.status });
-        return;
-      }
-
-      pollTimerRef.current = setTimeout(tick, POLL_INTERVAL_MS);
-    };
-
-    pollTimerRef.current = setTimeout(tick, POLL_INTERVAL_MS);
-    return () => {
-      if (pollTimerRef.current !== null) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [phase]);
 
   const launch = useCallback(async () => {
     dispatch({ type: "start" });
 
-    const idempotencyKey = buildKycIdempotencyKey({
-      userId,
-      targetTier: "TIER_2",
-      retryAttempt,
-    });
-
     let upgrade: Awaited<ReturnType<typeof startKycUpgradeAction>>;
     try {
       upgrade = await startKycUpgradeAction({
-        userId,
         targetTier: "TIER_2",
         declaredMonthlyIncome: incomeBucketToMinorUnits(incomeBucket),
-        idempotencyKey,
+        retryAttempt,
       });
     } catch {
       dispatch({ type: "upgrade_failed" });
@@ -168,7 +104,7 @@ export function Tier2LaunchClient({ userId, country }: Tier2LaunchClientProps) {
         country,
       });
     } catch {
-      // SPEC-005a §2 — mount() rejects rather than emitting an error event.
+      // SPEC-005a §2 ??mount() rejects rather than emitting an error event.
       dispatch({ type: "mount_failed", code: "sdk_load_failed" });
       return;
     }
@@ -178,7 +114,7 @@ export function Tier2LaunchClient({ userId, country }: Tier2LaunchClientProps) {
     handle.subscribe((event: KycSessionEvent) => {
       dispatch({ type: "sdk_event", event, nowMs: Date.now() });
     });
-  }, [country, incomeBucket, locale, retryAttempt, userId]);
+  }, [country, incomeBucket, locale, retryAttempt]);
 
   const handleRetry = useCallback(() => {
     handleRef.current?.unmount();

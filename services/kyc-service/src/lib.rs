@@ -119,6 +119,26 @@ mod api_contract_tests {
     }
 
     #[tokio::test]
+    async fn start_upgrade_rejects_mismatched_auth_subject() {
+        let response = test_router(test_store())
+            .oneshot(json_post_with_header(
+                "/api/v1/kyc/users/victim/upgrades",
+                &json!({
+                    "target_tier": "TIER_2",
+                    "idempotency_key": "kyc:victim:tier2:001"
+                }),
+                "x-user-id",
+                "attacker",
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("subject_mismatch"));
+    }
+
+    #[tokio::test]
     async fn start_upgrade_replays_same_idempotency_key_with_same_provider_session() {
         let store = test_store();
         let first = test_router(store.clone())
@@ -556,12 +576,14 @@ mod api_contract_tests {
     }
 
     fn json_post(uri: &str, body: &Value) -> Request<Body> {
-        match Request::builder()
+        let mut builder = Request::builder()
             .method("POST")
             .uri(uri)
-            .header("content-type", "application/json")
-            .body(Body::from(body.to_string()))
-        {
+            .header("content-type", "application/json");
+        if let Some(user_id) = path_user_id(uri) {
+            builder = builder.header("x-user-id", user_id);
+        }
+        match builder.body(Body::from(body.to_string())) {
             Ok(request) => request,
             Err(error) => panic!("request should build: {error}"),
         }
@@ -586,14 +608,20 @@ mod api_contract_tests {
     }
 
     fn empty_get(uri: &str) -> Request<Body> {
-        match Request::builder()
-            .method("GET")
-            .uri(uri)
-            .body(Body::empty())
-        {
+        let mut builder = Request::builder().method("GET").uri(uri);
+        if let Some(user_id) = path_user_id(uri) {
+            builder = builder.header("x-user-id", user_id);
+        }
+        match builder.body(Body::empty()) {
             Ok(request) => request,
             Err(error) => panic!("request should build: {error}"),
         }
+    }
+
+    fn path_user_id(uri: &str) -> Option<&str> {
+        uri.split_once("/users/")
+            .and_then(|(_, rest)| rest.split('/').next())
+            .filter(|user_id| !user_id.is_empty())
     }
 
     fn test_router<S>(store: S) -> Router

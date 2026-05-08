@@ -98,7 +98,7 @@ export default async function Tier3Page() {
       />
       <WhyHere t={t} />
       <Requirements t={t} />
-      <Tier3LaunchClient userId={overview.userId} country={country} />
+      <Tier3LaunchClient country={country} />
     </>
   );
 }

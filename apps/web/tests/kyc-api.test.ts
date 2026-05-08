@@ -55,6 +55,8 @@ test("fetchKycOverview returns Tier 0 fallback when kyc-service is unavailable",
 });
 
 test("submit helpers call kyc client mutations for server actions", async () => {
+  const previousDevUserId = process.env.PROPHETICA_DEV_USER_ID;
+  process.env.PROPHETICA_DEV_USER_ID = "user_42";
   const calls: unknown[] = [];
   const factory: KycClientFactory = () => ({
     async getStatus() {
@@ -86,42 +88,107 @@ test("submit helpers call kyc client mutations for server actions", async () => 
     },
   });
 
-  await submitTierOneVerification(
-    {
+  try {
+    await submitTierOneVerification(
+      {
+        legalName: "Test User",
+        birthday: "1990-01-02",
+        country: "TW",
+        documentId: "A123456789",
+        consent: true,
+      },
+      { baseUrl: "http://kyc.local", kycClientFactory: factory },
+    );
+    await startKycUpgrade(
+      {
+        targetTier: "TIER_2",
+        declaredMonthlyIncome: 6000000,
+      },
+      { baseUrl: "http://kyc.local", kycClientFactory: factory },
+    );
+
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls[0], {
       userId: "user_42",
       legalName: "Test User",
       birthday: "1990-01-02",
       country: "TW",
       documentId: "A123456789",
       consent: true,
-    },
-    { baseUrl: "http://kyc.local", kycClientFactory: factory },
-  );
-  await startKycUpgrade(
-    {
+    });
+    assert.deepEqual(calls[1], {
       userId: "user_42",
       targetTier: "TIER_2",
       declaredMonthlyIncome: 6000000,
       idempotencyKey: "kyc:user_42:TIER_2",
-    },
-    { baseUrl: "http://kyc.local", kycClientFactory: factory },
-  );
+    });
+  } finally {
+    if (previousDevUserId === undefined) {
+      delete process.env.PROPHETICA_DEV_USER_ID;
+    } else {
+      process.env.PROPHETICA_DEV_USER_ID = previousDevUserId;
+    }
+  }
+});
 
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls[0], {
-    userId: "user_42",
-    legalName: "Test User",
-    birthday: "1990-01-02",
-    country: "TW",
-    documentId: "A123456789",
-    consent: true,
+test("startKycUpgrade derives user identity server-side instead of trusting input", async () => {
+  const previousDevUserId = process.env.PROPHETICA_DEV_USER_ID;
+  process.env.PROPHETICA_DEV_USER_ID = "server_user_42";
+  const calls: unknown[] = [];
+  const factory: KycClientFactory = ({ auth }) => ({
+    async getStatus() {
+      throw new Error("not used");
+    },
+    async verifyTierOne() {
+      throw new Error("not used");
+    },
+    async startUpgrade(request) {
+      calls.push({ authUserId: auth?.userId, request });
+      return {
+        userId: request.userId,
+        targetTier: request.targetTier,
+        status: "pending",
+        provider: "sumsub",
+        providerApplicantId: "applicant_42",
+        sdkToken: "sumsub_sandbox_user_42_TIER_2_1",
+        expiresAt: null,
+        replayed: false,
+      };
+    },
   });
-  assert.deepEqual(calls[1], {
-    userId: "user_42",
-    targetTier: "TIER_2",
-    declaredMonthlyIncome: 6000000,
-    idempotencyKey: "kyc:user_42:TIER_2",
-  });
+
+  try {
+    const forgedInput = {
+      userId: "attacker_supplied",
+      targetTier: "TIER_2" as const,
+    } as unknown as Parameters<typeof startKycUpgrade>[0];
+
+    await startKycUpgrade(
+      forgedInput,
+      {
+        baseUrl: "http://kyc.local",
+        kycClientFactory: factory,
+      },
+    );
+
+    assert.deepEqual(calls, [
+      {
+        authUserId: "server_user_42",
+        request: {
+          userId: "server_user_42",
+          targetTier: "TIER_2",
+          declaredMonthlyIncome: undefined,
+          idempotencyKey: "kyc:server_user_42:TIER_2",
+        },
+      },
+    ]);
+  } finally {
+    if (previousDevUserId === undefined) {
+      delete process.env.PROPHETICA_DEV_USER_ID;
+    } else {
+      process.env.PROPHETICA_DEV_USER_ID = previousDevUserId;
+    }
+  }
 });
 
 const createFetchBackedKycClient: KycClientFactory = ({ auth }) => ({

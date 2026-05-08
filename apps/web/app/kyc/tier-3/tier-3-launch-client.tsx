@@ -1,13 +1,13 @@
 "use client";
 
-// SPEC-005a §5 / §6.1 — Tier 3 launch surface. Same SDK contract as Tier 2
+// SPEC-005a §5 / §6.1 ??Tier 3 launch surface. Same SDK contract as Tier 2
 // but without the income bucket form (Tier 3 source-of-funds collection
 // happens inside the SumSub/iProov flow per SPEC-005 §6.3, not on this page).
 //
 // Polling matches the Tier 2 cadence (3s tick / 5min cap). On timeout we
 // surface a recoverable error rather than blocking the user, since Tier 3
 // reviews routinely run several hours and the user is told to expect Email
-// follow-up — see SPEC-005 §10 (5-10 working days for full Compliance review).
+// follow-up ??see SPEC-005 §10 (5-10 working days for full Compliance review).
 //
 // SPEC-005a §11.2 open question: whether Tier 3 ultimately needs a two-stage
 // SumSub + iProov adapter pair. For Slice A we route through the same
@@ -25,7 +25,7 @@ import {
   refreshKycOverviewAction,
   startKycUpgradeAction,
 } from "../_actions";
-import { buildKycIdempotencyKey } from "@/lib/kyc-idempotency";
+import { useKycWebhookPolling } from "../use-kyc-webhook-polling";
 import {
   initialKycPhase,
   isRetryablePhase,
@@ -33,17 +33,13 @@ import {
   type KycPhase,
 } from "@/lib/kyc-state-machine";
 
-const POLL_INTERVAL_MS = 3_000;
-const POLL_TIMEOUT_MS = 5 * 60 * 1_000;
-
 export interface Tier3LaunchClientProps {
-  userId: string;
   /** Tier 1 country (ISO 3166-1 alpha-2). Falls back to "TW" while
    * KycStatusView does not surface country (SPEC-005a §11 open item). */
   country: string;
 }
 
-export function Tier3LaunchClient({ userId, country }: Tier3LaunchClientProps) {
+export function Tier3LaunchClient({ country }: Tier3LaunchClientProps) {
   const t = useTranslations("kyc.tier3");
   const tPhase = useTranslations("kyc.tier3.phase");
   const locale = useLocale();
@@ -53,79 +49,24 @@ export function Tier3LaunchClient({ userId, country }: Tier3LaunchClientProps) {
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<KycSessionHandle | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useKycWebhookPolling(phase, dispatch, refreshKycOverviewAction);
 
   useEffect(() => {
     return () => {
       handleRef.current?.unmount();
       handleRef.current = null;
-      if (pollTimerRef.current !== null) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
     };
   }, []);
-
-  useEffect(() => {
-    if (phase.kind !== "awaiting_webhook") {
-      return;
-    }
-    const submittedAtMs = phase.submittedAtMs;
-
-    const tick = async () => {
-      if (Date.now() - submittedAtMs > POLL_TIMEOUT_MS) {
-        dispatch({ type: "polling_timeout" });
-        return;
-      }
-
-      let overview;
-      try {
-        overview = await refreshKycOverviewAction();
-      } catch {
-        pollTimerRef.current = setTimeout(tick, POLL_INTERVAL_MS);
-        return;
-      }
-
-      if (overview.status === "passed") {
-        dispatch({ type: "status_passed" });
-        return;
-      }
-      if (
-        overview.status === "rejected" ||
-        overview.status === "frozen" ||
-        overview.status === "expired"
-      ) {
-        dispatch({ type: "status_failed", reason: overview.status });
-        return;
-      }
-
-      pollTimerRef.current = setTimeout(tick, POLL_INTERVAL_MS);
-    };
-
-    pollTimerRef.current = setTimeout(tick, POLL_INTERVAL_MS);
-    return () => {
-      if (pollTimerRef.current !== null) {
-        clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [phase]);
 
   const launch = useCallback(async () => {
     dispatch({ type: "start" });
 
-    const idempotencyKey = buildKycIdempotencyKey({
-      userId,
-      targetTier: "TIER_3",
-      retryAttempt,
-    });
-
     let upgrade: Awaited<ReturnType<typeof startKycUpgradeAction>>;
     try {
       upgrade = await startKycUpgradeAction({
-        userId,
         targetTier: "TIER_3",
-        idempotencyKey,
+        retryAttempt,
       });
     } catch {
       dispatch({ type: "upgrade_failed" });
@@ -158,7 +99,7 @@ export function Tier3LaunchClient({ userId, country }: Tier3LaunchClientProps) {
     handle.subscribe((event: KycSessionEvent) => {
       dispatch({ type: "sdk_event", event, nowMs: Date.now() });
     });
-  }, [country, locale, retryAttempt, userId]);
+  }, [country, locale, retryAttempt]);
 
   const handleRetry = useCallback(() => {
     handleRef.current?.unmount();
