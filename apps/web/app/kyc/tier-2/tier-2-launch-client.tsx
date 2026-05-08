@@ -16,6 +16,7 @@ import {
 } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
+  createKycProviderForStage,
   selectKycProvider,
   type KycSessionEvent,
   type KycSessionHandle,
@@ -99,8 +100,15 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
       return;
     }
 
-    const provider = selectKycProvider({ sdkToken: upgrade.sdkToken });
-    setProviderName(provider.name);
+    const chain =
+      upgrade.chain ?? selectKycProvider({ sdkToken: upgrade.sdkToken });
+    const stage = chain.stages[0];
+    if (!stage) {
+      dispatch({ type: "mount_failed", code: "unknown" });
+      return;
+    }
+    const provider = createKycProviderForStage(stage, upgrade.sdkToken);
+    setProviderName(stage.name);
     let handle: KycSessionHandle;
     try {
       handle = await provider.mount(target, {
@@ -120,7 +128,12 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
     dispatch({ type: "mount_succeeded" });
 
     handle.subscribe((event: KycSessionEvent) => {
-      dispatch({ type: "sdk_event", event, nowMs: Date.now() });
+      dispatch({
+        type: "sdk_event",
+        event,
+        nowMs: Date.now(),
+        continueAfterSubmit: stage.continueAfterSubmit,
+      });
     });
   }, [country, incomeBucket, locale, retryAttempt]);
 
@@ -289,6 +302,8 @@ function phaseLabelFor(phase: KycPhase, tPhase: PhaseTranslator): string {
       return tPhase("mounting");
     case "in_progress":
       return tPhase("inProgress");
+    case "awaiting_stage_complete":
+      return tPhase("mounting");
     case "awaiting_webhook":
       return tPhase("awaitingWebhook");
     case "done":

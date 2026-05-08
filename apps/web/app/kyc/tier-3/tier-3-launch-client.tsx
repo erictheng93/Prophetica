@@ -16,7 +16,9 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
+  createKycProviderForStage,
   selectKycProvider,
+  type KycAdapterChain,
   type KycSessionEvent,
   type KycSessionHandle,
 } from "@prophetica/ts-sdk";
@@ -64,6 +66,53 @@ export function Tier3LaunchClient({ country }: Tier3LaunchClientProps) {
     };
   }, []);
 
+  const mountStage = useCallback(
+    async (chain: KycAdapterChain, stageIndex: number, sdkToken: string) => {
+      const stage = chain.stages[stageIndex];
+      const target = containerRef.current;
+      if (!stage || !target) {
+        dispatch({ type: "mount_failed", code: "unknown" });
+        return;
+      }
+
+      handleRef.current?.unmount();
+      handleRef.current = null;
+
+      const provider = createKycProviderForStage(stage, sdkToken);
+      setProviderName(stage.name);
+      let handle: KycSessionHandle;
+      try {
+        handle = await provider.mount(target, {
+          sdkToken,
+          targetTier: "TIER_3",
+          // SPEC-005a 禮2 ??see Tier 2 client for rationale.
+          locale: mapLocaleToSumsub(locale),
+          country,
+        });
+      } catch {
+        dispatch({ type: "mount_failed", code: "sdk_load_failed" });
+        return;
+      }
+      handleRef.current = handle;
+      dispatch({ type: "mount_succeeded" });
+
+      handle.subscribe((event: KycSessionEvent) => {
+        dispatch({
+          type: "sdk_event",
+          event,
+          nowMs: Date.now(),
+          continueAfterSubmit: stage.continueAfterSubmit,
+        });
+        if (event.kind !== "submitted" || !stage.continueAfterSubmit) {
+          return;
+        }
+        dispatch({ type: "stage_advance" });
+        void mountStage(chain, stageIndex + 1, sdkToken);
+      });
+    },
+    [country, locale],
+  );
+
   const launch = useCallback(async () => {
     dispatch({ type: "start" });
 
@@ -79,34 +128,10 @@ export function Tier3LaunchClient({ country }: Tier3LaunchClientProps) {
     }
     dispatch({ type: "upgrade_succeeded" });
 
-    const target = containerRef.current;
-    if (!target) {
-      dispatch({ type: "mount_failed", code: "unknown" });
-      return;
-    }
-
-    const provider = selectKycProvider({ sdkToken: upgrade.sdkToken });
-    setProviderName(provider.name);
-    let handle: KycSessionHandle;
-    try {
-      handle = await provider.mount(target, {
-        sdkToken: upgrade.sdkToken,
-        targetTier: "TIER_3",
-        // SPEC-005a §2 — see Tier 2 client for rationale.
-        locale: mapLocaleToSumsub(locale),
-        country,
-      });
-    } catch {
-      dispatch({ type: "mount_failed", code: "sdk_load_failed" });
-      return;
-    }
-    handleRef.current = handle;
-    dispatch({ type: "mount_succeeded" });
-
-    handle.subscribe((event: KycSessionEvent) => {
-      dispatch({ type: "sdk_event", event, nowMs: Date.now() });
-    });
-  }, [country, locale, retryAttempt]);
+    const chain =
+      upgrade.chain ?? selectKycProvider({ sdkToken: upgrade.sdkToken });
+    await mountStage(chain, 0, upgrade.sdkToken);
+  }, [mountStage, retryAttempt]);
 
   const handleRetry = useCallback(() => {
     handleRef.current?.unmount();
@@ -219,6 +244,8 @@ function phaseLabelFor(phase: KycPhase, tPhase: PhaseTranslator): string {
       return tPhase("mounting");
     case "in_progress":
       return tPhase("inProgress");
+    case "awaiting_stage_complete":
+      return tPhase("mounting");
     case "awaiting_webhook":
       return tPhase("awaitingWebhook");
     case "done":

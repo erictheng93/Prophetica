@@ -163,12 +163,12 @@ def effective_monthly_income(user) -> int | None:
 
 ### 3.1 推薦組合（依成本與覆蓋）
 
-| 工具 | 用途 | 月費估算 |
-|------|------|---------|
-| **SumSub** | 主要 KYC（OCR + Liveness + Sanctions + PEP）| US$0.50 / 次比對 |
-| **iProov** | 進階 Liveness（Tier 3 視訊驗證） | US$2 / 次 |
-| **ComplyAdvantage** | 持續制裁名單篩查（Tier 2/3 monthly rescan）| US$500 / 月 base |
-| **Sift / Sardine** | 行為與裝置指紋風險評分 | US$0.005 / event |
+| 工具 | 用途 | 月費估算 | Adapter slot |
+|------|------|---------|--------------|
+| **SumSub** | 主要 KYC（OCR + Liveness + Sanctions + PEP）| US$0.50 / 次比對 | `sumsub`；Tier 2 single-stage，Tier 3 stage 1 |
+| **iProov** | 進階 Liveness（Tier 3 視訊驗證） | US$2 / 次 | `iproov`；Tier 3 stage 2 after SumSub submit |
+| **ComplyAdvantage** | 持續制裁名單篩查（Tier 2/3 monthly rescan）| US$500 / 月 base | none in frontend adapter chain |
+| **Sift / Sardine** | 行為與裝置指紋風險評分 | US$0.005 / event | none in frontend adapter chain |
 
 > SumSub 涵蓋 90% 需求；其他為補強。**MVP 階段只接 SumSub**，Tier 3 才啟用其他。
 
@@ -279,6 +279,8 @@ PEP 不是禁止對象，但需 EDD：
 - 自動標記
 - 帳戶限制升級至 Tier 3
 - 每次大額儲值需 Compliance 預核
+
+Frontend Tier 3 EDD routing is the sequential SumSub + iProov adapter chain in SPEC-005a §3.4. SumSub remains stage 1 for document/EDD collection; iProov is stage 2 for advanced liveness after SumSub emits `submitted`.
 
 ## 7. AML 交易監控
 

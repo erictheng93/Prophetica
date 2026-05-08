@@ -9,5 +9,9 @@ export type SumsubMockProviderOptions = MockKycProviderOptions;
 export function createSumsubMockProvider(
   options: SumsubMockProviderOptions = {},
 ): KycIdentityProvider {
-  return createMockKycProvider(options);
+  const provider = createMockKycProvider(options);
+  return {
+    ...provider,
+    name: "sumsub",
+  };
 }

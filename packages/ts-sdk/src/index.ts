@@ -14,12 +14,17 @@ export type {
 } from "./kyc/types.js";
 export {
   KycSdkError,
+  createIproovMockProvider,
+  createKycProviderForStage,
   createMockKycProvider,
+  createRealIproovProvider,
   createRealSumsubProvider,
   createSumsubMockProvider,
   selectKycProvider,
 } from "./kyc-provider/index.js";
 export type {
+  KycAdapterChain,
+  KycAdapterStage,
   KycErrorCode,
   KycEventListener,
   KycEventUnsubscribe,

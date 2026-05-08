@@ -55,6 +55,23 @@ test("submitted event from in_progress -> awaiting_webhook with timestamp", () =
   }
 });
 
+test("submitted event for a continuing stage advances through mounting for the next stage", () => {
+  const submitted = reduceKycPhase(
+    { kind: "in_progress" },
+    {
+      type: "sdk_event",
+      event: { kind: "submitted" },
+      nowMs: 1_700_000_000_000,
+      continueAfterSubmit: true,
+    },
+  );
+
+  assert.equal(submitted.kind, "awaiting_stage_complete");
+
+  const nextStage = reduceKycPhase(submitted, { type: "stage_advance" });
+  assert.equal(nextStage.kind, "mounting");
+});
+
 test("polling_timeout from awaiting_webhook -> recoverable error", () => {
   const next = reduceKycPhase(
     { kind: "awaiting_webhook", submittedAtMs: 0 },

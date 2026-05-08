@@ -15,6 +15,7 @@ export type KycPhase =
   | { kind: "initializing" }
   | { kind: "mounting" }
   | { kind: "in_progress"; step?: KycStep }
+  | { kind: "awaiting_stage_complete"; submittedAtMs: number }
   | { kind: "awaiting_webhook"; submittedAtMs: number }
   | { kind: "done" }
   | { kind: "failed"; reason: "rejected" | "frozen" | "expired" }
@@ -31,7 +32,13 @@ export type KycPhaseAction =
   | { type: "upgrade_failed" }
   | { type: "mount_succeeded" }
   | { type: "mount_failed"; code: KycErrorCode }
-  | { type: "sdk_event"; event: KycSessionEvent; nowMs: number }
+  | {
+      type: "sdk_event";
+      event: KycSessionEvent;
+      nowMs: number;
+      continueAfterSubmit?: boolean;
+    }
+  | { type: "stage_advance" }
   | { type: "status_passed" }
   | { type: "status_failed"; reason: "rejected" | "frozen" | "expired" }
   | { type: "polling_timeout" }
@@ -91,7 +98,18 @@ export function reduceKycPhase(
       return phase;
     }
     case "sdk_event": {
-      return reduceSdkEvent(phase, action.event, action.nowMs);
+      return reduceSdkEvent(
+        phase,
+        action.event,
+        action.nowMs,
+        action.continueAfterSubmit ?? false,
+      );
+    }
+    case "stage_advance": {
+      if (phase.kind === "awaiting_stage_complete") {
+        return { kind: "mounting" };
+      }
+      return phase;
     }
     case "status_passed": {
       if (phase.kind === "awaiting_webhook") {
@@ -135,6 +153,7 @@ function reduceSdkEvent(
   phase: KycPhase,
   event: KycSessionEvent,
   nowMs: number,
+  continueAfterSubmit: boolean,
 ): KycPhase {
   switch (event.kind) {
     case "ready": {
@@ -154,6 +173,9 @@ function reduceSdkEvent(
     case "submitted":
     case "completed": {
       if (phase.kind === "in_progress" || phase.kind === "mounting") {
+        if (continueAfterSubmit) {
+          return { kind: "awaiting_stage_complete", submittedAtMs: nowMs };
+        }
         return { kind: "awaiting_webhook", submittedAtMs: nowMs };
       }
       return phase;

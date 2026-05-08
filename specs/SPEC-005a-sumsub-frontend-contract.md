@@ -88,8 +88,19 @@ export type KycErrorCode =
   | "unknown";
 
 export interface KycIdentityProvider {
-  readonly name: "sumsub" | "onfido" | "jumio" | "mock";
+  readonly name: "sumsub" | "iproov" | "onfido" | "jumio" | "mock";
   mount(target: HTMLElement, params: KycSessionStartParams): Promise<KycSessionHandle>;
+}
+
+export interface KycAdapterStage {
+  readonly name: KycProviderName;
+  readonly required: boolean;
+  readonly continueAfterSubmit: boolean;
+}
+
+export interface KycAdapterChain {
+  readonly stages: KycAdapterStage[];
+  readonly mountStrategy: "sequential";
 }
 ```
 
@@ -118,11 +129,11 @@ packages/ts-sdk/src/kyc-provider/
 export function selectKycProvider(opts: {
   sdkToken: string;
   override?: KycIdentityProvider;
-}): KycIdentityProvider {
-  if (opts.override) return opts.override;                 // for tests
-  if (opts.sdkToken.startsWith("sumsub_sandbox_")) return mockSumsubProvider();   // dev
-  if (opts.sdkToken.startsWith("sumsub_")) return realSumsubProvider();
-  if (opts.sdkToken.startsWith("mock_")) return mockProvider();
+}): KycAdapterChain {
+  if (opts.override) return singleStageChain(opts.override.name); // for tests
+  if (opts.sdkToken.startsWith("sumsub_sandbox_")) return sumsubChain(opts.sdkToken);
+  if (opts.sdkToken.startsWith("sumsub_")) return sumsubChain(opts.sdkToken);
+  if (opts.sdkToken.startsWith("mock_")) return singleStageChain("mock");
   throw new KycSdkError("unknown_sdk_token_prefix");
 }
 ```
@@ -151,6 +162,68 @@ export function selectKycProvider(opts: {
 3. 提供 `globalThis.__mockKycComplete(outcome)` 全域 hook，供 e2e test 觸發 `submitted` / `completed` 事件
 4. 預設 5 秒後自動 emit `{ kind: "submitted" }` 模擬使用者完成上傳
 5. 永遠不打真實網路請求
+
+### 3.4 Adapter Chain Contract
+
+Tier 2 remains a single-stage chain. Tier 3 is a sequential chain: SumSub first, iProov second. The contract is a manifest, not an implementation of the real iProov adapter.
+
+```ts
+export interface KycAdapterStage {
+  readonly name: KycProviderName;
+  readonly required: boolean;
+  readonly continueAfterSubmit: boolean;
+}
+
+export interface KycAdapterChain {
+  readonly stages: KycAdapterStage[];
+  readonly mountStrategy: "sequential"; // "parallel" reserved for future
+}
+```
+
+Canonical manifests:
+
+```ts
+const tier2Chain: KycAdapterChain = {
+  stages: [{ name: "sumsub", required: true, continueAfterSubmit: false }],
+  mountStrategy: "sequential",
+};
+
+const tier3Chain: KycAdapterChain = {
+  stages: [
+    { name: "sumsub", required: true, continueAfterSubmit: true },
+    { name: "iproov", required: true, continueAfterSubmit: false },
+  ],
+  mountStrategy: "sequential",
+};
+```
+
+Semantics:
+
+- `continueAfterSubmit: true`: after the SDK emits `submitted`, dispatch `stage_advance`, mount stage N+1, and do not enter `awaiting_webhook`.
+- `continueAfterSubmit: false`: after the SDK emits `submitted`, enter `awaiting_webhook` and wait for webhook-backed terminal status.
+- Any non-recoverable error from a `required: true` stage aborts the chain.
+- Stages share `providerApplicantId`; each stage receives its own backend-issued `sdkToken`.
+- `iproov-provider.ts` and `iproov-mock-provider.ts` are adapter slots only in this slice and must throw `KycSdkError("not_implemented")` until PR #2 wires sandbox credentials and real mount behavior.
+
+### 3.5 Tier 3 Routing and Backend Response
+
+`kyc-service start_upgrade` for `TIER_3` must return the stage manifest with the initial stage token:
+
+```json
+{
+  "sdkToken": "...",
+  "providerApplicantId": "...",
+  "chain": {
+    "stages": [
+      { "name": "sumsub", "required": true, "continueAfterSubmit": true },
+      { "name": "iproov", "required": true, "continueAfterSubmit": false }
+    ],
+    "mountStrategy": "sequential"
+  }
+}
+```
+
+The frontend may derive the same manifest from `sdkToken` for backward compatibility, but backend-supplied `chain` is authoritative once present. Backend implementation is deferred to PR #2; this SPEC only fixes the response field and frontend/SDK contract.
 
 ---
 
@@ -415,7 +488,7 @@ Mock provider **不**需要 CSP 開放，所有 dev / test 必須在 `script-src
 ## 11. Open Questions
 
 1. SumSub `applicantInlineCompleted` 的 outcome 是否可信？是否任何情況都應仍 `AwaitingWebhook`？建議查 SumSub 文件並補附錄。
-2. Tier 3 流程是否需要 SumSub + iProov 雙 SDK 串接？若是，本契約的 `KycIdentityProvider` 需擴展為 `KycIdentityProvider[]` 多階段。
+2. ✅ resolved (2026-05-08): Tier 3 uses the sequential SumSub + iProov adapter chain defined in §3.4. `selectKycProvider` returns `KycAdapterChain`; the old single-provider path is the `chain.stages.length === 1` case. Real iProov adapter implementation remains PR #2.
 3. ✅ resolved (2026-05-08): `step_at_abandon` is enum-bounded to `KycStep | "unknown"` in `apps/web/lib/telemetry/kyc-metrics.ts`; free text is rejected by validation before entering the registry.
 4. CSP 是否影響其他 SaaS（Sift / Sardine 行為指紋 SDK 將在 SPEC-010 落地）？需協調 single global CSP 而非 per-route。
 5. WebSocket Phase 2 切換的 contract（事件名 / topic 命名）需與 SPEC-008 §7 / ws-gateway 對齊。

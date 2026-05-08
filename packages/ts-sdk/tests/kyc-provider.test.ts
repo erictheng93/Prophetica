@@ -4,6 +4,8 @@ import { test } from "node:test";
 import {
   KycSdkError,
   createMockKycProvider,
+  createIproovMockProvider,
+  createRealIproovProvider,
   createRealSumsubProvider,
   selectKycProvider,
   type KycInlineOutcome,
@@ -131,13 +133,36 @@ test("selectKycProvider resolves provider by sdk token prefix", () => {
   const sandbox = selectKycProvider({
     sdkToken: "sumsub_sandbox_user_42_TIER_2_1",
   });
-  assert.equal(sandbox.name, "mock");
+  assert.deepEqual(sandbox, {
+    mountStrategy: "sequential",
+    stages: [{ name: "sumsub", required: true, continueAfterSubmit: false }],
+  });
 
   const real = selectKycProvider({ sdkToken: "sumsub_real_token_xyz" });
-  assert.equal(real.name, "sumsub");
+  assert.deepEqual(real, {
+    mountStrategy: "sequential",
+    stages: [{ name: "sumsub", required: true, continueAfterSubmit: false }],
+  });
 
   const mock = selectKycProvider({ sdkToken: "mock_local_dev" });
-  assert.equal(mock.name, "mock");
+  assert.deepEqual(mock, {
+    mountStrategy: "sequential",
+    stages: [{ name: "mock", required: true, continueAfterSubmit: false }],
+  });
+});
+
+test("selectKycProvider resolves Tier 3 SumSub sandbox token to a two-stage chain", () => {
+  const chain = selectKycProvider({
+    sdkToken: "sumsub_sandbox_user_42_TIER_3_1",
+  });
+
+  assert.deepEqual(chain, {
+    mountStrategy: "sequential",
+    stages: [
+      { name: "sumsub", required: true, continueAfterSubmit: true },
+      { name: "iproov", required: true, continueAfterSubmit: false },
+    ],
+  });
 });
 
 test("selectKycProvider throws KycSdkError on unknown prefix", () => {
@@ -169,5 +194,25 @@ test("override option short-circuits sdk token resolution", () => {
     sdkToken: "anything_unsupported",
     override: stub,
   });
-  assert.strictEqual(resolved, stub);
+  assert.deepEqual(resolved, {
+    mountStrategy: "sequential",
+    stages: [{ name: "mock", required: true, continueAfterSubmit: false }],
+  });
+});
+
+test("iProov providers are explicit not_implemented stubs", async () => {
+  for (const provider of [createIproovMockProvider(), createRealIproovProvider()]) {
+    assert.equal(provider.name, "iproov");
+    await assert.rejects(
+      () =>
+        provider.mount(fakeTarget(), {
+          sdkToken: "iproov_real_xyz",
+          targetTier: "TIER_3",
+          locale: "en",
+          country: "TW",
+        }),
+      (err: unknown) =>
+        err instanceof KycSdkError && err.code === "not_implemented",
+    );
+  }
 });

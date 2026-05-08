@@ -1,4 +1,9 @@
-export type KycProviderName = "sumsub" | "onfido" | "jumio" | "mock";
+export type KycProviderName =
+  | "sumsub"
+  | "iproov"
+  | "onfido"
+  | "jumio"
+  | "mock";
 
 export type KycTargetTier = "TIER_2" | "TIER_3";
 
@@ -50,6 +55,17 @@ export interface KycIdentityProvider {
     target: HTMLElement,
     params: KycSessionStartParams,
   ): Promise<KycSessionHandle>;
+}
+
+export interface KycAdapterStage {
+  readonly name: KycProviderName;
+  readonly required: boolean;
+  readonly continueAfterSubmit: boolean;
+}
+
+export interface KycAdapterChain {
+  readonly stages: KycAdapterStage[];
+  readonly mountStrategy: "sequential";
 }
 
 export type KycSdkErrorCode =

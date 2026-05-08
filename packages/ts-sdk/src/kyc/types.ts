@@ -1,3 +1,5 @@
+import type { KycAdapterChain } from "../kyc-provider/types.js";
+
 export type KycTier = "TIER_0" | "TIER_1" | "TIER_2" | "TIER_3";
 export type KycStatus = "pending" | "passed" | "rejected" | "expired" | "frozen";
 
@@ -48,6 +50,7 @@ export interface StartKycUpgradeResponse {
   provider: string;
   providerApplicantId: string | null;
   sdkToken: string;
+  chain?: KycAdapterChain;
   expiresAt: string | null;
   replayed: boolean;
 }
