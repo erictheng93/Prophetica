@@ -50,7 +50,7 @@ SPEC-005 的 in-memory contract 實作已落地於 `kyc-service`、`mock-sumsub`
 
 | 項目 | 狀態 | 阻擋 |
 |------|------|------|
-| **真實 SumSub Web SDK iframe 載入** | ⏳ Tier-2 page 仍為「虛框 + 按鈕佔位」（[`apps/web/app/kyc/tier-2/page.tsx:82-95`](../apps/web/app/kyc/tier-2/page.tsx)）| 需先跑 [PoC-B Cloudflare Edge runtime](../docs/poc/PRE-FLIGHT-POCS.md) §4.2.1 確認 iframe 在 Edge runtime 下載入 |
+| **真實 SumSub Web SDK iframe 載入** | ❌ PoC-B live verification blocked（2026-05-08）：`next build` 通過，但 `@cloudflare/next-on-pages` 未能在 Windows host 產出 `.vercel/output/static`；且本環境無 SumSub sandbox token，真 iframe 未跑 | 先在 Linux/CI 或修正 Windows toolchain 後重跑 [PoC-B Cloudflare Edge runtime](../docs/poc/PRE-FLIGHT-POCS.md) §4.4；取得 SumSub sandbox credential 後再判定 Edge runtime / Node.js runtime 退路 |
 | **Tier 2/3 OCR / Liveness / EDD** | ⏳ kyc-service 僅 Tier 1 本地驗證實作；Tier 2/3 完整流程需 SumSub iframe + webhook 端到端 | 同上 |
 | **Self-exclusion 名單比對** | ⏳ §2.4.1 step 3「對 self-excluded 名單比對」未在 kyc-service 實作 | 待 SPEC-006 §5.4 落地後跨 service 整合 |
 | **Daily batch screening rescan scheduler** | ⏳ `/internal/screening/rescans` 為手動 API；§6 「每日 batch」cron 排程未實作 | 動工排程基礎設施（Temporal / Airflow / cron）後接入 |
