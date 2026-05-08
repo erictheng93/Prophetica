@@ -1,4 +1,4 @@
-use axum::{Json, Router, routing::post};
+use axum::{Json, Router, extract::State, routing::post};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -27,11 +27,21 @@ pub struct MockWebhookHeaders {
     pub payload_digest: String,
 }
 
-pub fn router() -> Router {
-    Router::new().route("/mock/sumsub/applicant-reviewed", post(applicant_reviewed))
+#[derive(Clone)]
+struct MockState {
+    webhook_secret: String,
+}
+
+pub fn router(secret: String) -> Router {
+    Router::new()
+        .route("/mock/sumsub/applicant-reviewed", post(applicant_reviewed))
+        .with_state(MockState {
+            webhook_secret: secret,
+        })
 }
 
 async fn applicant_reviewed(
+    State(state): State<MockState>,
     Json(request): Json<ApplicantReviewedRequest>,
 ) -> Json<MockWebhookResponse> {
     let body = json!({
@@ -48,15 +58,13 @@ async fn applicant_reviewed(
 
     Json(MockWebhookResponse {
         headers: MockWebhookHeaders {
-            payload_digest: sign_payload(payload.as_bytes()),
+            payload_digest: sign_payload(&state.webhook_secret, payload.as_bytes()),
         },
         body,
     })
 }
 
-fn sign_payload(payload: &[u8]) -> String {
-    let secret = std::env::var("SUMSUB_WEBHOOK_SECRET")
-        .unwrap_or_else(|_| "dev-sumsub-webhook-secret".to_owned());
+fn sign_payload(secret: &str, payload: &[u8]) -> String {
     let Ok(mut mac) = Hmac::<Sha1>::new_from_slice(secret.as_bytes()) else {
         return String::new();
     };
@@ -78,7 +86,7 @@ mod tests {
 
     #[tokio::test]
     async fn applicant_review_endpoint_returns_signed_sumsub_payload() {
-        let response = crate::router()
+        let response = crate::router("dev-sumsub-webhook-secret".to_owned())
             .oneshot(json_post(&json!({
                 "applicant_id": "applicant_42",
                 "external_user_id": "user_42",

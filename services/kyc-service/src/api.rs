@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 
+use crate::SecretConfig;
 use crate::kyc::{
     AmlEventDraft, KycRecord, KycStatus, KycStore, KycStoreError, KycTier, ReviewAnswer,
     ScreeningMatchDraft, ScreeningMatchType, StartUpgradeDraft, SumsubWebhookDraft,
@@ -157,10 +158,21 @@ pub struct ApiErrorResponse {
     pub message: String,
 }
 
-pub fn router<S>(store: S) -> Router
+#[derive(Clone)]
+struct ApiState<S> {
+    store: S,
+    webhook_secret: String,
+}
+
+pub fn router<S>(store: S, secrets: SecretConfig) -> Router
 where
     S: KycStore,
 {
+    let state = ApiState {
+        store,
+        webhook_secret: secrets.webhook_secret,
+    };
+
     Router::new()
         .route("/api/v1/kyc/users/:user_id/status", get(get_status::<S>))
         .route(
@@ -175,24 +187,28 @@ where
         .route("/internal/aml/events", post(record_aml_event::<S>))
         .route("/internal/screening/rescans", post(screening_rescan::<S>))
         .route("/internal/reports/kyc/monthly", get(monthly_report::<S>))
-        .with_state(store)
+        .with_state(state)
 }
 
-#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(store))]
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state))]
 async fn get_status<S>(
-    State(store): State<S>,
+    State(state): State<ApiState<S>>,
     Path(user_id): Path<String>,
 ) -> Result<Json<KycStatusResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
-    let record = store.current_record(&user_id).await.map_err(store_error)?;
+    let record = state
+        .store
+        .current_record(&user_id)
+        .await
+        .map_err(store_error)?;
     Ok(Json(status_response(&user_id, record.as_ref())))
 }
 
-#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(store, request))]
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state, request))]
 async fn verify_tier_one<S>(
-    State(store): State<S>,
+    State(state): State<ApiState<S>>,
     Path(user_id): Path<String>,
     Json(request): Json<TierOneVerificationRequest>,
 ) -> Result<(StatusCode, Json<TierOneVerificationResponse>), (StatusCode, Json<ApiErrorResponse>)>
@@ -200,7 +216,8 @@ where
     S: KycStore,
 {
     validate_tier_one(&request)?;
-    let outcome = store
+    let outcome = state
+        .store
         .verify_tier_one(TierOneVerificationDraft {
             user_id,
             idempotency_key: request.idempotency_key,
@@ -229,9 +246,9 @@ where
     ))
 }
 
-#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(store, request))]
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state, request))]
 async fn start_upgrade<S>(
-    State(store): State<S>,
+    State(state): State<ApiState<S>>,
     Path(user_id): Path<String>,
     Json(request): Json<StartUpgradeRequest>,
 ) -> Result<(StatusCode, Json<StartUpgradeResponse>), (StatusCode, Json<ApiErrorResponse>)>
@@ -239,7 +256,8 @@ where
     S: KycStore,
 {
     validate_start_upgrade(&request)?;
-    let outcome = store
+    let outcome = state
+        .store
         .start_upgrade(StartUpgradeDraft {
             user_id,
             target_tier: request.target_tier,
@@ -268,16 +286,16 @@ where
     ))
 }
 
-#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(store, headers, body))]
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(state, headers, body))]
 async fn sumsub_webhook<S>(
-    State(store): State<S>,
+    State(state): State<ApiState<S>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<SumsubWebhookResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
-    verify_sumsub_hmac(&headers, &body)?;
+    verify_sumsub_hmac(&state.webhook_secret, &headers, &body)?;
     let payload = serde_json::from_slice::<SumsubWebhookPayload>(&body).map_err(|error| {
         api_error(
             StatusCode::BAD_REQUEST,
@@ -287,7 +305,8 @@ where
     })?;
     let review_answer = parse_review_answer(&payload.review_result.review_answer)?;
     let raw_payload_sha256 = hex::encode(Sha256::digest(&body));
-    let outcome = store
+    let outcome = state
+        .store
         .apply_sumsub_webhook(SumsubWebhookDraft {
             applicant_id: payload.applicant_id,
             external_user_id: payload.external_user_id,
@@ -319,16 +338,17 @@ where
     }))
 }
 
-#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(store, request))]
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(state, request))]
 async fn record_aml_event<S>(
-    State(store): State<S>,
+    State(state): State<ApiState<S>>,
     Json(request): Json<AmlEventRequest>,
 ) -> Result<(StatusCode, Json<AmlEventResponse>), (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
     validate_aml_event(&request)?;
-    let outcome = store
+    let outcome = state
+        .store
         .record_aml_event(AmlEventDraft {
             user_id: request.user_id,
             event_type: request.event_type,
@@ -355,13 +375,14 @@ where
 }
 
 async fn monthly_report<S>(
-    State(store): State<S>,
+    State(state): State<ApiState<S>>,
     Query(query): Query<MonthlyReportQuery>,
 ) -> Result<Json<MonthlyKycReportResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
-    let report = store
+    let report = state
+        .store
         .monthly_report(query.month.unwrap_or_else(|| "current".to_owned()))
         .await
         .map_err(store_error)?;
@@ -376,7 +397,7 @@ where
 }
 
 async fn screening_rescan<S>(
-    State(store): State<S>,
+    State(state): State<ApiState<S>>,
     Json(request): Json<ScreeningRescanRequest>,
 ) -> Result<Json<ScreeningRescanResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
@@ -387,7 +408,8 @@ where
         .into_iter()
         .map(screening_match_draft)
         .collect::<Result<Vec<_>, _>>()?;
-    let outcome = store
+    let outcome = state
+        .store
         .apply_screening_rescan(matches)
         .await
         .map_err(store_error)?;
@@ -461,6 +483,7 @@ fn validate_aml_event(
 }
 
 fn verify_sumsub_hmac(
+    secret: &str,
     headers: &HeaderMap,
     body: &[u8],
 ) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
@@ -475,8 +498,6 @@ fn verify_sumsub_hmac(
         return Err(unauthorized_webhook());
     };
 
-    let secret = std::env::var("SUMSUB_WEBHOOK_SECRET")
-        .unwrap_or_else(|_| "dev-sumsub-webhook-secret".to_owned());
     let Ok(mut mac) = Hmac::<Sha1>::new_from_slice(secret.as_bytes()) else {
         return Err(unauthorized_webhook());
     };
