@@ -20,6 +20,10 @@
   - SPEC-008 §9.2 / §9.3 / §12
   - SPEC-010 §9.3 MS-9
 
+- `7a64748 fix(governance): add halt polling integration`
+  - SPEC-008 §9.2 / §9.3 / §12
+  - SPEC-010 §9.3 MS-9
+
 ## Merge Governance
 
 - SPEC-010 §9.3.1 MS-10 applies because this branch touches matching-engine, ledger, settlement,

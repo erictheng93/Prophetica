@@ -19,9 +19,7 @@ kafka-topics --bootstrap-server "${SINGAPORE_KAFKA_BOOTSTRAP_SERVERS}" --list \
       if [ "${lag_offsets}" -lt 0 ]; then
         lag_offsets=0
       fi
-      # Conservative conversion until per-topic event-rate metrics are wired.
-      lag_seconds="${lag_offsets}"
-      printf 'kafka_mm2_lag_seconds{topic="%s"} %s\n' "${topic}" "${lag_seconds}" >> "${tmp}"
+      printf 'kafka_mm2_lag_offsets{topic="%s"} %s\n' "${topic}" "${lag_offsets}" >> "${tmp}"
     done
 
 mv "${tmp}" "${METRICS_FILE}"
