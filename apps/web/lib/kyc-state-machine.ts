@@ -201,6 +201,17 @@ export function isTerminalPhase(phase: KycPhase): boolean {
 
 export function isRetryablePhase(phase: KycPhase): boolean {
   if (phase.kind === "abandoned") return true;
-  if (phase.kind === "error") return phase.recoverable;
+  if (phase.kind === "error") {
+    // Polling timeout is technically recoverable but the back-end review is
+    // already in flight (SPEC-005a §6.1: 「審核時間較長，已寄信通知，您可離開頁面」).
+    // Retrying would create a new applicant + duplicate webhook, so the UI
+    // hides the retry CTA for this specific code.
+    if (phase.code === "polling_timeout") return false;
+    return phase.recoverable;
+  }
   return false;
+}
+
+export function isPollingTimeoutPhase(phase: KycPhase): boolean {
+  return phase.kind === "error" && phase.code === "polling_timeout";
 }

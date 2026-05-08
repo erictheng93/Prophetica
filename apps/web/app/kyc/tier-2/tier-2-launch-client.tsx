@@ -354,6 +354,10 @@ function phaseLabelFor(phase: KycPhase, tPhase: PhaseTranslator): string {
     case "abandoned":
       return tPhase("abandoned");
     case "error":
+      if (phase.code === "polling_timeout") {
+        // SPEC-005a §6.1 fail-soft: review is in-flight, do not surface as error.
+        return tPhase("pollingPending");
+      }
       return phase.recoverable
         ? tPhase("errorRecoverable")
         : tPhase("errorTerminal");

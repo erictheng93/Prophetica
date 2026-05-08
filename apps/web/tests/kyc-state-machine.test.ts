@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   initialKycPhase,
+  isPollingTimeoutPhase,
   isRetryablePhase,
   isTerminalPhase,
   reduceKycPhase,
@@ -148,4 +149,24 @@ test("idempotency key dedupes double-clicks: same input -> same key", () => {
   const a = buildKycIdempotencyKey({ userId: "u", targetTier: "TIER_2" });
   const b = buildKycIdempotencyKey({ userId: "u", targetTier: "TIER_2" });
   assert.equal(a, b);
+});
+
+test("polling_timeout is not retryable even though it is recoverable", () => {
+  const phase: KycPhase = {
+    kind: "error",
+    code: "polling_timeout",
+    recoverable: true,
+  };
+  assert.equal(isPollingTimeoutPhase(phase), true);
+  assert.equal(isRetryablePhase(phase), false);
+});
+
+test("isPollingTimeoutPhase distinguishes from other recoverable errors", () => {
+  const networkLoss: KycPhase = {
+    kind: "error",
+    code: "network_lost",
+    recoverable: true,
+  };
+  assert.equal(isPollingTimeoutPhase(networkLoss), false);
+  assert.equal(isRetryablePhase(networkLoss), true);
 });
