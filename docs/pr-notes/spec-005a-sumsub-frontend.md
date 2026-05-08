@@ -2,28 +2,30 @@
 
 ## SPEC Refs
 
-- `b0cf7da feat(kyc): close SPEC-005 §0.2 B1/B3 backend hardening`
+- `b1feaee feat(kyc): close SPEC-005 §0.2 B1/B3 backend hardening`
   - SPEC-005 §0.2 B1/B3
-- `6cf41df feat(specs): add SPEC-005a SumSub frontend integration contract`
+- `1775641 feat(specs): add SPEC-005a SumSub frontend integration contract`
   - SPEC-005a §2 / §5.2.1 / §6.1 / §7.3 / §8 / §10
-- `45b1952 feat(ts-sdk): add KycIdentityProvider abstraction with mock + selector`
+- `159cc98 feat(ts-sdk): add KycIdentityProvider abstraction with mock + selector`
   - SPEC-005a §2 / §10
-- `377d395 feat(web): wire Tier 2/3 KYC state machine and provider launch flow`
+- `73003c8 feat(web): wire Tier 2/3 KYC state machine and provider launch flow`
   - SPEC-005a §2 / §6.1 / §10
-- `f3e0662 feat(web): wire Tier 3 polling and SPEC-005a §6.1 fail-soft handling`
+- `0d5e0cd feat(web): wire Tier 3 polling and SPEC-005a §6.1 fail-soft handling`
   - SPEC-005a §6.1 / §10
-- `38fda40 fix(kyc): SPEC-005a §5.2.1 enforce server-derived userId end-to-end`
+- `14e9d4c fix(kyc): SPEC-005a §5.2.1 enforce server-derived userId end-to-end`
   - SPEC-005a §5.2.1
-- `e3ebb06 feat(web): SPEC-005a §8 add SumSub CSP scoped to /kyc/* routes`
+- `0ba71cb feat(web): SPEC-005a §8 add SumSub CSP scoped to /kyc/* routes`
   - SPEC-005a §8
-- `8ab6e55 feat(web): SPEC-005a §6.1 + §2 lock down polling timing and SumSub locale`
+- `a7095c9 feat(web): SPEC-005a §6.1 + §2 lock down polling timing and SumSub locale`
   - SPEC-005a §2 / §6.1
-- `2249558 feat(web): SPEC-005a §7.3 KYC telemetry - 5 metrics + Prom exposition`
+- `c67e5ef feat(web): SPEC-005a §7.3 KYC telemetry - 5 metrics + Prom exposition`
   - SPEC-005a §7.3
-- `fd91386 test(kyc): SPEC-005a §10 close acceptance gates`
+- `1159fee test(kyc): SPEC-005a §10 close acceptance gates`
   - SPEC-005a §10
-- `28877ae fix(kyc): include tier one context in upgrade keys`
+- `4bb8c51 fix(kyc): include tier one context in upgrade keys`
   - SPEC-005a §5.3
+- `2798b8e fix(kyc): pass verified country to provider launch`
+  - SPEC-005a §2 / §5.2.1
 
 ## Merge Governance
 
