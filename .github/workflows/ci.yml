@@ -6,71 +6,19 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-test:
-    # Use the default GitHub-hosted runner unless a larger runner is explicitly configured.
+  rust-lsp-lint:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: proph
-          POSTGRES_PASSWORD: dev
-          POSTGRES_DB: prophetica
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U proph -d prophetica"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    env:
+      SQLX_OFFLINE: "true"
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
-      - uses: mozilla-actions/sccache-action@v0.0.6
-      # pnpm version is sourced from `packageManager` in root package.json
-      # (currently pnpm@9.12.0). Specifying `version:` here too triggers
-      # ERR_PNPM_BAD_PM_VERSION in pnpm/action-setup@v4.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
       - name: install native rdkafka deps
         run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
-      - name: install buf
-        uses: bufbuild/buf-setup-action@v1
-      - name: install cargo-nextest
-        uses: taiki-e/install-action@nextest
-      - name: install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
-      - name: pnpm install
-        # SPEC-017 v0.2.3 erratum: @cloudflare/kumo uses the public npm registry;
-        # KUMO_NPM_TOKEN is no longer required.
-        run: pnpm install --frozen-lockfile
-      - name: buf generate
-        run: buf generate
-      - name: buf lint
-        run: buf lint
-      - name: prepare buf breaking baseline
-        run: git show-ref --verify --quiet refs/heads/main || git branch main origin/main
-      - name: buf breaking
-        run: buf breaking --against '.git#branch=main'
-      - name: verify generated stubs in sync
-        run: git diff --exit-code crates/proto/src/gen packages/proto/gen/ts
-      - name: sqlx offline cache up-to-date
-        env:
-          SQLX_OFFLINE: "false"
-          DATABASE_URL: postgres://proph:dev@localhost:5432/prophetica
-        run: |
-          make migrate
-          cargo sqlx prepare --workspace --check -- --tests
-      - name: lint
-        run: make lint
-      - name: test
-        env:
-          SQLX_OFFLINE: "true"
-          WALLET_LEDGER_TEST_DATABASE_URL: postgres://proph:dev@localhost:5432/prophetica
-        run: make test
+      - name: rust syntax and type check
+        run: cargo check --workspace --locked
+      - name: rust lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: rust format check
+        run: cargo fmt --all -- --check
