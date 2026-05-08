@@ -51,6 +51,9 @@ export interface StartKycUpgradeInput {
   userId?: string;
   targetTier: Exclude<KycTier, "TIER_0">;
   declaredMonthlyIncome?: number | null;
+  // SPEC-005a §5.3 — caller must pass a deterministic key; ts-sdk only
+  // falls back to UUIDv7 when this is undefined, which would defeat dedupe.
+  idempotencyKey?: string;
 }
 
 export interface KycMutationOptions {
@@ -117,7 +120,12 @@ export async function startKycUpgrade(
     userId,
     targetTier: input.targetTier,
     declaredMonthlyIncome: input.declaredMonthlyIncome,
+    idempotencyKey: input.idempotencyKey,
   });
+}
+
+export function resolveKycUserId(userIdOption?: string): string {
+  return userIdOption ?? process.env.PROPHETICA_DEV_USER_ID ?? KYC_FALLBACK_USER_ID;
 }
 
 export function tierMonthlyLimitPoints(tier: KycTier): number | null {

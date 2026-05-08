@@ -1663,6 +1663,23 @@
         "skipLabel": "不申報",
         "skipHint": "月儲值上限維持 TWD 100,000",
         "submit": "儲存並啟動審核"
+      },
+      "phase": {
+        "idle": "待你確認後開始",
+        "initializing": "建立審核工作階段中…",
+        "mounting": "載入 SumSub 安全環境中…",
+        "inProgress": "請依 SumSub 視窗指示完成驗證。",
+        "awaitingWebhook": "已送出，審核中。可離開頁面，結果以 Email 通知。",
+        "done": "審核已通過，Tier 2 已啟用。",
+        "failed": {
+          "rejected": "審核未通過。請依 Email 指引提供補件或聯繫客服。",
+          "frozen": "帳戶已暫停。請聯繫客服以了解原因。",
+          "expired": "審核工作階段已過期，請重新發起。"
+        },
+        "abandoned": "你關閉了 SumSub 視窗。可重新驗證。",
+        "errorRecoverable": "驗證流程遇到可還原的錯誤，請重試。",
+        "errorTerminal": "驗證流程遇到無法還原的錯誤，請改以桌面瀏覽器或聯繫客服。",
+        "retryCta": "重新驗證"
       }
     },
     "tier3": {
@@ -1723,6 +1740,24 @@
         },
         "supportNote": "審核期間若有疑問，可由<supportLink>客服管道</supportLink>聯繫專屬 Compliance 窗口。",
         "submit": "建立 Compliance 工單"
+      },
+      "phase": {
+        "statusLabel": "目前狀態",
+        "idle": "待你確認後開始",
+        "initializing": "建立 Compliance 工單中…",
+        "mounting": "載入 SumSub 安全環境中…",
+        "inProgress": "請依 SumSub 視窗指示完成驗證。",
+        "awaitingWebhook": "已送出，Compliance 審核中。結果以 Email 與站內訊息通知。",
+        "done": "審核已通過，Tier 3 已啟用。",
+        "failed": {
+          "rejected": "審核未通過。請依 Email 指引補件或聯繫 Compliance 窗口。",
+          "frozen": "帳戶已暫停。請聯繫客服以了解原因。",
+          "expired": "審核工作階段已過期，請重新發起。"
+        },
+        "abandoned": "你關閉了 SumSub 視窗。可重新驗證。",
+        "errorRecoverable": "驗證流程遇到可還原的錯誤，請重試。",
+        "errorTerminal": "驗證流程遇到無法還原的錯誤，請改以桌面瀏覽器或聯繫客服。",
+        "retryCta": "重新驗證"
       }
     },
     "privacyNotice": {

@@ -102,6 +102,7 @@ test("submit helpers call kyc client mutations for server actions", async () => 
       userId: "user_42",
       targetTier: "TIER_2",
       declaredMonthlyIncome: 6000000,
+      idempotencyKey: "kyc:user_42:TIER_2",
     },
     { baseUrl: "http://kyc.local", kycClientFactory: factory },
   );
@@ -119,6 +120,7 @@ test("submit helpers call kyc client mutations for server actions", async () => 
     userId: "user_42",
     targetTier: "TIER_2",
     declaredMonthlyIncome: 6000000,
+    idempotencyKey: "kyc:user_42:TIER_2",
   });
 });
 
