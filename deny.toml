@@ -1,16 +1,20 @@
 [advisories]
 version = 2
 yanked = "deny"
+unmaintained = "workspace"
 
 [licenses]
 version = 2
+private = { ignore = true }
 allow = [
     "Apache-2.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
     "MIT",
-    "Unicode-DFS-2016",
+    "Zlib",
+    "CDLA-Permissive-2.0",
+    "Unicode-3.0",
 ]
 
 [bans]

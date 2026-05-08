@@ -44,10 +44,9 @@ jobs:
         uses: bufbuild/buf-setup-action@v1
       - name: install cargo-nextest
         uses: taiki-e/install-action@nextest
-      - name: install sqlx-cli, cargo-deny, cargo-geiger
+      - name: install sqlx-cli and cargo-geiger
         run: |
           cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
-          cargo install cargo-deny --version 0.18.3 --locked
           cargo install cargo-geiger --locked
       - name: pnpm install
         # SPEC-017 v0.2.3 erratum: @cloudflare/kumo 走公開 npm registry，不再需要 KUMO_NPM_TOKEN
@@ -76,10 +75,13 @@ jobs:
           SQLX_OFFLINE: "true"
           WALLET_LEDGER_TEST_DATABASE_URL: postgres://proph:dev@localhost:5432/prophetica
         run: make test
+      - uses: dtolnay/rust-toolchain@1.88
+      - name: install cargo-deny
+        run: cargo install cargo-deny --version 0.19.4 --locked
       - name: cargo deny
-        run: cargo deny check
+        run: cargo +1.88 deny check
       - name: cargo geiger
-        run: cargo geiger --workspace --output-format Json > geiger.json
+        run: cargo +1.85 geiger --workspace --output-format Json > geiger.json
       - name: forbid unsafe regression
         run: ./tools/scripts/check-geiger.sh geiger.json
       - name: upload geiger artifact
