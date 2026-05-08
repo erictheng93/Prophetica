@@ -23,6 +23,18 @@
 - `7a64748 fix(governance): add halt polling integration`
   - SPEC-008 §9.2 / §9.3 / §12
   - SPEC-010 §9.3 MS-9
+- `5019454 fix(dr): tighten spec 008 merge blockers`
+  - SPEC-008 §9 / §12
+  - SPEC-010 §9.3.1 MS-10
+
+## CI / Review Support
+
+- `4d82b5e fix(ci): pin cargo-deny for rust 1.85`
+  - Keeps the CI cargo-deny install compatible with the pinned Rust 1.85 toolchain.
+- `67633e7 fix(ci): prepare buf breaking main ref`
+  - Ensures detached pull-request checkouts have a local `main` ref for `buf breaking`.
+- `9c0da2a fix(web): make test output portable`
+  - Cleans stale `.test-out` output before web tests and avoids a quoted glob that fails on Linux CI.
 
 ## Merge Governance
 
