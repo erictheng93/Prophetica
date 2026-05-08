@@ -1,0 +1,11 @@
+name = "prophetica-web-poc"
+pages_build_output_dir = ".vercel/output/static"
+compatibility_date = "2026-05-08"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+KYC_SERVICE_BASE_URL = "http://127.0.0.1:8085"
+PROPHETICA_DEV_USER_ID = "user_01"
+
+# Secrets must be configured outside git:
+#   wrangler pages secret put SUMSUB_WEBHOOK_SECRET --project-name prophetica-web-poc

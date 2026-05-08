@@ -1,7 +1,7 @@
 //! PoC-A Step 2 — Server-side EdDSA token issue + verify reference.
 //!
 //! Standalone Rust binary that mirrors what `services/user-service` will do
-//! once SPEC-005 §0.2 wires real auth. Engineer should copy this into a
+//! once SPEC-005 §0.3 wires real auth. Engineer should copy this into a
 //! scratch crate (NOT into services/) and run with `cargo run` to exercise
 //! the round-trip across the 5 client environments listed in README §2.3.
 //!

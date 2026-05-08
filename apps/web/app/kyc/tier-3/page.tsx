@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { redirect } from "next/navigation";
 import { ProphTile } from "@prophetica/ui";
-import { startKycUpgrade } from "@/lib/kyc-api";
+import { fetchKycOverview } from "@/lib/kyc-api";
+import { Tier3LaunchClient } from "./tier-3-launch-client";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("kyc.tier3.metadata");
@@ -12,10 +12,6 @@ export async function generateMetadata(): Promise<Metadata> {
     robots: { index: false, follow: false },
   };
 }
-
-// SPEC-005 §2.1 + §6.3 — Tier 3 has higher friction. PEP-positive accounts
-// are auto-routed here; UI must avoid implying the user is "suspected" of
-// anything. Frame as "additional verification when activity exceeds Tier 2."
 
 const reasonKeys = [
   "monthlyLimit",
@@ -30,18 +26,8 @@ const requirementKeys = [
   "video",
   "pep",
 ] as const;
-const timelineKeys = ["documents", "video", "review", "notification"] as const;
 
 type Tier3Copy = Awaited<ReturnType<typeof getTranslations<"kyc.tier3">>>;
-
-async function startTierThreeAction() {
-  "use server";
-
-  await startKycUpgrade({
-    targetTier: "TIER_3",
-  });
-  redirect("/kyc/status");
-}
 
 function WhyHere({ t }: { t: Tier3Copy }) {
   return (
@@ -93,66 +79,13 @@ function Requirements({ t }: { t: Tier3Copy }) {
   );
 }
 
-function StartFlow({ t }: { t: Tier3Copy }) {
-  return (
-    <section className="bg-proph-canvas-parchment">
-      <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <header className="mb-8">
-          <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
-            {t("start.heading")}
-          </h2>
-          <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
-            {t.rich("start.intro", {
-              strong: (chunks) => (
-                <strong className="font-semibold text-proph-ink">
-                  {chunks}
-                </strong>
-              ),
-            })}
-          </p>
-        </header>
-
-        <form
-          action={startTierThreeAction}
-          className="rounded-proph-lg border border-proph-primary/30 bg-proph-canvas p-8"
-        >
-          <h3 className="font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
-            {t("start.timelineHeading")}
-          </h3>
-          <ul className="mt-4 space-y-2 font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
-            {timelineKeys.map((key) => (
-              <li key={key}>· {t(`start.timeline.${key}`)}</li>
-            ))}
-          </ul>
-
-          <div className="mt-8 flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
-            <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
-              {t.rich("start.supportNote", {
-                supportLink: (chunks) => (
-                  <a
-                    href="/support/contact"
-                    className="text-proph-primary underline"
-                  >
-                    {chunks}
-                  </a>
-                ),
-              })}
-            </p>
-            <button
-              type="button"
-              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary"
-            >
-              {t("start.submit")}
-            </button>
-          </div>
-        </form>
-      </div>
-    </section>
-  );
-}
-
 export default async function Tier3Page() {
-  const t = await getTranslations("kyc.tier3");
+  const [t, overview] = await Promise.all([
+    getTranslations("kyc.tier3"),
+    fetchKycOverview(),
+  ]);
+
+  const country = overview.country ?? "TW";
 
   return (
     <>
@@ -164,7 +97,7 @@ export default async function Tier3Page() {
       />
       <WhyHere t={t} />
       <Requirements t={t} />
-      <StartFlow t={t} />
+      <Tier3LaunchClient country={country} />
     </>
   );
 }

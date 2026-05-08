@@ -27,3 +27,9 @@ scrape_configs:
           - "risk-antifraud-service:8091"
           - "referral-service:8092"
           - "notification-service:8093"
+
+  - job_name: "apps-web"
+    metrics_path: /api/metrics
+    static_configs:
+      - targets:
+          - "localhost:3000"

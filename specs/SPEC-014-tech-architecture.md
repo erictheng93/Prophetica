@@ -136,6 +136,8 @@
 
 #### 3.2.1 Cloudflare Pages Edge runtime 限制（T-10，動工前 PoC）
 
+**Status (2026-05-08): ❌ live verification blocked before preview deploy.** `apps/web` production `next build` passes, but `@cloudflare/next-on-pages` v1.13.16 failed to generate `.vercel/output/static` on the Windows host while probing `pnpm --version`; a shim retry timed out after 240s. `prophetica-web-poc` Pages project exists, but no preview deployment was produced. Rerun PoC-B on Linux/CI or a fixed Windows toolchain before deciding Edge runtime vs Node.js runtime.
+
 `apps/web` 透過 [`@cloudflare/next-on-pages`](https://github.com/cloudflare/next-on-pages) 部署至 Cloudflare Pages（Workers runtime）。Edge runtime 與標準 Node.js runtime 行為差異會在以下場景踩坑，動工前需完成 E2E PoC 驗證（**詳細 PoC plan 見 [PRE-FLIGHT-POCS §4](../docs/poc/PRE-FLIGHT-POCS.md)**）：
 
 | 場景 | 已知限制 | PoC 驗證項 |

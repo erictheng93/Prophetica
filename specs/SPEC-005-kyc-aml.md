@@ -1,22 +1,24 @@
 # SPEC-005 — KYC / AML 整合
 
 > 優先級：**P1**
-> 版本：v0.1.3 · 最後更新：2026-05-07
+> 版本：v0.1.4 · 最後更新：2026-05-08
 > 依賴：SPEC-001
 > 被依賴：SPEC-006, SPEC-010, SPEC-011
-> 實作狀態：⚠️ **Backend 工程完成 / Frontend SumSub iframe 待整合**（v0.1.3 修正 v0.1.2 過度樂觀標記）
+> 實作狀態：⚠️ **Backend in-memory contract 完成 / Secret hardening 完成 / Postgres 待 PR #1 後 P0 sprint / Frontend SumSub iframe 待整合**（v0.1.4 resolve §0.2 B3）
 
 ---
 
 ## 0. Implementation Status
 
-**Status: ⚠️ Backend Complete / Frontend Pending SumSub Integration（2026-05-07 重新校準）**
+**Status: ⚠️ Backend in-memory contract Complete / Postgres + Secret Hardening P0 Follow-up / Frontend Pending SumSub Integration（2026-05-07 重新校準）**
 
-> **v0.1.3 校準說明**：v0.1.2 標記「✅ Complete」過度樂觀，未區分 backend 工程驗證 vs 前端真實 SumSub 整合。round 7 程式碼驗證掃描發現 `apps/web/app/kyc/tier-2/page.tsx:82-95` 之 SumSub 區塊為「虛框 + 按鈕佔位」（未載入真實 iframe），故降級為「⚠️ Backend Complete / Frontend Pending」。SPEC 應誠實反映現況（SDD 紀律），便於 Codex / 監管 / 新進工程師準確掌握實作狀態。
+> **v0.1.4 變更**：§0.2 B3 → ✅ resolved。`kyc-service` 與 `mock-sumsub` 啟動時集中讀取 secret；`PROPHETICA_ENV=production` 且缺少 `SUMSUB_WEBHOOK_SECRET` / `KYC_DOCUMENT_HASH_SALT` 時 fail-fast，不再於 runtime silently fallback 到 dev secret。
+>
+> **v0.1.3 校準說明**：v0.1.2 標記「✅ Complete」過度樂觀，未區分 backend in-memory contract 驗證、Postgres provider / secret hardening、前端真實 SumSub 整合。round 7 程式碼驗證掃描發現 `apps/web/app/kyc/tier-2/page.tsx:82-95` 之 SumSub 區塊為「虛框 + 按鈕佔位」（未載入真實 iframe）；後續 backend review 確認 API contract + trait 設計合格、migration 完整、test 覆蓋面合格，但 Postgres wiring 與 secret fallback hardening 仍需 PR #1 後 P0 sprint 收斂。因此本 SPEC 狀態校準為「⚠️ Backend in-memory contract 完成 / Postgres + secret hardening 待 PR #1 後 P0 sprint / Frontend Pending」。SPEC 應誠實反映現況（SDD 紀律），便於 Codex / 監管 / 新進工程師準確掌握實作狀態。
 
-### 0.1 已完成（Backend ✅）
+### 0.1 已完成（Backend in-memory contract ✅）
 
-SPEC-005 的工程實作已落地於 `kyc-service`、`mock-sumsub`、`packages/ts-sdk`、`apps/web` 與 `tools/scripts/seed.sh`。目前覆蓋 Tier 1 本地證件 hash / duplicate check、Tier 2/3 upgrade、SumSub webhook HMAC + idempotency、sanctions / PEP rescan、AML / SAR candidate、monthly report、前端 KYC status / submission flow，以及對應 SDK 與 mock webhook。
+SPEC-005 的 in-memory contract 實作已落地於 `kyc-service`、`mock-sumsub`、`packages/ts-sdk`、`apps/web` 與 `tools/scripts/seed.sh`。目前 API contract + trait 設計合格、migration 完整、test 覆蓋面合格，覆蓋 Tier 1 本地證件 hash / duplicate check、Tier 2/3 upgrade、SumSub webhook HMAC + idempotency、sanctions / PEP rescan、AML / SAR candidate、monthly report、前端 KYC status / submission flow，以及對應 SDK 與 mock webhook。此狀態不等同 Postgres provider / secret hardening production-ready。
 
 完成驗證：
 
@@ -29,11 +31,26 @@ SPEC-005 的工程實作已落地於 `kyc-service`、`mock-sumsub`、`packages/t
 - `rtk pnpm --filter @prophetica/web test`
 - `rtk pnpm --filter @prophetica/web lint`
 
-### 0.2 待完成（Frontend / 整合 ⏳）
+### 0.2 Backend P0 follow-up（PR #1 前後分流）
+
+| ID | 項目 | 優先級 / 時機 | 狀態 |
+|----|------|---------------|------|
+| **B1** | SumSub webhook `RED` 結果必須落到 Frozen / freeze 語意，避免只更新 KYC record 而未凍結帳戶 | **PR #1 merge 前修** | ✅ resolved（kyc.rs:341 RED→Frozen；新增 `sumsub_webhook_red_without_sanction_freezes_user` / `sumsub_webhook_yellow_keeps_user_pending` / `sumsub_webhook_replays_exact_raw_payload_hash_not_applicant_id` 三條 contract test） |
+| **B2** | Tier 2 流程順序（upgrade request、provider applicant、webhook、tier promotion 的 canonical ordering） | 待 **SPEC-005a** 先確定 contract 才能修 | 阻塞中，不得先以臨時流程落地 |
+| **B3** | Secret fallback hardening：禁止 production 路徑 silently fallback 到 mock / default secret；缺 secret 應 fail-fast | **PR #1 merge 前修** | ✅ resolved |
+| **M1** | Postgres provider wiring / repository 實作從 in-memory contract 轉正式 persistence | **PR #1 後 P0 sprint** | Follow-up |
+| **M2** | Postgres-backed webhook idempotency 與 duplicate event replay 驗證 | **PR #1 後 P0 sprint** | Follow-up |
+| **M3** | Postgres-backed sanctions / PEP rescan 狀態寫入與查詢路徑 | **PR #1 後 P0 sprint** | Follow-up |
+| **M4** | AML / SAR candidate persistence 與 monthly report query 收斂 | **PR #1 後 P0 sprint** | Follow-up |
+| **M5** | DB transaction 邊界與 cross-table consistency（KYC record、freeze、audit event）驗證 | **PR #1 後 P0 sprint** | Follow-up |
+| **M6** | Secret / config 分層測試：dev mock、test fixture、production required secret 三態明確化 | **PR #1 後 P0 sprint** | Follow-up |
+| **M7** | Postgres migration metadata 與 SQLx offline artifacts 對齊最終 repository queries | **PR #1 後 P0 sprint** | Follow-up |
+
+### 0.3 待完成（Frontend / 整合 ⏳）
 
 | 項目 | 狀態 | 阻擋 |
 |------|------|------|
-| **真實 SumSub Web SDK iframe 載入** | ⏳ Tier-2 page 仍為「虛框 + 按鈕佔位」（[`apps/web/app/kyc/tier-2/page.tsx:82-95`](../apps/web/app/kyc/tier-2/page.tsx)）| 需先跑 [PoC-B Cloudflare Edge runtime](../docs/poc/PRE-FLIGHT-POCS.md) §4.2.1 確認 iframe 在 Edge runtime 下載入 |
+| **真實 SumSub Web SDK iframe 載入** | ❌ PoC-B live verification blocked（2026-05-08）：`next build` 通過，但 `@cloudflare/next-on-pages` 未能在 Windows host 產出 `.vercel/output/static`；且本環境無 SumSub sandbox token，真 iframe 未跑 | 先在 Linux/CI 或修正 Windows toolchain 後重跑 [PoC-B Cloudflare Edge runtime](../docs/poc/PRE-FLIGHT-POCS.md) §4.4；取得 SumSub sandbox credential 後再判定 Edge runtime / Node.js runtime 退路 |
 | **Tier 2/3 OCR / Liveness / EDD** | ⏳ kyc-service 僅 Tier 1 本地驗證實作；Tier 2/3 完整流程需 SumSub iframe + webhook 端到端 | 同上 |
 | **Self-exclusion 名單比對** | ⏳ §2.4.1 step 3「對 self-excluded 名單比對」未在 kyc-service 實作 | 待 SPEC-006 §5.4 落地後跨 service 整合 |
 | **Daily batch screening rescan scheduler** | ⏳ `/internal/screening/rescans` 為手動 API；§6 「每日 batch」cron 排程未實作 | 動工排程基礎設施（Temporal / Airflow / cron）後接入 |
@@ -42,12 +59,12 @@ SPEC-005 的工程實作已落地於 `kyc-service`、`mock-sumsub`、`packages/t
 | **真實 SumSub sandbox 帳號 + 合約** | ⏳ 營運啟用項 | 不阻擋工程，但阻擋實際 KYC 流程上線 |
 | **監管報表提交管道**（執照地 FIU 整合）| ⏳ 營運啟用項 | 不阻擋工程 |
 
-### 0.3 進入 PR #1 acceptance 之條件
+### 0.4 進入 PR #1 acceptance 之條件
 
-- 不阻擋 PR #1（§0.1 backend 完整、§0.2 待完成項目都屬「PR #1 後」工作）
+- 不阻擋 PR #1（§0.1 backend in-memory contract 完整；§0.2 中 B1 / B3 已 resolved，B2 待 SPEC-005a，M1-M7 屬 PR #1 後 P0 sprint；§0.3 待完成項目多屬「PR #1 後」工作）
 - 但 SPEC-005 §0 不可再標 ✅ Complete，避免誤導 Compliance / 監管面試陳述
-- PR #1 merge 後第一輪 sprint 之優先級：跑 PoC-B → 整合真實 SumSub iframe → §0.2 第一列轉 ✅
-- 外部供應商合約、真實 SumSub / Onfido sandbox 帳號、監管報表提交管道與 Compliance Officer 實際作業配置屬營運啟用項；不阻塞本 SPEC 之 backend 工程完成
+- PR #1 merge 後第一輪 sprint 之優先級：跑 PoC-B → 整合真實 SumSub iframe → §0.3 第一列轉 ✅；同步啟動 §0.2 M1-M7 backend P0 follow-up
+- 外部供應商合約、真實 SumSub / Onfido sandbox 帳號、監管報表提交管道與 Compliance Officer 實際作業配置屬營運啟用項；不阻塞本 SPEC 之 backend in-memory contract 完成
 
 ## 1. Objective
 
@@ -146,12 +163,12 @@ def effective_monthly_income(user) -> int | None:
 
 ### 3.1 推薦組合（依成本與覆蓋）
 
-| 工具 | 用途 | 月費估算 |
-|------|------|---------|
-| **SumSub** | 主要 KYC（OCR + Liveness + Sanctions + PEP）| US$0.50 / 次比對 |
-| **iProov** | 進階 Liveness（Tier 3 視訊驗證） | US$2 / 次 |
-| **ComplyAdvantage** | 持續制裁名單篩查（Tier 2/3 monthly rescan）| US$500 / 月 base |
-| **Sift / Sardine** | 行為與裝置指紋風險評分 | US$0.005 / event |
+| 工具 | 用途 | 月費估算 | Adapter slot |
+|------|------|---------|--------------|
+| **SumSub** | 主要 KYC（OCR + Liveness + Sanctions + PEP）| US$0.50 / 次比對 | `sumsub`；Tier 2 single-stage，Tier 3 stage 1 |
+| **iProov** | 進階 Liveness（Tier 3 視訊驗證） | US$2 / 次 | `iproov`；Tier 3 stage 2 after SumSub submit |
+| **ComplyAdvantage** | 持續制裁名單篩查（Tier 2/3 monthly rescan）| US$500 / 月 base | none in frontend adapter chain |
+| **Sift / Sardine** | 行為與裝置指紋風險評分 | US$0.005 / event | none in frontend adapter chain |
 
 > SumSub 涵蓋 90% 需求；其他為補強。**MVP 階段只接 SumSub**，Tier 3 才啟用其他。
 
@@ -183,7 +200,7 @@ Body 範例:
   "externalUserId": "user_42",
   "type": "applicantReviewed",
   "reviewResult": {
-    "reviewAnswer": "GREEN" | "RED"
+    "reviewAnswer": "GREEN" | "RED" | "YELLOW"
   },
   "kycReason": "...",
   "sanctionMatches": [...]
@@ -193,8 +210,10 @@ Body 範例:
 **強制要求**：
 - HMAC 驗證失敗直接 401，不處理
 - `externalUserId` 必須能對應到內部 user_id
-- 處理結果以 `applicantId` 為冪等鍵
-- review = `RED` 時自動凍結帳戶（待人工複審），不立即停權
+- 處理結果以 `SHA256(raw_payload)` 為冪等鍵，對應 `kyc_webhook_events.raw_payload_sha256 UNIQUE`；`applicantId` 僅用於對應 provider applicant，不可作為 webhook event 去重鍵
+- review = `GREEN` 時通過升級；review = `YELLOW` 時維持 `Pending`，等待下一次 webhook / 補件結果
+- review = `RED` 時自動凍結帳戶（待人工複審），不立即停權；此要求由 §0.2 B1 追蹤至 PR #1 merge 前落地
+- `sanctionMatches` 非空時直接 `Frozen`，覆蓋 `reviewAnswer` 判定
 
 ## 4. KYC 資料 schema
 
@@ -260,6 +279,8 @@ PEP 不是禁止對象，但需 EDD：
 - 自動標記
 - 帳戶限制升級至 Tier 3
 - 每次大額儲值需 Compliance 預核
+
+Frontend Tier 3 EDD routing is the sequential SumSub + iProov adapter chain in SPEC-005a §3.4. SumSub remains stage 1 for document/EDD collection; iProov is stage 2 for advanced liveness after SumSub emits `submitted`.
 
 ## 7. AML 交易監控
 

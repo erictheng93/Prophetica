@@ -239,11 +239,16 @@ Commit SHA of live verification: ___
 > **Artifacts 已就緒**：見 [`edge-runtime/README.md`](./edge-runtime/README.md) playbook、[`edge-runtime/scenarios.md`](./edge-runtime/scenarios.md) 5 場景 code snippets。
 
 ```
-Status: 🟢 Desk Research Done · 🟡 Live Verification Pending
+Status: ❌ Live Verification Blocked (Pages adapter output not generated)
 Desk Research Date: 2026-05-07
-Live Executor: TBD (前端工程師 + DevOps)
-Live Started: TBD
-Live Completed: TBD
+Live Executor: Codex on Windows host (Asia/Taipei)
+Live Started: 2026-05-08
+Live Completed: 2026-05-08 (blocked before preview deploy)
+Cloudflare account/project: ✅ wrangler authenticated as service@dacit.net; created `prophetica-web-poc`
+Wrangler CLI: ✅ 4.58.0 (update available: 4.90.0)
+Tunnel tooling: ⚠️ `cloudflared` installed; `ngrok` absent; no tunnel URL configured
+SumSub sandbox token: ❌ missing (`SUMSUB_*` env not present); real SumSub adapter still throws `not_implemented`
+Mobile devices: ❌ not available in Codex host; iOS/Android WebRTC not exercised
 
 Desk Research 結論（preliminary，無實機 deployment）：
   ✅ Scenario A (KYC iframe)        — Likely Pass（SumSub iframe 走 Web Crypto；Workers V8 已支援）
@@ -252,34 +257,51 @@ Desk Research 結論（preliminary，無實機 deployment）：
   ✅ Scenario D (fetch behaviour)   — Likely Pass（TanStack Query v5 abstracted；minor edge cases acceptable）
   ✅ Scenario E (env binding)       — Likely Pass（next-on-pages 已 bridge wrangler.toml ↔ process.env 差異）
 
-Live Verification 結果（執行後回填）：
+Live Verification 結果：
   Scenario A (KYC iframe):
-    iframe load:        ☐ OK
-    HMAC verify:        ☐ OK
-    P95 < 60s:          ☐ OK
+    iframe load:        ❌ Blocked before deploy; `.vercel/output/static` was not generated.
+    HMAC verify:        ❌ Not run; no `SUMSUB_SANDBOX_APP_TOKEN` / `SUMSUB_SANDBOX_SECRET` / webhook tunnel.
+    P95 < 60s:          ❌ Not run; no real SumSub sandbox or mobile device flow.
+    offending log:
+      - `next-on-pages` on Windows: `SHELLAC COMMAND FAILED! Executing: pnpm --version ... Unexpected error: {"cmd":"pnpm --version","stdout":"","stderr":""}`
+      - shim retry: `rtk pnpm --filter @prophetica/web exec next-on-pages` timed out after 240s and left no `.vercel/output/static`.
+      - env scan: no `SUMSUB_*` / `KYC_SERVICE_BASE_URL` values in process env.
   Scenario B (WebSocket fan-out):
-    HTTP 101 upgrade:   ☐ OK
-    seq monotonic:      ☐ OK
-    reconnect + gap:    ☐ OK
-    P99 < 30ms:         ☐ OK
+    HTTP 101 upgrade:   ❌ Not run; no Pages preview URL and no ws-gateway `wss://` tunnel.
+    seq monotonic:      ❌ Not run; no broadcast stream observed.
+    reconnect + gap:    ❌ Not run; no deployed client session.
+    P99 < 30ms:         ❌ Not run; no remote WS sample.
+    offending log:
+      - `where.exe ngrok` returned no match.
+      - `rg NEXT_PUBLIC_WS_GATEWAY_URL` found only PoC snippet references, no configured endpoint.
   Scenario C (Server Actions):
-    pnpm build clean:   ☐ OK / ☐ Fail (offending package: ___)
-    Action renders:     ☐ OK / ☐ Fail
+    pnpm build clean:   ✅ OK for `rtk pnpm --filter @prophetica/web build`; only webpack cache warnings from `next-intl` dynamic import parsing.
+    Pages adapter:      ❌ Fail; `next-on-pages` did not produce Pages output on this Windows host.
+    Action renders:     ❌ Not run; no preview deployment.
+    offending log:
+      - `@cloudflare/next-on-pages CLI v.1.13.16`
+      - `Warning: ... on a Windows system ... Vercel CLI ... does not work reliably on Windows`
+      - `Unexpected error: {"cmd":"pnpm --version","stdout":"","stderr":""}`
   Scenario D (fetch):
-    AbortController:    ☐ OK
-    TanStack retry:     ☐ OK
+    AbortController:    ❌ Not run in Edge preview; blocked by Pages output generation.
+    TanStack retry:     ❌ Not run in Edge preview; blocked by Pages output generation.
+    offending log:
+      - no deployable `.vercel/output/static`; `Test-Path apps/web/.vercel/output/static` returned `False`.
   Scenario E (env binding):
-    PUBLIC_FOO client:  ☐ OK
-    SECRET_KEY server:  ☐ OK
-    no client leakage:  ☐ OK (grep .next/static/ 結果)
+    PUBLIC_FOO client:  ❌ Not run in preview; added `apps/web/wrangler.toml` with non-secret vars only.
+    SECRET_KEY server:  ❌ Not run; `SUMSUB_WEBHOOK_SECRET` not configured via Pages secret in this environment.
+    no client leakage:  ✅ Local static bundle check did not find `SUMSUB_WEBHOOK_SECRET` under `.next/static`; committed config contains only the secret name in a comment, not a value.
+    offending log:
+      - `Get-ChildItem Env:*SUMSUB*` returned no entries.
+      - `Test-Path apps/web/.vercel/output/static` returned `False`, so Pages env binding could not be exercised.
 
 Final decision:
   [ ] Proceed with Edge runtime (all 5 scenarios pass)
   [ ] Switch to Node.js runtime (any scenario fails build)
-  [ ] Hybrid (apps/web Edge + apps/web-bff Node.js for failing scenarios)
+  [x] Hybrid / rerun required: app `next build` passes, but Pages adapter generation must run on Linux/CI or a fixed Windows toolchain before Edge-vs-Node runtime can be decided.
 
-Commit SHA of live verification: ___
-ADR (if Node.js / Hybrid chosen): ADR-XXXX
+Commit SHA of live verification: working tree (not committed)
+ADR (if Node.js / Hybrid chosen): pending; do not open until rerun proves runtime failure after Pages output is generated.
 ```
 
 ---

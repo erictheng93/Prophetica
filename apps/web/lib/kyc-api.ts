@@ -3,10 +3,12 @@ import type {
   KycClient,
   KycStatus,
   KycStatusView,
+  KycTargetTier,
   KycTier,
   StartKycUpgradeResponse,
   VerifyTierOneResponse,
 } from "@prophetica/ts-sdk";
+import { buildKycIdempotencyKey } from "./kyc-idempotency.js";
 
 export const KYC_FALLBACK_USER_ID = "user_01";
 
@@ -21,6 +23,8 @@ export interface KycOverview {
   status: KycStatus;
   provider: string | null;
   providerApplicantId: string | null;
+  country: string | null;
+  tier1RecordId: string | null;
   declaredMonthlyIncome: number | null;
   monthlyLimitPoints: number | null;
   submittedAt: string | null;
@@ -48,9 +52,9 @@ export interface SubmitTierOneVerificationInput {
 }
 
 export interface StartKycUpgradeInput {
-  userId?: string;
-  targetTier: Exclude<KycTier, "TIER_0">;
+  targetTier: KycTargetTier;
   declaredMonthlyIncome?: number | null;
+  retryAttempt?: number;
 }
 
 export interface KycMutationOptions {
@@ -83,6 +87,8 @@ export async function fetchKycOverview(
         status: "pending",
         provider: null,
         providerApplicantId: null,
+        country: null,
+        tier1RecordId: null,
         declaredMonthlyIncome: null,
         submittedAt: null,
         reviewedAt: null,
@@ -97,7 +103,7 @@ export async function submitTierOneVerification(
   input: SubmitTierOneVerificationInput,
   options: KycMutationOptions = {},
 ): Promise<VerifyTierOneResponse> {
-  const { userId, kycClient } = await mutationContext(input.userId, options);
+  const { userId, kycClient } = await mutationContext(options);
   return kycClient.verifyTierOne({
     userId,
     legalName: input.legalName,
@@ -112,12 +118,28 @@ export async function startKycUpgrade(
   input: StartKycUpgradeInput,
   options: KycMutationOptions = {},
 ): Promise<StartKycUpgradeResponse> {
-  const { userId, kycClient } = await mutationContext(input.userId, options);
+  const { userId, kycClient } = await mutationContext(options);
+  let tier1RecordId: string | null = null;
+  try {
+    tier1RecordId = (await kycClient.getStatus(userId)).tier1RecordId;
+  } catch {
+    tier1RecordId = null;
+  }
   return kycClient.startUpgrade({
     userId,
     targetTier: input.targetTier,
     declaredMonthlyIncome: input.declaredMonthlyIncome,
+    idempotencyKey: buildKycIdempotencyKey({
+      userId,
+      targetTier: input.targetTier,
+      tier1RecordId,
+      retryAttempt: input.retryAttempt,
+    }),
   });
+}
+
+export function resolveKycUserId(userIdOption?: string): string {
+  return userIdOption ?? process.env.PROPHETICA_DEV_USER_ID ?? KYC_FALLBACK_USER_ID;
 }
 
 export function tierMonthlyLimitPoints(tier: KycTier): number | null {
@@ -133,11 +155,11 @@ export function tierMonthlyLimitPoints(tier: KycTier): number | null {
   }
 }
 
-async function mutationContext(userIdOption: string | undefined, options: KycMutationOptions) {
+async function mutationContext(options: KycMutationOptions) {
   const baseUrl = trimTrailingSlash(
     options.baseUrl ?? process.env.KYC_SERVICE_BASE_URL ?? DEFAULT_KYC_SERVICE_BASE_URL,
   );
-  const userId = userIdOption ?? process.env.PROPHETICA_DEV_USER_ID ?? KYC_FALLBACK_USER_ID;
+  const userId = resolveKycUserId();
   const kycClientFactory = options.kycClientFactory ?? (await loadKycClientFactory());
 
   return {

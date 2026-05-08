@@ -162,6 +162,8 @@ pub enum KycStoreError {
 pub trait KycStore: Clone + Send + Sync + 'static {
     async fn current_record(&self, user_id: &str) -> Result<Option<KycRecord>, KycStoreError>;
 
+    async fn tier_one_record(&self, user_id: &str) -> Result<Option<KycRecord>, KycStoreError>;
+
     async fn verify_tier_one(
         &self,
         draft: TierOneVerificationDraft,
@@ -190,7 +192,7 @@ pub trait KycStore: Clone + Send + Sync + 'static {
     ) -> Result<StartUpgradeOutcome, KycStoreError>;
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct InMemoryKycStore {
     records: Arc<Mutex<Vec<KycRecord>>>,
     idempotency: Arc<Mutex<HashMap<String, StartUpgradeOutcome>>>,
@@ -198,6 +200,28 @@ pub struct InMemoryKycStore {
     webhook_idempotency: Arc<Mutex<HashMap<String, SumsubWebhookOutcome>>>,
     sar_counts: Arc<Mutex<HashMap<String, i64>>>,
     next_id: Arc<AtomicI64>,
+    document_hash_salt: Arc<str>,
+}
+
+impl InMemoryKycStore {
+    #[must_use]
+    pub fn new(document_hash_salt: impl Into<String>) -> Self {
+        Self {
+            records: Arc::default(),
+            idempotency: Arc::default(),
+            tier_one_idempotency: Arc::default(),
+            webhook_idempotency: Arc::default(),
+            sar_counts: Arc::default(),
+            next_id: Arc::default(),
+            document_hash_salt: Arc::from(document_hash_salt.into()),
+        }
+    }
+}
+
+impl Default for InMemoryKycStore {
+    fn default() -> Self {
+        Self::new("dev-only-kyc-document-salt")
+    }
 }
 
 #[async_trait]
@@ -211,6 +235,18 @@ impl KycStore for InMemoryKycStore {
             .iter()
             .filter(|record| record.user_id == user_id)
             .max_by_key(|record| (record.tier.rank(), record.id))
+            .cloned())
+    }
+
+    async fn tier_one_record(&self, user_id: &str) -> Result<Option<KycRecord>, KycStoreError> {
+        let records = self
+            .records
+            .lock()
+            .map_err(|_| KycStoreError::Unavailable)?;
+        Ok(records
+            .iter()
+            .filter(|record| record.user_id == user_id && record.tier == KycTier::Tier1)
+            .max_by_key(|record| record.id)
             .cloned())
     }
 
@@ -231,7 +267,8 @@ impl KycStore for InMemoryKycStore {
             });
         }
 
-        let document_id_hash = hash_document_id(&draft.country, &draft.document_id);
+        let document_id_hash =
+            hash_document_id(&self.document_hash_salt, &draft.country, &draft.document_id);
         {
             let records = self
                 .records
@@ -315,7 +352,7 @@ impl KycStore for InMemoryKycStore {
         record.status = if draft.sanction_matches.is_empty() {
             match draft.review_answer {
                 ReviewAnswer::Green => KycStatus::Passed,
-                ReviewAnswer::Red => KycStatus::Rejected,
+                ReviewAnswer::Red => KycStatus::Frozen,
                 ReviewAnswer::Yellow => KycStatus::Pending,
             }
         } else {
@@ -564,9 +601,7 @@ fn aml_review_reason(ml_score: i32, rule_flags: &[String]) -> Option<&'static st
     }
 }
 
-fn hash_document_id(country: &str, document_id: &str) -> String {
-    let salt = std::env::var("KYC_DOCUMENT_HASH_SALT")
-        .unwrap_or_else(|_| "dev-only-kyc-document-salt".to_owned());
+fn hash_document_id(salt: &str, country: &str, document_id: &str) -> String {
     let normalized = normalize_document_id(country, document_id);
     let mut hasher = Sha256::new();
     hasher.update(salt.as_bytes());

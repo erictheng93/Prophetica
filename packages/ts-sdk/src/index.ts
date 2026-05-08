@@ -12,6 +12,35 @@ export type {
   VerifyTierOneRequest,
   VerifyTierOneResponse,
 } from "./kyc/types.js";
+export {
+  KycSdkError,
+  createIproovMockProvider,
+  createKycProviderForStage,
+  createMockKycProvider,
+  createRealIproovProvider,
+  createRealSumsubProvider,
+  createSumsubMockProvider,
+  selectKycProvider,
+} from "./kyc-provider/index.js";
+export type {
+  KycAdapterChain,
+  KycAdapterStage,
+  KycErrorCode,
+  KycEventListener,
+  KycEventUnsubscribe,
+  KycIdentityProvider,
+  KycInlineOutcome,
+  KycProviderName,
+  KycSdkErrorCode,
+  KycSessionEvent,
+  KycSessionHandle,
+  KycSessionStartParams,
+  KycStep,
+  KycTargetTier,
+  MockKycProviderOptions,
+  SelectKycProviderOptions,
+  SumsubMockProviderOptions,
+} from "./kyc-provider/index.js";
 export { createWalletClient, type WalletClient } from "./wallet/client.js";
 export type {
   EntryDirection,
