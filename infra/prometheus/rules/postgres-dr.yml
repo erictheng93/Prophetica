@@ -1,0 +1,12 @@
+groups:
+  - name: postgres-dr
+    rules:
+      - alert: PostgresWalArchiveFailed
+        expr: increase(postgres_wal_archive_failed_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: P1
+          service: postgres
+        annotations:
+          summary: PostgreSQL WAL archive to R2 failed
+          description: "SPEC-008 B-2 requires WAL continuous archive to R2 with P1 alert on failure."

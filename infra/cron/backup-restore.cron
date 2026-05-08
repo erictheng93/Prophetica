@@ -1,0 +1,11 @@
+# Daily pg_basebackup dual-write to R2 + S3, retained 30 days.
+7 17 * * * BASEBACKUP_RETENTION_DAYS=30 /opt/prophetica/tools/scripts/postgres/pg-basebackup-dual-write.sh
+
+# Weekly restore verification from latest daily snapshot.
+23 18 * * 0 /opt/prophetica/tools/scripts/backup/verify-latest-restore.sh
+
+# Monthly cold archive for critical ledger tables to R2 Object Lock + Glacier.
+41 19 1 * * /opt/prophetica/tools/scripts/backup/monthly-cold-archive.sh
+
+# Monthly full cluster restore drill.
+11 20 2 * * /opt/prophetica/tools/scripts/backup/monthly-full-restore-drill.sh

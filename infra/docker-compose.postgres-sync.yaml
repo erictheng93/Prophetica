@@ -1,0 +1,43 @@
+services:
+  tokyo-primary:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: proph
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: prophetica
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports: ["55432:5432"]
+    volumes:
+      - ./postgres/tokyo-primary/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/tokyo-primary/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./postgres/tokyo-primary/init:/docker-entrypoint-initdb.d:ro
+      - ../tools/scripts/postgres/archive-wal-to-r2.sh:/opt/prophetica/postgres/archive-wal-to-r2.sh:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
+      - "-c"
+      - "hba_file=/etc/postgresql/pg_hba.conf"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proph -d prophetica"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  tokyo-replica:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: proph
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: prophetica
+    ports: ["55433:5432"]
+    volumes:
+      - ./postgres/tokyo-replica/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ../tools/scripts/postgres/init-standby-from-primary.sh:/opt/prophetica/postgres/init-standby-from-primary.sh:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "config_file=/etc/postgresql/postgresql.conf"
+    depends_on:
+      tokyo-primary:
+        condition: service_healthy

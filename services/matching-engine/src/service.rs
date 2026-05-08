@@ -15,6 +15,7 @@ use tonic::{Request, Response, Status};
 use ulid::Ulid;
 
 use crate::{
+    durability::EngineDurabilityGuard,
     order_book::{
         AddOrderResult, NewOrder, OrderBook, OrderBookError, OrderBookSnapshot, OrderId, OrderSide,
         OrderType, Price, Quantity, SnapshotRestingOrder, Symbol,
@@ -37,6 +38,7 @@ pub struct InMemoryEngineService {
     order_routes: Arc<Mutex<HashMap<Vec<u8>, OrderRoute>>>,
     events: broadcast::Sender<EngineEvent>,
     wal_dir: Option<Arc<PathBuf>>,
+    durability: EngineDurabilityGuard,
 }
 
 impl Default for InMemoryEngineService {
@@ -47,6 +49,7 @@ impl Default for InMemoryEngineService {
             order_routes: Arc::default(),
             events,
             wal_dir: None,
+            durability: EngineDurabilityGuard::default(),
         }
     }
 }
@@ -75,6 +78,7 @@ impl EngineService for InMemoryEngineService {
         request: Request<PlaceOrderRequest>,
     ) -> Result<Response<PlaceOrderResponse>, Status> {
         let request = request.into_inner();
+        self.ensure_writes_allowed()?;
         let market_id = required_market_id(request.market_id.as_ref())?;
         let user_id = required_user_id(request.user_id.as_ref())?;
         reject_platform_system_user(user_id)?;
@@ -138,6 +142,7 @@ impl EngineService for InMemoryEngineService {
         request: Request<CancelOrderRequest>,
     ) -> Result<Response<CancelOrderResponse>, Status> {
         let request = request.into_inner();
+        self.ensure_writes_allowed()?;
         let user_id = required_user_id(request.user_id.as_ref())?;
         let order_id = request
             .order_id
@@ -212,6 +217,14 @@ impl InMemoryEngineService {
     pub fn with_wal_dir(wal_dir: PathBuf) -> Self {
         Self {
             wal_dir: Some(Arc::new(wal_dir)),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn with_durability_guard(durability: EngineDurabilityGuard) -> Self {
+        Self {
+            durability,
             ..Self::default()
         }
     }
@@ -444,6 +457,23 @@ impl InMemoryEngineService {
         let path = market_wal_path(wal_dir, market_id);
         wal::append_record(&path, record)
             .map_err(|error| Status::internal(format!("failed to append wal record: {error}")))
+    }
+
+    fn ensure_writes_allowed(&self) -> Result<(), Status> {
+        if self.durability.is_read_only() {
+            let error_code = if self.durability.is_engine_halted() {
+                "ERROR_CODE_MARKET_HALTED"
+            } else {
+                "ERROR_CODE_ENGINE_READ_ONLY"
+            };
+            return Err(status_with_error_code(
+                tonic::Code::FailedPrecondition,
+                "engine primary is read-only",
+                error_code,
+            ));
+        }
+
+        Ok(())
     }
 }
 
@@ -686,20 +716,65 @@ fn proto_order_type(order_type: OrderType) -> ProtoOrderType {
 
 fn map_order_book_error(error: &OrderBookError) -> Status {
     match error {
-        OrderBookError::CancelOwnerMismatch => {
-            Status::permission_denied("order belongs to another user")
-        }
-        OrderBookError::UnknownOrder(_) => Status::not_found("order not found"),
-        OrderBookError::PriceOutOfRange | OrderBookError::ZeroPrice => {
-            Status::invalid_argument("invalid price")
-        }
-        OrderBookError::ZeroQuantity => Status::invalid_argument("invalid quantity"),
-        OrderBookError::DuplicateOrderId(_) => Status::already_exists("duplicate order id"),
-        OrderBookError::SelfTradePrevented => Status::failed_precondition("self trade prevented"),
-        OrderBookError::PostOnlyWouldCross => Status::failed_precondition("post-only would cross"),
-        OrderBookError::FillOrKillWouldNotFill => {
-            Status::failed_precondition("fill-or-kill would not fill")
-        }
-        OrderBookError::SymbolMismatch { .. } => Status::invalid_argument("market mismatch"),
+        OrderBookError::CancelOwnerMismatch => status_with_error_code(
+            tonic::Code::PermissionDenied,
+            "order belongs to another user",
+            "ERROR_CODE_PERMISSION_DENIED",
+        ),
+        OrderBookError::UnknownOrder(_) => status_with_error_code(
+            tonic::Code::NotFound,
+            "order not found",
+            "ERROR_CODE_NOT_FOUND",
+        ),
+        OrderBookError::PriceOutOfRange | OrderBookError::ZeroPrice => status_with_error_code(
+            tonic::Code::InvalidArgument,
+            "invalid price",
+            "ERROR_CODE_INVALID_PRICE",
+        ),
+        OrderBookError::ZeroQuantity => status_with_error_code(
+            tonic::Code::InvalidArgument,
+            "invalid quantity",
+            "ERROR_CODE_INVALID_QUANTITY",
+        ),
+        OrderBookError::DuplicateOrderId(_) => status_with_error_code(
+            tonic::Code::AlreadyExists,
+            "duplicate order id",
+            "ERROR_CODE_ALREADY_EXISTS",
+        ),
+        OrderBookError::SelfTradePrevented => status_with_error_code(
+            tonic::Code::FailedPrecondition,
+            "self trade prevented",
+            "ERROR_CODE_SELF_TRADE_PREVENTED",
+        ),
+        OrderBookError::PostOnlyWouldCross => status_with_error_code(
+            tonic::Code::FailedPrecondition,
+            "post-only would cross",
+            "ERROR_CODE_POST_ONLY_REJECTED",
+        ),
+        OrderBookError::FillOrKillWouldNotFill => status_with_error_code(
+            tonic::Code::FailedPrecondition,
+            "fill-or-kill would not fill",
+            "ERROR_CODE_FOK_NOT_FILLABLE",
+        ),
+        OrderBookError::SymbolMismatch { .. } => status_with_error_code(
+            tonic::Code::InvalidArgument,
+            "market mismatch",
+            "ERROR_CODE_INVALID_ARGUMENT",
+        ),
     }
+}
+
+fn status_with_error_code(
+    code: tonic::Code,
+    message: &'static str,
+    error_code: &'static str,
+) -> Status {
+    let mut status = Status::new(code, message);
+    status.metadata_mut().insert(
+        "x-error-code",
+        error_code
+            .parse()
+            .unwrap_or_else(|_| tonic::metadata::MetadataValue::from_static("ERROR_CODE_INTERNAL")),
+    );
+    status
 }

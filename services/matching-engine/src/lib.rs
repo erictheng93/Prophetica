@@ -3,6 +3,8 @@ pub const DEFAULT_PORT: u16 = 8088;
 pub const DEFAULT_GRPC_PORT: u16 = 9088;
 
 pub mod api;
+pub mod chaos;
+pub mod durability;
 pub mod order_book;
 pub mod projection;
 pub mod sentinel;

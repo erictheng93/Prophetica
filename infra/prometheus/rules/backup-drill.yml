@@ -1,0 +1,22 @@
+groups:
+  - name: backup-drill
+    rules:
+      - alert: BackupRestoreValidationFailedP0
+        expr: increase(backup_restore_invalid_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: P0
+          service: backup
+        annotations:
+          summary: Backup restore validation failed
+          description: "A backup was marked INVALID after restore verification."
+
+      - alert: DrillExecutionFailedP1
+        expr: increase(drill_execution_failed_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: P1
+          service: dr-drill
+        annotations:
+          summary: DR drill execution failed
+          description: "A scheduled SPEC-008 drill failed to complete."

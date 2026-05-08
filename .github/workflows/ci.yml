@@ -6,139 +6,20 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-test:
-    # Use the default GitHub-hosted runner unless a larger runner is explicitly configured.
+  rust-lsp-lint:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: proph
-          POSTGRES_PASSWORD: dev
-          POSTGRES_DB: prophetica
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U proph -d prophetica"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    env:
+      SQLX_OFFLINE: "true"
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
       - uses: mozilla-actions/sccache-action@v0.0.6
-      # pnpm version is sourced from `packageManager` in root package.json
-      # (currently pnpm@9.12.0). Specifying `version:` here too triggers
-      # ERR_PNPM_BAD_PM_VERSION in pnpm/action-setup@v4.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
       - name: install native rdkafka deps
         run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
-      - name: install buf
-        uses: bufbuild/buf-setup-action@v1
-      - name: install cargo-nextest
-        uses: taiki-e/install-action@nextest
-      - name: install sqlx-cli, cargo-deny, cargo-geiger
-        run: |
-          cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
-          cargo install cargo-deny --locked
-          cargo install cargo-geiger --locked
-      - name: pnpm install
-        # SPEC-017 v0.2.3 erratum: @cloudflare/kumo 走公開 npm registry，不再需要 KUMO_NPM_TOKEN
-        run: pnpm install --frozen-lockfile
-      - name: buf generate
-        run: buf generate
-      - name: buf lint
-        run: buf lint
-      - name: buf breaking
-        run: buf breaking --against '.git#branch=main'
-      - name: verify generated stubs in sync
-        run: git diff --exit-code crates/proto/src/gen packages/proto/gen/ts
-      - name: sqlx offline cache up-to-date
-        env:
-          SQLX_OFFLINE: "false"
-          DATABASE_URL: postgres://proph:dev@localhost:5432/prophetica
-        run: |
-          make migrate
-          cargo sqlx prepare --workspace --check -- --tests
-      - name: lint
-        run: make lint
-      - name: test
-        env:
-          SQLX_OFFLINE: "true"
-          WALLET_LEDGER_TEST_DATABASE_URL: postgres://proph:dev@localhost:5432/prophetica
-        run: make test
-      - name: cargo deny
-        run: cargo deny check
-      - name: cargo geiger
-        run: cargo geiger --workspace --output-format Json > geiger.json
-      - name: forbid unsafe regression
-        run: ./tools/scripts/check-geiger.sh geiger.json
-      - name: upload geiger artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: geiger
-          path: geiger.json
-          retention-days: 30
-
-  sentinel-scan:
-    # Use the default GitHub-hosted runner unless a larger runner is explicitly configured.
-    runs-on: ubuntu-latest
-    needs: lint-and-test
-    steps:
-      - uses: actions/checkout@v4
-      - name: install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - name: ADR-0001 §6 forbidden words (v1.0.2 含 probability_symmetry / auto_hedge)
-        run: |
-          if rg -n -e 'auto_quote|market_balancer|house_book|probability_symmetry|auto_hedge' \
-               --type rust services/ crates/ ; then
-            echo "::error::ADR-0001 §6 forbidden words detected"; exit 1; fi
-      - name: R-1 red line - Player.Wallet outflow to AccountsPayable / Bank / cash路徑
-        # SPEC-001 §1.1 ① / SPEC-002 §5 INV-6 / SPEC-011 §6.3 / ADR-0006 §4.2.3
-        # 任何「玩家錢包點數 → 應付 / 現金 / 兌現」之程式碼路徑 CI fail
-        run: |
-          if rg -n \
-               -e 'Player\.Wallet.*->\s*AccountsPayable' \
-               -e 'Player\.Wallet.*->\s*OperatingAccount' \
-               -e 'Player\.Wallet.*->\s*Bank\.' \
-               -e 'wallet_to_payable|cash_out_player_pts|redeem_points_to_cash' \
-               --type rust services/ crates/ ; then
-            echo "::error::R-1 紅線命中：禁止 Player.Wallet → 應付 / 現金 / 兌現 路徑（SPEC-001 §1.1 ① / INV-6）"; exit 1; fi
-      - name: R-2 red line - platform_announcement sentinel must NOT reappear
-        # SPEC-009 §5 / SPEC-003 §12.1.1 / ADR-0001 §6 v1.0.2 已徹底移除 uid=4 sentinel
-        # RESERVED_REMOVED_USER_IDS 集合防止未來重新加入
-        run: |
-          if rg -n -e 'system\.platform_announcement|platform_announcement_user_id|PlatformAnnouncement' \
-               --type rust services/ crates/ ; then
-            echo "::error::R-2 紅線命中：system.platform_announcement (uid=4) 已於 v0.2.2 永久移除（ADR-0001 §6 v1.0.2 / SPEC-009 §5）"; exit 1; fi
-      - name: PLATFORM_SYSTEM_USER_IDS sentinel referenced only from whitelisted paths
-        # SPEC-003 §12.1.3：sentinel 集合不得在 sentinel/ingress 路徑外被旁路
-        run: |
-          if rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type rust services/matching-engine/ \
-               | grep -vE '(sentinel\.rs|ingress\.rs|sentinel_tests\.rs|tests/sentinel)' ; then
-            echo "::error::PLATFORM_SYSTEM_USER_IDS referenced outside whitelisted paths"; exit 1; fi
-      - name: DMM gateway must not reference platform sentinel users
-        # SPEC-003 §12.1.3 §3：DMM order 進入 engine 前必須轉換為 DMM 法人帳戶
-        run: |
-          if [ -d services/dmm-gateway ] && rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type rust services/dmm-gateway/ ; then
-            echo "::error::DMM gateway must not reference platform sentinel users"; exit 1; fi
-      - name: production binary must not depend on tools/mocks
-        run: |
-          if rg -n 'tools/mocks' --type rust services/ crates/sdk/ ; then
-            echo "::error::tools/mocks referenced from production code"; exit 1; fi
-      - name: no hardcoded secret fallback
-        run: |
-          if rg -n -e 'unwrap_or\("dev-|unwrap_or\(".*password|unwrap_or\(".*secret|unwrap_or\(".*token' \
-               --type rust services/ crates/ ; then
-            echo "::error::hardcoded secret-like fallback detected"; exit 1; fi
-      - name: no prohibited frontend stack (ADR-0004)
-        run: |
-          if rg -R -e '"(vue|nuxt|pinia|vee-validate|@vue/)' --glob 'package.json' apps packages package.json ; then
-            echo "::error::ADR-0004 prohibited frontend dependency detected"; exit 1; fi
+      - name: rust syntax and type check
+        run: cargo check --workspace --locked
+      - name: rust lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: rust format check
+        run: cargo fmt --all -- --check

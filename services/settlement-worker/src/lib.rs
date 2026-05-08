@@ -98,20 +98,45 @@ pub enum SettlementExecutionError {
 
 pub struct SettlementBatchRunner {
     batches: Vec<SettlementBatch>,
+    halted: bool,
 }
 
 impl SettlementBatchRunner {
     #[must_use]
     pub fn new(batches: Vec<SettlementBatch>) -> Self {
-        Self { batches }
+        Self {
+            batches,
+            halted: false,
+        }
+    }
+
+    #[must_use]
+    pub fn halted(batches: Vec<SettlementBatch>) -> Self {
+        Self {
+            batches,
+            halted: true,
+        }
     }
 
     pub fn run_with_retry(
         self,
+        progress: SettlementProgress,
+        execute: impl FnMut(&SettlementBatch) -> Result<(), SettlementExecutionError>,
+    ) -> SettlementProgress {
+        let halted = self.halted;
+        self.run_with_retry_and_halt_check(progress, move || halted, execute)
+    }
+
+    pub fn run_with_retry_and_halt_check(
+        self,
         mut progress: SettlementProgress,
+        mut is_halted: impl FnMut() -> bool,
         mut execute: impl FnMut(&SettlementBatch) -> Result<(), SettlementExecutionError>,
     ) -> SettlementProgress {
         for batch in self.batches {
+            if is_halted() {
+                return progress;
+            }
             if progress.completed_batches.contains(&batch.batch_id) {
                 continue;
             }
@@ -133,6 +158,26 @@ impl SettlementBatchRunner {
         }
 
         progress
+    }
+
+    pub fn run_with_retry_and_halt_snapshot(
+        self,
+        progress: SettlementProgress,
+        snapshot: &sdk::feature_flags::HaltFlagSnapshot,
+        execute: impl FnMut(&SettlementBatch) -> Result<(), SettlementExecutionError>,
+    ) -> SettlementProgress {
+        let halted = snapshot.enabled;
+        self.run_with_retry_and_halt_check(progress, move || halted, execute)
+    }
+
+    pub fn run_with_retry_and_halt_reader(
+        self,
+        progress: SettlementProgress,
+        reader: &impl sdk::feature_flags::EngineHaltFlagReader,
+        execute: impl FnMut(&SettlementBatch) -> Result<(), SettlementExecutionError>,
+    ) -> SettlementProgress {
+        let snapshot = reader.engine_halt_snapshot();
+        self.run_with_retry_and_halt_snapshot(progress, &snapshot, execute)
     }
 }
 
@@ -348,5 +393,110 @@ mod tests {
                 .completed_batches
                 .contains("mkt-election:batch:0001")
         );
+    }
+
+    #[test]
+    fn halted_batch_runner_pauses_settlement_batches() {
+        let batches = build_settlement_batches(
+            "mkt-election",
+            [Position::new("pos-yes", "user_01", Outcome::Yes, 100, 38)],
+        );
+        let mut executed = 0;
+
+        let progress = SettlementBatchRunner::halted(batches).run_with_retry(
+            SettlementProgress::default(),
+            |_batch| {
+                executed += 1;
+                Ok(())
+            },
+        );
+
+        assert_eq!(executed, 0);
+        assert!(progress.records.is_empty());
+    }
+
+    #[test]
+    fn batch_runner_checks_runtime_halt_before_each_batch() {
+        let batches = build_settlement_batches(
+            "mkt-election",
+            [
+                Position::new("pos-1", "user_01", Outcome::Yes, 1, 50),
+                Position::new("pos-2", "user_02", Outcome::Yes, 1, 50),
+            ],
+        );
+        let halt_after_first_batch = std::cell::Cell::new(false);
+        let mut executed = 0;
+
+        let progress = SettlementBatchRunner::new(batches).run_with_retry_and_halt_check(
+            SettlementProgress::default(),
+            || halt_after_first_batch.get(),
+            |_batch| {
+                executed += 1;
+                halt_after_first_batch.set(true);
+                Ok(())
+            },
+        );
+
+        assert_eq!(executed, 1);
+        assert_eq!(progress.records.len(), 1);
+        assert!(
+            progress
+                .completed_batches
+                .contains("mkt-election:batch:0001")
+        );
+    }
+
+    #[test]
+    fn batch_runner_pauses_when_shared_halt_snapshot_is_enabled() {
+        let batches = build_settlement_batches(
+            "mkt-election",
+            [Position::new("pos-1", "user_01", Outcome::Yes, 1, 50)],
+        );
+        let mut executed = 0;
+        let snapshot = sdk::feature_flags::HaltFlagSnapshot::enabled(
+            "incident-123",
+            "ops incident",
+            "senior-1",
+        );
+
+        let progress = SettlementBatchRunner::new(batches).run_with_retry_and_halt_snapshot(
+            SettlementProgress::default(),
+            &snapshot,
+            |_batch| {
+                executed += 1;
+                Ok(())
+            },
+        );
+
+        assert_eq!(executed, 0);
+        assert!(progress.records.is_empty());
+    }
+
+    #[test]
+    fn batch_runner_pauses_when_shared_halt_reader_is_enabled() {
+        let flags = sdk::feature_flags::InMemoryFeatureFlagStore::default();
+        sdk::feature_flags::EngineHaltFlagWriter::halt_engine(
+            &flags,
+            "incident-123",
+            "ops incident",
+            "senior-1",
+        );
+        let batches = build_settlement_batches(
+            "mkt-election",
+            [Position::new("pos-1", "user_01", Outcome::Yes, 1, 50)],
+        );
+        let mut executed = 0;
+
+        let progress = SettlementBatchRunner::new(batches).run_with_retry_and_halt_reader(
+            SettlementProgress::default(),
+            &flags,
+            |_batch| {
+                executed += 1;
+                Ok(())
+            },
+        );
+
+        assert_eq!(executed, 0);
+        assert!(progress.records.is_empty());
     }
 }

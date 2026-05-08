@@ -1,0 +1,34 @@
+name: security-audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 19 * * *"
+
+jobs:
+  rust-security-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - uses: mozilla-actions/sccache-action@v0.0.6
+      - name: install cargo-geiger
+        timeout-minutes: 20
+        run: cargo install cargo-geiger --locked
+      - uses: dtolnay/rust-toolchain@1.88
+      - name: install cargo-deny
+        timeout-minutes: 20
+        run: cargo +1.88 install cargo-deny --version 0.19.4 --locked
+      - name: cargo deny
+        run: cargo +1.88 deny check
+      - name: cargo geiger
+        run: cargo +1.85 geiger --workspace --output-format Json > geiger.json
+      - name: forbid unsafe regression
+        run: ./tools/scripts/check-geiger.sh geiger.json
+      - name: upload geiger artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: geiger
+          path: geiger.json
+          retention-days: 30

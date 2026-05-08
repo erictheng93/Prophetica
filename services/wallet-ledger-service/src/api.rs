@@ -287,8 +287,8 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::ledger::{
-        AccountBalance, CommittedLedgerTransaction, LedgerEntryView, LedgerStore, LedgerStoreError,
-        PostTransactionDraft,
+        AccountBalance, CommittedLedgerTransaction, ExpiredIdempotencyRecord, LedgerEntryView,
+        LedgerStore, LedgerStoreError, PostTransactionDraft,
     };
 
     #[tokio::test]
@@ -688,6 +688,12 @@ mod tests {
                 .take(limit)
                 .cloned()
                 .collect())
+        }
+
+        async fn delete_expired_idempotency_records(
+            &self,
+        ) -> Result<Vec<ExpiredIdempotencyRecord>, LedgerStoreError> {
+            Ok(Vec::new())
         }
     }
 

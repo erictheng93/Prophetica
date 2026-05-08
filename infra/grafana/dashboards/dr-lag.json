@@ -1,0 +1,37 @@
+{
+  "title": "SPEC-008 DR Lag",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Kafka MM2 Lag Offsets",
+      "targets": [
+        {
+          "expr": "kafka_mm2_lag_offsets",
+          "legendFormat": "{{topic}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DR Kafka Offset Lag",
+      "targets": [
+        {
+          "expr": "dr_kafka_offset_lag_offsets",
+          "legendFormat": "max offset lag"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "DR Reconciliation Mismatch",
+      "targets": [
+        {
+          "expr": "dr_reconciliation_mismatch_total",
+          "legendFormat": "mismatch"
+        }
+      ]
+    }
+  ]
+}

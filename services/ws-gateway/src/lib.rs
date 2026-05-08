@@ -11,6 +11,46 @@ pub struct SettlementStatusPayload {
     pub your_payout: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineStatePayload {
+    pub event: &'static str,
+    pub state: &'static str,
+}
+
+#[must_use]
+pub const fn halted_state_payload() -> EngineStatePayload {
+    EngineStatePayload {
+        event: "engine_state",
+        state: "HALTED",
+    }
+}
+
+#[must_use]
+pub const fn resumed_state_payload() -> EngineStatePayload {
+    EngineStatePayload {
+        event: "engine_state",
+        state: "OPEN",
+    }
+}
+
+#[must_use]
+pub const fn engine_state_payload_from_halt_snapshot(
+    snapshot: &sdk::feature_flags::HaltFlagSnapshot,
+) -> Option<EngineStatePayload> {
+    if snapshot.enabled {
+        Some(halted_state_payload())
+    } else {
+        None
+    }
+}
+
+#[must_use]
+pub fn engine_state_payload_from_halt_reader(
+    reader: &impl sdk::feature_flags::EngineHaltFlagReader,
+) -> Option<EngineStatePayload> {
+    engine_state_payload_from_halt_snapshot(&reader.engine_halt_snapshot())
+}
+
 #[must_use]
 pub fn settlement_status_payload(
     market_id: impl Into<String>,
@@ -31,7 +71,7 @@ pub fn settlement_status_payload(
 
 #[cfg(test)]
 mod tests {
-    use super::settlement_status_payload;
+    use super::{halted_state_payload, settlement_status_payload};
 
     #[test]
     fn pending_payload_includes_result_and_dispute_deadline() {
@@ -65,5 +105,53 @@ mod tests {
 
         assert_eq!(payload.status, "SETTLED");
         assert_eq!(payload.your_payout, Some(6_500));
+    }
+
+    #[test]
+    fn halted_state_payload_notifies_clients() {
+        let payload = halted_state_payload();
+
+        assert_eq!(payload.event, "engine_state");
+        assert_eq!(payload.state, "HALTED");
+    }
+
+    #[test]
+    fn shared_halt_snapshot_drives_engine_state_payload() {
+        let snapshot = sdk::feature_flags::HaltFlagSnapshot::enabled(
+            "incident-123",
+            "ops incident",
+            "senior-1",
+        );
+
+        let Some(payload) = super::engine_state_payload_from_halt_snapshot(&snapshot) else {
+            panic!("enabled halt snapshot should produce a broadcast payload");
+        };
+
+        assert_eq!(payload.event, "engine_state");
+        assert_eq!(payload.state, "HALTED");
+
+        assert!(
+            super::engine_state_payload_from_halt_snapshot(
+                &sdk::feature_flags::HaltFlagSnapshot::disabled("cto-1")
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn shared_halt_reader_drives_engine_state_payload() {
+        let flags = sdk::feature_flags::InMemoryFeatureFlagStore::default();
+        sdk::feature_flags::EngineHaltFlagWriter::halt_engine(
+            &flags,
+            "incident-123",
+            "ops incident",
+            "senior-1",
+        );
+
+        let Some(payload) = super::engine_state_payload_from_halt_reader(&flags) else {
+            panic!("enabled halt reader should produce a broadcast payload");
+        };
+
+        assert_eq!(payload.state, "HALTED");
     }
 }

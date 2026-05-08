@@ -1,0 +1,12 @@
+services:
+  mirrormaker2-tokyo-singapore:
+    image: apache/kafka:3.8.0
+    command:
+      - /opt/kafka/bin/connect-mirror-maker.sh
+      - /etc/kafka/mm2/tokyo-to-singapore.properties
+    environment:
+      TOKYO_KAFKA_BOOTSTRAP_SERVERS: ${TOKYO_KAFKA_BOOTSTRAP_SERVERS}
+      SINGAPORE_KAFKA_BOOTSTRAP_SERVERS: ${SINGAPORE_KAFKA_BOOTSTRAP_SERVERS}
+    volumes:
+      - ./kafka/mm2:/etc/kafka/mm2:ro
+    restart: unless-stopped

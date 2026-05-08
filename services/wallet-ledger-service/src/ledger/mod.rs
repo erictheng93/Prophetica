@@ -87,6 +87,16 @@ pub struct LedgerEntryView {
     pub balance_after_minor_units: i64,
 }
 
+#[must_use]
+pub fn webhook_idempotency_key(gateway_transaction_id: &str) -> String {
+    format!("gateway:{gateway_transaction_id}")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpiredIdempotencyRecord {
+    pub key: String,
+}
+
 #[derive(Debug, Error)]
 pub enum PostTransactionError {
     #[error(transparent)]
@@ -150,6 +160,10 @@ pub trait LedgerStore {
         account_code: &str,
         limit: i64,
     ) -> Result<Vec<LedgerEntryView>, LedgerStoreError>;
+
+    async fn delete_expired_idempotency_records(
+        &self,
+    ) -> Result<Vec<ExpiredIdempotencyRecord>, LedgerStoreError>;
 }
 
 #[derive(Debug, Clone)]
@@ -259,6 +273,17 @@ where
     ) -> Result<Vec<LedgerEntryView>, LedgerStoreError> {
         self.store.list_entries(account_code, limit).await
     }
+
+    /// Deletes expired idempotency records for the daily retention cleanup.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LedgerStoreError`] when the backing store cannot run the cleanup query.
+    pub async fn cleanup_expired_idempotency_records(
+        &self,
+    ) -> Result<Vec<ExpiredIdempotencyRecord>, LedgerStoreError> {
+        self.store.delete_expired_idempotency_records().await
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -318,6 +343,9 @@ impl LedgerStore for PostgresLedgerStore {
                     )
                 });
         };
+
+        let account_codes = sorted_unique_account_codes(draft);
+        lock_account_codes(&mut tx, &account_codes).await?;
 
         let mut account_ids = Vec::with_capacity(draft.entries.len());
         for entry in &draft.entries {
@@ -412,6 +440,23 @@ impl LedgerStore for PostgresLedgerStore {
             )
             .collect())
     }
+
+    async fn delete_expired_idempotency_records(
+        &self,
+    ) -> Result<Vec<ExpiredIdempotencyRecord>, LedgerStoreError> {
+        let rows = sqlx::query_as::<_, (String,)>(
+            "DELETE FROM idempotency_records \
+             WHERE expires_at <= NOW() \
+             RETURNING key",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(key,)| ExpiredIdempotencyRecord { key })
+            .collect())
+    }
 }
 
 async fn insert_ledger_transaction(
@@ -484,6 +529,31 @@ async fn ensure_account(
     .await?;
 
     Ok(id)
+}
+
+fn sorted_unique_account_codes(draft: &PostTransactionDraft) -> Vec<&str> {
+    let mut account_codes = draft
+        .entries
+        .iter()
+        .map(sdk::ledger::LedgerEntryDraft::account_code)
+        .collect::<Vec<_>>();
+    account_codes.sort_unstable();
+    account_codes.dedup();
+    account_codes
+}
+
+async fn lock_account_codes(
+    tx: &mut Transaction<'_, Postgres>,
+    account_codes: &[&str],
+) -> Result<(), sqlx::Error> {
+    for account_code in account_codes {
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(account_code)
+            .execute(&mut **tx)
+            .await?;
+    }
+
+    Ok(())
 }
 
 async fn lock_accounts(
@@ -574,12 +644,14 @@ mod tests {
     };
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use proptest::prelude::*;
     use sdk::ledger::{LedgerAmount, LedgerEntryDraft};
     use tokio::task::JoinSet;
 
     use super::{
-        AccountBalance, CommittedLedgerTransaction, LedgerEntryView, LedgerService, LedgerStore,
-        LedgerStoreError, PostTransactionDraft,
+        AccountBalance, CommittedLedgerTransaction, ExpiredIdempotencyRecord, LedgerEntryView,
+        LedgerService, LedgerStore, LedgerStoreError, PostTransactionDraft,
+        webhook_idempotency_key,
     };
 
     #[tokio::test]
@@ -619,6 +691,58 @@ mod tests {
         }
 
         assert_eq!(store.commit_count(), 1);
+    }
+
+    proptest! {
+        #[test]
+        fn same_idempotency_key_replayed_up_to_one_hundred_times_commits_once(
+            attempts in 1_usize..=100
+        ) {
+            let runtime = tokio::runtime::Runtime::new()
+                .unwrap_or_else(|error| panic!("runtime should start: {error}"));
+            runtime.block_on(async move {
+                let store = InMemoryLedgerStore::default();
+                let service = LedgerService::new(store.clone());
+                let draft = balanced_draft("deposit:property-100x");
+
+                for _ in 0..attempts {
+                    if let Err(error) = service.post_transaction(draft.clone()).await {
+                        panic!("post should commit or replay: {error}");
+                    }
+                }
+
+                prop_assert_eq!(store.commit_count(), 1);
+                Ok(())
+            })?;
+        }
+    }
+
+    #[tokio::test]
+    async fn cleanup_expired_idempotency_records_deletes_expired_keys() {
+        let store = InMemoryLedgerStore::default();
+        store.seed_expired_idempotency_key("expired-key");
+        let service = LedgerService::new(store.clone());
+
+        let deleted = match service.cleanup_expired_idempotency_records().await {
+            Ok(deleted) => deleted,
+            Err(error) => panic!("cleanup should succeed: {error}"),
+        };
+
+        assert_eq!(
+            deleted,
+            vec![ExpiredIdempotencyRecord {
+                key: "expired-key".to_owned(),
+            }]
+        );
+        assert_eq!(store.expired_idempotency_key_count(), 0);
+    }
+
+    #[test]
+    fn webhook_idempotency_uses_gateway_transaction_id() {
+        assert_eq!(
+            webhook_idempotency_key("txn_01HX"),
+            "gateway:txn_01HX".to_owned()
+        );
     }
 
     #[tokio::test]
@@ -1152,6 +1276,7 @@ mod tests {
     struct InMemoryLedgerStore {
         transactions: Arc<Mutex<Vec<CommittedLedgerTransaction>>>,
         entries: Arc<Mutex<Vec<LedgerEntryView>>>,
+        expired_idempotency_keys: Arc<Mutex<Vec<String>>>,
         next_id: Arc<AtomicI64>,
     }
 
@@ -1160,6 +1285,20 @@ mod tests {
             match self.transactions.lock() {
                 Ok(transactions) => transactions.len(),
                 Err(error) => panic!("transactions lock should not be poisoned: {error}"),
+            }
+        }
+
+        fn seed_expired_idempotency_key(&self, key: &str) {
+            match self.expired_idempotency_keys.lock() {
+                Ok(mut keys) => keys.push(key.to_owned()),
+                Err(error) => panic!("expired keys lock should not be poisoned: {error}"),
+            }
+        }
+
+        fn expired_idempotency_key_count(&self) -> usize {
+            match self.expired_idempotency_keys.lock() {
+                Ok(keys) => keys.len(),
+                Err(error) => panic!("expired keys lock should not be poisoned: {error}"),
             }
         }
     }
@@ -1253,6 +1392,20 @@ mod tests {
                 .filter(|entry| entry.account_code == account_code)
                 .take(limit)
                 .cloned()
+                .collect())
+        }
+
+        async fn delete_expired_idempotency_records(
+            &self,
+        ) -> Result<Vec<ExpiredIdempotencyRecord>, LedgerStoreError> {
+            let keys = match self.expired_idempotency_keys.lock() {
+                Ok(mut keys) => std::mem::take(&mut *keys),
+                Err(error) => panic!("expired keys lock should not be poisoned: {error}"),
+            };
+
+            Ok(keys
+                .into_iter()
+                .map(|key| ExpiredIdempotencyRecord { key })
                 .collect())
         }
     }
