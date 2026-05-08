@@ -26,7 +26,9 @@ import {
   startKycUpgradeAction,
 } from "../_actions";
 import { useKycWebhookPolling } from "../use-kyc-webhook-polling";
+import { useKycMetrics } from "../use-kyc-metrics";
 import { mapLocaleToSumsub } from "@/lib/kyc-locale";
+import type { KycProviderName } from "@prophetica/ts-sdk";
 import {
   initialKycPhase,
   isRetryablePhase,
@@ -47,11 +49,13 @@ export function Tier3LaunchClient({ country }: Tier3LaunchClientProps) {
 
   const [phase, dispatch] = useReducer(reduceKycPhase, initialKycPhase);
   const [retryAttempt, setRetryAttempt] = useState(0);
+  const [providerName, setProviderName] = useState<KycProviderName | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<KycSessionHandle | null>(null);
 
   useKycWebhookPolling(phase, dispatch, refreshKycOverviewAction);
+  useKycMetrics(phase, { tier: "TIER_3", providerName });
 
   useEffect(() => {
     return () => {
@@ -82,6 +86,7 @@ export function Tier3LaunchClient({ country }: Tier3LaunchClientProps) {
     }
 
     const provider = selectKycProvider({ sdkToken: upgrade.sdkToken });
+    setProviderName(provider.name);
     let handle: KycSessionHandle;
     try {
       handle = await provider.mount(target, {
