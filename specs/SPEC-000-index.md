@@ -45,7 +45,8 @@
 
 | ID | 標題 | 摘要 | 狀態 |
 |----|------|------|------|
-| [SPEC-005](./SPEC-005-kyc-aml.md) | KYC/AML 整合 | 分層 KYC、SaaS 整合、制裁名單篩查 | ⚠️ Backend Complete / Frontend Pending · v0.1.3 |
+| [SPEC-005](./SPEC-005-kyc-aml.md) | KYC/AML 整合 | 分層 KYC、SaaS 整合、制裁名單篩查 | ⚠️ Backend in-memory contract / P0 follow-up · v0.1.3 |
+| [SPEC-005a](./SPEC-005a-sumsub-frontend-contract.md) | SumSub 前端整合契約 | `KycIdentityProvider` 抽象、Tier 2 page state machine、idempotency / polling / CSP 紀律 | ⚠️ Contract draft · v0.1.0 |
 | [SPEC-006](./SPEC-006-responsible-gaming.md) | 責任博弈機制 | 自我排除、限額、冷靜期 | 🟢 v0.1 |
 | [SPEC-007](./SPEC-007-observability.md) | 可觀測性與監控 | Metrics/Log/Tracing、SLO、告警、**§6.4 跨服務 Latency Budget**（下單熱路徑 11 hop × P99 時間預算）| 🟢 v0.2.1 draft |
 | [SPEC-008](./SPEC-008-disaster-recovery.md) | 災備與高可用 | **RTO/RPO 拆 region-local + cross-region 兩層（T-2）**、跨區備援、Failover 演練、§7 客戶端容錯可執行契約（v0.2.1 F-2）、§9.3 cross-ref SPEC-010 §9.3 MS-9（v0.2.1 F-1）| 🟢 v0.2.1 |
