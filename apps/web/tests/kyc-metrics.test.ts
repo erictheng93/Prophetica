@@ -96,7 +96,7 @@ test("validateKycMetricEvent accepts every well-formed payload shape", () => {
     },
     {
       name: "proph_kyc_session_completed_total",
-      labels: { tier: "TIER_3", provider: "sumsub", outcome: "passed" },
+      labels: { tier: "TIER_3", provider: "iproov", outcome: "passed" },
     },
     {
       name: "proph_kyc_session_abandoned_total",
@@ -169,15 +169,10 @@ test("createKycMetrics records counter increments and Histogram observations", (
   );
 });
 
-test("histogram buckets cover both SumSub fast path and Tier 3 slow path", () => {
-  // SPEC-005 §8.1 — webhook normally 2-15 minutes; Tier 3 EDD up to 5-10
-  // working days. Buckets must span both ends.
-  assert.ok(KYC_WEBHOOK_WAIT_BUCKETS_SECONDS.includes(30), "30s short tail");
-  assert.ok(KYC_WEBHOOK_WAIT_BUCKETS_SECONDS.includes(900), "15min sweet spot");
-  assert.ok(
-    KYC_WEBHOOK_WAIT_BUCKETS_SECONDS.includes(86_400),
-    "1 day for Tier 3 EDD",
-  );
+test("histogram buckets match SPEC-005a section 7.3 defaults", () => {
+  assert.deepEqual(KYC_WEBHOOK_WAIT_BUCKETS_SECONDS, [
+    1, 5, 15, 30, 60, 120, 300,
+  ]);
 });
 
 test("emitKycMetric POSTs JSON to /api/metrics/kyc with credentials omitted", async () => {

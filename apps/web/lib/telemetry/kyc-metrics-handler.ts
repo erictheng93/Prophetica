@@ -47,7 +47,8 @@ export function handleKycMetricsGet(): MetricsGetResult {
     status: 200,
     body: getProcessKycMetrics().registry.exposition(),
     headers: {
-      "content-type": "text/plain; version=0.0.4; charset=utf-8",
+      "content-type":
+        "application/openmetrics-text; version=1.0.0; charset=utf-8",
     },
   };
 }

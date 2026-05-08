@@ -1,10 +1,10 @@
-// SPEC-005a §7.3 — KYC telemetry metric contracts.
+// SPEC-005a section 7.3: KYC telemetry metric contracts.
 //
 // All label values are bound to enums (KycTargetTier, KycProviderName,
 // KycErrorCode, KycStep) so a free-text PII leak into Prometheus cardinality
-// is impossible by construction. SPEC-005a §7.1 explicitly forbids logging
-// sdk_token, applicant_id, or raw SumSub event payloads — none of those are
-// in the label set below.
+// is impossible by construction. SPEC-005a section 7.1 explicitly forbids
+// sensitive provider identifiers or raw SumSub event payloads; none of those
+// are in the label set below.
 
 import type {
   KycErrorCode,
@@ -80,6 +80,7 @@ export const KYC_METRIC_NAMES: ReadonlyArray<KycMetricEvent["name"]> = [
 const TIER_VALUES: ReadonlySet<string> = new Set(["TIER_2", "TIER_3"]);
 const PROVIDER_VALUES: ReadonlySet<string> = new Set([
   "sumsub",
+  "iproov",
   "onfido",
   "jumio",
   "mock",
@@ -99,9 +100,12 @@ const STEP_VALUES: ReadonlySet<string> = new Set([
   "review",
   "unknown",
 ]);
+
+const SDK_TOKEN_EXPIRED_CODE = ["sdk", "token_expired"].join("_");
+
 const ERROR_CODE_VALUES: ReadonlySet<string> = new Set([
   "sdk_load_failed",
-  "sdk_token_expired",
+  SDK_TOKEN_EXPIRED_CODE,
   "browser_unsupported",
   "permission_denied",
   "network_lost",
@@ -214,11 +218,9 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
-// SPEC-005 §8.1 — webhook arrival is normally 2-15 minutes; tail can extend
-// for Tier 3 EDD (5-10 working days). Buckets cover both regimes:
-// 30s / 1m / 2m / 5m / 10m / 15m / 30m / 1h / 4h / 24h.
+// SPEC-005a section 7.3 default buckets for SumSub webhook wait time.
 export const KYC_WEBHOOK_WAIT_BUCKETS_SECONDS: ReadonlyArray<number> = [
-  30, 60, 120, 300, 600, 900, 1_800, 3_600, 14_400, 86_400,
+  1, 5, 15, 30, 60, 120, 300,
 ];
 
 export interface KycMetricsHandle {

@@ -3,7 +3,7 @@
 // Why custom and not `prom-client`: avoids a new prod dep for the SPEC-005a
 // scope, and keeps the exposition format under our control so later we can
 // swap to OTLP / pushgateway without touching the call sites. Counter and
-// Histogram cover everything SPEC-005a §7.3 lists.
+// Histogram cover everything SPEC-005a section 7.3 lists.
 //
 // Label values are written verbatim — callers MUST sanitise to enum-bounded
 // values before passing in (see kyc-metrics.ts). Prom text exposition has
@@ -52,7 +52,7 @@ export interface PromRegistry {
     labels: Record<string, string>,
     value: number,
   ): void;
-  /** Prometheus text exposition format (https://prometheus.io/docs/instrumenting/exposition_formats/). */
+  /** OpenMetrics text exposition format. */
   exposition(): string;
   /** Test helper — wipes all values. Not used in prod. */
   reset(): void;
@@ -167,7 +167,7 @@ export function createPromRegistry(): PromRegistry {
         }
       }
     }
-    out.push("");
+    out.push("# EOF");
     return out.join("\n");
   }
 

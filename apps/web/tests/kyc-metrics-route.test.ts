@@ -75,12 +75,15 @@ test("POST then GET produces a Prom exposition with the recorded counter", async
   assert.equal(result.status, 200);
   assert.equal(
     result.headers["content-type"],
-    "text/plain; version=0.0.4; charset=utf-8",
+    "application/openmetrics-text; version=1.0.0; charset=utf-8",
   );
+  assert.match(result.body, /^# HELP proph_kyc_session_started_total /m);
+  assert.match(result.body, /^# TYPE proph_kyc_session_started_total counter$/m);
   assert.match(
     result.body,
     /proph_kyc_session_started_total\{tier="TIER_2",provider="sumsub"\} 2/,
   );
+  assert.match(result.body, /^# EOF$/m);
 });
 
 test("getProcessKycMetrics returns the same singleton across calls", () => {

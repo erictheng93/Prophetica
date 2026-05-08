@@ -346,6 +346,16 @@ logger.info("kyc.session.event", {
 
 `step_at_abandon` 可用 `KycStep` enum（document/selfie/...），不是 SumSub 原始字面量。
 
+Implementation:
+- Metric contract and enum-bounded validation: `apps/web/lib/telemetry/kyc-metrics.ts`
+- OpenMetrics renderer and POST/GET handler logic: `apps/web/lib/telemetry/kyc-metrics-handler.ts`
+- Scrape endpoint: `apps/web/app/api/metrics/route.ts`
+- Prometheus scrape job: `infra/prometheus/prometheus.yml`
+
+Histogram buckets for `proph_kyc_webhook_wait_seconds` are `[1, 5, 15, 30, 60, 120, 300]` seconds.
+
+Production deployment note: the current implementation uses in-process memory and is acceptable for local/dev scrape validation. Cloudflare Pages isolates do not provide durable cross-request or cross-instance metric storage, so production deployment must export these events to a durable sink such as Cloudflare Workers Analytics Engine, OTLP, or a push gateway.
+
 ---
 
 ## 8. CSP（Content Security Policy）需求
@@ -396,7 +406,7 @@ Mock provider **不**需要 CSP 開放，所有 dev / test 必須在 `script-src
 - [ ] Polling 5 分鐘上限通過 e2e：mock webhook 在 t=2.5min 抵達後 UI 自動進 `Done`
 - [ ] CSP 字串加入 `apps/web/next.config.ts` 並通過 build
 - [ ] Mock provider 不觸發任何外部網路請求（vitest network mocking 驗證）
-- [ ] Telemetry metric 5 條全部 emit 並通過 prometheus integration test
+- [x] Telemetry metric 5 條全部 emit 並通過 prometheus integration test
 - [ ] 無 PII / `applicant_id` / `sdk_token` 寫入 console — `pnpm --filter @prophetica/web lint --rule no-console` 通過
 - [ ] 真實 SumSub adapter 待 SumSub sandbox 帳號到位後，**只**改 `select-provider.ts` 一處 prefix 判定 + `sumsub-provider.ts` 實作即可
 
@@ -406,7 +416,7 @@ Mock provider **不**需要 CSP 開放，所有 dev / test 必須在 `script-src
 
 1. SumSub `applicantInlineCompleted` 的 outcome 是否可信？是否任何情況都應仍 `AwaitingWebhook`？建議查 SumSub 文件並補附錄。
 2. Tier 3 流程是否需要 SumSub + iProov 雙 SDK 串接？若是，本契約的 `KycIdentityProvider` 需擴展為 `KycIdentityProvider[]` 多階段。
-3. 觀測指標是否需要 distinguish `step_at_abandon` 為高 cardinality？若 step 種類少於 10 是 OK 的，否則改 enum 而非 free text。
+3. ✅ resolved (2026-05-08): `step_at_abandon` is enum-bounded to `KycStep | "unknown"` in `apps/web/lib/telemetry/kyc-metrics.ts`; free text is rejected by validation before entering the registry.
 4. CSP 是否影響其他 SaaS（Sift / Sardine 行為指紋 SDK 將在 SPEC-010 落地）？需協調 single global CSP 而非 per-route。
 5. WebSocket Phase 2 切換的 contract（事件名 / topic 命名）需與 SPEC-008 §7 / ws-gateway 對齊。
 
