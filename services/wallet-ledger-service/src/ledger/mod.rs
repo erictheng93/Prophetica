@@ -344,6 +344,9 @@ impl LedgerStore for PostgresLedgerStore {
                 });
         };
 
+        let account_codes = sorted_unique_account_codes(draft);
+        lock_account_codes(&mut tx, &account_codes).await?;
+
         let mut account_ids = Vec::with_capacity(draft.entries.len());
         for entry in &draft.entries {
             account_ids.push(ensure_account(&mut tx, entry.account_code()).await?);
@@ -526,6 +529,31 @@ async fn ensure_account(
     .await?;
 
     Ok(id)
+}
+
+fn sorted_unique_account_codes(draft: &PostTransactionDraft) -> Vec<&str> {
+    let mut account_codes = draft
+        .entries
+        .iter()
+        .map(sdk::ledger::LedgerEntryDraft::account_code)
+        .collect::<Vec<_>>();
+    account_codes.sort_unstable();
+    account_codes.dedup();
+    account_codes
+}
+
+async fn lock_account_codes(
+    tx: &mut Transaction<'_, Postgres>,
+    account_codes: &[&str],
+) -> Result<(), sqlx::Error> {
+    for account_code in account_codes {
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(account_code)
+            .execute(&mut **tx)
+            .await?;
+    }
+
+    Ok(())
 }
 
 async fn lock_accounts(
