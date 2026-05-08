@@ -50,10 +50,7 @@ export default async function Tier2Page() {
     fetchKycOverview(),
   ]);
 
-  // SPEC-005a §11 open item: KycStatusView does not yet surface the Tier 1
-  // country. Default to TW for the sandbox; the SumSub adapter is gated on
-  // PoC-B so the value is currently advisory only.
-  const country = "TW";
+  const country = overview.country ?? "TW";
 
   return (
     <>

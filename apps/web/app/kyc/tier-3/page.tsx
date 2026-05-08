@@ -85,8 +85,7 @@ export default async function Tier3Page() {
     fetchKycOverview(),
   ]);
 
-  // SPEC-005a §11 open item: country fallback while KycStatusView gap remains.
-  const country = "TW";
+  const country = overview.country ?? "TW";
 
   return (
     <>
