@@ -26,6 +26,7 @@ import {
   startKycUpgradeAction,
 } from "../_actions";
 import { useKycWebhookPolling } from "../use-kyc-webhook-polling";
+import { mapLocaleToSumsub } from "@/lib/kyc-locale";
 import {
   initialKycPhase,
   isRetryablePhase,
@@ -86,7 +87,8 @@ export function Tier3LaunchClient({ country }: Tier3LaunchClientProps) {
       handle = await provider.mount(target, {
         sdkToken: upgrade.sdkToken,
         targetTier: "TIER_3",
-        locale,
+        // SPEC-005a §2 — see Tier 2 client for rationale.
+        locale: mapLocaleToSumsub(locale),
         country,
       });
     } catch {

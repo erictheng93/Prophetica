@@ -26,6 +26,7 @@ import {
   startKycUpgradeAction,
 } from "../_actions";
 import { useKycWebhookPolling } from "../use-kyc-webhook-polling";
+import { mapLocaleToSumsub } from "@/lib/kyc-locale";
 import {
   initialKycPhase,
   isRetryablePhase,
@@ -100,7 +101,9 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
       handle = await provider.mount(target, {
         sdkToken: upgrade.sdkToken,
         targetTier: "TIER_2",
-        locale,
+        // SPEC-005a §2 — SumSub recognises BCP-47 region codes (zh-TW etc),
+        // not the script-tagged zh-Hant that next-intl returns.
+        locale: mapLocaleToSumsub(locale),
         country,
       });
     } catch {
