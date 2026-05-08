@@ -91,6 +91,8 @@ pub struct KycStatusResponse {
     pub status: KycStatus,
     pub provider: Option<String>,
     pub provider_applicant_id: Option<String>,
+    pub country: Option<String>,
+    pub tier1_record_id: Option<String>,
     pub declared_monthly_income: Option<i64>,
     pub submitted_at: Option<String>,
     pub reviewed_at: Option<String>,
@@ -205,7 +207,16 @@ where
         .current_record(&user_id)
         .await
         .map_err(store_error)?;
-    Ok(Json(status_response(&user_id, record.as_ref())))
+    let tier_one_record = state
+        .store
+        .tier_one_record(&user_id)
+        .await
+        .map_err(store_error)?;
+    Ok(Json(status_response(
+        &user_id,
+        record.as_ref(),
+        tier_one_record.as_ref(),
+    )))
 }
 
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state, request))]
@@ -579,7 +590,21 @@ fn validate_start_upgrade(
     Ok(())
 }
 
-fn status_response(user_id: &str, record: Option<&KycRecord>) -> KycStatusResponse {
+fn status_response(
+    user_id: &str,
+    record: Option<&KycRecord>,
+    tier_one_record: Option<&KycRecord>,
+) -> KycStatusResponse {
+    let tier_one_context = tier_one_record.or_else(|| {
+        record.and_then(|record| {
+            if record.tier == KycTier::Tier1 {
+                Some(record)
+            } else {
+                None
+            }
+        })
+    });
+
     match record {
         Some(record) => KycStatusResponse {
             user_id: user_id.to_owned(),
@@ -587,6 +612,10 @@ fn status_response(user_id: &str, record: Option<&KycRecord>) -> KycStatusRespon
             status: record.status,
             provider: Some(record.provider.clone()),
             provider_applicant_id: record.provider_applicant_id.clone(),
+            country: tier_one_context
+                .and_then(|record| record.country.clone())
+                .or_else(|| record.country.clone()),
+            tier1_record_id: tier_one_context.map(|record| record.id.to_string()),
             declared_monthly_income: record.declared_monthly_income,
             submitted_at: Some(record.submitted_at.clone()),
             reviewed_at: record.reviewed_at.clone(),
@@ -598,6 +627,8 @@ fn status_response(user_id: &str, record: Option<&KycRecord>) -> KycStatusRespon
             status: KycStatus::Pending,
             provider: None,
             provider_applicant_id: None,
+            country: None,
+            tier1_record_id: None,
             declared_monthly_income: None,
             submitted_at: None,
             reviewed_at: None,

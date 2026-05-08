@@ -14,6 +14,8 @@ interface ApiKycStatusResponse {
   status: KycStatusView["status"];
   provider: string | null;
   provider_applicant_id: string | null;
+  country: string | null;
+  tier1_record_id: string | null;
   declared_monthly_income: number | null;
   submitted_at: string | null;
   reviewed_at: string | null;
@@ -114,6 +116,8 @@ function mapStatus(response: ApiKycStatusResponse): KycStatusView {
     status: response.status,
     provider: response.provider,
     providerApplicantId: response.provider_applicant_id,
+    country: response.country,
+    tier1RecordId: response.tier1_record_id,
     declaredMonthlyIncome: response.declared_monthly_income,
     submittedAt: response.submitted_at,
     reviewedAt: response.reviewed_at,

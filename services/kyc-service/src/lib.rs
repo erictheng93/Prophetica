@@ -223,6 +223,53 @@ mod api_contract_tests {
         let status_body = response_json(status).await;
         assert_eq!(status_body["current_tier"], json!("TIER_1"));
         assert_eq!(status_body["status"], json!("passed"));
+        assert_eq!(status_body["country"], json!("TW"));
+        assert_eq!(status_body["tier1_record_id"], json!("1"));
+    }
+
+    #[tokio::test]
+    async fn status_returns_tier_one_country_and_record_id_after_upgrade() {
+        let store = crate::kyc::InMemoryKycStore::default();
+        let app = test_router(store.clone());
+
+        let tier_one = app
+            .clone()
+            .oneshot(json_post(
+                "/api/v1/kyc/users/user_ctx/tier-1",
+                &json!({
+                    "idempotency_key": "kyc:user_ctx:tier1:001",
+                    "legal_name": "Context User",
+                    "birthday": "1990-01-02",
+                    "country": "TW",
+                    "document_id": "A123456789",
+                    "consent": true
+                }),
+            ))
+            .await
+            .expect("tier one request should be handled");
+        assert_eq!(tier_one.status(), StatusCode::CREATED);
+
+        let upgrade = app
+            .oneshot(json_post(
+                "/api/v1/kyc/users/user_ctx/upgrades",
+                &json!({
+                    "target_tier": "TIER_2",
+                    "idempotency_key": "kyc:user_ctx:TIER_2:1",
+                    "declared_monthly_income": 6_000_000
+                }),
+            ))
+            .await
+            .expect("upgrade request should be handled");
+        assert_eq!(upgrade.status(), StatusCode::CREATED);
+
+        let status = test_router(store)
+            .oneshot(empty_get("/api/v1/kyc/users/user_ctx/status"))
+            .await
+            .expect("status request should be handled");
+        let status_body = response_json(status).await;
+        assert_eq!(status_body["current_tier"], json!("TIER_2"));
+        assert_eq!(status_body["country"], json!("TW"));
+        assert_eq!(status_body["tier1_record_id"], json!("1"));
     }
 
     #[tokio::test]

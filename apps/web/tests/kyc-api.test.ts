@@ -29,6 +29,8 @@ test("fetchKycOverview calls kyc-service status facade with auth context", async
   assert.equal(overview.currentTierNumber, 2);
   assert.equal(overview.status, "pending");
   assert.equal(overview.monthlyLimitPoints, 300_000);
+  assert.equal(overview.country, "TW");
+  assert.equal(overview.tier1RecordId, "tier1_record_42");
   assert.equal(overview.source, "kyc-service");
 });
 
@@ -51,6 +53,8 @@ test("fetchKycOverview returns Tier 0 fallback when kyc-service is unavailable",
 
   assert.equal(overview.currentTier, "TIER_0");
   assert.equal(overview.status, "pending");
+  assert.equal(overview.country, null);
+  assert.equal(overview.tier1RecordId, null);
   assert.equal(overview.source, "fallback:kyc-service-unavailable");
 });
 
@@ -60,7 +64,19 @@ test("submit helpers call kyc client mutations for server actions", async () => 
   const calls: unknown[] = [];
   const factory: KycClientFactory = () => ({
     async getStatus() {
-      throw new Error("not used");
+      return {
+        userId: "user_42",
+        currentTier: "TIER_1",
+        status: "passed",
+        provider: "manual",
+        providerApplicantId: null,
+        country: "TW",
+        tier1RecordId: "tier1_record_42",
+        declaredMonthlyIncome: null,
+        submittedAt: "unix:1",
+        reviewedAt: "unix:1",
+        expiresAt: null,
+      };
     },
     async verifyTierOne(request) {
       calls.push(request);
@@ -120,7 +136,7 @@ test("submit helpers call kyc client mutations for server actions", async () => 
       userId: "user_42",
       targetTier: "TIER_2",
       declaredMonthlyIncome: 6000000,
-      idempotencyKey: "kyc:user_42:TIER_2",
+      idempotencyKey: "kyc:user_42:TIER_2:tier1_record_42",
     });
   } finally {
     if (previousDevUserId === undefined) {
@@ -191,6 +207,57 @@ test("startKycUpgrade derives user identity server-side instead of trusting inpu
   }
 });
 
+test("startKycUpgrade falls back to 3-segment idempotency key when status is unavailable", async () => {
+  const previousDevUserId = process.env.PROPHETICA_DEV_USER_ID;
+  process.env.PROPHETICA_DEV_USER_ID = "user_42";
+  const calls: unknown[] = [];
+  const factory: KycClientFactory = () => ({
+    async getStatus() {
+      throw new Error("connection refused");
+    },
+    async verifyTierOne() {
+      throw new Error("not used");
+    },
+    async startUpgrade(request) {
+      calls.push(request);
+      return {
+        userId: request.userId,
+        targetTier: request.targetTier,
+        status: "pending",
+        provider: "sumsub",
+        providerApplicantId: "applicant_42",
+        sdkToken: "sumsub_sandbox_user_42_TIER_2_1",
+        expiresAt: null,
+        replayed: false,
+      };
+    },
+  });
+
+  try {
+    await startKycUpgrade(
+      {
+        targetTier: "TIER_2",
+      },
+      { baseUrl: "http://kyc.local", kycClientFactory: factory },
+    );
+
+    assert.deepEqual(calls, [
+      {
+        userId: "user_42",
+        targetTier: "TIER_2",
+        declaredMonthlyIncome: undefined,
+        idempotencyKey: "kyc:user_42:TIER_2",
+      },
+    ]);
+  } finally {
+    if (previousDevUserId === undefined) {
+      delete process.env.PROPHETICA_DEV_USER_ID;
+    } else {
+      process.env.PROPHETICA_DEV_USER_ID = previousDevUserId;
+    }
+  }
+});
+
 const createFetchBackedKycClient: KycClientFactory = ({ auth }) => ({
   async getStatus(userId) {
     assert.equal(auth?.userId, "user_42");
@@ -201,6 +268,8 @@ const createFetchBackedKycClient: KycClientFactory = ({ auth }) => ({
       status: "pending",
       provider: "sumsub",
       providerApplicantId: "applicant_42",
+      country: "TW",
+      tier1RecordId: "tier1_record_42",
       declaredMonthlyIncome: 6000000,
       submittedAt: "unix:1",
       reviewedAt: null,

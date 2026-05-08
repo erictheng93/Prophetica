@@ -23,6 +23,8 @@ export interface KycOverview {
   status: KycStatus;
   provider: string | null;
   providerApplicantId: string | null;
+  country: string | null;
+  tier1RecordId: string | null;
   declaredMonthlyIncome: number | null;
   monthlyLimitPoints: number | null;
   submittedAt: string | null;
@@ -85,6 +87,8 @@ export async function fetchKycOverview(
         status: "pending",
         provider: null,
         providerApplicantId: null,
+        country: null,
+        tier1RecordId: null,
         declaredMonthlyIncome: null,
         submittedAt: null,
         reviewedAt: null,
@@ -115,6 +119,12 @@ export async function startKycUpgrade(
   options: KycMutationOptions = {},
 ): Promise<StartKycUpgradeResponse> {
   const { userId, kycClient } = await mutationContext(options);
+  let tier1RecordId: string | null = null;
+  try {
+    tier1RecordId = (await kycClient.getStatus(userId)).tier1RecordId;
+  } catch {
+    tier1RecordId = null;
+  }
   return kycClient.startUpgrade({
     userId,
     targetTier: input.targetTier,
@@ -122,6 +132,7 @@ export async function startKycUpgrade(
     idempotencyKey: buildKycIdempotencyKey({
       userId,
       targetTier: input.targetTier,
+      tier1RecordId,
       retryAttempt: input.retryAttempt,
     }),
   });

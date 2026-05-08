@@ -14,6 +14,7 @@ import type { KycTargetTier } from "@prophetica/ts-sdk";
 export interface BuildKycIdempotencyKeyInput {
   userId: string;
   targetTier: KycTargetTier;
+  tier1RecordId?: string | null;
   /** Bumped on every user-initiated retry. 0 = first attempt. */
   retryAttempt?: number;
 }
@@ -21,7 +22,11 @@ export interface BuildKycIdempotencyKeyInput {
 export function buildKycIdempotencyKey(
   input: BuildKycIdempotencyKeyInput,
 ): string {
-  const base = `kyc:${input.userId}:${input.targetTier}`;
+  const tier1RecordId = input.tier1RecordId?.trim();
+  const base =
+    tier1RecordId === undefined || tier1RecordId === ""
+      ? `kyc:${input.userId}:${input.targetTier}`
+      : `kyc:${input.userId}:${input.targetTier}:${tier1RecordId}`;
   if (!input.retryAttempt || input.retryAttempt <= 0) {
     return base;
   }

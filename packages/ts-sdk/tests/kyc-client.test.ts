@@ -18,6 +18,8 @@ test("kyc client reads current user status with auth context", async () => {
       status: "pending",
       provider: "sumsub",
       provider_applicant_id: "applicant_42",
+      country: "TW",
+      tier1_record_id: "tier1_record_42",
       declared_monthly_income: 6000000,
       submitted_at: "unix:1",
       reviewed_at: null,
@@ -36,6 +38,8 @@ test("kyc client reads current user status with auth context", async () => {
   assert.equal(calls[0]?.headers["x-user-id"], "user_42");
   assert.equal(status.currentTier, "TIER_2");
   assert.equal(status.status, "pending");
+  assert.equal(status.country, "TW");
+  assert.equal(status.tier1RecordId, "tier1_record_42");
   assert.equal(status.declaredMonthlyIncome, 6000000);
 });
 

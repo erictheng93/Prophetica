@@ -7,6 +7,8 @@ export interface KycStatusView {
   status: KycStatus;
   provider: string | null;
   providerApplicantId: string | null;
+  country: string | null;
+  tier1RecordId: string | null;
   declaredMonthlyIncome: number | null;
   submittedAt: string | null;
   reviewedAt: string | null;

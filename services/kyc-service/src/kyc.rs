@@ -162,6 +162,8 @@ pub enum KycStoreError {
 pub trait KycStore: Clone + Send + Sync + 'static {
     async fn current_record(&self, user_id: &str) -> Result<Option<KycRecord>, KycStoreError>;
 
+    async fn tier_one_record(&self, user_id: &str) -> Result<Option<KycRecord>, KycStoreError>;
+
     async fn verify_tier_one(
         &self,
         draft: TierOneVerificationDraft,
@@ -233,6 +235,18 @@ impl KycStore for InMemoryKycStore {
             .iter()
             .filter(|record| record.user_id == user_id)
             .max_by_key(|record| (record.tier.rank(), record.id))
+            .cloned())
+    }
+
+    async fn tier_one_record(&self, user_id: &str) -> Result<Option<KycRecord>, KycStoreError> {
+        let records = self
+            .records
+            .lock()
+            .map_err(|_| KycStoreError::Unavailable)?;
+        Ok(records
+            .iter()
+            .filter(|record| record.user_id == user_id && record.tier == KycTier::Tier1)
+            .max_by_key(|record| record.id)
             .cloned())
     }
 
