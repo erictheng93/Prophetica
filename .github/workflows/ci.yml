@@ -47,7 +47,7 @@ jobs:
       - name: install sqlx-cli, cargo-deny, cargo-geiger
         run: |
           cargo install sqlx-cli --no-default-features --features rustls,postgres --locked
-          cargo install cargo-deny --locked
+          cargo install cargo-deny --version 0.18.3 --locked
           cargo install cargo-geiger --locked
       - name: pnpm install
         # SPEC-017 v0.2.3 erratum: @cloudflare/kumo 走公開 npm registry，不再需要 KUMO_NPM_TOKEN
