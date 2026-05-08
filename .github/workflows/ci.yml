@@ -77,7 +77,7 @@ jobs:
         run: make test
       - uses: dtolnay/rust-toolchain@1.88
       - name: install cargo-deny
-        run: cargo install cargo-deny --version 0.19.4 --locked
+        run: cargo +1.88 install cargo-deny --version 0.19.4 --locked
       - name: cargo deny
         run: cargo +1.88 deny check
       - name: cargo geiger
