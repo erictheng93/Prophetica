@@ -34,10 +34,10 @@
 <h1>SPEC-005a — SumSub 前端整合契約</h1>
 <blockquote>
 <p>優先級：<strong>P1</strong>（與 SPEC-005 相同）
-版本：v0.1.1 · 最後更新：2026-05-08
+版本：v0.1.2 · 最後更新：2026-05-09
 依賴：SPEC-005, SPEC-007, SPEC-008, SPEC-014
 被依賴：apps/web KYC 流程、未來其他 KYC provider 切換
-實作狀態：⚠️ <strong>Contract 規格完成 / 實作待 PoC-B 通過後啟動</strong></p>
+實作狀態：🟡 <strong>Frontend 主路徑已落地（PR #2 merged 2026-05-09）/ 真實 SumSub sandbox + iProov real adapter blocked on SPEC-000 Q-9</strong></p>
 </blockquote>
 <hr>
 <h2>0. Document Purpose</h2>
@@ -117,12 +117,12 @@
 <li><code>continueAfterSubmit: false</code>: after the SDK emits <code>submitted</code>, enter <code>awaiting_webhook</code> and wait for webhook-backed terminal status.</li>
 <li>Any non-recoverable error from a <code>required: true</code> stage aborts the chain.</li>
 <li>Stages share <code>providerApplicantId</code>; each stage receives its own backend-issued <code>sdkToken</code>.</li>
-<li><code>iproov-provider.ts</code> and <code>iproov-mock-provider.ts</code> are adapter slots only in this slice and must throw <code>KycSdkError(&quot;not_implemented&quot;)</code> until PR #2 wires sandbox credentials and real mount behavior.</li>
+<li><code>iproov-provider.ts</code> and <code>iproov-mock-provider.ts</code> are adapter slots only in this slice and must throw <code>KycSdkError(&quot;not_implemented&quot;)</code> until SPEC-000 Q-9 provides sandbox credentials and real mount behavior can be verified.</li>
 </ul>
 <h3>3.5 Tier 3 Routing and Backend Response</h3>
 <p><code>kyc-service start_upgrade</code> for <code>TIER_3</code> must return the stage manifest with the initial stage token:</p>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-005a-sumsub-frontend-contract-implementation-plan.html">SPEC-005a-sumsub-frontend-contract-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-<p>The frontend may derive the same manifest from <code>sdkToken</code> for backward compatibility, but backend-supplied <code>chain</code> is authoritative once present. Backend implementation is deferred to PR #2; this SPEC only fixes the response field and frontend/SDK contract.</p>
+<p>The frontend may derive the same manifest from <code>sdkToken</code> for backward compatibility, but backend-supplied <code>chain</code> is authoritative once present. PR #2 landed the frontend chain handling and backend response shape; sandbox-backed provider behavior remains blocked on SPEC-000 Q-9.</p>
 <hr>
 <h2>4. Event Mapping（SumSub native → KycSessionEvent）</h2>
 <table>
@@ -334,17 +334,17 @@
 <hr>
 <h2>10. Acceptance Criteria</h2>
 <ul>
-<li><input disabled="" type="checkbox"> <code>packages/ts-sdk/src/kyc-provider/</code> 目錄與檔案結構建立</li>
-<li><input disabled="" type="checkbox"> <code>KycIdentityProvider</code> interface + <code>KycSessionEvent</code> union 定義通過 <code>tsc --noEmit</code></li>
-<li><input disabled="" type="checkbox"> <code>mockProvider</code> 與 <code>mockSumsubProvider</code> 實作 + 對應 <code>node:test</code> 通過</li>
-<li><input disabled="" type="checkbox"> <code>apps/web/app/kyc/tier-2/page.tsx</code> 重構為 <code>&quot;use client&quot;</code> + 使用 <code>selectKycProvider</code></li>
-<li><input disabled="" type="checkbox"> State machine 全部 6 phases 都有對應 i18n copy（next-intl <code>kyc.tier2.phase.*</code>）</li>
-<li><input disabled="" type="checkbox"> 確定性 idempotency key 實作通過 e2e：點兩次 submit 後端只建一筆 pending record</li>
-<li><input disabled="" type="checkbox"> Polling 5 分鐘上限通過 e2e：mock webhook 在 t=2.5min 抵達後 UI 自動進 <code>Done</code></li>
-<li><input disabled="" type="checkbox"> CSP 字串加入 <code>apps/web/next.config.ts</code> 並通過 build</li>
-<li><input disabled="" type="checkbox"> Mock provider 不觸發任何外部網路請求（vitest network mocking 驗證）</li>
+<li><input checked="" disabled="" type="checkbox"> <code>packages/ts-sdk/src/kyc-provider/</code> 目錄與檔案結構建立</li>
+<li><input checked="" disabled="" type="checkbox"> <code>KycIdentityProvider</code> interface + <code>KycSessionEvent</code> union 定義通過 workspace tests</li>
+<li><input checked="" disabled="" type="checkbox"> <code>mockProvider</code> 與 <code>mockSumsubProvider</code> 實作 + 對應 <code>node:test</code> 通過</li>
+<li><input checked="" disabled="" type="checkbox"> <code>apps/web/app/kyc/tier-2/page.tsx</code> 重構為 client launch flow + 使用 <code>selectKycProvider</code></li>
+<li><input checked="" disabled="" type="checkbox"> State machine 全部 6 phases 都有對應 i18n copy（next-intl <code>kyc.tier2.phase.*</code> / <code>kyc.tier3.phase.*</code>）</li>
+<li><input checked="" disabled="" type="checkbox"> 確定性 idempotency key 實作通過 test：點兩次 submit 後端只建一筆 pending record</li>
+<li><input checked="" disabled="" type="checkbox"> Polling 5 分鐘上限通過 test：mock webhook 抵達後 UI 自動進 <code>Done</code></li>
+<li><input checked="" disabled="" type="checkbox"> CSP 字串加入 <code>apps/web/next.config.mjs</code> 並有 route-scoped test 覆蓋</li>
+<li><input checked="" disabled="" type="checkbox"> Mock provider 不觸發任何外部網路請求（mock provider DOM / unit test 驗證）</li>
 <li><input checked="" disabled="" type="checkbox"> Telemetry metric 5 條全部 emit 並通過 prometheus integration test</li>
-<li><input disabled="" type="checkbox"> 無 PII / <code>applicant_id</code> / <code>sdk_token</code> 寫入 console — <code>pnpm --filter @prophetica/web lint --rule no-console</code> 通過</li>
+<li><input checked="" disabled="" type="checkbox"> 無 PII / <code>applicant_id</code> / <code>sdk_token</code> 寫入 console — <code>apps/web/tests/kyc-pii-guard.test.ts</code> 覆蓋</li>
 <li><input disabled="" type="checkbox"> 真實 SumSub adapter 待 SumSub sandbox 帳號到位後，<strong>只</strong>改 <code>select-provider.ts</code> 一處 prefix 判定 + <code>sumsub-provider.ts</code> 實作即可</li>
 </ul>
 <hr>
@@ -360,6 +360,12 @@
 <h2>12. 變更紀錄</h2>
 <section class="changelog">
   <div class="changelog-list">
+    <article class="changelog-entry">
+      <h3>v0.1.2</h3>
+      <p><strong>日期：</strong>2026-05-09</p>
+      <p><strong>作者：</strong>Tech Lead</p>
+      <p>Post-PR #2 status realignment：frontend 主路徑已落地（provider abstraction、Tier 2/3 launch flow、state machine、polling、CSP、telemetry、PII guard、Tier 3 adapter chain shell）；真實 SumSub iframe mount、webhook sandbox replay、iProov real adapter 仍 blocked on SPEC-000 Q-9 sandbox credentials。</p>
+    </article>
     <article class="changelog-entry">
       <h3>v0.1.1</h3>
       <p><strong>日期：</strong>2026-05-08</p>

@@ -51,7 +51,7 @@ Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站�
 
 | ID | 標題 |
 |----|------|
-| [SPEC-005](./specs/SPEC-005-kyc-aml.html) | KYC/AML 整合（✅ 可視為完成） |
+| [SPEC-005](./specs/SPEC-005-kyc-aml.html) | KYC/AML 整合（🟡 contract / frontend main path 已有進度；Postgres wiring、SumSub sandbox E2E、iProov real adapter 仍為 Public Beta blocker） |
 | [SPEC-006](./specs/SPEC-006-responsible-gaming.html) | 責任博弈機制 |
 | [SPEC-007](./specs/SPEC-007-observability.html) | 可觀測性與監控 |
 | [SPEC-008](./specs/SPEC-008-disaster-recovery.html) | 災備與高可用 |
@@ -105,7 +105,7 @@ prophetica/
 ├── crates/                Rust 共用 lib（sdk / proto）                 （規劃中）
 ├── packages/              共用 protobuf 來源 / TS SDK                  （規劃中）
 ├── infra/                 Terraform / Helm / ArgoCD                    （規劃中）
-├── specs/                 規格文件（SPEC-000 ~ 016）                   ✅
+├── specs/                 規格文件（SPEC-000、SPEC-002 ~ 020；SPEC-001 保留未使用） ✅
 ├── docs/architecture/     ADR / 圖表                                   ✅
 ├── design/                早期視覺探索（apple / airbnb / lamborghini） ✅
 ├── tools/                 壓測 / 遷移腳本                              （規劃中）
@@ -124,7 +124,7 @@ make dev
 
 ## 文件版本
 
-當前 SPEC 套件版本：**v0.3.3**（2026-05-09）— 新增 Public Beta Launch Gate，將客服、發布安全、稽核證據化上移為 P1 launch gate，並修復 HTML 規格產物漂移。
+當前 SPEC 套件版本：**v0.3.4**（2026-05-09）— post-PR #2 對齊 SPEC-005 / SPEC-005a 狀態，將 SumSub sandbox credentials 收斂為 LG-3 / LG-4 共同 blocker。
 
 完整變更紀錄見 [SPEC-000 §4](./specs/SPEC-000-index.html#4-變更紀錄)。
 

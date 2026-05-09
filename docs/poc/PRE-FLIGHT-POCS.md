@@ -304,6 +304,8 @@ Commit SHA of live verification: working tree (not committed)
 ADR (if Node.js / Hybrid chosen): pending; do not open until rerun proves runtime failure after Pages output is generated.
 ```
 
+Follow-up TODO: [`POC-B-LINUX-CI-TODO.md`](./POC-B-LINUX-CI-TODO.md) tracks the Linux / CI rerun steps that can proceed before SumSub sandbox credentials arrive.
+
 ---
 
 ## 5. PoC 完成 → 進公開 Beta release review
