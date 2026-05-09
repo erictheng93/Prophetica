@@ -1,0 +1,51 @@
+import type { OpsQueueItem, OpsRoute, OpsTone } from "@/lib/ops-facade";
+import { StatusPill } from "./status-pill";
+
+const statusTone: Record<OpsQueueItem["status"], OpsTone> = {
+  new: "critical",
+  reviewing: "neutral",
+  blocked: "warning",
+  ready: "success",
+};
+
+interface WorkQueueProps {
+  items: OpsQueueItem[];
+  routes: OpsRoute[];
+}
+
+export function WorkQueue({ items, routes }: WorkQueueProps) {
+  const labels = new Map(routes.map((route) => [route.domain, route.label]));
+
+  return (
+    <section aria-labelledby="work-queue-title">
+      <div className="mb-3">
+        <h2 id="work-queue-title" className="text-[22px] font-semibold leading-7">
+          Work queue
+        </h2>
+        <p className="mt-1 text-[14px] leading-5 text-proph-ink-muted-80">Prioritized operational review items.</p>
+      </div>
+      <div className="overflow-hidden rounded-proph-sm border border-proph-hairline">
+        {items.map((item) => (
+          <article
+            className="grid gap-3 border-b border-proph-hairline bg-proph-canvas p-4 last:border-b-0 md:grid-cols-[1fr_auto]"
+            key={item.id}
+          >
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[12px] font-semibold text-proph-ink-muted-80">{item.id}</span>
+                <StatusPill tone={statusTone[item.status]}>{item.status}</StatusPill>
+                <span className="text-[12px] text-proph-ink-muted-80">{labels.get(item.domain)}</span>
+              </div>
+              <h3 className="mt-2 text-[17px] font-semibold leading-6">{item.title}</h3>
+              <p className="mt-1 text-[14px] leading-5 text-proph-ink-muted-80">{item.detail}</p>
+            </div>
+            <div className="text-left text-[13px] leading-5 text-proph-ink-muted-80 md:text-right">
+              <p>{item.assignee}</p>
+              <p>{item.age}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}

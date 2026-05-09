@@ -7,7 +7,7 @@
     "dev": "next dev -p 3002",
     "build": "next build",
     "lint": "tsc --project tsconfig.lint.json",
-    "test": "node -e \"console.log('admin bootstrap test ok')\""
+    "test": "node -e \"require('node:fs').rmSync('.test-out', { recursive: true, force: true })\" && tsc --project tsconfig.test.json && node --test .test-out/tests/*.test.js"
   },
   "dependencies": {
     "@cloudflare/kumo": "latest",
