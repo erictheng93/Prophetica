@@ -1,0 +1,565 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-007-observability</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.5;
+    }
+    img { max-width: 100%; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre {
+      overflow: auto;
+      padding: 1rem;
+      background: #f6f8fa;
+      border: 1px solid #d8dee3;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    a { color: #0969da; }
+    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
+    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
+    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .changelog-entry p,
+    .changelog-entry ul { margin: 0.35rem 0; }
+    .changelog-entry ul { padding-left: 1.15rem; }
+    .changelog-entry li { margin-bottom: 0.35rem; }
+  </style>
+</head>
+<body>
+<h1>SPEC-007 — 可觀測性與監控（Observability &amp; Monitoring）</h1>
+<blockquote>
+<p>優先級：<strong>P1</strong>
+版本：v0.2.0 · 最後更新：2026-05-07
+依賴：SPEC-003, SPEC-014
+被依賴：SPEC-008, SPEC-013</p>
+</blockquote>
+<section class="changelog">
+<div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>v0.2.0 變更</h3>
+    <p>(1) <strong>T-11 SLO 表補漏</strong>：§6.1 補 <code>wallet-ledger-service</code>（gRPC P99 / 對帳腳本 / INV 違反）與 <code>market-service</code>（CRUD API / Review 處理 / OPEN-CLOSED 切換誤差）兩個 P0 service 之 SLO；Matching Engine SLO 拆「引擎內部 &lt; 5ms」與「下單端到端 &lt; 30ms」雙層，消除 SPEC-003 §11 P99 SLO 邊界含糊問題。</p>
+    <p>(2) <strong>新增 §6.4 跨服務 Latency Budget</strong>：明示玩家下單熱路徑 11 個 hop 的 P99 時間預算（總和 18.5ms + 11.5ms safety margin = 30ms 端到端 SLO）；含撮合事件下游 fan-out budget；OTel span 對照表；budget 違反處理（P1 alert / release gate 阻擋）；budget 變更管控（不容忍自動放寬）。SDD 防呆設計：避免「各 service P99 都達標但加總超標」的金融撮合系統典型踩坑。</p>
+  </article>
+  <article class="changelog-entry">
+    <h3>v0.2.1 draft close-out（A1-A6 + B1-B4）</h3>
+    <ul>
+      <li>A1 SDK JSON tracing now wires an OTLP exporter when <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> is configured.</li>
+      <li>A2 SDK exposes a Prometheus registry and <code>/metrics</code> bootstrap metrics with <code>proph_*</code> names.</li>
+      <li>A3 SDK service stubs expose <code>/healthz/live</code>, <code>/healthz/ready</code>, and <code>/healthz/startup</code>.</li>
+      <li>A4 all 12 Rust services inherit HTTP trace spans from the SDK stub, with hot-path handlers adding domain span attributes.</li>
+      <li>A5 Prometheus scrapes all 12 service targets.</li>
+      <li>A6 P0 runbooks live under <code>runbooks/</code>.</li>
+      <li>B1 OTel Collector config exists at <code>infra/otel-collector/otel-collector.yaml</code>.</li>
+      <li>B2 tail-based sampling is configured for errors, order hot path traces, latency budget breaches, and 1% baseline sampling.</li>
+      <li>B3 latency budget alert rules are checked in at <code>infra/prometheus/rules/latency-budget.yml</code>.</li>
+      <li>B4 local compose routes OTLP traffic through the collector to Tempo.</li>
+    </ul>
+  </article>
+</div>
+</section>
+<hr>
+<h2>1. Objective</h2>
+<p>建立金融級可觀測性系統，使工程團隊能在 5 分鐘內定位任何故障的根因，並提前 30 分鐘預警容量瓶頸。要求三柱齊全：<strong>Metrics</strong>（指標）、<strong>Logging</strong>（日誌）、<strong>Tracing</strong>（分散式追蹤），並建立明確的 SLO 與告警 Runbook。</p>
+<h2>2. 三柱架構</h2>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<blockquote>
+<p>部署模型：<strong>Grafana Cloud</strong>（託管）vs <strong>自建 LGTM stack</strong>。MVP 用 Grafana Cloud，年營收破門檻後遷至自建。</p>
+</blockquote>
+<h2>3. Metrics</h2>
+<h3>3.1 標準命名</h3>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<p>範例：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h3>3.2 直方圖 bucket 規劃</h3>
+<p>撮合延遲（核心指標）：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<p>API 延遲：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h3>3.3 業務指標</h3>
+<p>每個業務指標都應有 metric：</p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>proph_dau_total</code></td>
+<td>日活</td>
+</tr>
+<tr>
+<td><code>proph_revenue_pts_total</code></td>
+<td>平台收入點數</td>
+</tr>
+<tr>
+<td><code>proph_market_open_count</code></td>
+<td>開放市場數</td>
+</tr>
+<tr>
+<td><code>proph_user_signup_total</code></td>
+<td>註冊數</td>
+</tr>
+<tr>
+<td><code>proph_user_kyc_passed_total</code></td>
+<td>KYC 通過數</td>
+</tr>
+<tr>
+<td><code>proph_player_balance_pts_sum</code></td>
+<td>玩家持有點數總和（負債）</td>
+</tr>
+<tr>
+<td><code>proph_player_locked_pts_sum</code></td>
+<td>玩家鎖倉點數總和</td>
+</tr>
+<tr>
+<td><code>proph_self_exclusion_active_total</code></td>
+<td>自我排除人數</td>
+</tr>
+</tbody></table>
+<h2>4. Logging</h2>
+<h3>4.1 結構化 JSON</h3>
+<p>所有服務輸出 structured JSON：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h3>4.2 日誌等級規範</h3>
+<table>
+<thead>
+<tr>
+<th>等級</th>
+<th>用途</th>
+<th>範例</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>debug</code></td>
+<td>開發排查，prod 預設不開</td>
+<td>進入函式</td>
+</tr>
+<tr>
+<td><code>info</code></td>
+<td>業務流關鍵事件</td>
+<td>訂單接收、撮合</td>
+</tr>
+<tr>
+<td><code>warn</code></td>
+<td>可容忍的異常</td>
+<td>retry 成功、降級</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>需要 oncall 注意</td>
+<td>5xx、外部 API 失敗</td>
+</tr>
+<tr>
+<td><code>critical</code></td>
+<td>立即介入</td>
+<td>帳本失衡、結算失敗</td>
+</tr>
+</tbody></table>
+<h3>4.3 PII 處理</h3>
+<ul>
+<li><strong>絕不</strong>將 PII（姓名、證件號、卡號、手機）寫入日誌</li>
+<li>user_id 為唯一識別子（內部數字，不洩漏）</li>
+<li>客服查詢 PII 走獨立稽核 API，存取留痕</li>
+</ul>
+<h3>4.4 採樣與保留</h3>
+<table>
+<thead>
+<tr>
+<th>等級</th>
+<th>採樣</th>
+<th>保留期</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>debug</td>
+<td>1%</td>
+<td>1 天</td>
+</tr>
+<tr>
+<td>info</td>
+<td>100%</td>
+<td>30 天</td>
+</tr>
+<tr>
+<td>warn / error</td>
+<td>100%</td>
+<td>90 天</td>
+</tr>
+<tr>
+<td>critical</td>
+<td>100%</td>
+<td>1 年 + R2 歸檔 5 年</td>
+</tr>
+</tbody></table>
+<h2>5. Tracing（分散式追蹤）</h2>
+<h3>5.1 OpenTelemetry SDK</h3>
+<p>所有服務必須注入 OTel SDK：</p>
+<ul>
+<li>入口（HTTP / gRPC / WS）自動產生 root span</li>
+<li>跨服務調用透過 W3C <code>traceparent</code> header 傳遞</li>
+<li>DB 查詢自動產生 child span（含 SQL）</li>
+<li>外部 API 自動 instrumented</li>
+</ul>
+<h3>5.2 採樣</h3>
+<ul>
+<li>prod 預設 1% 採樣（避免儲存爆炸）</li>
+<li>error / critical span：100% 採樣</li>
+<li>客服指定 user_id 查詢：100% 採樣 1 小時（debug 用）</li>
+</ul>
+<h3>5.3 必含 attributes</h3>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h2>6. SLO（Service Level Objectives）</h2>
+<h3>6.1 SLO 定義表</h3>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>SLI（量測）</th>
+<th>SLO（目標）</th>
+<th>錯誤預算 / 月</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>API Gateway</td>
+<td>5xx error rate</td>
+<td>&lt; 0.1%</td>
+<td>43 分鐘</td>
+</tr>
+<tr>
+<td>Matching Engine</td>
+<td><strong>撮合引擎內部</strong> match latency P99（撮合事件接受 → 事件 publish 至 Kafka 前）</td>
+<td>&lt; 5ms</td>
+<td>7.2 hours of degraded</td>
+</tr>
+<tr>
+<td>Matching Engine（端到端）</td>
+<td>玩家下單 API receive → 撮合事件入 Kafka P99</td>
+<td>&lt; 30ms</td>
+<td>4 hours of degraded</td>
+</tr>
+<tr>
+<td><strong>wallet-ledger-service</strong>（T-11 補）</td>
+<td><code>PostTransaction</code> gRPC call latency P99；<code>Σ(Wallet)+Σ(Locked)+Σ(Frozen)</code> 對帳腳本（5 min 跑一次）執行時間 P99；INV-1 ~ INV-6 違反次數</td>
+<td>gRPC &lt; 50ms / 對帳 &lt; 60s / INV 違反 = 0</td>
+<td>gRPC 4 hours / 對帳 1 次 / INV 0 容忍</td>
+</tr>
+<tr>
+<td><strong>market-service</strong>（T-11 補）</td>
+<td>市場 CRUD API P99；REVIEW → SCHEDULED 中位處理時間；OPEN ↔ CLOSED 自動切換誤差</td>
+<td>API P99 &lt; 200ms / Review &lt; 24h / 切換誤差 &lt; 5s</td>
+<td>API 4h / 切換 30 min</td>
+</tr>
+<tr>
+<td>WebSocket</td>
+<td>message delivery（gap-detected reconnect 不算 fail）</td>
+<td>&gt; 99.9%</td>
+<td>43 分鐘</td>
+</tr>
+<tr>
+<td>Payment Gateway</td>
+<td>webhook processing（HMAC verify → ledger commit）</td>
+<td>&lt; 30s P99</td>
+<td>4 小時</td>
+</tr>
+<tr>
+<td>Settlement</td>
+<td>batch completion（10k-100k 持倉）</td>
+<td>within 10min</td>
+<td>1 次 / 月</td>
+</tr>
+<tr>
+<td>KYC Webhook</td>
+<td>processing（SumSub webhook → user_kyc_records 更新）</td>
+<td>&lt; 1min P99</td>
+<td>4 小時</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>SLO 量測自 OpenTelemetry span（呼應 §5.3 必含 attributes），由 Prometheus AlertManager 計算 burn rate。</p>
+</blockquote>
+<h3>6.2 錯誤預算政策</h3>
+<ul>
+<li>每月初重置</li>
+<li>超過 50% 預算：暫停非必要 release，優先穩定性</li>
+<li>超過 100% 預算：強制凍結 release 至下月</li>
+</ul>
+<h3>6.3 SLO 看板</h3>
+<p>Grafana 統一 SLO Dashboard：</p>
+<ul>
+<li>每個 SLO 即時錯誤預算進度條</li>
+<li>30 / 90 / 365 天 burn rate</li>
+<li>預算耗盡預測</li>
+</ul>
+<h3>6.4 跨服務 Latency Budget（下單熱路徑）</h3>
+<blockquote>
+<p><strong>動工前合約</strong>：本節為「玩家下單」端到端熱路徑之 P99 時間預算分解。每一 hop 的預算是契約，service owner 對自己 hop 之 P99 達標負責；<strong>任一 hop 超 budget 即觸發 P1 告警並阻擋 release</strong>（呼應 SPEC-013 §4.4 Auto-rollback）。</p>
+<p>金融撮合系統 SDD 最常被遺漏但動工後最容易踩到的就是「各 service P99 都達標但加總超標」。先把預算寫在 SPEC 上，OTel span 直接量測對照。</p>
+</blockquote>
+<h4>6.4.1 下單熱路徑（玩家 LIMIT order）</h4>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h4>6.4.2 Latency Budget 表（OTel span name 對照）</h4>
+<table>
+<thead>
+<tr>
+<th>Hop</th>
+<th>OTel span</th>
+<th>P99 budget</th>
+<th>來源 SPEC</th>
+<th>達標策略</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Cloudflare edge</td>
+<td><code>cf.edge.process</code></td>
+<td>5ms</td>
+<td>SPEC-014 §3.3</td>
+<td>Anycast + WAF cache；不可控因素由 Cloudflare SLA 涵蓋</td>
+</tr>
+<tr>
+<td>JWT verify</td>
+<td><code>auth.jwt.verify</code></td>
+<td>1ms</td>
+<td>SPEC-010 §3.1.2</td>
+<td>Ed25519 signature verify ~50μs；含 cookie parse + claim 檢查</td>
+</tr>
+<tr>
+<td>Rate limit</td>
+<td><code>ratelimit.check</code></td>
+<td>1ms</td>
+<td>SPEC-010 §2.2</td>
+<td>Redis <code>INCRBY</code> + <code>EXPIRE</code>，pipeline 一次 RTT</td>
+</tr>
+<tr>
+<td>Idempotency lookup</td>
+<td><code>idempo.lookup</code></td>
+<td>2ms</td>
+<td>SPEC-002 §6.1</td>
+<td>PG primary key lookup；hot index in shared_buffers</td>
+</tr>
+<tr>
+<td>Risk pre-trade</td>
+<td><code>risk.precheck</code></td>
+<td>3ms</td>
+<td>SPEC-010 §4</td>
+<td>rules in-memory；Sift / Sardine 之 ML score 走 cache（5 min TTL）</td>
+</tr>
+<tr>
+<td>Wallet balance check</td>
+<td><code>wallet.balance.check</code></td>
+<td>1ms（cache hit）/ 6ms（miss）</td>
+<td>SPEC-002 §9.2</td>
+<td>Redis cache 命中為主；miss fallback 從 ledger 算 latest balance</td>
+</tr>
+<tr>
+<td>Wallet lock funds</td>
+<td><code>wallet.lock.reserve</code></td>
+<td>2ms</td>
+<td>SPEC-002 §6</td>
+<td>reservation API（不寫 ledger entry，僅 in-memory reservation + Redis lock）</td>
+</tr>
+<tr>
+<td>Engine ingress</td>
+<td><code>engine.ingress.enqueue</code></td>
+<td>0.5ms</td>
+<td>SPEC-003 §7.1</td>
+<td>mpsc channel send；back-pressure 時 reject</td>
+</tr>
+<tr>
+<td>Order apply</td>
+<td><code>engine.order.apply</code></td>
+<td>1ms</td>
+<td>SPEC-003 §11</td>
+<td>in-memory BTreeMap + VecDeque</td>
+</tr>
+<tr>
+<td>Event publish</td>
+<td><code>engine.event.publish</code></td>
+<td>1ms</td>
+<td>SPEC-003 §8</td>
+<td>WAL fdatasync 每 100 events 或 50ms；Kafka producer 走 async batch</td>
+</tr>
+<tr>
+<td>API response</td>
+<td><code>api.response.serialize</code></td>
+<td>1ms</td>
+<td>—</td>
+<td>JSON serde</td>
+</tr>
+<tr>
+<td><strong>小計</strong></td>
+<td>—</td>
+<td><strong>18.5ms</strong></td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Safety margin</td>
+<td>—</td>
+<td>11.5ms</td>
+<td>—</td>
+<td>應對 GC / scheduler jitter / network microburst</td>
+</tr>
+<tr>
+<td><strong>端到端 SLO</strong></td>
+<td><code>api.order.submit.e2e</code></td>
+<td><strong>30ms</strong></td>
+<td>§6.1 SLO</td>
+<td>—</td>
+</tr>
+</tbody></table>
+<h4>6.4.3 撮合事件下游 Fan-out Budget（撮合 → WS 推播 → client receive）</h4>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h4>6.4.4 Budget 違反處理</h4>
+<ul>
+<li><strong>OTel span 必輸出 <code>latency.budget.{hop}</code> attribute</strong>，標示該 hop 之 budget 與實測 P99</li>
+<li>Prometheus alert：任一 hop 之實測 P99 &gt; 1.5 × budget 持續 5 分鐘 → P1 告警；&gt; 2 × budget → P0 告警</li>
+<li>Grafana SLO Dashboard 新增「Latency Budget Heatmap」面板，按 hop × time 顯示 budget 使用率</li>
+<li><strong>release gate</strong>（SPEC-013 §4.4）：staging 壓測時各 hop P99 &gt; budget 即阻擋 prod canary</li>
+</ul>
+<h4>6.4.5 Budget 變更管控</h4>
+<ul>
+<li>Latency budget 為<strong>契約</strong>，不是估算 — 任何 hop 之 budget 修改須 PR review + 對應 SPEC 章節更新</li>
+<li>若實測 P99 持續超 budget → <strong>不</strong>自動放寬 budget，先做以下三選一：<ol>
+<li>service owner 優化（DB index / Redis cache / 演算法）</li>
+<li>調整服務拓撲（合併 hop / 改 in-process call）</li>
+<li>若以上不可行，提 ADR 重新分配 budget（需另一 hop 讓出 buffer）</li>
+</ol>
+</li>
+<li>「自動放寬 budget」是反 pattern — 一旦容忍 budget breach，下一個迭代的 budget 就會持續向上漂移，最終端到端 SLO 失守</li>
+</ul>
+<h2>7. 告警與 Runbook</h2>
+<h3>7.1 告警分級</h3>
+<table>
+<thead>
+<tr>
+<th>級別</th>
+<th>通知管道</th>
+<th>響應時間</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>P0</strong></td>
+<td>PagerDuty + 電話 + Slack</td>
+<td>&lt; 5 分鐘</td>
+</tr>
+<tr>
+<td><strong>P1</strong></td>
+<td>Slack #oncall + Email</td>
+<td>&lt; 30 分鐘</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>Slack #engineering</td>
+<td>&lt; 4 小時</td>
+</tr>
+<tr>
+<td><strong>P3</strong></td>
+<td>Slack #monitoring（informational）</td>
+<td>工作日內</td>
+</tr>
+</tbody></table>
+<h3>7.2 P0 告警清單（必須處理）</h3>
+<ul>
+<li>帳本失衡：<code>proph_ledger_txn_failed_total{reason=&quot;imbalance&quot;} &gt; 0</code></li>
+<li>撮合 P99 &gt; 50ms 持續 1 分鐘</li>
+<li>API 5xx &gt; 5% 持續 2 分鐘</li>
+<li>支付 Gateway webhook 失敗 &gt; 10 筆 / 分鐘</li>
+<li>結算批次失敗</li>
+<li>WebSocket 連線數驟降 &gt; 50%</li>
+<li>託管銀行對帳差異 &gt; USD 1,000</li>
+<li>證件儲存桶寫入失敗</li>
+<li>KYC SaaS API 不可用 &gt; 5 分鐘</li>
+<li>制裁名單篩查 batch 失敗</li>
+</ul>
+<h3>7.3 Runbook 結構</h3>
+<p>每個告警必須有對應 Runbook，存於 <code>runbooks/</code> Repo：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h2>8. 健康檢查（Health Check）</h2>
+<h3>8.1 三層 endpoint</h3>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-007-observability-implementation-plan.html">SPEC-007-observability-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h3>8.2 readiness 判定</h3>
+<p>服務自身依賴的關鍵元件全綠才回 200：</p>
+<ul>
+<li>DB 連線可用</li>
+<li>Redis 連線可用</li>
+<li>Kafka producer 可發送</li>
+<li>上游服務 ping 通</li>
+</ul>
+<h2>9. 容量規劃指標</h2>
+<p>每月分析：</p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>預警閾值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>DB connection pool peak</td>
+<td>&gt; 70%</td>
+</tr>
+<tr>
+<td>PostgreSQL disk</td>
+<td>&gt; 70%</td>
+</tr>
+<tr>
+<td>Redis memory</td>
+<td>&gt; 60%</td>
+</tr>
+<tr>
+<td>Kafka topic backlog</td>
+<td>&gt; 100k events</td>
+</tr>
+<tr>
+<td>K8s node CPU avg</td>
+<td>&gt; 60%</td>
+</tr>
+<tr>
+<td>Cloudflare egress</td>
+<td>&gt; 80% of plan</td>
+</tr>
+</tbody></table>
+<h2>10. 反作弊指標暴露</h2>
+<p>呼應 SPEC-010：</p>
+<ul>
+<li><code>proph_security_self_trade_blocked_total</code></li>
+<li><code>proph_security_wash_trade_score_distribution</code></li>
+<li><code>proph_security_device_fingerprint_collision_total</code></li>
+<li><code>proph_security_login_anomaly_total</code></li>
+</ul>
+<h2>11. 法遵指標暴露</h2>
+<p>呼應 SPEC-005 / SPEC-006：</p>
+<ul>
+<li><code>proph_aml_sar_pending_total</code></li>
+<li><code>proph_kyc_tier_distribution</code></li>
+<li><code>proph_rg_high_risk_users_total</code></li>
+<li><code>proph_self_exclusion_active_total</code></li>
+</ul>
+<h2>12. 驗收條件</h2>
+<ul>
+<li><input disabled="" type="checkbox"> 所有服務注入 OTel SDK，trace 端到端可串接</li>
+<li><input disabled="" type="checkbox"> Prometheus 採集所有指標清單，無 missing</li>
+<li><input disabled="" type="checkbox"> Loki 接收所有結構化日誌，PII 採樣後無洩漏</li>
+<li><input disabled="" type="checkbox"> 主要 Dashboards 建立完成（API、Engine、Wallet、Settlement、Compliance）</li>
+<li><input disabled="" type="checkbox"> P0 告警全數綁定 PagerDuty 並通過 fire drill</li>
+<li><input disabled="" type="checkbox"> Runbook 100% P0 告警對應</li>
+<li><input disabled="" type="checkbox"> 模擬故障演練：每季至少一次</li>
+</ul>
+<h2>13. Open Questions</h2>
+<ol>
+<li>Grafana Cloud 還是自建？成本 vs 維運負擔</li>
+<li>APM trace 採樣率：1% 還是 0.1%？</li>
+<li>PII 在 trace 中如何 redact？OTel SDK processor？</li>
+<li>日誌中的 trace_id 是否寫入 PG（用於客服查詢）？</li>
+<li>SLO 計算窗口：滾動 30 天還是日曆月？</li>
+</ol>
+
+</body>
+</html>
+

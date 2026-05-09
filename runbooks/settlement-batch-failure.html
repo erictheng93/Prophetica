@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runbook: Settlement Batch Failure</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.55; color: #1f2937; }
+    h1 { margin-top: 0; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+<h1>Runbook: Settlement Batch Failure</h1>
+<h2>Alert</h2>
+<p>Settlement batch fails or misses the required completion window.</p>
+<h2>Severity</h2>
+<p>P0</p>
+<h2>Investigation</h2>
+<ol>
+<li>Check settlement-worker logs for failed market ids.</li>
+<li>Verify wallet-ledger-service readiness and transaction failures.</li>
+<li>Inspect DB locks and batch size against SPEC-004 off-peak rules.</li>
+</ol>
+<h2>Resolution</h2>
+<ol>
+<li>Pause new settlement batch starts.</li>
+<li>Resume from the last idempotent checkpoint.</li>
+<li>Escalate disputed or partially settled markets to Compliance.</li>
+</ol>
+  </main>
+</body>
+</html>

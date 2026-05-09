@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-012-customer-support implementation plan</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 24px; line-height: 1.65; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin-bottom: 16px; }
+    pre { background: #f8fafc; border: 1px solid #dbeafe; padding: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+    .box { background: #f8fafc; border-left: 4px solid #2563eb; padding: 10px; margin: 10px 0; }
+    .warn { background: #fff7ed; border-left: 4px solid #f59e0b; padding: 10px; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-012 customer support implementation plan</h1>
+  <div class="meta">
+    <strong>版本</strong>: v0.1.0<br>
+    <strong>更新日</strong>: 2026-05-09<br>
+    <strong>對應規格</strong>: <a href="../specs/SPEC-012-customer-support.html">SPEC-012</a><br>
+    <strong>目標</strong>: 將客服、SLA、工單、審核與帳本關聯流程轉為工程可落地清單
+  </div>
+
+  <section>
+    <h2>1. 目的與邊界</h2>
+    <ul>
+      <li>規格保留業務語意，本文件收斂客服系統的資料模型、權限、SLA 告警與調度流程。</li>
+      <li>不在本文件中定義 UI 細節與客服腳本文案；僅保留資料欄位、任務分派、稽核需求。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 工程對應</h2>
+    <ul>
+      <li>§3 工單系統：分類矩陣、SLA、ESCALATE 路由規則</li>
+      <li>§4 權限分級：T1/T2/T3/Admin/Compliance 操作邊界</li>
+      <li>§5 查詢介面：player profile、KYC、交易與 RG 歷史聚合查詢</li>
+      <li>§6 RG 個案：主動關懷觸發、回訪與 4 小時處置節點</li>
+      <li>§11 帳本整合：`compensation` API 與 `audit_logs` 強制留痕</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. 資料模型（建議）</h2>
+    <pre><code class="language-sql">CREATE TABLE support_tickets (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  category VARCHAR(32) NOT NULL,
+  priority VARCHAR(8) NOT NULL,
+  channel VARCHAR(16) NOT NULL,
+  assignee_team VARCHAR(16),
+  state VARCHAR(16) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sla_due_at TIMESTAMPTZ NOT NULL,
+  escalated_at TIMESTAMPTZ,
+  resolved_at TIMESTAMPTZ
+);
+
+CREATE TABLE support_ticket_events (
+  id BIGSERIAL PRIMARY KEY,
+  ticket_id BIGINT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+  event_type VARCHAR(32) NOT NULL,
+  actor_user_id BIGINT NOT NULL,
+  actor_role VARCHAR(16) NOT NULL,
+  payload_json JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+</code></pre>
+    <ul>
+      <li>`support_tickets.state` 允許：NEW / ASSIGNED / IN_PROGRESS / AWAITING_USER / RESOLVED / CLOSED / ESCALATED。</li>
+      <li>`support_tickets.sla_due_at` 預先計算，並以 SLA worker 驗證 24h/72h 告警。</li>
+      <li>`support_ticket_events` 用於事件溯源與回放稽核。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 權限與 API</h2>
+    <h3>4.1 RBAC（最小權限）</h3>
+    <ul>
+      <li>T1：可查詢用戶摘要、回覆工單、調整單筆設定。</li>
+      <li>T2：可回應爭議、KYC 重啟、解凍、執行 RG case。</li>
+      <li>T3：可提案帳本調整、外部回應、提交 SAR。</li>
+      <li>Admin：可改客服設定、FAQ、流程參數。</li>
+      <li>Compliance：簽核與外部監管溝通入口。</li>
+    </ul>
+    <h3>4.2 端點（落地建議）</h3>
+    <pre><code>/api/internal/support/tickets
+/api/internal/support/tickets/{id}/assign
+/api/internal/support/tickets/{id}/transition
+/api/internal/support/tickets/{id}/message
+/api/internal/support/sla/violations</code></pre>
+    <div class="warn">
+      工程師不應允許客服直接寫入帳本；帳本動作一律走 `compensation` 提案 API 與 4-eye 流程。
+    </div>
+  </section>
+
+  <section>
+    <h2>5. 不變式</h2>
+    <ul>
+      <li>客服系統不得回傳完整 PII（完整身份證號、卡號、明文 hash）給客服前端。</li>
+      <li>`ESCALATED` 需保留原 `ticket_id` 與關聯 evidence；不得刪除。</li>
+      <li>未滿 24hr 未回應的工單不得被標記 closed，僅可轉入 follow-up 狀態。</li>
+      <li>親友通報只作為 review input，不得直接作為封禁或停權依據。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 工程工作清單</h2>
+    <ol>
+      <li>建 ticket / event / audit 三張表，含必要索引（user_id/state/sla_due_at）。</li>
+      <li>實作分派與狀態機轉換（NEW/ASSIGNED/IN_PROGRESS/...）。</li>
+      <li>實作 SLA worker：24h 首回覆告警、72h 未解決升級。</li>
+      <li>整合 Zendesk/Freshdesk adapter 與本地資料對應表。</li>
+      <li>補齊 compensation 提案與 4-eye 簽核串接，綁定 `Txn type = 'cs_compensation'`。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>7. 驗收（工程）</h2>
+    <ul>
+      <li>工單建立、轉派、升級、關閉流程都有不可變更 audit trail。</li>
+      <li>SLA 告警可在 24hr/72hr 自動觸發。</li>
+      <li>客服帳號無工程特權前提下，無法直接改帳本。</li>
+      <li>親友通報與 RG 案件有獨立分流並可產生 follow-up task。</li>
+    </ul>
+  </section>
+</body>
+</html>

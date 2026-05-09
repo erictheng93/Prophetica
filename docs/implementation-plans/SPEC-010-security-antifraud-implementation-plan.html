@@ -1,0 +1,111 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPEC-010 安全與反作弊實作計畫</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", sans-serif; margin: 24px; line-height: 1.6; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    section { margin: 16px 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #dbeafe; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-010 — 安全與反作弊實作計畫</h1>
+  <p><strong>規格參照：</strong><a href="../specs/SPEC-010-security-antifraud.html">SPEC-010-security-antifraud.html</a> · <strong>版本：</strong>v0.1.0</p>
+
+  <section>
+    <h2>1. 實作邊界</h2>
+    <ul>
+      <li>基礎設施防護（WAF、Rate limiting、DDoS、bot）</li>
+      <li>應用層認證授權（JWT、refresh、step-up、revocation）</li>
+      <li>反作弊模型與帳號接管 / chargeback 保護</li>
+      <li>治理簽核集中到 multi-sig 中央表。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 安全不變式</h2>
+    <ul>
+      <li><strong>INV-SEC-1</strong>：Session 以短效 access + 可更新 refresh，refresh 一次性使用。</li>
+      <li><strong>INV-SEC-2</strong>：refresh reuse 檢測會撤銷所有 sessions 並觸發通知。</li>
+      <li><strong>INV-SEC-3</strong>：高敏感 API 必檢查 step-up 有效欄位。</li>
+      <li><strong>INV-SEC-4</strong>：多帳號風險 > 閥值必入 Compliance review queue。</li>
+      <li><strong>INV-SEC-5</strong>：anti-cheat 所有高風險操作保有可觀測與審計紀錄。</li>
+      <li><strong>INV-SEC-6</strong>：multi-sig 規則僅來源於中央表（MS-1 ~ MS-17）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. 身份驗證資料表</h2>
+    <ul>
+      <li>新增/維護：<code>user_sessions</code>（refresh hash, used_at, successor_id, revoked_at）。</li>
+      <li>user/driver token claim 對齊：iss、aud、sub、jti、proph_* claims。</li>
+      <li>Refresh token reuse 事件寫入 SIEM / incident channel。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. Token 與邊界流程</h2>
+    <h3>4.1 JWT</h3>
+    <ul>
+      <li>主流程採 EdDSA，若 PoC 回報 LIFF 無法支援則開 split-algo 路線。</li>
+      <li>cookie mode：HTTP-only / secure / same-site=lax。</li>
+    </ul>
+    <h3>4.2 Refresh</h3>
+    <ul>
+      <li>每次 /api/auth/refresh 發新 token 並將舊 token 標記 used。</li>
+      <li>reuse 時全部撤銷，要求全域重新登入。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 業務風控實作</h2>
+    <table>
+      <thead>
+        <tr><th>威脅</th><th>偵測項目</th><th>處置</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>自我成交</td><td>交易雙方連結圖譜、循環交易</td><td>標記並進 STP / suspension</td></tr>
+        <tr><td>洗售</td><td>新帳戶異常量能 + 異常成交</td><td>限速與手動 review</td></tr>
+        <tr><td>Pump & Dump</td><td>事件前結算前 30 分鐘不正常集中買單</td><td>自動 freeze / 人工審核</td></tr>
+        <tr><td>Chargeback</td><td>黑名單 BIN 與多次失敗</td><td>帳本反沖 + 封號</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>6. 觀測與告警</h2>
+    <ul>
+      <li>新增 security 指標：login anomaly、device collision、self-trade、wash score、chargeback.</li>
+      <li>6 個月一次紅隊、bug bounty、季度社工測試。</li>
+      <li>高風險事件 72h 內通報流程（若涉及個資）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. Multi-sig 中央表實作</h2>
+    <ul>
+      <li>以 <code>ms_id</code> 驅動前端/後端權限；所有規則（MS-1 ~ MS-17）採表驅動。</li>
+      <li>後端 schema 包含 <code>ms_rule_code</code>、<code>signers</code>、<code>decision</code>、<code>approval_snapshot</code>。</li>
+      <li>審核 API 應回傳 <code>ERROR_CODE_MULTISIG_REJECTED</code> 及拒絕原因。
+      </li>
+      <li>audit_logs 必含 <code>ms_id</code>、subject、metadata。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>8. 驗收</h2>
+    <ul>
+      <li>WAF / RBAC / injection countermeasures 完成並有 CI gate。</li>
+      <li>refresh 重放防護與 step-up 可用性測試。</li>
+      <li>安全敏感模組遵循 4-eye 或規定簽核。</li>
+      <li>多簽表與 spec 依賴（008/015/012/013/017）一致。</li>
+    </ul>
+  </section>
+</body>
+</html>

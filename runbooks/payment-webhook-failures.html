@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runbook: Payment Webhook Failures</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.55; color: #1f2937; }
+    h1 { margin-top: 0; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+<h1>Runbook: Payment Webhook Failures</h1>
+<h2>Alert</h2>
+<p>Payment gateway webhook failures exceed 10 per minute.</p>
+<h2>Severity</h2>
+<p>P0</p>
+<h2>Investigation</h2>
+<ol>
+<li>Check payment webhook signature verification errors.</li>
+<li>Compare provider delivery logs against internal idempotency records.</li>
+<li>Confirm wallet-ledger-service readiness and ledger commit latency.</li>
+</ol>
+<h2>Resolution</h2>
+<ol>
+<li>Pause automatic crediting if ledger commit status is ambiguous.</li>
+<li>Replay only idempotent webhook events after root cause is known.</li>
+<li>Reconcile provider settlement exports against ledger transactions.</li>
+</ol>
+  </main>
+</body>
+</html>

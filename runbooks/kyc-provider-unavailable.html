@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runbook: KYC Provider Unavailable</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.55; color: #1f2937; }
+    h1 { margin-top: 0; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+<h1>Runbook: KYC Provider Unavailable</h1>
+<h2>Alert</h2>
+<p>KYC SaaS API is unavailable for more than 5 minutes.</p>
+<h2>Severity</h2>
+<p>P0</p>
+<h2>Investigation</h2>
+<ol>
+<li>Check provider status page and API error responses.</li>
+<li>Inspect kyc-service retry and queue depth.</li>
+<li>Confirm whether tier upgrades or compliance reviews are blocked.</li>
+</ol>
+<h2>Resolution</h2>
+<ol>
+<li>Switch the product flow to pending/manual review messaging.</li>
+<li>Stop retry storms by applying backoff.</li>
+<li>Reconcile queued provider events after provider recovery.</li>
+</ol>
+  </main>
+</body>
+</html>

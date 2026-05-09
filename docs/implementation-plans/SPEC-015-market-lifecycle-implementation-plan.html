@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-015-market-lifecycle implementation plan</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 24px; line-height: 1.65; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin-bottom: 16px; }
+    pre { background: #f8fafc; border: 1px solid #dbeafe; padding: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-015 market lifecycle implementation plan</h1>
+  <div class="meta">
+    <strong>版本</strong>: v0.1.1<br>
+    <strong>更新日</strong>: 2026-05-09<br>
+    <strong>對應規格</strong>: <a href="../specs/SPEC-015-market-lifecycle.html">SPEC-015</a><br>
+    <strong>目標</strong>: 落實市場生命週期 state machine、表結構與權限分流
+  </div>
+
+  <section>
+    <h2>1. 資料模型（實作）</h2>
+    <pre><code class="language-sql">CREATE TABLE markets (
+  id VARCHAR(64) PRIMARY KEY,
+  market_type VARCHAR(32) NOT NULL,
+  symbol VARCHAR(64) NOT NULL,
+  status VARCHAR(16) NOT NULL, -- DRAFT / REVIEW / SCHEDULED / OPEN / CLOSED
+  created_by BIGINT NOT NULL,
+  reviewed_by BIGINT,
+  opens_at TIMESTAMPTZ,
+  closes_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE market_reviews (
+  id BIGSERIAL PRIMARY KEY,
+  market_id VARCHAR(64) NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+  reviewer_role VARCHAR(32) NOT NULL,
+  decision VARCHAR(32) NOT NULL, -- approve/reject/require_changes
+  decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  remarks TEXT
+);
+
+CREATE TABLE market_audit_logs (
+  id BIGSERIAL PRIMARY KEY,
+  market_id VARCHAR(64) NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+  actor_user_id BIGINT NOT NULL,
+  action VARCHAR(32) NOT NULL,
+  old_status VARCHAR(16),
+  new_status VARCHAR(16),
+  payload_json JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);</code></pre>
+  </section>
+
+  <section>
+    <h2>2. 流程（狀態機）</h2>
+    <pre><code>DRAFT → REVIEW → SCHEDULED → OPEN → CLOSED</code></pre>
+    <ul>
+      <li>CLOSED 交由 SPEC-004 申訴/結算處理，不再進入本機制。</li>
+      <li>狀態變更需要 `market_reviews` 審核軌跡（雙人簽核、legal/compliance 視情境）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. 權限與操作</h2>
+    <ul>
+      <li>CREATE in DRAFT：市場建立者 + 具備風控預備權限。</li>
+      <li>REQUEST REVIEW：可由編輯角色送審，記錄 submit trace。</li>
+      <li>SCHEDULE / OPEN：需雙人審核結果，`REVIEW` 才可進 SCHEDULED。</li>
+      <li>force CLOSE：僅 Admin 可發起，需強制原因。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 不變式</h2>
+    <ul>
+      <li>同一市場任意時間至多一筆 OPEN 或 OPEN 之前排程。</li>
+      <li>一旦進入 REVIEW，不得繞過 `market_reviews` 寫入 `market_audit_logs`。</li>
+      <li>Oracle 提交資料結構固定，避免跨欄位寫入不一致。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 驗收與監控</h2>
+    <ul>
+      <li>審核節點與角色寫入可查詢。</li>
+      <li>關閉後不得改變交易狀態欄位。</li>
+      <li>監控項目：未按時 review、非法狀態跳轉、關閉後重啟嘗試。</li>
+    </ul>
+  </section>
+</body>
+</html>

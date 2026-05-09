@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-013 — CI/CD 與發布策略</title>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.6;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre { overflow: auto; padding: 1rem; background: #f6f8fa; border: 1px solid #d8dee3; }
+    hr { border: none; border-top: 1px solid #d0d7de; }
+    blockquote { border-left: 4px solid #d0d7de; padding-left: 0.8rem; margin-left: 0; color: #374151; }
+    a { color: #0969da; }
+  </style>
+
+</head>
+<body>
+<h1>SPEC-013 — CI/CD 與發布策略</h1>
+<blockquote>
+<p>優先級：<strong>P2</strong>
+版本：v0.2.0 · 最後更新：2026-05-07
+依賴：SPEC-007, SPEC-008, SPEC-010, SPEC-014, SPEC-017
+被依賴：—</p>
+<p><strong>v0.2.0 變更</strong>：(1) <strong>H-3 CI gate 對齊</strong>：§3.1 改為「SPEC-017 §8 之超集」明示繼承 bootstrap CI 全部 gate（pnpm/cargo/sqlx/buf/clippy/nextest/deny/geiger/sentinel-scan）+ 加上 prod-targeting gate（SAST / SCA / image scan / IaC / secret / migration / E2E）；§3.2 必過 gate 表合併重整 19 列，每列標註來源 SPEC；nightly 區塊新增 cargo-mutants / macos-latest / terraform plan diff（呼應 SPEC-017 §8.2 / §12 OQ #5）。(2) <strong>H-6 Coverage 分層</strong>：§3.3 新增分層覆蓋率表（ledger / 撮合 hot path ≥ 95% / 結算 ≥ 90% / 安全敏感 ≥ 85% / 其他預設 ≥ 80% / web ≥ 70% / mocks 不檢查），消除 SPEC-013（80%）vs SPEC-003 §16.1（100%）vs SPEC-003 §18（95%）三處數字不一致。(3) §3.1 prod approval cross-ref 至 SPEC-010 §9.3 MS-12。SPEC-013 v0.1.0 → v0.2.0；「依賴」加 SPEC-017。</p>
+</blockquote>
+<hr />
+<h2>1. Objective</h2>
+<p>確保程式碼從 commit 到 production 全程自動化、可重現、可回滾，並包含必要的安全與品質檢核點。</p>
+<h2>2. 環境分層</h2>
+<table>
+<thead>
+<tr>
+<th>環境</th>
+<th>用途</th>
+<th>資料</th>
+<th>部署方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>local</code></td>
+<td>開發者本機</td>
+<td>docker-compose</td>
+<td>手動</td>
+</tr>
+<tr>
+<td><code>dev</code></td>
+<td>整合測試</td>
+<td>假資料</td>
+<td>自動每次 main commit</td>
+</tr>
+<tr>
+<td><code>staging</code></td>
+<td>預生產驗證</td>
+<td>匿名化的 prod replica</td>
+<td>自動每次 release tag</td>
+</tr>
+<tr>
+<td><code>prod</code></td>
+<td>生產</td>
+<td>真實資料</td>
+<td>手動 approval + 漸進式</td>
+</tr>
+</tbody>
+</table>
+<h2>3. CI Pipeline</h2>
+<h3>3.1 GitHub Actions Workflow</h3>
+<blockquote>
+<p><strong>本節 CI pipeline 為 SPEC-017 §8 bootstrap CI 之超集</strong>：bootstrap 階段只跑 lint + test + sentinel-scan + 各 Rust gate；本節在此之上額外加上 prod-targeting gate（SAST / SCA / image scan / E2E / migration dry-run / 部署）。</p>
+<p><strong>繼承 SPEC-017 §8 之必過 gate</strong>（Rust 工具鏈端）：
+- <code>pnpm install --frozen-lockfile</code>
+- <code>cargo build --workspace --locked</code>
+- <code>cargo sqlx prepare --check</code>（R-6）
+- <code>buf lint</code> / <code>buf breaking</code> / <code>verify generated stubs in sync</code>
+- <code>make lint</code>（cargo clippy <code>-D warnings</code> + cargo fmt --check + eslint + prettier）
+- <code>make test</code>（cargo nextest + pnpm turbo test）
+- <code>cargo deny check</code>
+- <code>cargo geiger</code> regression（R-5 unsafe 監測）
+- <code>sentinel-scan</code>（ADR-0001 §6 禁字 + tools/mocks 隔離 + R-1 紅線 grep gate <code>wallet_to_payable|cash_out_player_pts|redeem_points_to_cash</code>）</p>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-013-cicd-release-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>3.2 必須通過的 Gate（含繼承自 SPEC-017 §8）</h3>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th>來源</th>
+<th>阻斷條件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pnpm install --frozen-lockfile</code></td>
+<td>SPEC-017 §8</td>
+<td>pnpm-lock.yaml 不一致</td>
+</tr>
+<tr>
+<td><code>cargo build --workspace --locked</code></td>
+<td>SPEC-017 §8</td>
+<td>Cargo.lock 不一致 / 編譯錯誤</td>
+</tr>
+<tr>
+<td><code>cargo sqlx prepare --check</code></td>
+<td>SPEC-017 §8（R-6）</td>
+<td><code>.sqlx/</code> cache 與 schema drift</td>
+</tr>
+<tr>
+<td><code>buf lint / breaking / stubs in sync</code></td>
+<td>SPEC-017 §8</td>
+<td>proto 違規或 gen/ 未同步 regenerate</td>
+</tr>
+<tr>
+<td><code>make lint</code></td>
+<td>SPEC-017 §8</td>
+<td>clippy <code>-D warnings</code> / rustfmt / eslint / prettier 違反</td>
+</tr>
+<tr>
+<td><code>make test</code></td>
+<td>SPEC-017 §8</td>
+<td>任一測試 fail</td>
+</tr>
+<tr>
+<td><strong>Coverage gate（分層，見 §3.3）</strong></td>
+<td><strong>本節 H-6</strong></td>
+<td><strong>平台預設 &lt; 80%；ledger / 撮合 hot path &lt; 95%</strong></td>
+</tr>
+<tr>
+<td><code>cargo deny check</code></td>
+<td>SPEC-017 §8</td>
+<td>依賴授權 / advisory / banned crate 違反</td>
+</tr>
+<tr>
+<td><code>cargo geiger</code> regression</td>
+<td>SPEC-017 §8（R-5）</td>
+<td>新增 unsafe block 未經 ADR + 4-eye review</td>
+</tr>
+<tr>
+<td><code>sentinel-scan</code> ADR-0001 §6</td>
+<td>SPEC-017 §8 / SPEC-003 §12.1.3</td>
+<td>禁字命中（auto_quote / market_balancer / house_book / probability_symmetry / auto_hedge）</td>
+</tr>
+<tr>
+<td><code>sentinel-scan</code> mocks isolation</td>
+<td>SPEC-017 §8</td>
+<td>production code 引用 <code>tools/mocks</code></td>
+</tr>
+<tr>
+<td><strong><code>sentinel-scan</code> R-1 點數出口</strong></td>
+<td><strong>SPEC-011 §6.3</strong></td>
+<td><strong><code>wallet_to_payable</code> / <code>cash_out_player_pts</code> / <code>redeem_points_to_cash</code> 命中</strong></td>
+</tr>
+<tr>
+<td><strong>SAST</strong>（Semgrep）</td>
+<td><strong>本節</strong></td>
+<td>High / Critical</td>
+</tr>
+<tr>
+<td><strong>SCA</strong>（Trivy, Snyk）</td>
+<td><strong>本節</strong></td>
+<td>High / Critical CVE</td>
+</tr>
+<tr>
+<td><strong>Container image scan</strong>（Trivy）</td>
+<td><strong>本節</strong></td>
+<td>High / Critical</td>
+</tr>
+<tr>
+<td><strong>IaC scan</strong>（Checkov）</td>
+<td><strong>本節</strong></td>
+<td>High / Critical</td>
+</tr>
+<tr>
+<td><strong>Secret scan</strong>（gitleaks）</td>
+<td><strong>本節</strong></td>
+<td>任何 hard-coded token / password</td>
+</tr>
+<tr>
+<td><strong>Build</strong></td>
+<td><strong>本節</strong></td>
+<td>failure</td>
+</tr>
+<tr>
+<td><strong>Migration dry-run</strong></td>
+<td><strong>本節</strong></td>
+<td>rollback 不可行</td>
+</tr>
+</tbody>
+</table>
+<h3>3.3 Coverage Gate 分層（H-6）</h3>
+<p>不同 crate 因業務風險不同，覆蓋率門檻分層執行：</p>
+<table>
+<thead>
+<tr>
+<th>Crate / 模組</th>
+<th>覆蓋率門檻</th>
+<th>理由</th>
+<th>來源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>services/wallet-ledger-service/src/ledger/**</code></td>
+<td><strong>≥ 95%</strong></td>
+<td>帳本 INV-1 ~ INV-6 不變式核心；任何 mutation 直接影響資金安全</td>
+<td>SPEC-002 §11 / 本節</td>
+</tr>
+<tr>
+<td><code>services/matching-engine/src/{book,match}/**</code></td>
+<td><strong>≥ 95%</strong></td>
+<td>撮合 hot path；確定性 / FIFO / STP 邏輯不可漏測</td>
+<td>SPEC-003 §16.1 / §18</td>
+</tr>
+<tr>
+<td><code>crates/sdk/ledger/**</code></td>
+<td><strong>≥ 95%</strong></td>
+<td>共用 ledger client，所有 service 經此寫帳本</td>
+<td>SPEC-002 §12 OQ #1</td>
+</tr>
+<tr>
+<td><code>services/settlement-worker/**</code></td>
+<td><strong>≥ 90%</strong></td>
+<td>結算批次原子性 + multi-sig 簽核流程</td>
+<td>SPEC-004 §7</td>
+</tr>
+<tr>
+<td><code>services/kyc-service/**</code></td>
+<td><strong>≥ 85%</strong></td>
+<td>KYC tier / 證件 hash / SaaS webhook idempotency</td>
+<td>SPEC-005 §11</td>
+</tr>
+<tr>
+<td><code>services/risk-antifraud-service/**</code></td>
+<td><strong>≥ 85%</strong></td>
+<td>多帳號偵測 / wash trading post-trade</td>
+<td>SPEC-010 §4</td>
+</tr>
+<tr>
+<td><code>services/payment-service/**</code></td>
+<td><strong>≥ 85%</strong></td>
+<td>webhook HMAC + idempotency + chargeback 流程</td>
+<td>SPEC-016 §14</td>
+</tr>
+<tr>
+<td><strong>其他 services / crates 預設</strong></td>
+<td><strong>≥ 80%</strong></td>
+<td>平台預設 baseline</td>
+<td>本節</td>
+</tr>
+<tr>
+<td><code>apps/web/**</code></td>
+<td><strong>≥ 70%</strong></td>
+<td>Next.js component coverage 比後端容忍度高（業務邏輯多在 server）</td>
+<td>本節</td>
+</tr>
+<tr>
+<td><code>tools/mocks/**</code></td>
+<td>不檢查</td>
+<td>僅 dev / test 使用，不入 production binary</td>
+<td>SPEC-017 §3.3</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>覆蓋率工具：Rust 用 <a href="https://github.com/taiki-e/cargo-llvm-cov"><code>cargo-llvm-cov</code></a>（不依賴 nightly toolchain）；TypeScript 用 vitest 內建 coverage（<code>v8</code> provider）；報告 upload 至 Codecov 或自建 Grafana 看板。</p>
+<p>CI 跑 coverage 時間成本：增量 ~3-5 分鐘（cold build + 測試運行 instrumented binary），可放在獨立 job 與 lint/build 並行；不阻塞 PR merge 但若違反門檻必發 review-required label。</p>
+</blockquote>
+<h2>4. 部署策略（Progressive Delivery）</h2>
+<h3>4.1 Canary</h3>
+<ul>
+<li>用 Argo Rollouts 或 Flagger 管理</li>
+<li>流量切分基於 user_id hash（避免同一用戶在新舊版間跳）</li>
+<li>DMM 與重要 admin endpoint 走「late canary」（最後才放）</li>
+</ul>
+<h3>4.2 Feature Flag</h3>
+<ul>
+<li>LaunchDarkly 或 Unleash</li>
+<li>所有新功能默認 OFF，逐步開放</li>
+<li>Compliance / Engineering 可獨立 toggle</li>
+<li>緊急停盤 flag (<code>engine.halted</code>) 為高敏感，需 2-of-N</li>
+</ul>
+<h3>4.3 Database Migration</h3>
+<ul>
+<li>採用 expand-and-contract pattern：
+  1. 增加新 column (nullable)
+  2. 部署寫入新 column 的 code
+  3. backfill 歷史資料
+  4. 部署只讀新 column 的 code
+  5. drop 舊 column</li>
+<li><strong>嚴禁</strong> rename / drop column 直接 deploy</li>
+<li>大型 migration（影響 &gt; 10M rows）必走 online migration（pgcompacttable / pg_repack）</li>
+</ul>
+<h3>4.4 Rollback 策略</h3>
+<table>
+<thead>
+<tr>
+<th>觸發</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Canary 期間任一 SLO 違反</td>
+<td>自動 rollback</td>
+</tr>
+<tr>
+<td>Error rate &gt; 1% 持續 5 分鐘</td>
+<td>自動 rollback</td>
+</tr>
+<tr>
+<td>工程主動</td>
+<td><code>kubectl rollout undo</code> 或 Argo CLI</td>
+</tr>
+<tr>
+<td>Database migration 失敗</td>
+<td>復原至前一 schema（必須事前測試）</td>
+</tr>
+</tbody>
+</table>
+<h2>5. Release Tag 規範</h2>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-013-cicd-release-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<ul>
+<li>MAJOR：不向後兼容</li>
+<li>MINOR：向後兼容新功能</li>
+<li>PATCH：向後兼容修補</li>
+</ul>
+<p>每個 release tag 對應：</p>
+<ul>
+<li>自動產生 GitHub Release</li>
+<li>自動推送 release notes（從 PR description 抽取）</li>
+<li>觸發 staging 部署</li>
+</ul>
+<h2>6. Hotfix 流程</h2>
+<p>針對 production critical bug：</p>
+<ol>
+<li>從 prod tag 開 <code>hotfix/{issue}</code> 分支</li>
+<li>修補</li>
+<li>PR + reduced gate（只跑 unit + 影響範圍 E2E）</li>
+<li>Senior Engineer 簽核</li>
+<li>直接 deploy staging → smoke test</li>
+<li>立即 prod canary（5% 起步）</li>
+<li>完成後 cherry-pick 回 main</li>
+</ol>
+<h2>7. 部署敏感性矩陣</h2>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>部署窗</th>
+<th>風險</th>
+<th>特殊要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Matching Engine</td>
+<td>非交易高峰</td>
+<td>極高</td>
+<td>滾動升級 + 從 snapshot/WAL 恢復驗證</td>
+</tr>
+<tr>
+<td>Ledger Service</td>
+<td>非交易高峰</td>
+<td>極高</td>
+<td>4-eye review</td>
+</tr>
+<tr>
+<td>Settlement</td>
+<td>非結算時段</td>
+<td>極高</td>
+<td>Compliance 簽核</td>
+</tr>
+<tr>
+<td>API Gateway</td>
+<td>任意</td>
+<td>中</td>
+<td>canary</td>
+</tr>
+<tr>
+<td>Web Frontend</td>
+<td>任意</td>
+<td>低</td>
+<td>canary</td>
+</tr>
+<tr>
+<td>Admin Backend</td>
+<td>工作時段</td>
+<td>中</td>
+<td>內部 IP only</td>
+</tr>
+</tbody>
+</table>
+<h2>8. 緊急停盤與部署互動</h2>
+<p>呼應 SPEC-008：</p>
+<ul>
+<li>停盤期間禁止部署（除非為解除停盤所需）</li>
+<li>每次部署後自動跑「stop-and-resume drill」（發 stop signal、確認、unstop、確認），不影響玩家但驗證機制</li>
+<li>無 drill 通過 14 天 → 告警</li>
+</ul>
+<h2>9. 安全與合規檢查點</h2>
+<table>
+<thead>
+<tr>
+<th>檢查</th>
+<th>階段</th>
+<th>工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>機密掃描（hard-coded token / password）</td>
+<td>pre-commit + CI</td>
+<td>gitleaks</td>
+</tr>
+<tr>
+<td>依賴漏洞</td>
+<td>CI</td>
+<td>Trivy / Snyk</td>
+</tr>
+<tr>
+<td>容器映像</td>
+<td>CI</td>
+<td>Trivy</td>
+</tr>
+<tr>
+<td>IaC 漏洞</td>
+<td>CI</td>
+<td>Checkov</td>
+</tr>
+<tr>
+<td>可觀測性配置</td>
+<td>CI</td>
+<td>自訂 lint，確認 metrics 命名</td>
+</tr>
+<tr>
+<td>配置 drift</td>
+<td>nightly</td>
+<td>terraform plan diff</td>
+</tr>
+</tbody>
+</table>
+<h2>10. 環境變數與配置管理</h2>
+<ul>
+<li>應用配置走環境變數 + Vault sidecar</li>
+<li>配置變更走 GitOps（ArgoCD 監控 GitHub）</li>
+<li>敏感配置走 Vault</li>
+<li>prod 配置與 staging 配置 diff 必須 &lt; 10 行（避免「在 staging 跑得好，prod 不一樣」）</li>
+</ul>
+<h2>11. 部署紀錄與稽核</h2>
+<p>每次部署紀錄寫入：</p>
+<ul>
+<li>GitHub Release notes</li>
+<li>Slack <code>#deploys</code> 頻道</li>
+<li>Metric <code>proph_deployment_total{env, service, status}</code></li>
+<li>包含：Commit SHA、PR 號、部署人、時間、影響服務</li>
+</ul>
+<h2>12. Pre-launch Checklist（每個 prod release 必跑）</h2>
+<ul>
+<li>[ ] 所有 PR 已 code review 並通過 4-eye（敏感模組）</li>
+<li>[ ] 所有 CI gate 通過</li>
+<li>[ ] Staging E2E 全綠</li>
+<li>[ ] Migration 已在 staging 跑過並可 rollback</li>
+<li>[ ] Feature flag 默認 OFF</li>
+<li>[ ] 監控 dashboard 已預備</li>
+<li>[ ] Runbook 已更新</li>
+<li>[ ] On-call 已被通知</li>
+<li>[ ] 用戶通告（如必要）</li>
+</ul>
+<h2>13. 驗收條件</h2>
+<ul>
+<li>[ ] CI pipeline 完整跑通（PR / main / release tag）</li>
+<li>[ ] Canary 部署可動，流量可控</li>
+<li>[ ] Auto-rollback 機制驗證</li>
+<li>[ ] Migration expand-and-contract 模板驗證</li>
+<li>[ ] Feature flag 系統上線</li>
+<li>[ ] Release notes 自動生成</li>
+<li>[ ] 部署稽核日誌齊全</li>
+</ul>
+<h2>14. Open Questions</h2>
+<ol>
+<li>ArgoCD vs Flux？K8s GitOps 工具</li>
+<li>Argo Rollouts vs Flagger？Canary 策略</li>
+<li>Feature flag：LaunchDarkly（昂貴但可靠） vs Unleash（自建）？</li>
+<li>Hotfix 流程是否需獨立分支策略？</li>
+<li>SAST / SCA 偽陽性過濾流程（避免阻塞合理 merge）？</li>
+</ol>
+</body>
+</html>

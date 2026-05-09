@@ -1,0 +1,600 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-002-funds-safety</title>
+  <style>
+  body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.5;
+    }
+    img { max-width: 100%; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre {
+      overflow: auto;
+      padding: 1rem;
+      background: #f6f8fa;
+      border: 1px solid #d8dee3;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    a { color: #0969da; }
+    .changelog h2 { margin-top: 2rem; }
+    .changelog-item { margin: 1rem 0 1.25rem; }
+    .changelog-item h3 { margin: 0.25rem 0; font-size: 1.1rem; }
+    .changelog-item p { margin: 0.25rem 0; }
+    .changelog-item ol { margin: 0.5rem 0 0.5rem 1.25rem; padding: 0; }
+  </style>
+</head>
+<body>
+<h1>SPEC-002 — 資金安全與虛擬點數帳本</h1>
+<blockquote>
+<p>優先級：<strong>P0</strong><br>版本：v0.1.8 · 最後更新：2026-05-07<br>依賴：無<br>被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011</p>
+</blockquote>
+<section class="changelog">
+  <h2>變更紀錄</h2>
+  <article class="changelog-item">
+    <h3>v0.1.8</h3>
+    <p>§5 INV-6 白名單補充 chargeback carve-out — <code>Player.Wallet.*</code> outflow 允許目的地新增 (e) <code>Bank.TrustAccount.*</code>（<strong>僅限</strong> <code>txn_type = chargeback</code>，呼應 §8.1 deposit 反向沖正）。Carve-out 動機：chargeback 為「玩家信用卡爭議 → 銀行抽走原儲值 → 平台對玩家負債歸零 + 託管帳餘額減少退回卡組織」之合法 reversal，<strong>非</strong>「點數變現」（玩家不取得現金）。發現過程：實作 ledger CONSTRAINT TRIGGER 時跑 chargeback test 觸發 INV-6 偽陽性。同步落地：<a href="../crates/sdk/src/ledger/mod.rs"><code>crates/sdk/src/ledger/mod.rs</code></a> <code>is_inv6_whitelisted_target()</code> + <a href="../services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql"><code>migrations/202605070004_inv6_outflow_whitelist.sql</code></a> plpgsql trigger + <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006 §4.1 / §4.2.1</a> 同步擴展。</p>
+  </article>
+  <article class="changelog-item">
+    <h3>v0.1.7</h3>
+    <ol>
+      <li>§5 INV-6 governance 標註更新 — <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006</a> 已落地（Accepted 2026-05-07），擴展 ADR-0003 §5 INV 集合為 INV-1 ~ INV-6；移除 v0.1.5「待 ADR-0006 落地」與「migration 不得加 CHECK constraint」之過渡標註，wallet-ledger-service migration 可依 ADR-0006 §4.2.1 plpgsql template 實作 INV-6 trigger。</li>
+      <li><strong>T-3 partition</strong> 策略：§12 OQ #2 由「Phase 1 不分區後 migrate」修正為「Phase 1 從 day 1 即採 monthly range partition by <code>created_at</code>（pg_partman）+ BRIN index + 12 個月以上 cold partition detach 至 R2 + foreign table」，避免事後 online migration 高風險操作。</li>
+      <li><strong>T-5 最終一致性窗口</strong>：§9 新增 §9.3「撮合 → ledger 最終一致性窗口」，明示 ~100ms eventual consistency 之語意 + 前端 optimistic UI + 後端 API 兩階一致性語意：<code>?at_seq=N</code> / <code>?consistent=true</code>，並啟用 OTel span 監控（<code>proph_ledger_event_lag_seconds</code>）。</li>
+    </ol>
+  </article>
+  <article class="changelog-item">
+    <h3>v0.1.6（H-5）</h3>
+    <p>§8.1 chargeback 場景補「累計 ≥ 1 立即永久封號 + 黑名單」門檻，cross-ref SPEC-010 §6.2 / SPEC-016 §6.1；系統故障 reversal 補 cross-ref 至 SPEC-010 §9.3 MS-6（4-eye）。</p>
+  </article>
+  <article class="changelog-item">
+    <h3>v0.1.5（R-1 紅線清除）</h3>
+    <ol>
+      <li>§4.2 Chart of Accounts 補新子科目 <code>Liability.AccountsPayable.{partner_id}</code>（B2B 業務應付）/<code>Expense.AffiliatePartnerFee</code>（業務現金酬勞）/<code>Bank.OperatingAccount.{currency}</code>（營運帳戶，禁止接收玩家儲值），三者皆與玩家錢包零交集。</li>
+      <li>§5 新增 INV-6：<code>Player.Wallet.*</code> outflow 目的地白名單，禁止流向應付帳款 / 營運帳戶 / 業務酬勞等任何「兌現」科目，由 DB CONSTRAINT TRIGGER 強制 + CI sentinel-scan 雙保險。</li>
+      <li>INV-6 ADR governance：程式碼實作前需先落地 ADR-0006 將 ADR-0003 §5 之 INV 集合從 INV-1 ~ INV-5 擴展為 INV-1 ~ INV-6。對應 <a href="./SPEC-000-index.html">SPEC-000 §5 R-1</a> 與 SPEC-011 §6.3。</li>
+    </ol>
+  </article>
+  <article class="changelog-item">
+    <h3>v0.1.4</h3>
+    <p>§4.4.4 NOTE 3 加 cross-ref 至 <a href="./SPEC-000-index.html">SPEC-000 §5 Q-7</a>，明示 hedge 政策已 Resolved 為「允許」；本 SPEC 既有逐 <code>position_id</code> 結算邏輯維持不變，現由 Q-7 正式背書。</p>
+  </article>
+  <article class="changelog-item">
+    <h3>v0.1.3</h3>
+    <p>§3.2 內部儲存型別由 Go <code>int64</code> 同步為 Rust <code>i64</code>（語意等同）；對齊 SPEC-014 v0.2.0 後端切 Rust。</p>
+  </article>
+  <article class="changelog-item">
+    <h3>v0.1.2</h3>
+    <p>§12 OQ #2 <code>ledger_entries</code> partition 策略 Resolved（Phase 1 不分區 + 觸發門檻 + monthly partition 為未來方案）；§3.1 國際化說明明示永遠單幣別 TWD，多幣別已無啟用計畫。</p>
+  </article>
+  <article class="changelog-item">
+    <h3>v0.1.1</h3>
+    <ol>
+      <li>§3.1 點數計價 1 點 = TWD 1 由暫定改為正式定案。</li>
+      <li>§4.2 帳戶體系新增 <code>Player.Frozen.{user_id}</code>。</li>
+      <li>§4.2.1 新章節定義凍結子科目流程。</li>
+      <li>§5 INV-2 公式擴展含 Frozen。</li>
+      <li>§12 OQ #1（ledger 獨立 service）與 OQ #4（凍結處理）Resolved。</li>
+    </ol>
+  </article>
+</section>
+<hr>
+<h2>1. Objective</h2>
+<p>確保玩家資金（法幣儲值）與站內虛擬點數的金流，達到金融級的精確、可稽核、雙簿記、零誤差。任何時刻系統都能回答：「現在玩家總計擁有多少點數？平台託管帳戶有多少資金？兩者是否相符？」</p>
+<h2>2. 資金分層架構</h2>
+<pre><code class="language-text">┌────────────────────────────────────────────────────────────────────┐
+│ Player                                                              │
+│   ↓ 法幣（TWD）                                                     │
+│ Payment Gateway (綠界 / 藍新 / Stripe / etc.)                       │
+│   ↓ webhook 確認                                                    │
+│ Operating Co. 託管銀行帳戶 (Segregated Trust Account)               │
+│   ↓ 內部記帳                                                        │
+│ Ledger Service (PostgreSQL，雙簿記)                                  │
+│   ↓ 對應                                                            │
+│ Player Wallet (站內虛擬點數)                                         │
+│   ↓ 鎖倉 / 釋出                                                     │
+│ Order Book / Position / Settlement                                  │
+└────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2>3. 點數計價設計</h2>
+<h3>3.1 計價單位選定</h3>
+<blockquote>
+<p>決策：<strong>1 點 = TWD 1 等值</strong> — ✅ <strong>正式定案 2026-05-05</strong></p>
+</blockquote>
+<p>雖然 1:1 容易與現金混淆，但抽象比例（如 100 點 = TWD 1）會增加用戶心智負擔，且國際市場匯率變動會導致「持有的點數變多變少」的詭異現象。<strong>統一以 TWD 為計算基準，UI 顯示「點」即可，避免 $ 符號</strong>。</p>
+<blockquote>
+<p>國際化考量：當前<strong>永遠以 TWD 為唯一計價幣別</strong>；國際玩家以非 TWD 儲值時於<strong>通路端</strong>換算為 TWD 後入帳，平台 ledger 不持非 TWD 資產。多幣別 ledger（SPEC-016 §7 Phase 2）為保留設計，<strong>目前無啟用計畫</strong>，僅在業務需要（Op Co. 開非 TWD 計價國際版本 / 主動承擔 FX 對沖）時才啟動 schema migration。</p>
+</blockquote>
+<h3>3.2 內部精度與整數化（Tech Invariant）</h3>
+<blockquote>
+<p>為避免浮點誤差於累加 / 對帳時放大，所有金額在系統內部<strong>一律以整數儲存與運算</strong>。本節是後端工程之硬性約束。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>屬性</th>
+<th>規則</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>對外顯示最小單位</td>
+<td><code>0.01 點</code>（兩位小數）</td>
+</tr>
+<tr>
+<td>內部儲存型別</td>
+<td><code>BIGINT</code>（PostgreSQL）/ <code>i64</code>（Rust）</td>
+</tr>
+<tr>
+<td>內部單位</td>
+<td><code>1 內部單位 = 0.01 點</code>（即「點 × 100」）</td>
+</tr>
+<tr>
+<td>顯示換算</td>
+<td><code>display_value = internal_value / 100</code>，UI 層格式化為 <code>fmt.Sprintf(&quot;%.2f 點&quot;, ...)</code></td>
+</tr>
+<tr>
+<td>手續費 basis points</td>
+<td><code>1 bp = 0.01%</code>，計算 <code>fee = trade_value_internal × fee_bps / 10000</code>（呼應 SPEC-003 §14.2）</td>
+</tr>
+<tr>
+<td>禁區</td>
+<td><strong>絕不</strong>使用 <code>float64</code> / <code>decimal</code> SaaS / 字串相加；任何轉型為浮點之 PR 必須 reject</td>
+</tr>
+</tbody></table>
+<h4>3.2.1 整個系統的單位一致性</h4>
+<table>
+<thead>
+<tr>
+<th>模組</th>
+<th>欄位 / 變數</th>
+<th>單位</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>ledger_entries.amount</code></td>
+<td>內部點數 × 100</td>
+<td>BIGINT</td>
+</tr>
+<tr>
+<td><code>ledger_entries.balance_after</code></td>
+<td>內部點數 × 100</td>
+<td>BIGINT</td>
+</tr>
+<tr>
+<td><code>Order.PricePts</code>（SPEC-003）</td>
+<td>0–100，對應 0.00–1.00（= 機率 × 100）</td>
+<td>int64</td>
+</tr>
+<tr>
+<td><code>Order.QtyTotal</code> / <code>QtyRemaining</code>（SPEC-003）</td>
+<td>股數</td>
+<td>int64</td>
+</tr>
+<tr>
+<td>Trade Value</td>
+<td><code>PricePts × Qty</code>（內部點數 × 100）</td>
+<td>int64</td>
+</tr>
+<tr>
+<td>點數結算 payout</td>
+<td><code>1.00 × 100 × Qty = 100 × Qty</code>（每股中獎 1 點）</td>
+<td>int64</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>此一致性確保 SPEC-002 ledger entry 與 SPEC-003 撮合引擎共用同一套金額算術，無轉型損失。</p>
+</blockquote>
+<h2>4. 雙簿記帳本（Double-Entry Ledger）</h2>
+<h3>4.1 為何必須雙簿記</h3>
+<p>單簿記（單純加減 wallet 餘額）的致命問題：</p>
+<ul>
+<li>任何 bug 導致的「憑空產生點數」無法事後察覺</li>
+<li>無法回答「這筆點數從哪裡來，要往哪裡去」</li>
+<li>對帳時無法定位差異點</li>
+</ul>
+<p>雙簿記原則：<strong>每一筆點數變動，必有等額相反方向的另一筆紀錄</strong>。</p>
+<h3>4.2 帳戶體系（Chart of Accounts）</h3>
+<pre><code class="language-text">資產（Assets）
+  └─ Bank.TrustAccount.TWD       託管銀行 TWD 餘額
+
+負債（Liabilities）
+  └─ Player.Wallet.{user_id}     對玩家的點數負債（每個玩家一個帳戶）
+  └─ Player.Locked.{user_id}     鎖倉中（掛單未成交、結算中）
+  └─ Player.Frozen.{user_id}     已凍結（責任博弈自我排除 / Compliance 凍結 / EDD 待審）— 詳見 §4.2.1
+
+負債 — 應付帳款（Liabilities — Accounts Payable）
+  └─ Liability.AccountsPayable.{partner_id}   B2B 業務合約應付（與玩家錢包零交集，呼應 SPEC-011 §6.4）
+
+收入（Revenue）
+  └─ Revenue.TradingFee          交易手續費收入
+  └─ Revenue.SettlementFee       結算手續費收入
+
+費用（Expenses）
+  └─ Expense.PaymentGatewayFee   支付通路手續費
+  └─ Expense.AffiliateCommission 玩家介紹獎勵 / 交易佣金（發放至 Player.Wallet 點數，呼應 SPEC-011 §4.1 / §4.2）
+  └─ Expense.AffiliatePartnerFee B2B 業務合約現金酬勞（對手方為 Liability.AccountsPayable.*，呼應 SPEC-011 §6.4）
+  └─ Expense.LiquiditySubsidy    DMM 流動性補貼
+
+資產 — 銀行（Assets — Bank）
+  └─ Bank.OperatingAccount.{currency}         營運帳戶（**禁止**接收玩家儲值；專供 §6.4 業務酬勞 / 平台營運費出帳）
+
+特殊
+  └─ Suspense.Reconciliation     對帳暫掛（差異追查中）
+</code></pre>
+<h3>4.2.1 凍結子科目（Player.Frozen.{user_id}）</h3>
+<blockquote>
+<p>決議 2026-05-05：採 <strong>(b) 帳本層轉子科目</strong> 而非 metadata flag 或純 application freeze。理由：</p>
+</blockquote>
+<ul>
+<li><strong>Audit Trail</strong>：永久封號 / 自我排除為不可逆事件，必須在帳本留下明確 entry，metadata flag 無法滿足「不可竄改事件流」要求。</li>
+<li><strong>隔離 INV-1 / INV-2 計算</strong>：凍結資產仍是平台對玩家之負債（不能歸 0），但不應出現在「可用餘額」對帳；以子科目分流可避免日常 wallet 查詢誤觸。</li>
+<li><strong>可逆操作</strong>：若凍結觸發條件解除（例如自我排除期滿、Compliance 釋出），由反向 entry 從 <code>Player.Frozen.{user_id}</code> 轉回 <code>Player.Wallet.{user_id}</code>，全程留痕。</li>
+</ul>
+<h4>凍結流程分錄</h4>
+<pre><code class="language-text">觸發：玩家 42 自我排除 / Compliance 凍結 / EDD 待審
+凍結金額 = Player.Wallet.42 + Player.Locked.42（先撤掉所有掛單，鎖倉退回 wallet 後再轉凍結）
+
+  Entry 1: Player.Wallet.42       +X       (負債從 wallet 減少 X)
+  Entry 2: Player.Frozen.42       -X       (負債轉到 frozen 子科目)
+  metadata: { reason: &#39;self_exclusion&#39; | &#39;compliance_freeze&#39; | &#39;edd_pending&#39;, triggered_by, ref_id }
+</code></pre>
+<h4>解凍流程</h4>
+<pre><code class="language-text">  Entry 1: Player.Frozen.42       +X
+  Entry 2: Player.Wallet.42       -X
+  metadata: { reason: &#39;self_exclusion_expired&#39; | &#39;compliance_cleared&#39;, approved_by, ref_id }
+</code></pre>
+<blockquote>
+<p>Compliance 凍結 / EDD 凍結之解凍須走 SPEC-010 §9 4-eye review；自我排除期滿解凍由 SPEC-006 §5 排程自動觸發但仍寫入 <code>approved_by = &#39;system:rg-scheduler&#39;</code>。</p>
+</blockquote>
+<h4>INV 影響</h4>
+<ul>
+<li><strong>INV-2</strong>：「平台對玩家負債總額」公式擴展為 <code>Σ(Player.Wallet.*) + Σ(Player.Locked.*) + Σ(Player.Frozen.*)</code>，§5 與 §11 對帳腳本須同步更新。</li>
+<li><strong>INV-4</strong>：<code>Player.Frozen.X</code> 同樣強制 ≥ 0。</li>
+<li><strong>凍結帳戶不可下單</strong>：matching-engine 撤單流程（SPEC-003）須檢查 user 凍結狀態，禁止任何 <code>Player.Wallet → Player.Locked</code> 之 entry。</li>
+</ul>
+<h3>4.3 帳本表結構（PostgreSQL）</h3>
+<blockquote>
+<p>這段是實作細節（欄位、index、trigger）與工程約束，已移到 <a href="../docs/implementation-plans/SPEC-002-funds-safety-implementation-plan.html">SPEC-002 implementation plan</a>。</p>
+</blockquote>
+<p>規格層面確認：帳本必須是可稽核的 double-entry 結構，至少包含「帳戶主表」「交易主表」「分錄主表」，並支援可重跑、可查詢與不可變紀錄。</p>
+<h3>4.4 典型交易範例（分錄）</h3>
+<h4>4.4.1 玩家儲值 1000 TWD</h4>
+<pre><code class="language-text">Txn: deposit, idempotency_key=&#39;gateway-tx-abc123&#39;
+
+  Entry 1: Bank.TrustAccount.TWD                +100,000  (1000 TWD * 100)
+  Entry 2: Player.Wallet.42                     -100,000
+
+(從會計角度：銀行帳戶資產增加 1000，平台對玩家負債增加 1000)
+</code></pre>
+<blockquote>
+<p>註：<code>Player.Wallet.42</code> 為負債類，貸方記負（direction = -1）。當玩家擁有點數時，平台<strong>對玩家負債</strong>，玩家提走則平台負債減少。</p>
+</blockquote>
+<h4>4.4.2 玩家掛單鎖倉 500 點</h4>
+<pre><code class="language-text">Txn: order_lock, idempotency_key=&#39;order-789&#39;
+
+  Entry 1: Player.Wallet.42                     +50,000  (鎖倉等同於玩家可用負債轉移)
+  Entry 2: Player.Locked.42                     -50,000
+</code></pre>
+<h4>4.4.3 兩玩家成交（A 買 <a href="mailto:YES@0.65">YES@0.65</a> × 100，B 買 <a href="mailto:NO@0.35">NO@0.35</a> × 100，opening trade）</h4>
+<blockquote>
+<p>本範例採 Kalshi 對稱 escrow 模型，與 §4.4.4 結算範例的<strong>前置狀態 100% 對齊</strong>。
+A 與 B 各自從掛單階段（§4.4.2 等同邏輯）已鎖入各自的 max loss，撮合成交時<strong>僅扣手續費</strong>，鎖倉不釋出 — 因為 escrow 必須留至結算才釋出（呼應 §4.4.4）。</p>
+</blockquote>
+<p>語意：</p>
+<ul>
+<li>A 在掛單階段 <code>Player.Locked.A</code> 鎖入 <code>0.65 × 100 × 100 = 6,500</code>（A 的 max loss = 0.65 × 100 股）</li>
+<li>B 在掛單階段 <code>Player.Locked.B</code> 鎖入 <code>0.35 × 100 × 100 = 3,500</code>（B 的 max loss = 0.35 × 100 股）</li>
+<li>撮合成交時 trade_value = <code>price × qty = 65 × 100 = 6,500</code>（內部單位）</li>
+<li>平台手續費 2%，雙邊各 <code>6,500 × 200 / 10000 = 130</code>（= 1.3 點）</li>
+<li>手續費<strong>從各自 wallet 扣</strong>（不動 escrow）</li>
+</ul>
+<pre><code class="language-text">Txn: trade, idempotency_key=&#39;trade-001&#39;, metadata: {trade_value: 6500, fee_bps: 200}
+
+  Entry 1: Player.Wallet.A    +130     (從 A 可用餘額扣 1.3 點手續費 → 負債減少)
+  Entry 2: Revenue.TradingFee -130     (平台 fee 收入增加)
+
+  Entry 3: Player.Wallet.B    +130
+  Entry 4: Revenue.TradingFee -130
+
+  借貸代數和：130 + (-130) + 130 + (-130) = 0 ✓
+</code></pre>
+<blockquote>
+<p>同時由 application 層產生 Position 紀錄（呼應 SPEC-015 outcomes / position 表）：</p>
+<ul>
+<li><code>Position{user: A, market: X, outcome: YES, qty: 100, locked_amount: 6500}</code></li>
+<li><code>Position{user: B, market: X, outcome: NO,  qty: 100, locked_amount: 3500}</code></li>
+</ul>
+<p>這些 position 之 <code>locked_amount</code> 對應的 <code>Player.Locked.{A,B}</code> 餘額<strong>不在本 trade transaction 變動</strong>；其釋放發生於 §4.4.4 settle。</p>
+</blockquote>
+<h4>4.4.3.1 closing trade（玩家賣出已持倉）</h4>
+<blockquote>
+<p>上述 §4.4.3 為<strong>兩位玩家同時 open 反向倉位</strong>之新成交。若其中一方為<strong>已持倉者賣出 close 倉位</strong>（如 A 已持 100 YES，現以 0.70 賣給新買家 C），則 A 的 escrow 在賣出成交時釋放回 wallet，C 鎖入新 escrow。完整範例見 SPEC-015 §10 銜接點與 SPEC-003 §14.2 撮合公式。</p>
+</blockquote>
+<h4>4.4.4 結算（YES 中獎，A 持 100 股 YES、B 持 100 股 NO）</h4>
+<p>本平台採 Kalshi / 標準預測市場的對稱 escrow 設計。當 A 以 0.65 買 YES 100 股、B 以 0.35 買 NO 100 股（亦即 B 以 0.65 賣 YES 100 股）對撮成交時：</p>
+<ul>
+<li>A 在 trade 階段鎖入 <code>0.65 × 100 = 6,500</code>（A 的 max loss）。</li>
+<li>B 在 trade 階段鎖入 <code>0.35 × 100 = 3,500</code>（B 的 max loss）。</li>
+<li>該配對 escrow 總額為 <code>10,000</code>（= 1.00 × 100），必有一方獨拿全額。</li>
+</ul>
+<p>結算時，escrow 全額流向勝方，敗方鎖倉<strong>就地清零</strong>（鎖倉直接結束、不退還）。如此可避免零金額分錄。</p>
+<p>YES 中獎時：</p>
+<pre><code class="language-text">Txn: settle, idempotency_key=&#39;market-X-settle:position-A-001&#39;
+
+  Entry 1: Player.Locked.A    +6,500    (A 鎖倉釋出 — 勝方應退還的 escrow)
+  Entry 2: Player.Locked.B    +3,500    (B 鎖倉釋出 — 敗方 escrow 流向勝方)
+  Entry 3: Player.Wallet.A    -10,000   (勝方收下 escrow 總額 = 6,500 + 3,500)
+
+  借貸代數和：6,500 + 3,500 + (-10,000) = 0 ✓
+</code></pre>
+<p>NO 中獎時：</p>
+<pre><code class="language-text">Txn: settle, idempotency_key=&#39;market-X-settle:position-B-001:NO&#39;
+
+  Entry 1: Player.Locked.A    +6,500
+  Entry 2: Player.Locked.B    +3,500
+  Entry 3: Player.Wallet.B    -10,000   (NO 勝出，B 收下 escrow 總額)
+</code></pre>
+<p><strong>實作注意：</strong></p>
+<ol>
+<li>本範例為**單一配對成交（trade pair）**之結算。實務上同一玩家可能持有多筆來自不同對手方的 trade pair；結算批次以 <code>position_id</code> 為單位逐筆處理，每筆三條 entry：<code>Locked.winner</code> / <code>Locked.loser</code> / <code>Wallet.winner</code>。<code>amount &gt; 0</code> constraint 永遠成立。</li>
+<li>若市場進入 <code>CANCELLED</code>（VOID），則退回為「各方退回原 escrow」：每個 position 寫入兩條 entry（<code>Locked.X +x</code>、<code>Wallet.X -x</code>）。</li>
+<li>對於<strong>同一玩家同時持 YES 與 NO</strong>（hedge）情境，結算批次內仍以 <code>position_id</code> 為單位逐筆處理，避免 cross-position 抵銷導致 entry 數量驟減而難以稽核。<strong>Hedge 政策已於 <a href="./SPEC-000-index.html#5-%E8%B7%A8%E6%AA%94%E6%B1%BA%E7%AD%96%E8%BF%BD%E8%B9%A4%E8%A1%A8cross-cutting-decision-tracker">SPEC-000 §5 Q-7</a> Resolved 為「允許」</strong>（撤除 SPEC-015 §8.1 原禁令，SPEC-003 §12 風控前置層不加 <code>HEDGE_NOT_ALLOWED</code> 檢查）；潛在自我對沖刷量行為由 SPEC-010 §4.2.2 post-trade 偵測攔截。</li>
+<li><code>settlement_logs</code> 額外記錄每筆 settle 的對應 <code>trade_id</code> / <code>position_id</code> / <code>oracle_submission_id</code> 來源，供爭議裁決回溯（呼應 SPEC-004 §6.3）。</li>
+<li>§4.4.3 已對齊本節對稱 escrow 模型（A 鎖 6,500 / B 鎖 3,500），不再為簡化版本。完整 trade 撮合與鎖倉公式詳見 SPEC-003 §14.2 與 SPEC-015 §10 之銜接點。</li>
+</ol>
+<h2>5. 不變式（Invariants）</h2>
+<blockquote>
+<p><strong>單一真相來源</strong>：以下不變式<strong>編號與內容</strong>對齊 <a href="../docs/architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §5</a>。任何修改 INV 編號或語意必須先寫一份新 ADR，並標記 ADR-0003 為 Superseded。</p>
+</blockquote>
+<p>系統任何時刻必須維持以下等式：</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>等式</th>
+<th>檢查頻率</th>
+<th>違反處理（規格層級）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>INV-1</td>
+<td><code>每個 ledger_transaction 的 entries 借貸代數和為 0</code></td>
+<td>每筆 commit</td>
+<td>該筆交易不得提交；需回傳一致性錯誤並保留事件軌跡</td>
+</tr>
+<tr>
+<td>INV-2</td>
+<td><code>Σ(Player.Wallet.*) + Σ(Player.Locked.*) + Σ(Player.Frozen.*) = 平台對玩家負債總額</code></td>
+<td>每 5 分鐘對帳腳本</td>
+<td>記錄 Suspense.Reconciliation，啟動告警與人工稽核流程</td>
+</tr>
+<tr>
+<td>INV-3</td>
+<td><code>Bank.TrustAccount + Σ(Revenue.*) − Σ(Expense.*) = 平台對玩家負債總額</code></td>
+<td>每日 T+1 對帳</td>
+<td>進入人工稽核，必要時暫停相關對帳與出帳流程</td>
+</tr>
+<tr>
+<td>INV-4</td>
+<td><code>每個 Player.Wallet.X 任意時刻 ≥ 0</code>（chargeback 反沖外）</td>
+<td>每筆變動</td>
+<td>拒絕交易並回傳資金不足；chargeback 例外流程由 §8.2 補充</td>
+</tr>
+<tr>
+<td>INV-5</td>
+<td><code>每個 ledger_entry 一旦寫入不可 UPDATE / DELETE</code></td>
+<td>持續</td>
+<td>視為資料完整性違規，停止可疑帳務並啟動稽核</td>
+</tr>
+<tr>
+<td>INV-6</td>
+<td><code>Player.Wallet.{user_id}</code> 之 outflow 目的地白名單，僅限：(a) <code>Player.Locked.{user_id}</code>、(b) <code>Player.Frozen.{user_id}</code>、(c) <code>Revenue.TradingFee</code> / <code>Revenue.SettlementFee</code>、(d) <code>Player.Wallet.{other_user_id}</code>（<strong>僅限</strong> <code>txn_type ∈ {trade, settle}</code>）、(e) <code>Bank.TrustAccount.*</code>（<strong>僅限</strong> <code>txn_type = chargeback</code>，呼應 §8.1 deposit 反向沖正；非「點數變現」路徑，玩家不取得現金）。<strong>禁止</strong>流向 <code>Liability.AccountsPayable.*</code> / <code>Bank.OperatingAccount.*</code> / <code>Expense.AffiliatePartnerFee</code> / 任何其他銀行 / 支付通路 / 外部錢包科目</td>
+<td>每筆 commit</td>
+<td>該筆交易拒絕提交，需符合 governance 流程才可加入例外</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>Player.Locked.X ≥ 0</strong>：邏輯上隱含於 INV-1（鎖倉釋出與鎖入必為對沖），由 application 層在下單 / 成交路徑強制檢查。不再單獨列為頂層 INV，避免與 ADR-0003 編號衝突。</p>
+<p><strong>INV 集合 ADR governance</strong>：INV-1 ~ INV-5 由 <a href="../docs/architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §5</a> v1.0 拍板；INV-2 / INV-4 公式擴展含 <code>Player.Frozen.*</code>（v0.1.1）+ INV-6 outflow 白名單（v0.1.5）由 <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006 §4.1</a> 正式 governance 追認與新增。INV-6 trigger 之 plpgsql function 範本見 ADR-0006 §4.2.1，wallet-ledger-service migration 可依此實作。任何進一步擴展（例如未來新增「合作戒癮機構捐贈」白名單目的地）須先寫新 ADR 標記 ADR-0006 §4.1 之 INV-6 為 partial superseded，附業主 + Compliance + Legal 三方簽核，<strong>不可</strong>直接改 trigger function。</p>
+</blockquote>
+<h2>6. Idempotency 與重試</h2>
+<h3>6.1 強制要求</h3>
+<p>所有寫入帳本的 API <strong>必須</strong>接受 <code>Idempotency-Key</code> header，後端：</p>
+<ol>
+<li>收到請求 → 計算 key</li>
+<li>查詢是否已有相同請求的既有結果</li>
+<li>若存在：返回先前的結果（即使是錯誤）</li>
+<li>若不存在：執行交易、寫入結果、返回</li>
+</ol>
+<p>保存期：<strong>7 天</strong>（避免重複請求穿越時間）。實作（含 idempotency 儲存表/清理策略）請見 <a href="../docs/implementation-plans/SPEC-002-funds-safety-implementation-plan.html">implementation plan</a>。</p>
+<h3>6.2 Webhook 處理</h3>
+<p>支付 Gateway webhook 必須：</p>
+<ol>
+<li>驗證 HMAC 簽章</li>
+<li>以 gateway 的 <code>transaction_id</code> 為 idempotency_key</li>
+<li>即使 webhook 觸發 5 次，玩家錢包也只增加一次</li>
+</ol>
+<h2>7. 對帳機制</h2>
+<h3>7.1 多層對帳</h3>
+<pre><code class="language-text">Layer 1 (即時)：每筆 ledger_transaction 借貸和為 0  ← DB trigger
+Layer 2 (5min)：Σ(Wallet) + Σ(Locked) ≈ 對玩家負債帳戶總和
+Layer 3 (1hr) ：Bank.TrustAccount 銀行 API 餘額 vs ledger 預期銀行餘額
+Layer 4 (T+1) ：玩家所有金流事件 vs 支付 Gateway 對帳檔
+Layer 5 (月度)：第三方審計事務所抽樣對帳
+</code></pre>
+<h3>7.2 差異處理</h3>
+<p>當 Layer 2-4 出現差異時：</p>
+<ol>
+<li><strong>不</strong>自動修正帳本（避免錯誤被掩蓋）</li>
+<li>寫入 <code>Suspense.Reconciliation</code> 暫掛帳戶</li>
+<li>觸發 P0 告警，財務 + 工程 oncall 介入</li>
+<li>人工釐清後，<strong>以新的調整 transaction</strong> 修正（保留原始紀錄）</li>
+</ol>
+<h2>8. 退款與爭議款處理</h2>
+<h3>8.1 退款場景</h3>
+<table>
+<thead>
+<tr>
+<th>場景</th>
+<th>退款路徑</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>玩家刷卡爭議（Chargeback）</td>
+<td>點數 reverse + 錢包負餘額允許至銀行確認後回正；<strong>累計 chargeback ≥ 1 立即永久封號 + 黑名單</strong>（呼應 SPEC-016 §6.1 / SPEC-010 §6.2，H-5 跨檔統一門檻）</td>
+</tr>
+<tr>
+<td>市場取消</td>
+<td>所有未結算持倉 reverse，回到 Wallet</td>
+</tr>
+<tr>
+<td>系統故障結算錯誤</td>
+<td>由 admin 提 reversal txn，需雙人複核（4-eye，呼應 SPEC-010 §9.3 MS-6）</td>
+</tr>
+</tbody></table>
+<h3>8.2 玩家錢包負餘額處理</h3>
+<ul>
+<li>一般情境<strong>禁止</strong>負餘額（INV-4）</li>
+<li>例外：Chargeback 反沖時短暫允許，但帳戶<strong>立即凍結</strong>至釐清</li>
+</ul>
+<p>一般情境下 wallet 不得為負，Chargeback 例外情境需走凍結與人工核對。實作約束細節移至 <a href="../docs/implementation-plans/SPEC-002-funds-safety-implementation-plan.html">implementation plan</a>。</p>
+<h2>9. 性能考量</h2>
+<h3>9.1 寫入瓶頸</h3>
+<p>每筆撮合會產生 6 條 entry，TPS 50,000 撮合 = 300,000 entry inserts/sec。</p>
+<p><strong>單一 PostgreSQL 寫不下</strong>。解決方案：</p>
+<ol>
+<li><strong>撮合事件先入可靠訊息佇列</strong>，由 Ledger Worker 批次入帳</li>
+<li><strong>使用可擴充的分區與歸檔策略</strong>，維持高峰吞吐與長期存儲效率</li>
+<li><strong>查詢熱路徑可由複本分流</strong>，避免主庫寫入路徑壓力</li>
+</ol>
+<h3>9.2 讀取瓶頸</h3>
+<p>玩家錢包餘額讀取頻繁。</p>
+<ol>
+<li>高頻查詢可使用快取；寫入後做失效。</li>
+<li>cache miss 時回源 ledger，依最新分錄還原餘額。</li>
+</ol>
+<h3>9.3 撮合 → ledger 最終一致性窗口（T-5）</h3>
+<blockquote>
+<p>撮合事件先寫 Kafka 後由 ledger worker 批次消費（§9.1 第 1-2 點），意味著「成交發生」與「玩家錢包餘額更新」之間存在 ~100ms 之最終一致性窗口。前後端必須對此明示處理，否則玩家會在「下單成功」後立即查餘額看不到變化，誤以為系統故障。</p>
+</blockquote>
+<h4>9.3.1 一致性語意</h4>
+<table>
+<thead>
+<tr>
+<th>路徑</th>
+<th>一致性</th>
+<th>玩家可觀察延遲 P99</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>撮合 ingressCh → 撮合事件 publish 至 Kafka</td>
+<td>strong（in-process）</td>
+<td>&lt; 1ms</td>
+</tr>
+<tr>
+<td>Kafka publish → wallet-ledger-service consume</td>
+<td>strong（Kafka acks=all）</td>
+<td>&lt; 5ms</td>
+</tr>
+<tr>
+<td>ledger worker batch（100ms / 1000 events） → DB commit</td>
+<td><strong>eventual</strong>（受 batch window 限制）</td>
+<td><strong>≤ 100ms</strong></td>
+</tr>
+<tr>
+<td>ledger DB commit → Redis cache invalidate</td>
+<td>strong（同步 invalidate）</td>
+<td>&lt; 5ms</td>
+</tr>
+<tr>
+<td>Redis cache invalidate → 玩家 GET /wallet 看到新餘額</td>
+<td>strong（cache miss fallback to DB）</td>
+<td>&lt; 10ms</td>
+</tr>
+<tr>
+<td><strong>總端到端</strong>（撮合成交 → 玩家查餘額）</td>
+<td><strong>eventual</strong>（≤ 100ms）</td>
+<td><strong>≤ 130ms P99</strong></td>
+</tr>
+</tbody></table>
+<h4>9.3.2 前端 UX 處理（呼應 SPEC-014 §3.2）</h4>
+<ul>
+<li><strong>不依賴</strong>「下單成功 → 立即 GET /wallet」之強一致路徑（會看到 stale balance）</li>
+<li><strong>採 optimistic UI</strong>：<ol>
+<li>玩家下單 → API 回 <code>OrderAccepted</code> event（含本次預期之 balance delta）</li>
+<li>前端 local state 立即更新（樂觀 UI）</li>
+<li>WS 訂閱 <code>wallet.events</code> topic（呼應 SPEC-003 §10.4 / SPEC-014 §6.2）：當 ledger commit 完成後 server push 真實 balance</li>
+<li>若 WS push 與 local state 不一致 → 以 server 為準 + UI flash 動畫提示</li>
+</ol>
+</li>
+<li><strong>拒絕模式</strong>：若 risk pre-check 已 reject，立即 API 回 <code>OrderRejected</code>，前端不做 optimistic update</li>
+</ul>
+<h4>9.3.3 後端 API 處理</h4>
+<ul>
+<li><code>POST /api/v1/orders</code> 之 response body <strong>不</strong>包含「最終 ledger balance」欄位（避免假裝強一致）</li>
+<li>提供 <code>GET /api/v1/me/wallet?at_seq=N</code>（撮合 seq）讓客戶端可選擇等到某 seq 之後再取（適用於 reconciliation）</li>
+<li>對帳 / 客服場景強制使用 <code>GET /wallet?consistent=true</code> flag，後端會等到該玩家之最近未消費 ledger event 全部 commit 才回（trade off latency 換 strong consistency）</li>
+</ul>
+<h4>9.3.4 不一致窗口監控</h4>
+<p>監控指標與告警門檻（含 OTel span 命名與 P99 量測）請見 <a href="../docs/implementation-plans/SPEC-002-funds-safety-implementation-plan.html">implementation plan</a>。</p>
+<p>P99 端到端 lag &gt; 500ms 持續 5 分鐘 → P1 告警；&gt; 1s → P0。</p>
+<h2>10. 第三方審計準備</h2>
+<h3>10.1 月度審計工作流</h3>
+<ol>
+<li>T+5 提供前月完整 ledger dump（PostgreSQL pg_dump）</li>
+<li>提供託管銀行對帳單</li>
+<li>提供支付 Gateway 對帳檔</li>
+<li>審計事務所抽樣比對：<ul>
+<li>隨機抽 100 筆 deposit 是否帳戶到帳</li>
+<li>隨機抽 100 筆 withdrawal（內部劃轉）是否合理</li>
+<li>月初 / 月末平台負債餘額 vs 銀行託管餘額</li>
+</ul>
+</li>
+</ol>
+<h3>10.2 不可竄改性證明</h3>
+<ul>
+<li>每日快照與不可竄改保全機制由實作文件定義；規格層面要求可供第三方審計驗證。</li>
+</ul>
+<h2>11. 驗收條件</h2>
+<ul>
+<li><input disabled="" type="checkbox"> PostgreSQL schema 全部建立並通過 migration 測試</li>
+<li><input disabled="" type="checkbox"> DB trigger 強制 INV-1 通過驗證測試（嘗試插入不平衡 transaction 必須 fail）</li>
+<li><input disabled="" type="checkbox"> 模擬 1000 並發儲值，最終 wallet 餘額與 transaction count 完全相符</li>
+<li><input disabled="" type="checkbox"> Idempotency 測試：相同 key 提交 100 次，僅一筆 transaction</li>
+<li><input disabled="" type="checkbox"> 對帳腳本可在 5 分鐘內處理 1M 筆 entries</li>
+<li><input disabled="" type="checkbox"> hash chain 驗證腳本可在 30 分鐘內驗證 30 天歷史</li>
+</ul>
+<h2>12. Open Questions</h2>
+<blockquote>
+<p>跨檔決策已收斂至 <a href="./SPEC-000-index.html">SPEC-000 §5</a> 中央追蹤表（含 Q-3 點數計價單位、Q-6 數據主權）。本節僅保留 SPEC-002 自身範圍內議題。</p>
+</blockquote>
+<ol>
+<li><del><strong>ledger 服務拓撲</strong>：拆獨立 microservice（wallet-ledger-service）vs 與 wallet 同 service 不同 module？</del> ✅ <strong>Resolved 2026-05-05</strong>：<strong>拆為獨立 microservice <code>wallet-ledger-service</code></strong>（呼應 SPEC-014 §4.1 之「3+ replicas + leader」）。理由：<ul>
+<li><strong>Single-writer leader 模式</strong>：雙簿記 INV-1 / INV-2 / hash chain 需要單寫者保證順序，獨立 service 可清楚劃出 leader 邊界（透過 Postgres advisory lock 或 etcd lease），與 user-service 的多寫者模式不同。</li>
+<li><strong>Idempotency 中央化</strong>：所有需要寫帳本的操作（user-service 儲值、matching-engine 鎖倉/成交、settlement-worker 結算、payment-service webhook）統一走 <code>wallet-ledger-service</code> 之 idempotency key，符合 SPEC-002 §6。</li>
+<li><strong>攻擊面隔離</strong>：帳本是平台金流核心，與認證 / KYC / 通知等 lower-trust 邏輯共處同一 binary 會放大攻擊面（SPEC-010 §9 4-eye review 對 ledger 變動要求高於 user CRUD）。</li>
+<li><strong>獨立擴容</strong>：對帳腳本（§11）與 hash chain 驗證對 IO 與 CPU 需求顯著高於 user-service。</li>
+<li>落地：服務名 <code>wallet-ledger-service</code>，binary 位於 <code>services/wallet-ledger-service/</code>（已在 SPEC-014 §4.2 monorepo 結構落地）；對外僅暴露 gRPC（PostTransaction / GetBalance / Reconcile / GetEntries），不開 public REST。</li>
+<li>同步更新 <a href="../docs/architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §11 V-1</a> 為 Resolved。</li>
+</ul>
+</li>
+<li><del><strong><code>ledger_entries</code> partition 策略</strong>：每月 / 每週 / 每年？</del> ✅ <strong>Resolved 2026-05-07（v0.1.7 修正 T-3）</strong>：<strong>Phase 1 直接採 monthly range partition by <code>created_at</code></strong>（透過 <code>pg_partman</code>），<strong>不留</strong>「先不分區後 migrate」的技術債。具體規則：<ul>
+<li><strong>Phase 1 從 day 1 啟用 monthly partition</strong>：呼應 §9.1 「TPS 50,000 = 300,000 entry inserts/sec — 單一 PostgreSQL 寫不下」之自我估算 — 即便 1k orders/sec 之 baseline 流量，每日 ~5.2 億 entries × 6 entries/order，~3 天即達 100M 門檻；事後做 online partition migration 是高風險操作（鎖表、主從切換、index rebuild），動工前直接 partition 成本與不 partition 相當。</li>
+<li><strong>Partition 鍵與粒度</strong>：<code>PARTITION BY RANGE (created_at)</code>，每月一個 partition；採 <code>pg_partman</code> 自動建立未來 3 個月之 partition + 自動 detach 12 個月以前之 cold partition。</li>
+<li><strong>冷分區（&gt; 12 個月）</strong>：detach 後 dump 至 R2 Object Lock（WORM）+ Postgres foreign table（postgres_fdw）保留可查詢性，呼應 SPEC-008 §6.1 雙寫策略。</li>
+<li><strong><code>ledger_entries.created_at</code> index</strong>：每個 partition 內走 BRIN（block range index）— 撮合事件之 created_at monotonic 增加，BRIN 對 range query 高效；不採 B-tree（避免每 partition × N 次寫入之 index overhead）。</li>
+<li><strong>Migration governance</strong>：Phase 1 schema migration 由 wallet-ledger-service 之 sqlx migration 直接建立 partitioned table（非「先建普通表後改 partitioned」）；ADR-0003 §11 V-2 同步更新為 Resolved。</li>
+<li><strong>原 v0.1.2 / v0.1.3 之「Phase 1 不分區 + 觸發門檻」設計已撤回</strong>（T-3）：經算量盤點該設計在熱市場下撐不到一週，事後 migration 風險高於前期 partition 設計成本。</li>
+</ul>
+</li>
+<li><strong>WORM 儲存</strong>：R2 Object Lock vs AWS S3 Glacier（呼應 SPEC-008 §6.1 已部分定案 R2 + S3 雙寫；本 SPEC §10.2 hash chain 寫入 R2 Object Lock 桶為定案，僅 cold archive 介質保留討論）。</li>
+<li><del><strong>Player Wallet 帳戶在玩家自我排除（永久封號）後如何處理</strong></del> ✅ <strong>Resolved 2026-05-05</strong>：採 <strong>(b) 轉 sub-account</strong>，新增 <code>Player.Frozen.{user_id}</code> 子科目，詳見 §4.2.1；INV-2 / INV-4 同步擴展。</li>
+<li><strong>客服 compensation transaction 介面</strong>：手動表單 vs Workflow 工具（Temporal / Airflow）？追蹤於 ADR-0003 §11 V-3。</li>
+</ol>
+
+</body>
+</html>

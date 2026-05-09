@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-019 Incident Response &amp; SRE implementation plan</title>
+  <style>
+    body {
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      margin: 24px;
+      line-height: 1.65;
+      color: #0f172a;
+    }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin-bottom: 16px; }
+    pre { background: #f8fafc; border: 1px solid #dbeafe; padding: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-019 Incident Response &amp; SRE implementation plan</h1>
+  <div class="meta">
+    <strong>版本</strong>: v0.1.0<br>
+    <strong>更新日</strong>: 2026-05-09<br>
+    <strong>對應規格</strong>: <a href="../specs/SPEC-019-incident-response-sre.html">SPEC-019</a><br>
+    <strong>目標</strong>: 將事故管理與 SRE 流程落地為可執行 runbook 與交付機制
+  </div>
+
+  <section>
+    <h2>1. 事故管理基礎建設</h2>
+    <ul>
+      <li>建立事故分級與處理矩陣（S0~S3）為系統共用常量。</li>
+      <li>在運維入口提供事故建立 API：incident_id、severity、impact_scope、owner、eta。</li>
+      <li>事故生命週期欄位：triggered、investigating、mitigating、recovered、verified、postmortem。</li>
+      <li>公告內容來源使用統一模板，保證文案一致性與不可遺漏欄位。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 告警到工單轉接</h2>
+    <ul>
+      <li>指定核心告警到事故建立器的條件：</li>
+      <li>核心交易錯誤率突增。</li>
+      <li>登入/下單延遲超過 95% p95 閥值。</li>
+      <li>支付回傳錯誤率超門檻。</li>
+      <li>不可用事件需 5 分鐘未回應自動升級。</li>
+    </ul>
+    <h3>2.1 事件抑制</h3>
+    <ul>
+      <li>同源告警在 10 分鐘內降噪成 1 張事故，避免同一事件形成風暴。</li>
+      <li>故障修復後 5 分鐘內自動解除靜音規則，重新進入監控。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. 用戶公告與狀態頁實作</h2>
+    <ul>
+      <li>建立通用狀態元件：站內 banner、status page、客服工單關聯。</li>
+      <li>每次更新保存 immutable 狀態歷史（incident_status_history），包含最後更新時間和更新者。</li>
+      <li>S0/S1 事故每 15 分鐘更新一次，S2/S3 事故每 30 分鐘。</li>
+      <li>事故結束後保留 24 小時可見，但不可手動刪除。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 應急運行手冊（Runbook）</h2>
+    <ul>
+      <li>依據服務建立 4 套 runbook：交易、金流、客服、可用性。</li>
+      <li>每份 runbook 包含三段流程：隔離、旁路、恢復。</li>
+      <li>每段流程綁定回歸驗證（例如健康檢查、關鍵 API、DB lock 狀態）。</li>
+      <li>所有 runbook 步驟引用對應 playbook checklist，並將異常直接寫入事故附件。</li>
+    </ul>
+    <pre><code>incident.runbook:
+  id
+  incident_id
+  step_code
+  owner
+  started_at
+  finished_at
+  pass boolean</code></pre>
+  </section>
+
+  <section>
+    <h2>5. 事後復盤機制</h2>
+    <ul>
+      <li>事故關閉 72 小時內必須完成 postmortem 草稿。</li>
+      <li>必填欄位：根因、影響時間、影響範圍、修復時間、預防動作、回歸測試。</li>
+      <li>postmortem 草稿必須關聯 incident_id、告警紀錄、變更紀錄。</li>
+      <li>產生 PMD（post-incident action）清單並排入下一個 sprint。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 交叉整合</h2>
+    <ul>
+      <li>與 <a href="./SPEC-007-observability-implementation-plan.html">SPEC-007</a> 對接指標、trace 與 alert 規則。</li>
+      <li>與 <a href="./SPEC-008-disaster-recovery-implementation-plan.html">SPEC-008</a> 對接故障切換演練與 RTO/RPO。</li>
+      <li>與 <a href="./SPEC-013-cicd-release-implementation-plan.html">SPEC-013</a> 對接 deploy rollback 與熱修補丁流程。</li>
+      <li>與客服系統對接事故標籤，避免用戶重複提報同一事件。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. 驗收清單</h2>
+    <ol>
+      <li>S0 事件可 5 分鐘內建立、公告、指派。</li>
+      <li>事故更新間隔與公告欄位符合規範。</li>
+      <li>runbook 可按步驟執行並回填 pass/fail。</li>
+      <li>72 小時內 postmortem 自動提醒且可提交。</li>
+      <li>事故歷史可稽核且不可被修改。</li>
+      <li>演練紀錄每季至少一次。</li>
+    </ol>
+  </section>
+</body>
+</html>

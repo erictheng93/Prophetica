@@ -1,0 +1,706 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-010-security-antifraud</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.5;
+    }
+    img { max-width: 100%; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre {
+      overflow: auto;
+      padding: 1rem;
+      background: #f6f8fa;
+      border: 1px solid #d8dee3;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    a { color: #0969da; }
+    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
+    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
+    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .changelog-entry p,
+    .changelog-entry ul { margin: 0.35rem 0; }
+    .changelog-entry ul { padding-left: 1.15rem; }
+    .changelog-entry li { margin-bottom: 0.35rem; }
+  </style>
+</head>
+<body>
+<h1>SPEC-010 — 安全與反作弊（Security &amp; Anti-Fraud）</h1>
+<blockquote>
+<p>優先級：<strong>P1</strong>
+版本：v0.2.2 · 最後更新：2026-05-07
+依賴：SPEC-005
+被依賴：SPEC-009, SPEC-002, SPEC-004, SPEC-008, SPEC-012, SPEC-013, SPEC-015, SPEC-016, SPEC-017</p>
+</blockquote>
+<section class="changelog">
+<div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>v0.2.2 變更</h3>
+    <p>§3.1.2 PoC 表補 cross-ref 至 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md §3</code></a>（EdDSA / LIFF SDK 相容性 PoC 詳細 plan）。</p>
+  </article>
+  <article class="changelog-entry">
+    <h3>v0.2.1 變更</h3>
+    <ul>
+      <li>§3.1.2 補 EdDSA mobile / LIFF SDK 相容性 PoC 要求（T-9），動工前需驗證 LIFF SDK 對 Ed25519 token 之支援；不支援則對 LIFF route 回退 RS256 token；</li>
+      <li>§3.2 OWASP A03 Injection 對策由「ORM + parameterized query」修正為「<code>sqlx::query!</code> 編譯時檢查 SQL + parameterized binding」（H-4），對齊 SPEC-014 §3.1「不引入 ORM」決議；</li>
+      <li>§6.2 chargeback 永久封號門檻由「&gt; 1」修正為「<strong>≥ 1</strong>」（H-5），與 SPEC-016 §6.1 / SPEC-002 §8.1 統一；</li>
+      <li>§6.2 帳本反沖 cross-ref 補至 SPEC-002 §8.2。</li>
+    </ul>
+  </article>
+  <article class="changelog-entry">
+    <h3>v0.2.0 變更</h3>
+    <p>新增 §9.3 Multi-sig 治理中央表（M-3）。集中所有跨 SPEC 之 multi-sig governance（MS-1 ~ MS-17）+ 已 Resolved 不入表決策（hedge / 計價 / 數據主權）+ Admin UI 實作要求 + 為何集中。原 SPEC-002 §4.2.1 / §8.1、SPEC-004 §3 §6.1、SPEC-008 §9.3、SPEC-012 §11、SPEC-013 §3.1 §6、SPEC-015 §7.2 §8.3 §9.2、SPEC-017 §3.3、SPEC-016 §13 之簽核要求皆改以「呼應 SPEC-010 §9.3 MS-N」方式引用本表。被依賴 SPEC 列表由原本 SPEC-009 擴增為 9 份，反映本檔成為 governance 中央表。</p>
+  </article>
+</div>
+</section>
+<hr>
+<h2>1. Objective</h2>
+<p>從基礎設施、應用層、業務層三個層次保護平台與玩家：基礎設施層擋外部攻擊，應用層擋常見漏洞，業務層擋作弊與洗錢行為。</p>
+<h2>2. 基礎設施安全</h2>
+<h3>2.1 Cloudflare 配置</h3>
+<table>
+<thead>
+<tr>
+<th>功能</th>
+<th>配置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>WAF</td>
+<td>OWASP Core Rule Set + 自訂規則（高敏感 endpoint）</td>
+</tr>
+<tr>
+<td>Rate Limiting</td>
+<td>per-IP / per-user 多層</td>
+</tr>
+<tr>
+<td>Bot Management</td>
+<td>challenge unknown bots</td>
+</tr>
+<tr>
+<td>DDoS L3/4/7</td>
+<td>自動緩解</td>
+</tr>
+<tr>
+<td>Geo-rules</td>
+<td>拒絕 🔴 名單地區</td>
+</tr>
+<tr>
+<td>TLS</td>
+<td>強制 1.3，HSTS preload</td>
+</tr>
+<tr>
+<td>API Shield</td>
+<td>mTLS for DMM API（SPEC-009）</td>
+</tr>
+<tr>
+<td>Logpush</td>
+<td>全部 access log push 至 R2 + Loki</td>
+</tr>
+</tbody></table>
+<h3>2.2 Rate Limit 預設</h3>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Limit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>POST /api/auth/*</code></td>
+<td>10 / min / IP</td>
+</tr>
+<tr>
+<td><code>POST /api/orders</code></td>
+<td>100 / min / user</td>
+</tr>
+<tr>
+<td><code>POST /api/orders</code> (DMM)</td>
+<td>1000 / sec / DMM session</td>
+</tr>
+<tr>
+<td><code>WS connect</code></td>
+<td>5 / min / IP</td>
+</tr>
+<tr>
+<td><code>GET /api/markets</code></td>
+<td>60 / min / IP</td>
+</tr>
+<tr>
+<td>其他預設</td>
+<td>300 / min / IP</td>
+</tr>
+</tbody></table>
+<h3>2.3 WAF 自訂規則</h3>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h2>3. 應用層安全</h2>
+<h3>3.1 認證與授權</h3>
+<h4>3.1.1 概要</h4>
+<ul>
+<li>玩家登入：Email/Phone + Password + TOTP（強制）</li>
+<li>Password：argon2id，min length 12</li>
+<li>Session：JWT Access Token (15 min) + Refresh Token (7 day) + rotation</li>
+<li>高敏操作 step-up：儲值 &gt; USD 1,000、KYC 升級、自我排除 → 重新 MFA</li>
+<li>Admin / Compliance 後台：mTLS + Hardware MFA（YubiKey）</li>
+</ul>
+<h4>3.1.2 JWT Access Token 設計</h4>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<blockquote>
+<p><strong>Client 相容性 PoC（T-9，動工前驗證）</strong>：Ed25519 簽章 / 驗證性能優於 RS256 ~10x，但部分 mobile / browser JWT lib 預設僅支援 RS256 / HS256。動工前必須完成以下 PoC（<strong>詳細 PoC plan 見 <a href="../docs/poc/PRE-FLIGHT-POCS.md">PRE-FLIGHT-POCS §3</a></strong>）：</p>
+<table>
+<thead>
+<tr>
+<th>Client</th>
+<th>驗證項目</th>
+<th>後備</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>LIFF SDK（LINE）</td>
+<td><code>liff.getIDToken()</code> 之 JWT 驗證鏈是否支援 EdDSA</td>
+<td>若不支援 → server 端為 LIFF route 改發 RS256 token，cookie 命名加 <code>_liff</code> 前綴區分</td>
+</tr>
+<tr>
+<td>iOS / Android（若未來開發 native app）</td>
+<td>主流 JWT lib（如 <code>jose</code>, <code>JOSESwift</code>）EdDSA 支援度</td>
+<td>同上回退 RS256</td>
+</tr>
+<tr>
+<td>Browser（apps/web Next.js + axios / fetch）</td>
+<td>不需 client-side 驗證（cookie HTTP-only，Next.js middleware 走 server-side <code>jsonwebtoken</code> 0.9+）</td>
+<td>無需後備</td>
+</tr>
+</tbody></table>
+<p>PoC 結果若任一回退，需開新 ADR（雙演算法 token 簽發策略）並更新本節。</p>
+</blockquote>
+<p>Claims（自定義 namespace 用 <code>proph_</code> 前綴避免與 RFC 7519 衝突）：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h4>3.1.3 Refresh Token 與 Rotation</h4>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<p><code>user_sessions</code> 表（呼應 SPEC-014 user 服務）：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h4>3.1.4 Refresh Token Reuse Detection（強制）</h4>
+<p><strong>Refresh token 必須一次性使用</strong>。若同一 token 被使用第二次：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h4>3.1.5 Step-up MFA 機制</h4>
+<p>對應 SPEC-002 §8 / SPEC-005 / SPEC-006 / SPEC-016 等高敏感操作：</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>Step-up 觸發條件</th>
+<th>Step-up 有效期</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>儲值 &gt; USD 1,000 等值</td>
+<td>必須</td>
+<td>30 分鐘</td>
+</tr>
+<tr>
+<td>KYC 升級至 Tier 2/3</td>
+<td>必須</td>
+<td>完成本次升級即清</td>
+</tr>
+<tr>
+<td>啟用 / 變更自我排除</td>
+<td>必須</td>
+<td>完成本次操作即清</td>
+</tr>
+<tr>
+<td>30 天無交易後突然儲值</td>
+<td>必須</td>
+<td>30 分鐘</td>
+</tr>
+<tr>
+<td>改密碼 / 改 Email</td>
+<td>必須</td>
+<td>完成本次操作即清</td>
+</tr>
+<tr>
+<td>Admin / Compliance / Oracle / Adjudicator 操作</td>
+<td>必須（hardware MFA）</td>
+<td>30 分鐘，每筆操作後重置</td>
+</tr>
+</tbody></table>
+<p>實作流程：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h4>3.1.6 Token 撤銷（Revocation）</h4>
+<p>JWT 為 stateless，不主動驗證每個請求是否在黑名單。為兼顧效能與可撤銷性：</p>
+<ul>
+<li><strong>登出</strong>：refresh token 標記 <code>revoked_at</code>；access token 自然在 ≤ 15 分鐘內過期</li>
+<li><strong>強制全裝置登出</strong>（用於 token reuse、密碼變更）：撤銷該 user 所有 sessions；access token 透過 Redis 短期 deny list（key: <code>revoked:{jti}</code>，TTL = access lifetime）</li>
+<li><strong>管理員強制下線</strong>：同上 + 寫 audit log</li>
+</ul>
+<h4>3.1.7 對齊 SPEC-005 KYC tier 之動態 claim 更新</h4>
+<p>當 KYC tier 升級（如 Tier 1 → Tier 2 通過 SumSub）：</p>
+<ul>
+<li>kyc-service 寫入 <code>user_kyc_records</code> + Kafka 發 <code>kyc.events</code></li>
+<li>user-service 訂閱該 topic，更新該 user 之活躍 sessions 對應 cache</li>
+<li>玩家<strong>現有 access token 仍持原 tier</strong>（最多 15 分鐘陳舊）；refresh 時 user-service 簽發含新 tier 的 access token</li>
+<li>高敏操作（如 Tier 2 解鎖之高額儲值）若 access token 仍為 Tier 1，回 <code>ERROR_CODE_KYC_TIER_REQUIRED</code>，玩家強制 refresh 後成功</li>
+</ul>
+<h3>3.2 OWASP Top 10 對應</h3>
+<table>
+<thead>
+<tr>
+<th>風險</th>
+<th>對策</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A01 Broken Access Control</td>
+<td>RBAC + 每個 endpoint 顯式授權檢查</td>
+</tr>
+<tr>
+<td>A02 Cryptographic Failures</td>
+<td>全鏈路 TLS、Vault 管金鑰、PII at-rest 加密</td>
+</tr>
+<tr>
+<td>A03 Injection</td>
+<td><strong><code>sqlx::query!</code> 編譯時檢查 SQL</strong>（呼應 SPEC-014 §3.1 不引入 ORM）+ parameterized binding；DB user 最小權限（schema-per-service，呼應 SPEC-014 §7.2）</td>
+</tr>
+<tr>
+<td>A04 Insecure Design</td>
+<td>此 SPEC 整體</td>
+</tr>
+<tr>
+<td>A05 Security Misconfiguration</td>
+<td>IaC + 配置審查 + Drift detection</td>
+</tr>
+<tr>
+<td>A06 Vulnerable Components</td>
+<td>Renovate 自動更新 + SCA scan</td>
+</tr>
+<tr>
+<td>A07 Auth Failures</td>
+<td>TOTP + step-up + 強密碼</td>
+</tr>
+<tr>
+<td>A08 Software/Data Integrity</td>
+<td>container image signing、SLSA</td>
+</tr>
+<tr>
+<td>A09 Logging Failures</td>
+<td>呼應 SPEC-007</td>
+</tr>
+<tr>
+<td>A10 SSRF</td>
+<td>egress proxy + URL allowlist</td>
+</tr>
+</tbody></table>
+<h3>3.3 密鑰管理</h3>
+<ul>
+<li>HashiCorp Vault（自建或 HCP Vault）</li>
+<li>應用透過 sidecar agent 取 secret，不存於 env / ConfigMap</li>
+<li>每年輪換敏感金鑰（DB password、JWT signing key、AES at-rest key）</li>
+<li>KYC 證件加密金鑰由獨立 envelope 管理（KEK + DEK）</li>
+</ul>
+<h3>3.4 依賴安全掃描</h3>
+<ul>
+<li>CI 必跑：<ul>
+<li>SAST（SonarQube / Semgrep）</li>
+<li>SCA（Snyk / Trivy）</li>
+<li>Container image scan</li>
+<li>IaC scan（Checkov）</li>
+</ul>
+</li>
+<li>任何 high / critical CVE → CI fail，阻擋 merge</li>
+</ul>
+<h2>4. 反作弊（Business Layer）</h2>
+<h3>4.1 威脅模型</h3>
+<table>
+<thead>
+<tr>
+<th>威脅</th>
+<th>動機</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>自我成交 / 多帳號</td>
+<td>套取 LM reward、操縱結算</td>
+</tr>
+<tr>
+<td>洗售（Wash Trading）</td>
+<td>假成交量、誤導他人</td>
+</tr>
+<tr>
+<td>結算操縱（Pump &amp; Dump）</td>
+<td>在事件前累積巨大持倉，臨終結算前推升價格</td>
+</tr>
+<tr>
+<td>內幕交易</td>
+<td>Oracle / Admin 知情提前下注</td>
+</tr>
+<tr>
+<td>Sybil 攻擊</td>
+<td>大量假帳號搶 LM reward / 推薦獎金</td>
+</tr>
+<tr>
+<td>帳號接管</td>
+<td>偷取憑證後挪用點數</td>
+</tr>
+<tr>
+<td>卡片詐欺 / Chargeback</td>
+<td>用偷來的卡儲值，事後 chargeback</td>
+</tr>
+</tbody></table>
+<h3>4.2 偵測機制</h3>
+<h4>4.2.1 多帳號連結</h4>
+<p>每位玩家計算 <code>user_link_score</code>：</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+<h4>4.2.2 自我成交偵測</h4>
+<p>呼應 SPEC-003 的 STP（pre-trade），加上 post-trade 偵測：</p>
+<ul>
+<li>過去 24 小時，user A 與 user B 若彼此貢獻 &gt; 50% 對方成交量 → 標記</li>
+<li>三方循環交易（A→B→C→A）偵測</li>
+</ul>
+<h4>4.2.3 Pump &amp; Dump 偵測</h4>
+<ul>
+<li>結算前 30 分鐘，異常單邊大量買入 → 警告</li>
+<li>持倉集中度（前 5 名持倉者佔 &gt; 60%）→ 結算後人工 review</li>
+</ul>
+<h4>4.2.4 Oracle 內幕交易偵測</h4>
+<ul>
+<li>任一 Oracle / Admin / 員工的家屬 / 直屬下級的點數活動，全部留痕</li>
+<li>員工帳戶白名單，<strong>禁止</strong>在自己負責結算的市場下單</li>
+<li>違反 → 立即停權 + 民事索賠 + 刑事追訴</li>
+</ul>
+<h3>4.3 行為分析整合</h3>
+<ul>
+<li>Sift 或 Sardine：第三方裝置與行為風險評分</li>
+<li>內建規則引擎：白話規則由 Compliance 配置（不需工程介入）</li>
+<li>ML 模型（V2）：用標註 SAR 樣本訓練</li>
+</ul>
+<h3>4.4 處置流程</h3>
+<table>
+<thead>
+<tr>
+<th>評分</th>
+<th>處置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0–40</td>
+<td>無</td>
+</tr>
+<tr>
+<td>41–60</td>
+<td>限制單筆下注上限</td>
+</tr>
+<tr>
+<td>61–80</td>
+<td>凍結帳戶 + 強制 KYC 升級</td>
+</tr>
+<tr>
+<td>81–100</td>
+<td>永久封號 + SAR 提交</td>
+</tr>
+</tbody></table>
+<h2>5. 帳號接管（ATO）防護</h2>
+<table>
+<thead>
+<tr>
+<th>防護</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>TOTP 強制</td>
+<td>註冊時即強制</td>
+</tr>
+<tr>
+<td>異常登入告警</td>
+<td>新地區 / 新裝置觸發 Email 提醒</td>
+</tr>
+<tr>
+<td>30 天內無交易但突然儲值 → step-up</td>
+<td>強制重新 KYC</td>
+</tr>
+<tr>
+<td>關鍵操作通知</td>
+<td>改密碼 / 改 Email / 自我排除 → 24h 撤回窗口</td>
+</tr>
+<tr>
+<td>暗網密碼洩漏比對</td>
+<td>HaveIBeenPwned 整合，命中強制改密碼</td>
+</tr>
+</tbody></table>
+<h2>6. Chargeback 防護</h2>
+<h3>6.1 防範</h3>
+<ul>
+<li>高風險 BIN 拒收</li>
+<li>大額儲值要求 3DS2</li>
+<li>第一次儲值限額（&lt; USD 100）</li>
+<li>KYC 完成前不允許 &gt; USD 500 儲值</li>
+</ul>
+<h3>6.2 應對</h3>
+<ul>
+<li>Chargeback 收到 → 立即凍結對應玩家</li>
+<li>帳本反沖儲值（呼應 SPEC-002 §8.2）</li>
+<li>玩家 24 小時內可上訴</li>
+<li>累計 chargeback <strong>≥ 1</strong> → 永久封號 + 黑名單（H-5 跨檔對齊；呼應 SPEC-016 §6.1 / SPEC-002 §8）</li>
+</ul>
+<h2>7. 資安測試</h2>
+<h3>7.1 紅隊演練</h3>
+<p>每 6 個月一次，由第三方紅隊：</p>
+<ul>
+<li>應用層滲透測試（OWASP）</li>
+<li>業務邏輯滲透（嘗試套利、繞過 KYC）</li>
+<li>社交工程（針對員工）</li>
+<li>紅隊報告必須有 30 / 90 天修復計畫</li>
+</ul>
+<h3>7.2 Bug Bounty</h3>
+<p>公開或私募 bounty：</p>
+<ul>
+<li>平台：HackerOne / Bugcrowd</li>
+<li>報酬：critical USD 5,000+ / high USD 1,000+ / medium USD 200+</li>
+<li>範圍：production domain + DMM API</li>
+<li>排除：DDoS、社工</li>
+</ul>
+<h3>7.3 內部紅隊</h3>
+<ul>
+<li>員工每年一次釣魚測試</li>
+<li>員工帳號權限季度審查</li>
+<li>DBA 操作日誌每週 review</li>
+</ul>
+<h2>8. 資料外洩應變</h2>
+<h3>8.1 偵測</h3>
+<ul>
+<li>異常資料庫存取告警（時段、表、量）</li>
+<li>DLP（Data Loss Prevention）監控對外流量</li>
+<li>Honey token：放幾筆假資料，被查詢即觸發告警</li>
+</ul>
+<h3>8.2 應變</h3>
+<p>依 GDPR 72 小時通報：</p>
+<ol>
+<li>偵測 → 30 分鐘內 P0 告警</li>
+<li>1 小時內成立 IR 小組</li>
+<li>6 小時內封堵根因</li>
+<li>24 小時內初步影響評估</li>
+<li>72 小時內監管通報 + 玩家通知（影響重大時）</li>
+</ol>
+<h2>9. 程式碼安全規範</h2>
+<h3>9.1 Code Review 必檢清單</h3>
+<ul>
+<li>任何 SQL 語句使用 parameterized query</li>
+<li>所有外部輸入有 validation</li>
+<li>所有錢包 / 帳本變動有 idempotency</li>
+<li>所有對外 URL 走 egress proxy</li>
+<li>沒有 hard-coded secret</li>
+<li>沒有日誌中 PII</li>
+</ul>
+<h3>9.2 安全敏感模組需要 4-eye review</h3>
+<ul>
+<li>帳本服務</li>
+<li>結算服務</li>
+<li>認證 / 授權</li>
+<li>KYC integration</li>
+<li>DMM API</li>
+</ul>
+<h3>9.3 Multi-sig 治理中央表（Single Source of Truth）</h3>
+<blockquote>
+<p>為避免 SPEC-002 / 004 / 008 / 012 / 013 / 015 / 017 各自詮釋「4-eye」/「2-of-N」/「3-of-3」造成 admin / Compliance UI 流程分裂、監管稽核時無法給出單一答覆，本表為平台<strong>所有</strong>跨 SPEC multi-sig governance 的單一真相來源。</p>
+<p>任何新增規則必須以 PR 形式入本表，並在原 SPEC 以「呼應 SPEC-010 §9.3 MS-N」方式引用；解除任一規則需先 PR 修改本表並在 ADR 中 superseded 對應原 SPEC 章節。</p>
+</blockquote>
+<h4>9.3.1 規則總表</h4>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>場景 / 動作</th>
+<th>觸發者</th>
+<th>簽核要求</th>
+<th>來源 SPEC</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>MS-1</td>
+<td>市場上架審查（DRAFT → SCHEDULED）</td>
+<td>Market Operator</td>
+<td><strong>2-of-2</strong> Compliance Reviewer + Legal Reviewer（獨立寫入 <code>market_reviews</code>，不可同人雙簽）</td>
+<td>SPEC-015 §7.2</td>
+</tr>
+<tr>
+<td>MS-2</td>
+<td>市場排程變更（SCHEDULED 階段 OpensAt / ClosesAt）</td>
+<td>Schedule Manager</td>
+<td><strong>2-of-2</strong> Schedule Manager + Compliance（4-eye）</td>
+<td>SPEC-015 §8.3</td>
+</tr>
+<tr>
+<td>MS-3</td>
+<td>強制下架（任一階段 → CANCELLED）</td>
+<td>Compliance Officer</td>
+<td><strong>3-of-3</strong> Compliance Officer + Tech Lead + Legal</td>
+<td>SPEC-015 §9.2</td>
+</tr>
+<tr>
+<td>MS-4</td>
+<td>Oracle 提交（CLOSED → PENDING）</td>
+<td>Oracle Operator</td>
+<td><strong>2-of-N</strong> 獨立提交且 <code>outcome_result</code> 一致；不一致自動進 DISPUTED</td>
+<td>SPEC-004 §3 / §4.2 / SPEC-015 §6.3</td>
+</tr>
+<tr>
+<td>MS-5</td>
+<td>申訴裁決（DISPUTED → SETTLING / CANCELLED）</td>
+<td>Adjudicator</td>
+<td><strong>3 名合議</strong>：3:0 / 2:1 通過；1:1:1 三派分立升級至 Compliance Officer 拍板</td>
+<td>SPEC-004 §6.1 / SPEC-015 §6.5</td>
+</tr>
+<tr>
+<td>MS-6</td>
+<td>結算 reversal / 帳本 compensation transaction</td>
+<td>T3 客服</td>
+<td><strong>4-eye</strong> T3 + Compliance；寫入 <code>Txn type = &#39;cs_compensation&#39;</code></td>
+<td>SPEC-002 §8.1 / SPEC-012 §11</td>
+</tr>
+<tr>
+<td>MS-7</td>
+<td>Frozen 解凍（Compliance / EDD pending → Wallet）</td>
+<td>Compliance</td>
+<td><strong>4-eye</strong> Compliance + RG Officer（呼應 SPEC-002 §4.2.1 metadata.approved_by）</td>
+<td>SPEC-002 §4.2.1</td>
+</tr>
+<tr>
+<td>MS-8</td>
+<td>自我排除期滿解凍（自動）</td>
+<td>RG Scheduler</td>
+<td>系統觸發；<code>approved_by = &#39;system:rg-scheduler&#39;</code>（不需人工簽核但全程留痕）</td>
+<td>SPEC-002 §4.2.1 / SPEC-006 §5</td>
+</tr>
+<tr>
+<td>MS-9</td>
+<td>Kill switch 解除（停盤 → 恢復）</td>
+<td>Senior Engineer</td>
+<td><strong>2-of-3</strong> CTO / Compliance / Senior Engineer</td>
+<td>SPEC-008 §9.3</td>
+</tr>
+<tr>
+<td>MS-10</td>
+<td>安全敏感模組 PR merge（ledger / 撮合 / 結算 / 認證 / KYC / DMM）</td>
+<td>PR Author</td>
+<td><strong>4-eye</strong> 兩名 reviewer 簽核（含一名 module owner）</td>
+<td>SPEC-010 §9.2</td>
+</tr>
+<tr>
+<td>MS-11</td>
+<td>unsafe block 新增（R-5 例外）</td>
+<td>PR Author</td>
+<td><strong>4-eye</strong> + 對應 ADR + cargo geiger CI gate review-required label</td>
+<td>SPEC-017 §3.3 R-5</td>
+</tr>
+<tr>
+<td>MS-12</td>
+<td>Production release（prod deploy）</td>
+<td>Release Manager</td>
+<td><strong>3-of-5</strong> release-managers team approval</td>
+<td>SPEC-013 §3.1</td>
+</tr>
+<tr>
+<td>MS-13</td>
+<td>Hotfix 直 prod canary（reduced gate）</td>
+<td>Senior Engineer</td>
+<td>Senior Engineer 簽核 + 事後 RCA 24h 內提交</td>
+<td>SPEC-013 §6</td>
+</tr>
+<tr>
+<td>MS-14</td>
+<td>新增 <code>PLATFORM_SYSTEM_USER_IDS</code> sentinel（撮合引擎禁字）</td>
+<td>Tech Lead</td>
+<td><strong>4-eye</strong> + 對應 ADR + Compliance Officer review；CI sentinel-scan 同步更新 whitelist</td>
+<td>SPEC-003 §12.1 / ADR-0001 §6</td>
+</tr>
+<tr>
+<td>MS-15</td>
+<td>DMM 簽約 / 額度提升</td>
+<td>DMM 招募負責人</td>
+<td><strong>2-of-2</strong> Compliance + Risk；額度提升另需 Tech Lead 對 in-flight position 風險意見</td>
+<td>SPEC-009 §3.6 / §3.7</td>
+</tr>
+<tr>
+<td>MS-16</td>
+<td>退款 API 內部呼叫（Chargeback / 系統故障）</td>
+<td>T3 客服</td>
+<td><strong>4-eye</strong> T3 + Compliance</td>
+<td>SPEC-016 §13</td>
+</tr>
+<tr>
+<td>MS-17</td>
+<td>跨檔決策 Resolved（SPEC-000 §5）</td>
+<td>Tech Lead 提案</td>
+<td>業主 sign-off 1 名（影響合規時加 Legal 1 名）</td>
+<td>SPEC-000 §5 維護規則</td>
+</tr>
+</tbody></table>
+<h4>9.3.2 已 Resolved governance 決策（不入 multi-sig 表）</h4>
+<p>下列決策已於 SPEC-000 §5 拍板，不需每次簽核但記於此供 audit：</p>
+<table>
+<thead>
+<tr>
+<th>決策</th>
+<th>內容</th>
+<th>來源</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Hedge 政策</td>
+<td><strong>允許</strong>同帳戶同市場同時持 YES + NO；風控前置層<strong>不</strong>加 <code>HEDGE_NOT_ALLOWED</code> 檢查；自我對沖刷量由 §4.2.2 post-trade 偵測</td>
+<td><a href="./SPEC-000-index.html#5-%E8%B7%A8%E6%AA%94%E6%B1%BA%E7%AD%96%E8%BF%BD%E8%B9%A4%E8%A1%A8cross-cutting-decision-tracker">SPEC-000 §5 Q-7</a></td>
+</tr>
+<tr>
+<td>點數計價單位</td>
+<td>1 點 = TWD 1（永遠單幣別 TWD）</td>
+<td>SPEC-000 §5 Q-3</td>
+</tr>
+<tr>
+<td>數據主權</td>
+<td>KYC 證件 / WORM hash / 影像類資產一律 Cloudflare R2（EU bucket + Object Lock）</td>
+<td>SPEC-000 §5 Q-6</td>
+</tr>
+</tbody></table>
+<h4>9.3.3 Admin / Compliance UI 實作要求</h4>
+<ul>
+<li>後台簽核 UI 必須<strong>單一 component</strong> 對應本表所有 MS 規則（schema 由本表驅動），<strong>不允許</strong>各功能各寫一套流程；新增 MS 規則 = 補本表 + 補 schema，<strong>不</strong>改 component 程式碼路徑。</li>
+<li>簽核失敗（單簽嘗試、自簽自核、利益衝突命中、權限不足）的拒絕行為由 component 集中處理，回 <code>errors.proto: ERROR_CODE_MULTISIG_REJECTED</code> 並附 MS-ID。</li>
+<li>所有 multi-sig 動作必須寫入 <code>audit_logs</code>（呼應 SPEC-012 §5.3），<code>metadata</code> 包含：<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
+</li>
+<li>簽核者<strong>強制 hardware MFA</strong>（YubiKey / Passkey）—— 對齊 §3.1.5 step-up MFA 機制；MS-3 / MS-9 / MS-12 等高敏作業另要求 step-up 過去 30 分鐘內仍有效。</li>
+<li>Compliance 後台首頁顯示「待簽核 multi-sig 工單」清單，依 MS-ID 分類，超過各自 SLA（MS-3 / MS-9 &lt; 1h，MS-1 / MS-2 &lt; 24h，其餘 &lt; 4h）觸發告警。</li>
+</ul>
+<h4>9.3.4 為何集中</h4>
+<ul>
+<li><strong>避免 admin UI 分裂</strong>：原本 SPEC-002 / 004 / 008 / 012 / 013 / 015 / 017 各自詮釋「4-eye」/「3-of-3」造成 12 個 service × 各自一套 UI；集中後一份 component 對應全部。</li>
+<li><strong>監管稽核</strong>：監管問詢「平台 multi-sig 治理為何」時提供單一答覆來源，不需翻閱七份 SPEC。</li>
+<li><strong>新進 Compliance Officer onboarding</strong>：本表為治理 SOP 入口；對應每條 MS 配套之操作手冊由 Compliance 團隊維護於 <code>infra/runbooks/multisig-{ms-id}.md</code>。</li>
+<li><strong>演化追蹤</strong>：簽核規則調整（例如未來 Compliance Officer 角色拆分為 AML Officer / RG Officer）只需改本表 + ADR，不需散彈式跨 SPEC patch。</li>
+</ul>
+<h2>10. 驗收條件</h2>
+<ul>
+<li><input disabled="" type="checkbox"> Cloudflare WAF 規則上線並通過渗透測試</li>
+<li><input disabled="" type="checkbox"> OWASP Top 10 對策皆有對應實作</li>
+<li><input disabled="" type="checkbox"> Vault + KMS 配置完成，無 secret 在 env / ConfigMap</li>
+<li><input disabled="" type="checkbox"> 多帳號偵測腳本上線</li>
+<li><input disabled="" type="checkbox"> STP 即時生效，post-trade 偵測每日 batch</li>
+<li><input disabled="" type="checkbox"> Chargeback 流程演練通過</li>
+<li><input disabled="" type="checkbox"> 紅隊演練至少完成一次</li>
+</ul>
+<h2>11. Open Questions</h2>
+<ol>
+<li>Sift vs Sardine vs 自建 ML？</li>
+<li>Bug Bounty 平台選擇與啟動時機？</li>
+<li>是否購買 Cyber Liability 保險？</li>
+<li>對 Tor 用戶完全封鎖還是僅 challenge？</li>
+<li>DDoS 大流量壓測由誰執行？</li>
+</ol>
+
+</body>
+</html>
+

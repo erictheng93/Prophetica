@@ -1,0 +1,293 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prophetica Runbook 速查（整合）</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.5; color: #1f2937; }
+    h1 { margin: 0 0 6px; }
+    h2 { margin: 16px 0 10px; }
+    .meta { color: #6b7280; margin-bottom: 16px; }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .toolbar button,
+    .toolbar input,
+    .toolbar select {
+      border: 1px solid #d1d5db;
+      background: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .toolbar button { cursor: pointer; }
+    .toolbar button.active {
+      background: #111827;
+      color: #fff;
+      border-color: #111827;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+    }
+    th { background: #f9fafb; }
+    tr:nth-child(even) { background: #fafafa; }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .sev-P0 { color: #b91c1c; font-weight: 700; }
+    .sev-P1 { color: #b45309; font-weight: 700; }
+    .sev-other { color: #0369a1; font-weight: 700; }
+    .path-link { font-family: Consolas, "Courier New", monospace; }
+    .small { font-size: 12px; color: #6b7280; margin-top: 8px; }
+    .hidden { display: none; }
+    .service-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .service-nav a {
+      color: #2563eb;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .no-result { margin-top: 10px; color: #6b7280; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>Runbook HTML 查詢表（整合版）</h1>
+  <div class="meta">
+    來源：<code>C:\Code\Prophetica\runbooks</code> 與 <code>C:\Code\Prophetica\docs\runbooks</code><br />
+    最後更新：2026-05-09
+  </div>
+
+  <div class="toolbar">
+    <button id="filterAll" class="active" type="button">顯示全部</button>
+    <button id="filterP0" type="button">只看 P0</button>
+
+    <label for="serviceFilter">只看服務</label>
+    <select id="serviceFilter">
+      <option value="all">全部</option>
+      <option value="gateway">gateway</option>
+      <option value="engine">engine</option>
+      <option value="wallet-ledger">wallet-ledger</option>
+      <option value="kyc">kyc</option>
+      <option value="payment">payment</option>
+      <option value="infra">infra</option>
+    </select>
+
+    <input id="query" type="search" class="query" placeholder="關鍵字搜尋：Runbook / 觸發條件 / Owner / on-call" />
+    <button id="reset" type="button">清除條件</button>
+  </div>
+
+  <div class="service-nav">
+    <span>依服務快速定位：</span>
+    <a href="#gateway">gateway</a>
+    <a href="#engine">engine</a>
+    <a href="#wallet-ledger">wallet-ledger</a>
+    <a href="#kyc">kyc</a>
+    <a href="#payment">payment</a>
+    <a href="#infra">infra</a>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>服務</th>
+        <th>Runbook</th>
+        <th>觸發條件</th>
+        <th>Severity</th>
+        <th>Scope</th>
+        <th>owner / on-call 聯繫</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="runbook-row" data-services="gateway" data-sev="P0">
+        <td id="gateway">gateway</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/api-5xx-high.html">api-5xx-high.html</a></td>
+        <td>API 5xx 率 > 5%</td>
+        <td class="sev-P0">P0</td>
+        <td>upstream/API Gateway/Cloudflare Workers/Redis/Kafka</td>
+        <td>Owner: API Gateway Team / On-call: PagerDuty + Slack #oncall</td>
+      </tr>
+      <tr class="runbook-row" data-services="gateway" data-sev="P0">
+        <td>gateway</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/websocket-disconnect-spike.html">websocket-disconnect-spike.html</a></td>
+        <td>WebSocket 斷線率 > 2%</td>
+        <td class="sev-P0">P0</td>
+        <td>ws-gateway/Kafka lag/Cloudflare WS</td>
+        <td>Owner: Gateway Team / On-call: PagerDuty + Slack #oncall</td>
+      </tr>
+      <tr class="runbook-row" data-services="engine" data-sev="P0">
+        <td id="engine">engine</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/engine-p99-over-50ms.html">engine-p99-over-50ms.html</a></td>
+        <td>order engine p99 latency > 50ms（<code>proph_engine_match_latency_seconds</code>）</td>
+        <td class="sev-P0">P0</td>
+        <td>engine.order.apply / engine.event.publish / Kafka / WAL</td>
+        <td>Owner: Matching Engine Team / On-call: PagerDuty + Slack #oncall</td>
+      </tr>
+      <tr class="runbook-row" data-services="engine" data-sev="P1,P0">
+        <td>engine</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/latency-budget-breach.html">latency-budget-breach.html</a></td>
+        <td>SPEC-007 latency budget P99 突增到 1.5x / 2x</td>
+        <td class="sev-P1">P1 / P0</td>
+        <td>Tracing hop budget、Redis、Kafka</td>
+        <td>Owner: Platform / On-call: PagerDuty + Slack #oncall + Email</td>
+      </tr>
+      <tr class="runbook-row" data-services="wallet-ledger" data-sev="P0">
+        <td id="wallet-ledger">wallet-ledger</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/ledger-imbalance.html">ledger-imbalance.html</a></td>
+        <td>ledger 差異原因 reason="imbalance" 次數持續異常</td>
+        <td class="sev-P0">P0</td>
+        <td>ledger_transactions / ledger_entries / reconciliation job</td>
+        <td>Owner: Wallet Ledger Team / On-call: Slack #oncall + PagerDuty</td>
+      </tr>
+      <tr class="runbook-row" data-services="wallet-ledger" data-sev="P0">
+        <td>wallet-ledger</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/unexpected-fund-movement.html">unexpected-fund-movement.html</a></td>
+        <td>帳戶資金移動量異常（單筆 1000U 以上）</td>
+        <td class="sev-P0">P0</td>
+        <td>txid 監控 / compliance flag / audit trail</td>
+        <td>Owner: Wallet Ledger + Compliance / On-call: Slack #oncall + PagerDuty</td>
+      </tr>
+      <tr class="runbook-row" data-services="wallet-ledger" data-sev="P0">
+        <td>wallet-ledger</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/settlement-batch-failure.html">settlement-batch-failure.html</a></td>
+        <td>settlement worker 失敗率突增</td>
+        <td class="sev-P0">P0</td>
+        <td>settlement-worker / queue backlog / idempotent checkpoint</td>
+        <td>Owner: Settlement Team / On-call: PagerDuty + Slack #oncall</td>
+      </tr>
+      <tr class="runbook-row" data-services="kyc" data-sev="P0">
+        <td id="kyc">kyc</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/kyc-provider-unavailable.html">kyc-provider-unavailable.html</a></td>
+        <td>KYC SaaS API 不可用率 > 5% </td>
+        <td class="sev-P0">P0</td>
+        <td>kyc-service / provider fallback / retry path</td>
+        <td>Owner: KYC Trust Team / On-call: PagerDuty + Slack #oncall</td>
+      </tr>
+      <tr class="runbook-row" data-services="payment,wallet-ledger" data-sev="P0">
+        <td id="payment">payment</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/payment-webhook-failures.html">payment-webhook-failures.html</a></td>
+        <td>Webhook 錯誤率 > 10/min</td>
+        <td class="sev-P0">P0</td>
+        <td>webhook delivery / idempotency key / wallet commit</td>
+        <td>Owner: Payment Platform / On-call: PagerDuty + Slack #oncall</td>
+      </tr>
+      <tr class="runbook-row" data-services="infra" data-sev="P0">
+        <td id="infra">infra</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/logging-pipeline-down.html">logging-pipeline-down.html</a></td>
+        <td>日志 pipeline 停擺，未收到告警</td>
+        <td class="sev-P0">P0</td>
+        <td>Loki / Fluent Bit / stdout-json logs</td>
+        <td>Owner: Observability / Infra Team / On-call: PagerDuty + Slack #oncall + #monitoring</td>
+      </tr>
+      <tr class="runbook-row" data-services="infra" data-sev="P0">
+        <td>infra</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/runbooks/pii-log-leak.html">pii-log-leak.html</a></td>
+        <td>PII 資料出現在 logs/traces</td>
+        <td class="sev-P0">P0</td>
+        <td>trace pipeline / redaction rules / alert rule</td>
+        <td>Owner: Security + Compliance / On-call: PagerDuty + Slack #oncall</td>
+      </tr>
+      <tr class="runbook-row" data-services="gateway,infra" data-sev="P1,P0">
+        <td>gateway / infra</td>
+        <td><a class="path-link" href="file:///C:/Code/Prophetica/docs/runbooks/dr-failover.html">dr-failover.html</a></td>
+        <td>DR 演練或實際切換失敗</td>
+        <td class="sev-other">P0 / P1</td>
+        <td>Tokyo/ Singapore / planned / unplanned failover</td>
+        <td>Owner: DR/Infra/Platform Owner / On-call: PagerDuty + Slack #engineering + Slack #oncall</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div id="noResult" class="no-result hidden">目前沒有符合條件的 Runbook。</div>
+  <p class="small">on-call 請直接使用 PagerDuty + Slack handle；同一事件可對應複數服務請用「服務」欄位確認。</p>
+
+  <script>
+    (function () {
+      const rows = Array.from(document.querySelectorAll('.runbook-row'));
+      const filterAllBtn = document.getElementById('filterAll');
+      const filterP0Btn = document.getElementById('filterP0');
+      const serviceFilter = document.getElementById('serviceFilter');
+      const queryInput = document.getElementById('query');
+      const resetBtn = document.getElementById('reset');
+      const noResult = document.getElementById('noResult');
+
+      function getServices(serviceAttr) {
+        return (serviceAttr || '').split(',').map((s) => s.trim()).filter(Boolean);
+      }
+
+      function updateFilter() {
+        const showP0Only = filterP0Btn.classList.contains('active');
+        const service = serviceFilter.value;
+        const q = (queryInput.value || '').trim().toLowerCase();
+
+        let visibleCount = 0;
+
+        for (const row of rows) {
+          const sevList = (row.dataset.sev || '').split(',').map((x) => x.trim());
+          const services = getServices(row.dataset.services);
+          const servicesMatch = service === 'all' || services.includes(service);
+          const sevMatch = !showP0Only || sevList.includes('P0');
+          const textMatch = !q || row.textContent.toLowerCase().includes(q);
+
+          if (servicesMatch && sevMatch && textMatch) {
+            row.classList.remove('hidden');
+            visibleCount++;
+          } else {
+            row.classList.add('hidden');
+          }
+        }
+
+        if (visibleCount === 0) {
+          noResult.classList.remove('hidden');
+        } else {
+          noResult.classList.add('hidden');
+        }
+      }
+
+      function selectAll() {
+        filterAllBtn.classList.add('active');
+        filterP0Btn.classList.remove('active');
+        updateFilter();
+      }
+
+      function selectP0() {
+        filterP0Btn.classList.add('active');
+        filterAllBtn.classList.remove('active');
+        updateFilter();
+      }
+
+      filterAllBtn.addEventListener('click', selectAll);
+      filterP0Btn.addEventListener('click', selectP0);
+      serviceFilter.addEventListener('change', updateFilter);
+      queryInput.addEventListener('input', updateFilter);
+      resetBtn.addEventListener('click', () => {
+        queryInput.value = '';
+        serviceFilter.value = 'all';
+        selectAll();
+      });
+
+      selectAll();
+    })();
+  </script>
+</body>
+</html>

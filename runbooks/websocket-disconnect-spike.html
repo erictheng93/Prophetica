@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runbook: WebSocket Disconnect Spike</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.55; color: #1f2937; }
+    h1 { margin-top: 0; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+<h1>Runbook: WebSocket Disconnect Spike</h1>
+<h2>Alert</h2>
+<p>WebSocket disconnect rate exceeds 50%.</p>
+<h2>Severity</h2>
+<p>P0</p>
+<h2>Investigation</h2>
+<ol>
+<li>Check ws-gateway connection counts and disconnect reasons.</li>
+<li>Inspect Kafka consumer lag for market event topics.</li>
+<li>Compare Cloudflare WebSocket errors against origin logs.</li>
+</ol>
+<h2>Resolution</h2>
+<ol>
+<li>Enable fail-soft polling for clients.</li>
+<li>Drain unhealthy ws-gateway instances.</li>
+<li>Rebalance subscribers or scale ws-gateway capacity.</li>
+</ol>
+  </main>
+</body>
+</html>

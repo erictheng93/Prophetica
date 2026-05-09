@@ -1,0 +1,219 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-003-matching-engine implementation plan</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.5;
+    }
+    img { max-width: 100%; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre { overflow: auto; padding: 0.8rem; background: #f6f8fa; border: 1px solid #d8dee3; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    a { color: #0969da; }
+    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
+    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
+    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .warn { background: #fff7ed; border-left: 4px solid #f59e0b; padding: 10px; margin: 10px 0; }
+    .box { background: #f8fafc; border-left: 4px solid #2563eb; padding: 10px; margin: 10px 0; }
+  </style>
+</head>
+<body>
+<h1>SPEC-003-matching-engine implementation plan</h1>
+<p>版本：v0.2.3 / 對應規格：<a href="../specs/SPEC-003-matching-engine.html">SPEC-003-matching-engine.html</a></p>
+
+<section class="changelog-list">
+  <article class="changelog-list">
+    <div class="changelog-entry">
+      <h3>目標與邊界</h3>
+      <ul>
+        <li>落地撮合引擎的實作規格：資料結構、事件流、路由、執行模型、可靠性與測試。</li>
+        <li>本文件是給工程實作與執行參考，不重複寫重複規格行為。</li>
+        <li>與產品規格對齊：單寫者、event-sourced、價量匹配與一致性路徑。</li>
+      </ul>
+    </div>
+  </article>
+</section>
+
+<h2>1. 核心架構</h2>
+<ul>
+  <li>Matching Engine 為 in-process 單一 writer/專屬事件處理模型。</li>
+  <li>每一筆請求（下單、撤單）轉為 command，交由對應 market shard 的順序佇列。</li>
+  <li>引擎為 event-sourcing：核心只輸出事件，帳本、推播、持倉由下游服務消費重建。</li>
+  <li>持久化：append-only WAL（磁碟 + Kafka）+ 定期 snapshot，crash recovery 以 snapshot + replay 方式還原。</li>
+</ul>
+
+<h2>2. 資料模型（實作）</h2>
+<h3>2.1 Market / Outcome</h3>
+<pre><code>pub struct Market {
+  pub id: String,
+  pub outcome: String,
+  pub opens_at: DateTime&lt;Utc&gt;,
+  pub closes_at: DateTime&lt;Utc&gt;,
+  pub settles_at: DateTime&lt;Utc&gt;,
+  pub status: MarketStatus,
+  pub oracle_source: String,
+  pub min_tick_pts: i64,
+  pub min_lot: i64,
+  pub max_order_qty: i64,
+  pub fee_bps: u32,
+}
+
+#[repr(u8)]
+enum Outcome { Yes = 0, No = 1 }</code></pre>
+<p>只維持 YES 腿訂單簿；NO 行為於邊界層轉為 YES。</p>
+
+<h3>2.2 Order</h3>
+<pre><code>pub type OrderID = [u8; 16];
+
+enum Side { Bid = 1, Ask = -1 }
+
+enum OrderType { Limit, Market, IOC, FOK, PostOnly }
+enum TimeInForce { GTC, IOC, FOK, Day }
+
+pub struct Order {
+  pub id: OrderID,
+  pub user_id: u64,
+  pub market_id: String,
+  pub side: Side,
+  pub kind: OrderType,
+  pub price_pts: i64,
+  pub qty_total: i64,
+  pub qty_remaining: i64,
+  pub status: OrderStatus,
+  pub submitted_at_ns: i64,
+  pub client_order_id: String,
+  pub tif: TimeInForce,
+  pub post_only: bool,
+}
+</code></pre>
+
+<h3>2.3 OrderBook</h3>
+<pre><code>pub struct OrderBook {
+  pub market_id: String,
+  pub bids: BTreeMap&lt;Reverse&lt;i64&gt;, PriceLevel&gt;,   // 高到低
+  pub asks: BTreeMap&lt;i64, PriceLevel&gt;,          // 低到高
+  pub orders_by_id: HashMap&lt;OrderID, OrderHandle&gt;, // O(1) cancel
+  pub last_trade_pts: i64,
+  pub best_bid_pts: i64,
+  pub best_ask_pts: i64,
+  pub seq_no: u64,
+}
+
+pub struct PriceLevel {
+  pub price_pts: i64,
+  pub queue: VecDeque&lt;OrderID&gt;, // FIFO
+  pub total_qty: i64,
+}</code></pre>
+
+<h2>3. 匹配流程（實作）</h2>
+<h3>3.1 主流程</h3>
+<ul>
+  <li>接收一筆 order 後，寫入先行事件（accepted）並進行 order type 驗證。</li>
+  <li>對價位檔進行 while 迴圈撮合：檢查是否可 crossing。</li>
+  <li>處理 FOK / POST_ONLY 特例：FOK 不可完全成交則回退，POST_ONLY 不可立即成交則 reject。</li>
+  <li>撮合後若仍有剩餘，依 order type 決定 rest / cancel（Limit 殘餘入簿，IOC/FOK 相關部分取消）。</li>
+</ul>
+
+<h3>3.2 事件與輸出</h3>
+<p>每筆撮合輸出交易事件，包含 bid/ask maker/taker、價格、數量、sequence、時間戳與手續費標註；</p>
+<pre><code>Event: OrderAccepted -> Trade* -> OrderPartiallyFilled -> OrderResting/OrderFilled/OrderCancelled</code></pre>
+
+<h3>3.3 交易與訂單事件</h3>
+<ul>
+  <li>OrderAccepted</li>
+  <li>OrderRejected（POST_ONLY、FOK、invalid、notional 違規）</li>
+  <li>OrderPartiallyFilled / OrderFilled</li>
+  <li>OrderResting</li>
+  <li>OrderCancelled（用戶撤單、超時、IOC 殘餘）</li>
+  <li>MarketStatusChanged（open/closed/settling/settled）</li>
+  <li>BookSnapshot / BookDelta（WS 推播）</li>
+</ul>
+
+<h2>4. STP / 防刷保護</h2>
+<ul>
+  <li>對同帳號或可疑關聯的對碰，採 CANCEL_NEWEST / CANCEL_OLDEST / CANCEL_BOTH / DECREMENT_BOTH 四策略之一（預設對零售用戶 CANCEL_NEWEST）。</li>
+  <li>參數與策略矩陣由配置中心供給，含違規後封鎖與告警。</li>
+</ul>
+
+<h2>5. 並發模型與執行時</h2>
+<h3>5.1 Per-Market Single Writer</h3>
+<ul>
+  <li>每個市場一個 shard，接收所有該市場命令。</li>
+  <li>不使用鎖競爭：單 writer 保持一致的撮合順序與 FIFO 行為。</li>
+</ul>
+
+<h3>5.2 跨市場併行</h3>
+<ul>
+  <li>不同市場可在不同 task 中平行運算。</li>
+  <li>熱市場可提升資源保留（hot path）與 CPU 親和性。</li>
+</ul>
+
+<h3>5.3 效能考量</h3>
+<ul>
+  <li>BTreeMap 採用 Reverse key 保留 price-time FIFO。</li>
+  <li>撤單透過 OrderHandle（含價位與 queue marker）達成 O(1) 方向更新。</li>
+  <li>所有價格與數值採整數（price_pts、qty、fee_bps）避免 float。</li>
+</ul>
+
+<h2>6. API / 事件介面（實作）</h2>
+<ul>
+  <li>REST PlaceOrder / CancelOrder / BatchOrder / 市場查詢。</li>
+  <li>WS：<code>OrderBook</code> delta/snapshot；個人訂單 feed；seq gap 偵測機制（如發現 gap 需重同步）。</li>
+  <li>Order ID 使用 ULID，序列維持 per-market seq 作為撮合時序主鍵。</li>
+</ul>
+
+<h2>7. 路由與部署</h2>
+<h3>7.1 hostNetwork 佈局</h3>
+<ul>
+  <li>matching-engine 建議以 DaemonSet + hostNetwork 部署；避免 sidecar 造成額外 latency。</li>
+  <li>市場路由由市場服務維護到 host 之對應關係。</li>
+</ul>
+
+<h3>7.2 路由決策</h3>
+<ul>
+  <li>市場創建/開盤/下單/節點異常/節點擴容皆有狀態機與 reroute 流程。</li>
+  <li>Hot / cold 分類每日計算，Hot markets 可獨佔資源，冷市場可 multiplex。</li>
+</ul>
+
+<h3>7.3 熱冷分流</h3>
+<ul>
+  <li>熱市場與冷市場可採不同 runtime 設定（current_thread/local/tasking / pinned / multi-thread fallback）。</li>
+  <li>設定變更需記錄 governance、告警、回滾計畫。</li>
+</ul>
+
+<h2>8. 邊界條件與風險</h2>
+<ul>
+  <li>成交價區間：0~100（內部以 0.01 點位）。</li>
+  <li>市場關閉後不得新進單；既有未成交單撤銷與鎖定反向處理。</li>
+  <li>snapshot 與 WAL 損毀時要有校驗與恢復路徑。</li>
+</ul>
+
+<h2>9. 測試與驗收（工程）</h2>
+<ul>
+  <li>單元測試：核心撮合、撤單、IOC/FOK/POST_ONLY、STP、status transitions。</li>
+  <li>屬性測試：量守恆、無交叉訂單簿、seq 單調、撤單一致。</li>
+  <li>重放測試：snapshot+WAL replay 的幂等與 determinism。</li>
+  <li>壓測與災難回復：1M 單量測試、kill-9 恢復、disk full 行為、Kafka/網路暫時不可用恢復。</li>
+  <li>Mutation testing：關鍵模組定期跑 mutation，達到既定門檻。</li>
+</ul>
+
+<h2>10. 開發拆解建議</h2>
+<ol>
+  <li>搭好 market service <-> routing 介面與指標。</li>
+  <li>實作 order book core（資料結構 + 匹配 core + STP）。</li>
+  <li>實作 command/event pipeline 與 WAL/Snapshot。</li>
+  <li>補齊 API/WS 事件轉換與客戶端 gap 回復。</li>
+  <li>佈署與 hot/cold model 與 chaos 驗證。</li>
+</ol>
+
+<div class="warn">
+  <strong>注意</strong>：版本標註與變更門檻請與 SPEC-014 / SPEC-017 的遞交約定保持一致。
+</div>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-020 Analytics &amp; Reporting implementation plan</title>
+  <style>
+    body {
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      margin: 24px;
+      line-height: 1.65;
+      color: #0f172a;
+    }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin-bottom: 16px; }
+    pre { background: #f8fafc; border: 1px solid #dbeafe; padding: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-020 Analytics &amp; Reporting implementation plan</h1>
+  <div class="meta">
+    <strong>版本</strong>: v0.1.0<br>
+    <strong>更新日</strong>: 2026-05-09<br>
+    <strong>對應規格</strong>: <a href="../specs/SPEC-020-analytics-reporting.html">SPEC-020</a><br>
+    <strong>目標</strong>: 建立一致、可授權、可追溯的分析與匯出能力
+  </div>
+
+  <section>
+    <h2>1. 資料架構與流程</h2>
+    <p>建議分為三層：事件層、彙總層、匯出層。</p>
+    <ul>
+      <li>事件層：交易事件、帳務事件、客服事件、風險事件保留原始流水。</li>
+      <li>彙總層：日/小時彙總表與多維度索引（時間、產品、市場、用戶群組）。</li>
+      <li>匯出層：固定模板與自訂報表以 snapshot 方式輸出。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 報表資料模型（實作）</h2>
+
+    <h3>2.1 report_templates</h3>
+    <pre><code>CREATE TABLE report_templates (
+  id BIGSERIAL PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  definition JSONB NOT NULL,
+  created_by BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE
+);</code></pre>
+
+    <h3>2.2 report_jobs</h3>
+    <pre><code>CREATE TABLE report_jobs (
+  id BIGSERIAL PRIMARY KEY,
+  template_id BIGINT NOT NULL REFERENCES report_templates(id),
+  requested_by BIGINT NOT NULL,
+  params JSONB NOT NULL DEFAULT '{}',
+  state TEXT NOT NULL,
+  started_at TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ,
+  output_uri TEXT,
+  output_rows BIGINT,
+  row_hash CHAR(64),
+  error_message TEXT
+);</code></pre>
+
+    <h3>2.3 report_shares</h3>
+    <pre><code>CREATE TABLE report_shares (
+  id BIGSERIAL PRIMARY KEY,
+  report_job_id BIGINT NOT NULL REFERENCES report_jobs(id),
+  shared_to BIGINT NOT NULL,
+  shared_scope TEXT NOT NULL,
+  share_type TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ
+);</code></pre>
+
+    <h3>2.4 report_audit</h3>
+    <pre><code>CREATE TABLE report_audit (
+  id BIGSERIAL PRIMARY KEY,
+  report_job_id BIGINT NOT NULL REFERENCES report_jobs(id),
+  actor_id BIGINT NOT NULL,
+  action TEXT NOT NULL,
+  action_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ip INET NOT NULL,
+  user_agent TEXT,
+  details JSONB NOT NULL DEFAULT '{}'
+);</code></pre>
+  </section>
+
+  <section>
+    <h2>3. 報表權限模型</h2>
+    <ul>
+      <li>角色對應報表範圍：營運、客服、風控、財務、法務。</li>
+      <li>同一角色可見欄位由 template definition 控制。</li>
+      <li>report_jobs 需同時驗證角色、IP、登入 session 一致性。</li>
+      <li>敏感欄位在輸出層做遮罩處理，明文下載需二次授權。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 匯出機制</h2>
+    <h3>4.1 格式</h3>
+    <ul>
+      <li>支援 CSV、XLSX、JSON 三種格式，預設保留 UTF-8。</li>
+      <li>JSON 額外輸出 <code>schema_version</code> 及 <code>generated_at</code>。</li>
+      <li>CSV 需在文件頭固定輸出版本欄位。</li>
+    </ul>
+    <h3>4.2 版本與再產生</h3>
+    <ul>
+      <li>匯出參數快照儲存在 report_jobs.params。</li>
+      <li>任何重跑會保留原紀錄，產生新版 report_job。</li>
+      <li>每個 job 都有 output_rows 與 row_hash 用於可重放比對。</li>
+    </ul>
+    <h3>4.3 自動化排程</h3>
+    <ul>
+      <li>每日 KPI、每周營運彙整、每月合規彙總改為排程任務。</li>
+      <li>排程失敗需寫入告警，並附帶重試機制。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 資料一致性</h2>
+    <ul>
+      <li>同一 report template 在相同參數下結果可重現。</li>
+      <li>對帳報表需有來源版本與時間界定。</li>
+      <li>匯出完成後需完成 hash 驗證，並在 report_audit 記錄。</li>
+      <li>資料修正事件必須有對應「更正快照」與生效時間。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 運維與保留</h2>
+    <ul>
+      <li>匯出任務的快取可存 7 天，產出檔案在 90 天後移入低成本儲存。</li>
+      <li>法規保留報表保留至少 7 年。</li>
+      <li>報表分享與下載 API 使用率與耗時做監控，超過閥值觸發調整。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. 風險與例外</h2>
+    <ul>
+      <li>報表負載高時自動節流，避免影響交易 API。</li>
+      <li>超大查詢採資料切片與預先快取。</li>
+      <li>多租戶欄位分離先以角色與租戶條件實作，避免跨域資料外洩。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>8. 依賴與驗收</h2>
+    <ul>
+      <li><a href="../specs/SPEC-007-observability.html">SPEC-007</a>：報表指標源。</li>
+      <li><a href="../specs/SPEC-013-cicd-release.html">SPEC-013</a>：版控與交付稽核。</li>
+      <li><a href="../docs/implementation-plans/SPEC-018-auditability-evidence-pack-implementation-plan.html">SPEC-018 實作書</a>：匯出與證據鏈對接。</li>
+    </ul>
+    <ol>
+      <li>3 種格式匯出正常且欄位版本一致。</li>
+      <li>角色無權匯出會被拒絕並落日誌。</li>
+      <li>可再產生同參數報表並比對 hash 不一致告警。</li>
+      <li>報表排程穩定、失敗可重試並可追蹤。</li>
+      <li>資料保留與刪除依據策略自動執行。</li>
+    </ol>
+  </section>
+</body>
+</html>

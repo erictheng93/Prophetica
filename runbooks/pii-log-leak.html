@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runbook: PII Log Leak</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.55; color: #1f2937; }
+    h1 { margin-top: 0; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+<h1>Runbook: PII Log Leak</h1>
+<h2>Alert</h2>
+<p>PII is detected in logs or traces.</p>
+<h2>Severity</h2>
+<p>P0</p>
+<h2>Investigation</h2>
+<ol>
+<li>Identify the exact field, service, and time window.</li>
+<li>Confirm whether Loki, Tempo, or downstream exports contain the value.</li>
+<li>Locate the code path that emitted the unredacted field.</li>
+</ol>
+<h2>Resolution</h2>
+<ol>
+<li>Stop the offending deployment or route.</li>
+<li>Patch redaction and redeploy.</li>
+<li>Follow the data retention and incident notification process with Compliance.</li>
+</ol>
+  </main>
+</body>
+</html>

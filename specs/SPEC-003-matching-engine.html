@@ -1,0 +1,588 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-003-matching-engine</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.5;
+    }
+    img { max-width: 100%; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre {
+      overflow: auto;
+      padding: 1rem;
+      background: #f6f8fa;
+      border: 1px solid #d8dee3;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    a { color: #0969da; }
+    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
+    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
+    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+    .changelog-entry p,
+    .changelog-entry ul { margin: 0.35rem 0; }
+    .changelog-entry ul { padding-left: 1.15rem; }
+    .changelog-entry li { margin-bottom: 0.35rem; }
+  </style>
+</head>
+<body>
+<h1>SPEC-003 �X ���X�����ԳW�]Matching Engine�^</h1>
+<blockquote>
+<p>�u���šG<strong>P0</strong>
+�����Gv0.2.3 �P �̫��s�G2026-05-07
+�̿�GSPEC-002
+�Q�̿�GSPEC-004, SPEC-007, SPEC-009</p>
+</blockquote>
+<section class="changelog">
+<div class="changelog-list">
+    <article class="changelog-entry">
+    <h3>v0.2.3 �ܧ�</h3>
+    <ul>
+      <li><strong>T-4 hostNetwork ������Ѿ���a</strong>�G���g ��17.2�A����������ѻP���t�W�h�B�G���ಾ�P�ɯŴ�����í�w�ʦ欰�A��@�Ӹ`�Ш� implementation plan�C</li>
+      <li><strong>T-6 Thread / Runtime �ҫ����y</strong>�G���g ��17.3�A�ɱj��/�N���� runtime ���y�P�`�I�귽�����A��@�Ӹ`�Ш� implementation plan�C</li>
+      <li>��17.5 �s�W�ɯŴ�����ѭᵲ�y�{�A�H���C�E���������~�P�C</li>
+    </ul>
+  </article>
+  <article class="changelog-entry">
+    <h3>v0.2.2 �ܧ�]R-2 ���u�M���^</h3>
+    <p>�̷~�D�Mĳ�A�����t�ΫO�d�ҥ~�P�����ɶK�����A�N�欰���Ĭ��u�L�ҥ~�v�C�����W�h�l���� SPEC-000�BADR-0001 ��s�C</p>
+  </article>
+  <article class="changelog-entry">
+    <h3>v0.2.1 �ܧ�</h3>
+    <ul>
+      <li>��12 �ɻ� hedge ���\���O�޿�A���T���W�[�B�~ pre-trade ����C</li>
+      <li>��ݹ�@�y���P�u�{�Ƶ����v�B������ Rust�A�ù����P�B���ջP���O�����M�z�A�Ԩ� implementation plan�C</li>
+      <li>�ɻ���յ����A�N�ݩʴ��ջP mutation testing �л\�ݨD���s�W��C</li>
+      <li>��6~��11 ����r�ƺt��k���O�d���ѦҡA�����@�`���w�m�� implementation plan�C</li>
+    </ul>
+  </article>
+  <article class="changelog-entry">
+    <h3>v0.2.0 �ܧ�</h3>
+    <p>�֤߼��X��|�D�y�{��V�s�޳N�̻P�s OrderID �W�d�A�O�� P99 < 5ms �ؼФ��ܡC</p>
+  </article>
+</div>
+</section>
+<hr>
+<h2>1. Objective</h2>
+<p>�]�p�@�� <strong>��g�̡Bin-process�Bevent-sourced</strong> ���q��ï���X�����A�䴩�w������ YES/NO ���L�X�����U��B�M��B����B�����A�F�� P99 &lt; 5ms �����X����A�ô��ѧ��㪺�ƥ�y�ѤU��b���B����B�����A�Ȯ��O�C</p>
+<h2>2. �]�p��h</h2>
+<table>
+<thead>
+<tr>
+<th>��h</th>
+<th>���[</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>��@�g��</strong>�]Single Writer�^</td>
+<td>�C�ӥ����@�ӱM�ݳB�z�y�{�W���ӥ������q��ï�A�T����B�T��õo�g�J</td>
+</tr>
+<tr>
+<td><strong>In-Process Memory</strong></td>
+<td>�q��ï�O���b���X�A�ȶi�{�����O����A�קK�����n���P�@�Χ֨��̿�</td>
+</tr>
+<tr>
+<td><strong>Event Sourcing</strong></td>
+<td>���X�����u���ͨƥ�A�Ҧ��U��]�b���B�����B���ܡBK �u�^�Ѯ��O�̭���</td>
+</tr>
+<tr>
+<td><strong>WAL + Snapshot</strong></td>
+<td>�H�i����ƥ�C�P�w���ַӤ䴩�G�٫�^�_</td>
+</tr>
+<tr>
+<td><strong>�T�w��</strong>�]Deterministic�^</td>
+<td>���w�ۦP�ƥ�ǦC�A���إX���q��ï���A���� 100% �@�P</td>
+</tr>
+<tr>
+<td><strong>Price-Time FIFO</strong></td>
+<td>���X�t��k��<strong>�����u�� �� �ɶ��u��</strong>�A�P Kalshi �@�P</td>
+</tr>
+<tr>
+<td><strong>���x������</strong></td>
+<td>�����L house book�A�L�۰ʳy���A�Ҧ� quote �Ӧ۪��a�� DMM</td>
+</tr>
+</tbody></table>
+<h2>3. �X���ҫ�</h2>
+<h3>3.1 �����]Market�^</h3>
+<p>�C�ӥ����N��@�� <strong>�G�����G�]Binary Outcome�^</strong> �ƥ�C�� struct �� SPEC-015 ��6 �� <code>markets</code> ��ǦC�ƦӨӡA�`�J���X���� in-memory�]�I�� SPEC-015 ��10.1�^�C</p>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>3.2 ���G�L�]Outcome�^</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>3.3 ����u�� YES �L�A���ݭn NO �q��ï�H</h3>
+<blockquote>
+<p><strong>����]�p�M��</strong>�G���t�αĥ� Kalshi �ҫ��A<strong>�u���@ YES �L�q��ï</strong>�C�� YES @ 0.65 ������R NO @ 0.35�C</p>
+</blockquote>
+<h4>3.3.1 �]�p�z��</h4>
+<ul>
+<li>�q��ï��@�ơA�O����P CPU ��b</li>
+<li>����� 1 �� YES = $1�]�����^�� $0�]�S���^�A1 �� NO ����</li>
+<li>�Ҧ� NO �ާ@�b��������ഫ�� YES �ާ@</li>
+</ul>
+<h4>3.3.2 ����ഫ�W�h</h4>
+<table>
+<thead>
+<tr>
+<th>���a�ʧ@</th>
+<th>���������B�z</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>�R YES @ 0.65 �� 100</td>
+<td>Bid YES @ 65 �� 100</td>
+</tr>
+<tr>
+<td>�� YES @ 0.65 �� 100</td>
+<td>Ask YES @ 65 �� 100</td>
+</tr>
+<tr>
+<td>�R NO @ 0.35 �� 100</td>
+<td>Ask YES @ 65 �� 100�]�ഫ�^</td>
+</tr>
+<tr>
+<td>�� NO @ 0.35 �� 100</td>
+<td>Bid YES @ 65 �� 100�]�ഫ�^</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>��ɼh SDK �۰��ഫ�A���a�b UI �ݨ쪺���O�u�R NO�v�A����ݤ����u�B�z YES�C</p>
+</blockquote>
+<h2>4. �q��ҫ�</h2>
+<h3>4.1 �q�������]Order Types�^</h3>
+<table>
+<thead>
+<tr>
+<th>����</th>
+<th>�t�q</th>
+<th>�欰</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>LIMIT</strong></td>
+<td>������</td>
+<td>���w����A�����泡�����J�q��ï</td>
+</tr>
+<tr>
+<td><strong>MARKET</strong></td>
+<td>������</td>
+<td>�����w����A�Y��ܦ���ίӺɡA�Ѿl cancel</td>
+</tr>
+<tr>
+<td><strong>IOC</strong> (Immediate-Or-Cancel)</td>
+<td>�Y�ɦ���_�h����</td>
+<td>�ߧY���X�i���泡���A�Ѿl�۰ʨ���</td>
+</tr>
+<tr>
+<td><strong>FOK</strong> (Fill-Or-Kill)</td>
+<td>��������_�h����</td>
+<td>�����@�����q����A�_�h��������</td>
+</tr>
+<tr>
+<td><strong>POST_ONLY</strong></td>
+<td>�u����</td>
+<td>���� maker�A�Y�|�ߧY����h�ڵ�</td>
+</tr>
+</tbody></table>
+<h3>4.2 �q�檬�A��</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>4.3 �q���Ƶ��c</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h2>5. �q��ï��Ƶ��c</h2>
+<h3>5.1 ���鵲�c</h3>
+<p>�C�� Market �@���q��ï�G</p>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>5.2 ���� BTreeMap �ӫD skip list / RB-tree�H</h3>
+<table>
+<thead>
+<tr>
+<th>���c</th>
+<th>���J</th>
+<th>�R��</th>
+<th>�d�򱽴y</th>
+<th>�O����</th>
+<th>����</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>sorted Vec</td>
+<td>O(N)</td>
+<td>O(N)</td>
+<td>O(K)</td>
+<td>�̧C</td>
+<td>�C</td>
+</tr>
+<tr>
+<td>RB-tree</td>
+<td>O(logN)</td>
+<td>O(logN)</td>
+<td>O(K logN)</td>
+<td>��</td>
+<td>OK</td>
+</tr>
+<tr>
+<td>skip list</td>
+<td>O(logN)</td>
+<td>O(logN)</td>
+<td>O(K)</td>
+<td>��</td>
+<td>OK</td>
+</tr>
+<tr>
+<td><strong><code>std::collections::BTreeMap</code></strong></td>
+<td>O(logN)</td>
+<td>O(logN)</td>
+<td>O(K)</td>
+<td><strong>�C�]cache friendly�^</strong></td>
+<td><strong>�̨�</strong></td>
+</tr>
+</tbody></table>
+<p>Rust �зǨ禡�w <code>BTreeMap</code> �w�O B-tree�]�C�`�I�h entries�Acache friendly�^�A���ݲĤT�� crate�C�M�����|�z�L <code>OrderHandle</code>�]�O������ + queue ����m�^�F�� O(1)�A�קK BTreeMap ���s�d��C</p>
+<h3>5.3 ���� VecDeque�]���ݦ�C�^�ӫD Vec�H</h3>
+<p>�C�� PriceLevel �����q���C�G</p>
+<ul>
+<li><strong>���X</strong>�G<code>pop_front()</code> �� O(1)</li>
+<li><strong>�[�J</strong>�G<code>push_back()</code> �� O(1)</li>
+<li><strong>�M��</strong>�G�z�L <code>OrderHandle{price_pts, queue_index_or_marker}</code> ����m �� O(1) �޿�R���]tombstone�^�A�U�����X�ɸ��L</li>
+</ul>
+<p><code>Vec</code> �����q�R���� O(N)�A���i��F<code>VecDeque</code> �����q�R���� O(N)�A�G�M��� tombstone �Ҧ��C</p>
+<h2>6. ���X�t��k</h2>
+<blockquote>
+<p><strong>工程實作說明</strong>：以下 §6 / §7 / §8 / §10 / §11 主要保留邏輯示意；完整實作語言、型別、效能與重構內容已集中於 implementation plan。</p>
+</blockquote>
+<h3>6.1 �D�y�{���X</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>6.2 �����e�P�w</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>6.3 ����ƥ󲣥�</h3>
+<p>�C�����X���ͤ@�� <code>Trade</code> �ƥ�G</p>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>6.4 �M��</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h2>7. �õo�ҫ�</h2>
+<h3>7.1 Per-Market Single Writer</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>7.2 �����g�̳ӹL mutex�H</h3>
+<ul>
+<li>�L���v���A�L spin lock�A�L priority inversion</li>
+<li>���U��í�w������Ǩí��C�ݰʻP���o����</li>
+<li>���X�޿襻��ǦC�ơ]���涶�ǥ����T�w�^</li>
+<li>�קK�@����~�V�A���C���Ǻ}���綠���ʪ��v�T</li>
+</ul>
+<h3>7.3 �󥫳��æ�</h3>
+<p>���P���������W�ߡA�i����B�z���P�����y�q�C</p>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+
+<h2>8. ���[�ơ]Event Sourcing + WAL�^</h2>
+<h3>8.1 �g�J��|</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>8.2 WAL �榡</h3>
+<p>�ƥ��Ʒ|���[�Ʀs�ɨåi����A�榡�P�����Ш� implementation plan�G</p>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>8.3 Snapshot</h3>
+<p>snapshot �g���P�榡�B��_�y�{�аѦ� implementation plan�G</p>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>8.4 Crash Recovery</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<p>��_�ɶ��ؼСG<strong>&lt; 30 ��</strong> for ����@�����]&lt; 1M �ƥ�^�C</p>
+<h2>9. �ƥ󫬧O�M��</h2>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Ĳ�o</th>
+<th>�U����O</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>OrderAccepted</code></td>
+<td>�q�L���Ҷi�J����</td>
+<td>�����B�]��</td>
+</tr>
+<tr>
+<td><code>OrderRejected</code></td>
+<td>�ڦ��]�l�B�B���B�B�����^</td>
+<td>���a�q��</td>
+</tr>
+<tr>
+<td><code>OrderResting</code></td>
+<td>�i�J�q��ï����</td>
+<td>�q��ï WS ����</td>
+</tr>
+<tr>
+<td><code>Trade</code></td>
+<td>���X����</td>
+<td>�b���B���ܡBK �u�B�]��</td>
+</tr>
+<tr>
+<td><code>OrderFilled</code></td>
+<td>�q�槹������</td>
+<td>���a�q��</td>
+</tr>
+<tr>
+<td><code>OrderPartiallyFilled</code></td>
+<td>��������</td>
+<td>���a�q��</td>
+</tr>
+<tr>
+<td><code>OrderCancelled</code></td>
+<td>�Τ�M��� IOC/FOK</td>
+<td>���a�q���B�q��ï WS</td>
+</tr>
+<tr>
+<td><code>MarketStatusChanged</code></td>
+<td>open �� closed �� settling �� settled</td>
+<td>�����a</td>
+</tr>
+<tr>
+<td><code>BookSnapshot</code></td>
+<td>�q�\�̪즸�s�u���e</td>
+<td>WS �q�\��</td>
+</tr>
+<tr>
+<td><code>BookDelta</code></td>
+<td>�W�q��s</td>
+<td>WS �q�\��</td>
+</tr>
+</tbody></table>
+<h2>10. API ����</h2>
+<h3>10.1 REST �U��]�P�B�^</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>10.2 �M��</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>10.3 WebSocket �q��ï����</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<p>WebSocket �s�u������z�L <code>seq</code> ���� gap�]�|�T�^�A�Ȥ�� detect gap �᭫�s snapshot�C</p>
+<h3>10.4 WebSocket �ӤH�q�����</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h2>11. �ʯ� SLO</h2>
+<table>
+<thead>
+<tr>
+<th>����</th>
+<th>�ؼ�</th>
+<th>�q��</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>���X����]API ���� �� �ƥ�o���^</td>
+<td>P50 &lt; 1ms, P99 &lt; 5ms</td>
+<td>OpenTelemetry span</td>
+</tr>
+<tr>
+<td>�楫���]�R</td>
+<td>���� 30,000 orders/sec</td>
+<td>����</td>
+</tr>
+<tr>
+<td>�����x�]�R</td>
+<td>100,000 orders/sec�]100 �ӥ����^</td>
+<td>����</td>
+</tr>
+<tr>
+<td>WebSocket ��������</td>
+<td>P99 &lt; 30ms (engine �� �Ȥ�� receive)</td>
+<td>RUM</td>
+</tr>
+<tr>
+<td>Crash Recovery</td>
+<td>&lt; 30 �� / ����</td>
+<td>DR �t�m</td>
+</tr>
+<tr>
+<td>�q��ï�`�׬d��</td>
+<td>P99 &lt; 5ms�]snapshot ���ѡ^</td>
+<td>API �ʱ�</td>
+</tr>
+</tbody></table>
+<h2>12. �����e�m�]Pre-trade Risk Check�^</h2>
+<p>����<strong>�����q��e</strong>�����q�L�G</p>
+<table>
+<thead>
+<tr>
+<th>�ˬd</th>
+<th>����</th>
+<th>���Ѧ^��</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>�l�B�R��</td>
+<td><code>wallet.available ? price * qty + fee</code></td>
+<td>INSUFFICIENT_FUNDS</td>
+</tr>
+<tr>
+<td>���ܤW��</td>
+<td><code>position.qty + new_qty ? market.MaxPositionPerUser</code></td>
+<td>POSITION_LIMIT_EXCEEDED</td>
+</tr>
+<tr>
+<td>�浧�W��</td>
+<td><code>qty ? market.MaxOrderQty</code></td>
+<td>ORDER_QTY_TOO_LARGE</td>
+</tr>
+<tr>
+<td>�ۧڦ���</td>
+<td><code>taker.userID != maker.userID</code>�]����e��^</td>
+<td>SELF_TRADE_PREVENTED</td>
+</tr>
+<tr>
+<td>����϶�</td>
+<td><code>0 &lt; price &lt; 100</code>�]�Y��϶��A0 / 100 ����Ρ^</td>
+<td>INVALID_PRICE</td>
+</tr>
+<tr>
+<td>�������A</td>
+<td><code>market.status == OPEN</code></td>
+<td>MARKET_NOT_OPEN</td>
+</tr>
+<tr>
+<td>���a���A</td>
+<td><code>user.status == ACTIVE</code> &amp; <code>!self_excluded</code></td>
+<td>USER_RESTRICTED</td>
+</tr>
+<tr>
+<td>�ϧ@������</td>
+<td><code>risk_score &lt; 80</code></td>
+<td>RISK_REJECTED</td>
+</tr>
+<tr>
+<td><strong>���x�b��T��</strong></td>
+<td><code>order.user_id ? PLATFORM_SYSTEM_USER_IDS</code>�]�I�� ADR-0001 ��6�^</td>
+<td>PLATFORM_USER_NOT_ALLOWED</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p><strong>Hedge ���\</strong>�G����<strong>��</strong>�]�t <code>HEDGE_NOT_ALLOWED</code> �ˬd�]�I�� <a href="./SPEC-000-index.html#5-%E8%B7%A8%E6%AA%94%E6%B1%BA%E7%AD%96%E8%BF%BD%E8%B9%A4%E8%A1%A8cross-cutting-decision-tracker">SPEC-000 ��5 Q-7</a> Resolved�^�C�P�@���a�b�P�@�����P�ɫ� YES + NO ���X�k�~�ȳ����A�� SPEC-002 ��4.4.4 NOTE 3 ���v <code>position_id</code> �����޿�伵�F��b wash trading �� SPEC-010 ��4.2.2 post-trade �����d�I�A��N���b hot path pre-trade �ˬd�]�קK�C�i�q�� query position-service �W�[ P99 1 hop�^�C</p>
+</blockquote>
+<p>�����e�m�b�W�� service �����A���X�������]��J�w�q�L�C</p>
+<h3>12.1 PLATFORM_SYSTEM_USER_IDS Sentinel Set�]Compliance ���u�^</h3>
+<blockquote>
+<p><strong>�j����u</strong>�G�I�� <a href="../docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md">ADR-0001 ��6</a>�C���� <code>ingressCh</code> ������ incoming order ���� <code>order.user_id != PLATFORM_SYSTEM_USER_IDS</code> �ˬd�F�R���h���� reject �üg�J SIEM�C���N���x / �t�� user_id �[�J�U���O�� PR <strong>���� CI fail + reject</strong>�C</p>
+</blockquote>
+<h4>12.1.1 �`�Ʃw�q�]Rust�^</h4>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h4>12.1.2 �����J�f�ˬd�]�j��^</h4>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h4>12.1.3 CI �R�A���y</h4>
+<p>�I�� ADR-0001 ��6 �P SPEC-017 ��8 sentinel-scan job�ACI pipeline ���t�H�U�ˬd�]�b SPEC-013 ��3.2 �C�����_ gate�^�G</p>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h4>12.1.4 �ҥ~���p�G<strong>�L</strong></h4>
+<blockquote>
+<p><strong>���`��y�z�u<code>system.platform_announcement</code> (uid=4) ���ߤ@�ҥ~�v���N�ҰʸɶK��|�w�� v0.2.2 ��q����</strong>�]�I�� <a href="./SPEC-000-index.html#5-%E8%B7%A8%E6%AA%94%E6%B1%BA%E7%AD%96%E8%BF%BD%E8%B9%A4%E8%A1%A8cross-cutting-decision-tracker">SPEC-000 ��5 R-2</a> �~�D�Mĳ�P SPEC-009 ��5 �P�B�^�C</p>
+<p>���x<strong>�û���</strong>�b�ۮa�q��ï����A<strong>�L</strong>��� feature flag�Bñ�֬y�{�B�� UI �аO�i�H�ҥΥ��x order�C</p>
+<p>��12.1.1 sentinel ���X�� uid=4 �w�����A�æC�J <code>RESERVED_REMOVED_USER_IDS</code> ������v�����P���� user_id �����F��12.1.3 CI sentinel-scan ���ݯS�O whitelist�C�N�Ұʬy�ʩʤ����� SPEC-009 ��3.3 DMM rebate ��j�Υ�������W�[�C</p>
+<p>ADR-0001 ��6 �u�ߤ@�ҥ~�v�y�z�ݷs ADR �аO�� superseded�]���򸨦a�^�C</p>
+</blockquote>
+<h2>13. �ۧڦ��樾��]Self-Trade Prevention, STP�^</h2>
+<h3>13.1 Ĳ�o</h3>
+<p>�� incoming taker order �N�P<strong>�P�@ user_id</strong> �� resting order ���X�ɡC</p>
+<h3>13.2 �B�m�����]�i�t�m�A�w�] CANCEL_NEWEST�^</h3>
+<table>
+<thead>
+<tr>
+<th>����</th>
+<th>�欰</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>CANCEL_NEWEST</code></td>
+<td>���� incoming order</td>
+</tr>
+<tr>
+<td><code>CANCEL_OLDEST</code></td>
+<td>���� resting maker</td>
+</tr>
+<tr>
+<td><code>CANCEL_BOTH</code></td>
+<td>��̬Ҩ���</td>
+</tr>
+<tr>
+<td><code>DECREMENT_BOTH</code></td>
+<td>���ƶq�����p�Ȫ��t���~��</td>
+</tr>
+</tbody></table>
+<p>DMM / ���c�b��i�]���P�����A�s�⪱�a�j�� <code>CANCEL_NEWEST</code> ���@���C</p>
+<h2>14. ��ɱ��� / �w������</h2>
+<h3>14.1 ��ƹB��P���</h3>
+<ul>
+<li><strong>�����ϥ� float</strong>�C�Ҧ�����P�ƶq�� int64�C</li>
+<li>���椺�����G1 = 0.01�]0-100 ���� 0.00-1.00�^</li>
+<li>�I�Ƥ������G1 = 0.01 �I�]�P SPEC-002 �@�P�^</li>
+<li>����O basis points�G1 bp = 0.01%</li>
+</ul>
+<h3>14.2 ���B�p��</h3>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h3>14.3 NO �L��������</h3>
+<p>NO �q���ഫ�� YES �ɡG<code>yes_price = 100 - no_price</code>�C�ഫ����楲�����b (0, 100) �϶��C</p>
+<h3>14.4 ���������ɨ誺�q��</h3>
+<p><code>market.ClosesAt</code> ����G</p>
+<ul>
+<li>�s�q��<strong>�����ڵ�</strong></li>
+<li>�q��ï�W�����D�q��<strong>���� cancel</strong>�A������ƶq reverse ���</li>
+<li>Ĳ�o <code>MarketStatusChanged</code> �� <code>CLOSED</code> �ƥ�</li>
+<li>���ݵ���]�� SPEC-004�^</li>
+</ul>
+<h2>15. �{���X����d��</h2>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h2>16. ���յ���</h2>
+<p>���եؼлP��@�Ӹ`�Ш� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h2>17. ���p�P�B��</h2>
+<h3>17.1 ���p�Ҧ�</h3>
+<ul>
+<li>���X�����H <strong>DaemonSet + hostNetwork: true</strong> ���p�b K8s</li>
+<li>�ΡGbare-metal Linux server�Asystemd �޲z</li>
+<li>����b sidecar / sidecar mesh ���]�קK Envoy �ޤJ����^</li>
+</ul>
+<h3>17.2 ������ѻP���t����]T-4�^</h3>
+<blockquote>
+<p>���X������ hostNetwork DaemonSet �Ҧ��]��17.1�^�A�N���ۨC�� K8s node �W���@�Ӽ��X process�F����μз� K8s Service load balancer�A�ݦۭq������Ѿ���C</p>
+</blockquote>
+<h4>17.2.1 ��Ѭ[�c</h4>
+<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h4>17.2.2 ��ѨM��</h4>
+<p>���`�y�{�]�����ЫءB�}�L��ѡB�U��ɦV�B�G�٤����B�X�Y�e�P���N���y�^�P�Ҧ���@����A�ХH implementation plan ���ǡC</p>
+<h4>17.2.3 ��A�Ȼα�</h4><p>��A�Ⱦ�X�Bclient / broker �]�w�P��� hot path budget ��@�A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h4>17.2.4 �t�i��|</h4>
+<ul>
+<li><strong>MVP�]&lt; 100 markets�^</strong>�G�H��ϰ��¦��Ѻ���í�w�W�u�C</li>
+<li><strong>Scale-up�]100-1000 markets�^</strong>�G�[�j��ѧ֨��P�y�q���O����A�ǳƸ�ϰ�W�ҤơC</li>
+<li><strong>Scale-out�]&gt; 1000 markets�^</strong>�G�ݭn�s ADR �ɥR��ϰ���p�������p�����C</li>
+</ul>
+<h3>17.3 Thread / Runtime �ҫ��]T-6�^</h3>
+<p>��/�N���� runtime ���y�P�ɯŬy�{�A�t�֤߸귽�t�m�B�^��`���B���Ĥ����A�аѦ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<h2>18. �禬����</h2>
+<ul>
+<li><input disabled="" type="checkbox"> �椸���� + �ݩʴ����л\�v ? 95%</li>
+<li><input disabled="" type="checkbox"> �����G1M orders �B�z�B���� P50/P99 �F SLO</li>
+<li><input disabled="" type="checkbox"> ����T�w�ʴ��ճq�L</li>
+<li><input disabled="" type="checkbox"> Kafka �뻼 zero-loss ���ҡ]kill -9 ��ƥ󤣥ᥢ�^</li>
+<li><input disabled="" type="checkbox"> WebSocket �������� P99 &lt; 30ms �b 1000 �õo�q�\�̤U</li>
+<li><input disabled="" type="checkbox"> STP �欰�P�t�m�����@�P</li>
+<li><input disabled="" type="checkbox"> Crash recovery &lt; 30 ��</li>
+</ul>
+<h2>19. Open Questions</h2>
+<blockquote>
+<p>���ɨM���w���Ħ� <a href="./SPEC-000-index.html">SPEC-000 ��5</a> �����l�ܪ�C���`�ȫO�d SPEC-003 �ۨ��d��ĳ�D�C</p>
+</blockquote>
+<ol>
+<li>WAL �O�_�ݭn mmap �[�t�H�Ϊ��� buffered write �w�����H</li>
+<li>Snapshot �ǦC�Ʈ榡�Gprotobuf vs MessagePack vs custom binary�H</li>
+<li><del>�q�� ID �ͦ������Gsnowflake vs ULID vs DB sequence�H</del> ? <strong>Resolved</strong>�G�� <strong>ULID</strong>�A��@���a�覡�� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</li>
+
+<li>�O�_�䴩 stop-limit / trailing-stop �������q�������]���o�����ݭn�^�H</li>
+<li><del>DMM API �O�_���W�� binary protocol�]FIX ��ĳ�^�٬O�@�� REST�H</del>�]�w Resolved by <a href="./SPEC-009-dmm-liquidity.html">SPEC-009 ��3.4</a>�G�۫� binary protobuf over TLS�^</li>
+</ol>
+
+</body>
+</html>
+
+
+
+
+
+
+
+

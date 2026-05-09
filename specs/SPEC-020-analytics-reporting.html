@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-020 Analytics &amp; Reporting</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.6;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre { overflow: auto; padding: 1rem; background: #f6f8fa; border: 1px solid #d8dee3; }
+    blockquote { border-left: 4px solid #d0d7de; padding-left: 0.8rem; margin-left: 0; color: #374151; }
+    a { color: #0969da; }
+  </style>
+</head>
+<body>
+<h1>SPEC-020 Analytics &amp; Reporting</h1>
+<blockquote>
+  <p>優先序：P2</p>
+  <p>版本：v0.1.0</p>
+  <p>更新日：2026-05-09</p>
+  <p>依賴：SPEC-002, SPEC-004, SPEC-007, SPEC-013, SPEC-016</p>
+</blockquote>
+<section>
+  <h2>1. 目的</h2>
+  <p>提供平台所需的營運分析與法務匯出能力，讓產品、客服、風控與管理層可在同一套報表邏輯中取得一致口徑的數據。</p>
+</section>
+
+<section>
+  <h2>2. 報表能力範圍</h2>
+  <ul>
+    <li>玩家層：點數帳戶、下單/結算摘要、風險事件歷史。</li>
+    <li>產品層：市場成交、成交量、勝率、深度分佈。</li>
+    <li>營運層：日/週/月 KPI、活動轉化、KYC 通過率、客服工單趨勢。</li>
+    <li>合規層：帳務快照、異常流向、人工審核紀錄、Webhook 及外部對帳差異。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>3. 用戶可見行為</h2>
+  <ul>
+    <li>所有報表支援起訖時間、排序、欄位啟用、下載格式（CSV / XLSX / JSON）與時間區間鎖定。</li>
+    <li>報表時間區間默認只允許使用平台時區。管理者可改為 UTC 作對帳用途。</li>
+    <li>有敏感欄位時預設顯示 mask，需展開授權才能顯示明文。</li>
+    <li>報表可設定「到期」與「自動寄件」，逾期報表必須能重新產生。</li>
+    <li>每份報表均展示版本與更新時間，以支撐證據一致性。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>4. 權限與可見性</h2>
+  <ul>
+    <li>至少三種角色：只讀營運、風控、財務審核。</li>
+    <li>任何角色變更或資料導出都必須有稽核記錄。</li>
+    <li>個資欄位不得跨角色共用；管理者僅可依授權查看去識別化視圖。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>5. 資料品質與口徑要求</h2>
+  <ul>
+    <li>同類報表在任一時點輸出結果必須可重複、可對齊。</li>
+    <li>交易、結算、存提相關報表需包含「資料截斷時間」與「資料來源版本」。</li>
+    <li>若有後補資料（如補帳、reconciliation），新結果以新版本號補發，保留歷史版本不可覆蓋。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>6. 合規與留存</h2>
+  <ul>
+    <li>法務/稽核匯出保留至少 7 年，除非有監管授權另有更長要求。</li>
+    <li>一般營運報表保留至少 12 個月。</li>
+    <li>刪除匯出包或轉存檔，必須留下「操作鏈」：誰、何時、何種格式、匯出條件。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>7. 與既有規格對齊</h2>
+  <ul>
+    <li><a href="./SPEC-002-funds-safety.html">SPEC-002</a>：帳本口徑、資金一致性、留存指標。</li>
+    <li><a href="./SPEC-007-observability.html">SPEC-007</a>：監控資料可直接被報表引用。</li>
+    <li><a href="./SPEC-013-cicd-release.html">SPEC-013</a>：報表與 release 限定變更需有版本追蹤。</li>
+    <li><a href="./SPEC-016-payment-gateway.html">SPEC-016</a>：支付對帳與退款口徑。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>8. 可驗收（產品）</h2>
+  <ul>
+    <li>[ ] 全部報表支援固定版本與匯出時間戳。</li>
+    <li>[ ] CSV/XLSX/JSON 三種格式可用。</li>
+    <li>[ ] 權限控制下，未授權角色無法查看敏感欄位。</li>
+    <li>[ ] 報表重跑可復現原始結果，差異必須有版本解釋。</li>
+    <li>[ ] 7 年留存的稽核匯出可正常追溯。</li>
+  </ul>
+</section>
+</body>
+</html>

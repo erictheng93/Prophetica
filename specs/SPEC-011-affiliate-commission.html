@@ -1,0 +1,419 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-011-affiliate-commission</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.5;
+    }
+    img { max-width: 100%; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre {
+      overflow: auto;
+      padding: 1rem;
+      background: #f6f8fa;
+      border: 1px solid #d8dee3;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    a { color: #0969da; }
+    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
+    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
+    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .changelog-entry p,
+    .changelog-entry ul { margin: 0.35rem 0; }
+    .changelog-entry ul { padding-left: 1.15rem; }
+    .changelog-entry li { margin-bottom: 0.35rem; }
+  </style>
+</head>
+<body>
+<h1>SPEC-011 — 代理分潤體系</h1>
+<blockquote>
+<p>優先級：<strong>P2</strong>
+版本：v0.2.3 · 最後更新：2026-05-09
+依賴：SPEC-002, SPEC-005, SPEC-010, SPEC-016
+被依賴：—</p>
+</blockquote>
+<section class="changelog">
+<div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>v0.2.3 變更（佣金% 調整權補強）</h3>
+    <ul>
+      <li>明確規格：平台官方管理員可隨時調整代理抽佣百分比；此為營運管理權限之一。</li>
+      <li>規範要求：調整動作需留存操作留痕，包含調整前%、調整後%、生效時間、授權人、依據。</li>
+      <li>實作補充：欄位名、變更流程與生效時點實作方式改由實作書或 implementation plan 定義。</li>
+    </ul>
+  </article>
+  <article class="changelog-entry">
+    <h3>v0.2.2 變更（治理可讀化）</h3>
+    <ul>
+      <li>補充單層代理維持啟用態勢，同步定義未來啟用多層分潤需先行通過治理決議。</li>
+      <li>補強要求：平台營運管理員、客服、業務代理的所有可變更操作，以及所有交易動作均需形成完整操作留痕。</li>
+      <li>明確規範：留痕規格不在本文件寫實作欄位，交由實作計畫與執行書定義。</li>
+    </ul>
+  </article>
+  <article class="changelog-entry">
+    <h3>v0.2.1 變更（Tech Lead pre-implementation gap closure）</h3>
+    <p>v0.2.0 為合規層（§2 / §6）成熟版，但落地細節仍有 8 個技術 gap 會導致 Codex 動工後 PR 退回。</p>
+    <ul>
+      <li><strong>G-1</strong> §3.2 推薦碼生成釘演算法（BLAKE3 6-byte hex <code>username_hash</code> + base32 4-char random，collision retry 5 次後拋 <code>ERROR_CODE_REFERRAL_CODE_COLLISION</code>）。</li>
+      <li><strong>G-2</strong> §3.3 親屬偵測升級為 cross-ref 至 <a href="./SPEC-010-security-antifraud.html">SPEC-010 §4.2.1</a> <code>user_link_score</code> 子規則 <code>affiliate_kinship_link</code>，明示偵測特徵 / 觸發時機 / 處置。</li>
+      <li><strong>G-3</strong> §4.1 達標獎勵改為<strong>延遲 30 天發放</strong>（觀察期內未滿足 5 筆交易 / KYC / 無 chargeback 任一條件即 disqualify，referrer 從未收到 → 不需 clawback、不破 INV-6）。</li>
+      <li><strong>G-4</strong> §4.2 交易佣金帳本流改為「<strong>獨立每日批次 txn</strong>」，明示 trade transaction 仍維持 SPEC-002 §4.4.3 兩條 entry 不變、commission 為 trade 之<strong>事後</strong>衍生分錄。</li>
+      <li><strong>G-5</strong> §4.4 chargeback 反沖細化：介紹獎勵走 G-3 延遲發放路徑無需 clawback；持續交易佣金於 referred 被永久封號（SPEC-016 §6.1 chargeback ≥ 1）後<strong>自然停止</strong>，<strong>不</strong>追回封號前已發放佣金（無需 INV-6 carve-out）。</li>
+      <li><strong>G-6</strong> §4.5 ledger entry 補 sign convention cross-ref 至 <a href="./SPEC-002-funds-safety.html">SPEC-002 §4.3</a> direction =±1 規則。</li>
+      <li><strong>G-7</strong> §5.1 「推薦樹結構」用詞改為「推薦清單（flat list）」避免暗示 MLM。</li>
+      <li><strong>G-8</strong> 新增 §4.6 推薦獎勵上限（每帳號每月 20 個成功介紹獎勵 + 終身 200 個，超過進入 EDD 人工審），原 §10 OQ #1 標 Resolved，對應 <a href="./SPEC-000-index.html#5-%E8%B7%A8%E6%AA%94%E6%B1%BA%E7%AD%96%E8%BF%BD%E8%B9%A4%E8%A1%A8cross-cutting-decision-tracker">SPEC-000 §5 Q-8</a>。</li>
+    </ul>
+  </article>
+  <article class="changelog-entry">
+    <h3>v0.2.0 變更（R-1 紅線清除）</h3>
+    <p>依業主決議移除原 §6 「業務帳戶可選擇將點數獎勵轉為 B2B 合約應付」設計，徹底切斷「Player.Wallet → 應付帳款 / 現金」之任何技術路徑。新章節結構：§6.1 業務 B2B 簽約模型（獨立法律關係，非玩家身份升級）/ §6.2 雙身份隔離（業務同時是玩家時的帳本軌跡分離）/ §6.3 帳本層強制執行（INV-6 與工程實作約束（詳細實作請見 implementation plan））/ §6.4 會計科目分離（<code>Expense.AffiliateCommission</code> 玩家點數獎勵 vs <code>Expense.AffiliatePartnerFee</code> 業務現金酬勞）。同步修正 §5.2 業務後台「提現申請」誤導描述、§7.1 「升級為業務」誤導描述。對應 <a href="./SPEC-000-index.html">SPEC-000 §5 R-1</a>。</p>
+  </article>
+</div>
+</section>
+<hr>
+<h2>1. Objective</h2>
+<p>在遵守法律與合規原則下，建立可被稽核、可被追蹤的推薦傭金體系。現階段僅啟用「第一層推薦」作為營運主線；同時保留後續經治理程序展開分層/多層機制的制度空間。</p>
+<h2>2. 法律邊界（先擺最前面）</h2>
+<h3>2.1 MLM 紅線</h3>
+<p>依台灣公平交易法 §23 與多層次傳銷管理法，<strong>禁止</strong>：</p>
+<ul>
+<li>主要收入來自介紹下線而非銷售</li>
+<li>入會費（推薦人從新人入會費抽佣）</li>
+<li>三層以上的金字塔結構（嚴格說兩層以上即危險）</li>
+</ul>
+<h3>2.2 安全設計</h3>
+<blockquote>
+<p>採用「<strong>單層介紹費 + 銷售佣金</strong>」設計，不做傳統意義上的多層代理。</p>
+</blockquote>
+<p>本規格第一期以「單層」作為實際執行設定。是否啟動分層（多層）模式，需另行進行法務與合規稽核並由治理決策批准後，才可納入後續版本。</p>
+<h3>2.4 可擴展分層原則（治理條件）</h3>
+<ul>
+<li>保留「未來可擴展」是為了避免重構阻礙營運；現階段不新增分層計算權益。</li>
+<li>啟用新一層前，必須先完成三方確認：產品、法務、合規。</li>
+<li>新版本必須先定義分層觸發條件、補償邊界、責任歸屬與追溯規則，並更新 <a href="./SPEC-000-index.html">SPEC-000</a> 的交叉決策紀錄。</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>設計</th>
+<th>內涵</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>介紹獎勵</strong>（一次性）</td>
+<td>介紹人在被推薦人首次儲值達閾值時獲得固定獎勵點數，僅一層</td>
+</tr>
+<tr>
+<td><strong>交易佣金</strong>（持續）</td>
+<td>介紹人從被推薦人的<strong>交易手續費</strong>中抽取百分比，僅一層</td>
+</tr>
+<tr>
+<td><strong>不存在「下線的下線」</strong></td>
+<td>推薦關係<strong>只有一層</strong>，不形成樹狀結構</td>
+</tr>
+<tr>
+<td><strong>介紹獎勵以點數發放</strong></td>
+<td>不是現金，符合「站內虛擬道具」性質</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>原 PRD「總代 → 代理 → 業務」的多層架構<strong>不採用</strong>。技術實作上仍可記錄推薦樹用於分析，但<strong>不據此計算佣金</strong>。</p>
+</blockquote>
+<h3>2.3 「業務」角色（B2B 簽約推廣）</h3>
+<p>對於希望以「業務」身份大規模推廣的合作方：</p>
+<ul>
+<li>必須<strong>簽訂正式 B2B 合約</strong>（與 Operating Co.）</li>
+<li>業務以<strong>個人名義開立發票</strong>（自由業）或<strong>公司對公司結款</strong></li>
+<li>業務的「推薦獎勵」歸入<strong>廣告 / 行銷費用</strong>會計科目</li>
+<li>與一般玩家推薦走<strong>完全分開</strong>的計算與發放路徑</li>
+</ul>
+<h2>3. 推薦關係模型</h2>
+<h3>3.1 資料結構</h3>
+<p>本節只保留行為規則：每位玩家只能被一位介紹人綁定，且綁定點在註冊時落定且不可更改（first-touch）。</p>
+<p>具體欄位、索引與遷移流程請參考 <a href="./implementation-plans/SPEC-011-affiliate-commission-implementation-plan.html">implementation plan</a>。</p>
+<h3>3.2 推薦碼生成</h3>
+<p>每位玩家於註冊成功後<strong>同 transaction 內</strong>自動分配唯一推薦碼。</p>
+<h4>3.2.1 演算法（<strong>G-1 釘死</strong>）</h4>
+<p>推薦碼需兼顧唯一性、不可推回原始使用者、且不影響註冊流程，完整運算規則與碰撞處理（重試與告警）放在 implementation plan。</p>
+<p>推薦連結格式持續維持可點擊分享形式，註冊頁僅採用首次出現的 referral code。 </p>
+<h3>3.3 推薦關係建立規則</h3>
+<ul>
+<li>每位玩家<strong>最多被一人</strong>介紹（first-touch attribution）</li>
+<li>推薦關係於玩家<strong>註冊時</strong>鎖定，不可後續更改</li>
+<li>推薦碼<strong>不可由親屬 / 同連結帳號之間使用</strong> — 由 SPEC-010 §4.2.1 <code>user_link_score</code> 之子規則 <code>affiliate_kinship_link</code> 偵測，<strong>G-2</strong> 細化如下：</li>
+</ul>
+<h4>3.3.1 親屬偵測子規則 <code>affiliate_kinship_link</code>（G-2）</h4>
+<p>親屬/可疑關聯行為列為防濫用防線。具體特徵欄位、權重模型與執行時序移至 implementation plan，由 <a href="./SPEC-010-security-antifraud.html">SPEC-010</a> 的規則與 Compliance 流程做聯動。</p>
+<p>實作需保留本規格提到的狀態轉換（如 <code>pending_review</code> / <code>disqualified</code>）並能與人工複核結果保持一致。</p>
+<h2>4. 佣金計算</h2>
+<h3>4.1 介紹獎勵（一次性，<strong>延遲 30 天發放，G-3</strong>）</h3>
+<h4>4.1.1 達標條件（觀察期內須<strong>全部</strong>滿足）</h4>
+<p>被推薦人於註冊後 30 天觀察期內須累計滿足：</p>
+<ul>
+<li>首次儲值 ≥ TWD 500</li>
+<li>完成 KYC Tier 1</li>
+<li>觀察期內成交<strong>至少 5 筆</strong>訂單（防只儲值不交易）</li>
+<li>觀察期內<strong>無 chargeback</strong>（呼應 SPEC-016 §6.1，chargeback ≥ 1 觸發永久封號則直接 disqualify）</li>
+<li>觀察期結束時無 §3.3.1 親屬偵測 <code>pending_review</code> 未裁決狀態</li>
+<li>觀察期結束時 referrer 帳號自身正常（未凍結 / 未封號）</li>
+</ul>
+<h4>4.1.2 獎勵時點（<strong>delayed-issue 模型</strong>）</h4>
+<blockquote>
+<p>設計維持 <strong>延遲發放</strong>，避免介紹人未達條件後需回收已發放金額，且便於對應 INV-6 的出入帳原則。</p>
+</blockquote>
+<p>觀察期結束批次裁決與入帳時點的實作節奏（含排程時間、狀態更新時機）由 implementation plan 定義。</p>
+<ul>
+<li>referred 進入觀察期後滿足條件才可 <code>qualified</code> 並觸發介紹獎勵。</li>
+<li>介紹獎勵為固定 100 點數；被推薦人註冊獎金 50 點數。</li>
+</ul>
+<h3>4.2 交易佣金（持續，<strong>獨立每日批次 txn，G-4</strong>）</h3>
+<p>被推薦人每筆成交產生的<strong>手續費</strong>中：</p>
+<ul>
+  <li>平台預設以「佣金百分比（%）」計算 referrer 可得比例。</li>
+  <li>平台官方管理員可隨時調整該百分比，並保有全域或代理別設定的營運權限。</li>
+</ul>
+<pre><code>maker_fee × 佣金百分比 → referrer
+taker_fee × 佣金百分比 → referrer</code></pre>
+<h4>4.2.1 帳本流（與 trade transaction <strong>嚴格分離</strong>）</h4>
+<blockquote>
+<p><strong>G-4 釘死</strong>：交易佣金與 trade hot path 帳本分離，交易主帳本仍維持既有規則，commission 僅以每日批次方式入帳。</p>
+</blockquote>
+<p>實作細節（Kafka topic、worker、每日批次、idempotency key、去重策略）放在 implementation plan。</p>
+<h4>4.2.2 Staging 表</h4>
+<p>commission_accruals 作為交易佣金前置暫存，欄位、索引、唯一鍵（trade_id）與 paid_out 流程詳見 <a href="./implementation-plans/SPEC-011-affiliate-commission-implementation-plan.html">implementation plan</a>。</p>
+<h3>4.3 佣金期限</h3>
+<p>交易佣金<strong>僅持續被推薦人註冊後 12 個月</strong>，之後不再計算。</p>
+<blockquote>
+<p>設計目的：防止「躺賺」，鼓勵推薦人持續推廣新人</p>
+</blockquote>
+<h3>4.4 反作弊規則</h3>
+<ul>
+<li>referrer 與 referred 為同 IP / 同 device fingerprint / 同 KYC 證件 → 由 §3.3.1 <code>affiliate_kinship_link</code> 偵測標記 <code>pending_review</code>，30 天觀察期到期未通過裁決則 <code>disqualified</code>，<strong>從未發放</strong>（呼應 G-2）</li>
+<li>referred 沒有真實交易（僅儲值不交易）→ §4.1.1 「成交至少 5 筆」未達 → <code>disqualified</code>，<strong>從未發放</strong></li>
+<li>referrer 帳戶被標記異常（凍結 / 封號 / EDD pending） → 觀察期到期時若仍異常 → 介紹獎勵跳過本帳號永不發放（不留 pending dangling），交易佣金亦自停止</li>
+<li><strong>referred 退款 / chargeback</strong>（<strong>G-5 細化</strong>，呼應 <a href="./SPEC-016-payment-gateway.html">SPEC-016 §6.1</a> chargeback ≥ 1 永久封號）：<ul>
+<li><strong>介紹獎勵</strong>：依 §4.1.2 延遲發放模型，觀察期內 referred chargeback → <code>disqualified</code>，referrer 從未收到 → <strong>不需 clawback、不破 INV-6</strong></li>
+<li><strong>交易佣金（已過觀察期之 referred）</strong>：referred 一旦 chargeback ≥ 1 → SPEC-016 §6.1 永久封號 → 後續無交易 → 持續佣金<strong>自然停止</strong></li>
+<li><strong>chargeback 之前已支付給 referrer 的交易佣金</strong>：<strong>不追回</strong>。理由：(a) referrer 為善意第三方，無從預知 referred chargeback；(b) 追回會破 INV-6 outflow 白名單，需新增 carve-out 反 R-1 紅線設計意圖；(c) 單筆 referred 之累計 commission 通常 ≪ 100 TWD，業務上可吸收為 marketing acquisition cost。本決策對應 SPEC-002 v0.1.8 INV-6 chargeback carve-out <strong>不</strong>擴及 affiliate；wallet-ledger-service migration 之 trigger 維持原 SPEC-002 §5 INV-6 名單即可</li>
+</ul>
+</li>
+</ul>
+<h3>4.5 帳本記錄</h3>
+<p>呼應 <a href="./SPEC-002-funds-safety.html">SPEC-002 §4.3</a> direction 規則（<strong>G-6</strong> 補 sign convention 說明）：</p>
+<ul>
+<li><code>direction = +1</code> ≡ 借方（debit）：對 Expense / Asset / Player.Locked 表示<strong>金額增加</strong>；對 Liability / Revenue 表示<strong>減少</strong></li>
+<li><code>direction = -1</code> ≡ 貸方（credit）：對 Expense / Asset / Player.Locked 表示減少；對 Liability / Revenue 表示<strong>增加</strong></li>
+</ul>
+<p><code>Player.Wallet.*</code> 為 liability 類別 → <code>direction = -1</code> 表示玩家錢包點數<strong>增加</strong>（平台對玩家負債增加）。</p>
+<h4>4.5.1 介紹獎勵（一次性，§4.1.2 達標 batch 觸發）</h4>
+<p>帳本方向及 Entry 結構定義移到 implementation plan，規格保留借貸正負與科目方向意圖，不直接展開欄位明細。</p>
+<h4>4.5.2 交易佣金（持續，§4.2.1 每日 batch）</h4>
+<p>交易佣金入帳帳本方向與約束檢查方式，請依 implementation plan 實作。規格層維持「發放方向為 referral player inflow」的行為規則即可。</p>
+
+<h3>4.6 推薦獎勵上限（<strong>G-8 sock-puppet 防護</strong>）</h3>
+<table>
+<thead>
+<tr>
+<th>限制</th>
+<th>數值</th>
+<th>觸發處置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>單一 referrer 月度成功介紹獎勵上限</td>
+<td>20 個 / 月（曆月）</td>
+<td>超過部分自動進 <code>pending_eddreview</code>，由 <a href="./SPEC-010-security-antifraud.html">SPEC-010 §9.3 MS-N</a> 4-eye review 裁決</td>
+</tr>
+<tr>
+<td>單一 referrer 終身成功介紹獎勵上限</td>
+<td>200 個（生涯累計）</td>
+<td>達上限後新介紹獎勵全數進 <code>pending_eddreview</code>；referrer 系統訊息提醒「達生涯上限，建議轉 §6 業務 B2B 簽約路徑」</td>
+</tr>
+<tr>
+<td>單一 referrer 月度交易佣金上限</td>
+<td>TWD 50,000 等值 / 月</td>
+<td>超過部分掛 <code>pending_eddreview</code>；防 referred 為大戶 wash trading 套佣金</td>
+</tr>
+<tr>
+<td>同 IP / device fingerprint / KYC 證件 referrer 群組月度合計上限</td>
+<td>同上（合併計算）</td>
+<td>防一人多帳號規避上限</td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>上限值為 v0.2.1 之初始 default，可由業主於 Beta 後依實際 CAC / LTV 曲線調整；變更須 SPEC-011 patch 並走 <a href="./SPEC-010-security-antifraud.html">SPEC-010 §9.3 MS-N</a> 簽核（影響行銷預算 P&amp;L）。
+上限觸發後<strong>不</strong>追回已發放獎勵；僅暫停<strong>新增</strong>獎勵入帳，避免破 INV-6。</p>
+</blockquote>
+<h2>5. 推薦人後台</h2>
+<h3>5.1 自助介面</h3>
+<p>每位玩家都可在個人頁查看：</p>
+<ul>
+<li>已成功介紹人數（<code>status = &#39;qualified&#39;</code> 之 referrals 計數）</li>
+<li>累計獲得獎勵（介紹獎勵 + 交易佣金分項顯示）</li>
+<li>過去 30 天 / 12 個月歷史（時間序列圖表）</li>
+<li><strong>推薦清單（flat list，僅一層）</strong>：你介紹的人 — 列出每位 referred 之 username（僅顯示前 3 字 + 後 1 字、其餘以 <code>*</code> 遮蔽，避免 PII 揭露）、註冊時點、<code>status</code>（<code>pending</code> / <code>qualified</code> / <code>disqualified</code> / <code>pending_review</code> / <code>pending_eddreview</code>）、累計貢獻佣金（<strong>G-7</strong>：原「推薦樹結構」用詞改為「推薦清單」，避免暗示 MLM 樹狀結構，呼應 §2.2「推薦關係只有一層，不形成樹狀結構」）</li>
+</ul>
+<h3>5.2 業務專屬後台（B2B 簽約）</h3>
+<p>針對簽約業務的進階介面：</p>
+<ul>
+<li>細項 dashboard：每位被推薦人的活動、儲值、交易量、佣金</li>
+<li>月度報表 PDF 下載</li>
+<li>B2B 酬勞月結（業務 invoice + Operating Co. 應付帳款流程，<strong>現金</strong>支付至業務指定銀行帳戶；<strong>完全與玩家錢包點數無關</strong> — 詳見 §6）</li>
+<li>稅務文件：發票上傳、扣繳憑單下載</li>
+</ul>
+<blockquote>
+<p><strong>紅線提醒</strong>：本後台<strong>不</strong>提供任何「玩家錢包點數 → 現金」轉換功能。業務若同時是平台玩家身份，其玩家錢包點數仍不可回兌（呼應 §6.2）。</p>
+</blockquote>
+<h2>6. 操作與交易留痕（全體操作者）</h2>
+<p>本節不列技術欄位；僅規格層面定義「誰做了什麼要留在場域可查」。</p>
+<ul>
+<li><strong>交易留痕：</strong>所有傭金、點數、補償、調整、退款、回滾、註銷等交易類動作，無論由系統自動或人工觸發，都必須形成可追溯交易紀錄。</li>
+<li><strong>管理員留痕：</strong>平台營運、客服、風控、合規、技術、法務的資料變更、權限調整、批准/否決、配額變更、提現授權等，皆需保留可稽核操作紀錄。</li>
+<li><strong>代理留痕：</strong>代理端發起的推薦名單維護、資源申請、活動名額、額度申請與調整、審核回覆，都需一併紀錄；同一動作可由後續管理層覆核，但不得刪除或覆寫先前紀錄。</li>
+<li><strong>抽佣率調整留痕：</strong>官方管理員調整代理抽佣 % 數，需留存前後值、調整人、調整時點、適用範圍與授權依據，且可回溯。</li>
+<li><strong>紀錄原則：</strong>任何歷史記錄不得刪除，需更正者以新增紀錄補記，並保留前後狀態與授權鏈。</li>
+<li><strong>合規衔接：</strong>與管理權限簽核有關之留痕，應可直接對應本規格或既有治理規格中的審核流程（例如 multi-sig 與 4-eye 類需求）。</li>
+</ul>
+<p>與本規格不符的留痕實作細節、欄位定義、保存年限、資料庫實作，請放在 implementation plan 或執行書完成。</p>
+<h2>7. 業務 / 大型推廣方支付路徑</h2>
+<blockquote>
+<p><strong>核心原則（R-1 紅線）</strong>：業務 B2B 路徑與玩家點數系統<strong>完全分離</strong>，<strong>永遠不</strong>透過任何技術路徑將「玩家錢包點數」轉換為「法人應付帳款」或「現金」。此限制為 <strong>zero tolerance</strong>，無任何例外（含 B2B 合約包裝、業務身份升級、自願捐贈等）。對應 <a href="./SPEC-000-index.html#5-%E8%B7%A8%E6%AA%94%E6%B1%BA%E7%AD%96%E8%BF%BD%E8%B9%A4%E8%A1%A8cross-cutting-decision-tracker">SPEC-000 §5 R-1</a>。</p>
+</blockquote>
+<h3>6.1 業務簽約模型（獨立法律關係）</h3>
+<p>業務 B2B 為<strong>全新獨立</strong>之法律關係，<strong>非</strong>「玩家身份升級」：</p>
+<pre><code>業務（自然人個人 / 公司法人）── 簽訂 B2B 合約 ──→ Operating Co.
+                                                    │
+                                                    ▼
+業務每月依合約 KPI 提交 invoice（介紹合格玩家數 × 單價 + 帶量階梯獎金等）
+                                                    │
+                                                    ▼
+Operating Co. 從**營運帳戶**（非託管帳戶）以**現金**支付至業務指定銀行帳戶
+                                                    │
+                                                    ▼
+業務自行報稅（境外收入或本地收入依其所在國法律）
+</code></pre>
+<p>關鍵特徵：</p>
+<ul>
+<li>業務酬勞<strong>不基於</strong>該業務「玩家錢包」內任何點數餘額</li>
+<li>業務酬勞<strong>不從</strong>任何玩家錢包出口</li>
+<li>業務酬勞為獨立 KPI 計算結果，於 §6.4 之 <code>Expense.AffiliatePartnerFee</code> 會計科目記錄</li>
+<li>業務 B2B 合約由 Operating Co. 律師起草，明示「<strong>不含</strong>任何玩家點數轉換條款」</li>
+</ul>
+<h3>6.2 雙身份隔離（業務同時是平台玩家）</h3>
+<p>若同一自然人<strong>同時</strong>為「業務」與「平台玩家」：</p>
+<table>
+<thead>
+<tr>
+<th>維度</th>
+<th>玩家身份</th>
+<th>業務身份</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>user_id</td>
+<td>例：<code>user_42</code></td>
+<td>例：<code>partner_007</code>（獨立 id）</td>
+</tr>
+<tr>
+<td>帳本軌跡</td>
+<td><code>Player.Wallet.42</code> 點數</td>
+<td><code>Liability.AccountsPayable.partner_007</code> 應付帳款</td>
+</tr>
+<tr>
+<td>收入性質</td>
+<td>點數遊戲獎勵（不可回兌）</td>
+<td>現金 KPI 酬勞</td>
+</tr>
+<tr>
+<td>支付通路</td>
+<td>站內錢包（永不出口）</td>
+<td>銀行 API 匯款（營運帳戶）</td>
+</tr>
+<tr>
+<td>稅務</td>
+<td>玩家獎勵不需報稅（虛擬道具）</td>
+<td>業務酬勞須報稅</td>
+</tr>
+</tbody></table>
+<p>執行要求：</p>
+<ul>
+<li>兩個身份在系統內為<strong>完全獨立</strong>之 user_id 與帳本軌跡，<strong>不可</strong>共用同一 wallet</li>
+<li>玩家身份之<strong>錢包點數</strong>遵守「不可回兌」原則 — 即便該人為簽約業務，<strong>也不能</strong>將其玩家錢包點數轉為現金 / 應付帳款 / 任何形式之兌換</li>
+<li>後台需強制 KYC 證件對照偵測「業務 partner_id」與「玩家 user_id」之自然人關聯，並於業務 KPI 計算 query 中<strong>排除</strong>「業務本人作為玩家」之自我介紹（防止套自身行為，呼應 §4.4 反作弊）</li>
+</ul>
+<h3>6.3 帳本層強制執行（呼應 SPEC-002 §5 INV-6）</h3>
+<p>本節不提供實作欄位與 SQL；重點保留為產品規格：Player.Wallet 對 outflow 的目的地為法規白名單，凡涉及玩家點數轉入現金或業務應付皆禁止。</p>
+<p>INV-6 的檢查條件、資料庫約束實作與 sentinel-scan 規格，詳見 implementation plan。</p>
+<h3>6.4 業務酬勞會計科目（與玩家獎勵嚴格分離）</h3>
+<p>業務 B2B 酬勞與玩家獎勵在帳本層完全分離：</p>
+<pre><code class="language-text">費用（Expenses）
+  ├─ Expense.AffiliateCommission       玩家介紹獎勵 / 交易佣金
+  │                                    └─→ 對手方為 Player.Wallet.{referrer}
+  │                                        （仍是點數，不可回兌；呼應 §4.5）
+  │
+  └─ Expense.AffiliatePartnerFee       業務 B2B 合約酬勞
+                                       └─→ 對手方為 Liability.AccountsPayable.{partner_id}
+                                           （現金應付，與玩家錢包零交集；呼應 §6.1）
+</code></pre>
+<p>兩者<strong>永遠不</strong>相互轉換、相互抵銷、相互沖銷。月結時各自獨立揭露。SPEC-002 §4.2 Chart of Accounts 將同步補上 <code>Expense.AffiliatePartnerFee</code> 與 <code>Liability.AccountsPayable.*</code> 子科目。</p>
+<h2>8. 稅務處理</h2>
+<h3>7.1 玩家層級</h3>
+<ul>
+<li>玩家獲得的點數獎勵<strong>不是現金所得</strong>，依台灣稅法不需報稅</li>
+<li>但<strong>B2B 業務</strong>獲得的 B2B 收入須報稅</li>
+<li>玩家若達一定推廣規模（每年介紹超過 X 人）→ 系統提醒可<strong>另外</strong>簽約 B2B 業務獲得現金 KPI 酬勞；此業務簽約<strong>不會</strong>將玩家現有錢包點數轉為現金（玩家錢包點數永遠不可回兌），業務酬勞為<strong>新起算</strong>之 B2B 合約收入（§6.1），與玩家身份的點數歷史完全分離</li>
+</ul>
+<h3>7.2 平台層級</h3>
+<ul>
+<li>介紹獎勵與交易佣金記入 <code>Expense.AffiliateCommission</code></li>
+<li>月結提供財務 / 會計 / 稅務團隊</li>
+<li>跨境支付（業務在不同國家）依執照地稅法處理</li>
+</ul>
+<h3>7.3 扣繳義務</h3>
+<ul>
+<li>B2B 業務若為台灣居民，依所得稅法扣繳 10%</li>
+<li>跨境支付依雙邊租稅協定處理</li>
+<li>系統需自動產生扣繳憑單</li>
+</ul>
+<h2>9. 監管揭露</h2>
+<p>執照地監管可能要求揭露：</p>
+<ul>
+<li>推薦獎勵總額（月 / 季）</li>
+<li>B2B 業務名單（執照地律師審閱）</li>
+<li>大額推薦獎勵個案（單月 &gt; USD 5,000 等值）</li>
+</ul>
+<h2>10. 驗收條件</h2>
+<h3>9.1 後端（Codex owner）</h3>
+<ul>
+<li><input disabled="" type="checkbox"> 玩家可在第一層規則下完成推薦關係建立、保留狀態、上限觸發與人工回審流程</li>
+<li><input disabled="" type="checkbox"> 介紹獎勵完成 30 天觀察期裁決後發放；不符合條件不發放</li>
+<li><input disabled="" type="checkbox"> 交易佣金持續計提可見且可回溯，且可在達上限時暫停新增佣金</li>
+<li><input disabled="" type="checkbox"> 介紹 code / 狀態轉換與親屬複核不影響被推薦人註冊有效性</li>
+<li><input disabled="" type="checkbox"> 任何「玩家點數 -> 現金 / 應付帳款」路徑在產品行為上不得發生</li>
+<li><input disabled="" type="checkbox"> 達標上限與異常回溯提示可被用戶與客服查證</li>
+<li><input disabled="" type="checkbox"> 本節工程實作細節已落到對應 implementation plan 與執行書</li>
+</ul>
+<ol>
+<li><del>推薦獎勵點數是否設上限（防 1 人推薦 1000 個 sock puppet）？</del> ✅ Resolved v0.2.1（§4.6 月度 20 / 終身 200 / 月度佣金 TWD 50k）</li>
+<li>12 個月佣金期限是否合適？業界多為 lifetime 但風險高（保留待 Beta 後依 LTV / churn 數據再評估）</li>
+<li>「業務」升級門檻？月介紹 ≥ X 人 / 累計收入 ≥ X？（合約事宜，待業主與執照地律師決定）</li>
+<li>業務 B2B 合約是否要求最低推廣承諾？（合約事宜）</li>
+<li>業務違反條款（如假帳號刷量）的清退與已付佣金回收條款？（合約事宜）</li>
+<li>§4.6 月度 20 / 終身 200 上限若 Beta 後實際 CAC 顯示偏低或偏高，調整流程與 governance？（v0.2.1 default，調整需 SPEC patch + MS-N 簽核）</li>
+</ol>
+
+</body>
+</html>
+
+
+
+
+
+
+

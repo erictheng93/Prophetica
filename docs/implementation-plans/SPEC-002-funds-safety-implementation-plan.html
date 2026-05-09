@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-002 Implementation Plan</title>
+  <style>
+    body {
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      margin: 24px;
+      line-height: 1.6;
+      color: #0f172a;
+    }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin: 8px 0 18px; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    pre {
+      background: #f8fafc;
+      border: 1px solid #dbeafe;
+      padding: 10px;
+      overflow: auto;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #dbeafe; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    .warn {
+      background: #fff7ed;
+      border-left: 4px solid #f59e0b;
+      padding: 10px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>SPEC-002-funds-safety Implementation Plan</h1>
+  <div class="meta">
+    <strong>對應規格：</strong> <a href="../../specs/SPEC-002-funds-safety.html">specs/SPEC-002-funds-safety.html</a><br>
+    <strong>版本：</strong> v0.1.8（依規格同日更新）<br>
+    <strong>產出目標：</strong> 將 SPEC-002 中的帳本資料模型、約束、效能、監控與治理實作化，供 wallet-ledger-service、matching-engine 與 ops 落地參考。
+  </div>
+
+  <section>
+    <h2>1. 變更原則</h2>
+    <ul>
+      <li>規格文件保留「使用者可讀」定義：資金流程、Invariant、拒絕條件、使用者行為。</li>
+      <li>實作文件承擔：欄位設計、索引、trigger、批次腳本、監控事件、實作流程與運維治理。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 4.3 帳本表結構（PostgreSQL）</h2>
+    <h3>2.1 表與欄位（實作 SQL）</h3>
+<pre><code class="language-sql">-- 帳戶表（每個帳戶一列）
+CREATE TABLE ledger_accounts (
+    id              BIGSERIAL PRIMARY KEY,
+    code            VARCHAR(128) NOT NULL UNIQUE,        -- 例: 'Player.Wallet.42'
+    type            VARCHAR(32)  NOT NULL,               -- asset/liability/revenue/expense
+    currency        VARCHAR(8)   NOT NULL DEFAULT 'PTS', -- 點數內幣別
+    parent_id       BIGINT       REFERENCES ledger_accounts(id),
+    metadata        JSONB        NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    closed_at       TIMESTAMPTZ
+);
+CREATE INDEX idx_accounts_type    ON ledger_accounts(type);
+CREATE INDEX idx_accounts_code    ON ledger_accounts(code);
+
+-- 交易表（每個 business event 一列，以 idempotency_key 防重）
+CREATE TABLE ledger_transactions (
+    id                 BIGSERIAL PRIMARY KEY,
+    txn_type           VARCHAR(64) NOT NULL,             -- deposit/order_lock/trade/settle/...
+    idempotency_key    VARCHAR(128) NOT NULL UNIQUE,     -- 上游事件的唯一 ID
+    correlation_id     VARCHAR(128),                     -- 關聯 trace
+    description        TEXT,
+    metadata           JSONB NOT NULL DEFAULT '{}',
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    posted_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_txn_type ON ledger_transactions(txn_type);
+CREATE INDEX idx_txn_corr ON ledger_transactions(correlation_id);
+
+-- 分錄表（每個交易至少兩列：借方 + 貸方）
+CREATE TABLE ledger_entries (
+    id              BIGSERIAL PRIMARY KEY,
+    txn_id          BIGINT NOT NULL REFERENCES ledger_transactions(id),
+    account_id      BIGINT NOT NULL REFERENCES ledger_accounts(id),
+    direction       SMALLINT NOT NULL CHECK (direction IN (1,-1)),  -- 1=借方/+; -1=貸方/-
+    amount          BIGINT  NOT NULL CHECK (amount > 0),             -- 內部單位（百分點）
+    currency        VARCHAR(8) NOT NULL,
+    balance_after   BIGINT NOT NULL,                                 -- 該帳戶累計餘額
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_entries_txn     ON ledger_entries(txn_id);
+CREATE INDEX idx_entries_account ON ledger_entries(account_id, created_at);
+</code></pre>
+    <div class="warn">
+      <strong>注意</strong>：若實際落地有 schema 名稱變更，需同步更新 ADR-0003 / ADR-0006，以及 spec 內對照表與治理步驟。
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Constraint 與 trigger（對應 §5 不變式）</h2>
+    <h3>3.1 INV-1：每筆交易借貸平衡</h3>
+<pre><code class="language-sql">-- 不變式：每個 transaction 的所有 entries amount * direction 之和必為 0
+CREATE OR REPLACE FUNCTION fn_ledger_balance_check()
+RETURNS TRIGGER AS $$
+DECLARE total BIGINT;
+BEGIN
+    SELECT COALESCE(SUM(amount * direction), 0) INTO total
+    FROM ledger_entries
+    WHERE txn_id = NEW.txn_id;
+    IF total <> 0 THEN
+        RAISE EXCEPTION 'Ledger imbalance for txn %: %', NEW.txn_id, total;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- DEFERRABLE 在 commit 時檢查，允許 transaction 內逐筆插入
+CREATE CONSTRAINT TRIGGER trg_ledger_balance
+AFTER INSERT ON ledger_entries
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION fn_ledger_balance_check();
+</code></pre>
+
+    <h3>3.2 INV-6：wallet outflow 白名單（ADR-0006）</h3>
+    <ul>
+      <li>實作依賴 <code>is_inv6_whitelisted_target()</code>（位於 <a href="../crates/sdk/src/ledger/mod.rs">crates/sdk/src/ledger/mod.rs</a>）。</li>
+      <li>Trigger 腳本實作參考：<a href="../../services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql">services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql</a></li>
+      <li>規格治理依據：<a href="../architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006</a></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. Idempotency 實作</h2>
+<pre><code class="language-sql">CREATE TABLE idempotency_records (
+    key         VARCHAR(128) PRIMARY KEY,
+    txn_id      BIGINT REFERENCES ledger_transactions(id),
+    response    JSONB NOT NULL,
+    status_code INT   NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at  TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_idempo_expires ON idempotency_records(expires_at);
+</code></pre>
+    <ul>
+      <li>保存期：7 天</li>
+      <li>清理：每日 cron 清理過期 key（可用 job queue / cleanup worker）</li>
+      <li>Webhook 重放採同一 key（例如 gateway transaction_id）去重邏輯</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 8.2 wallet 負餘額治理</h2>
+<pre><code class="language-sql">-- 一般 wallet 餘額 check
+ALTER TABLE ledger_entries
+  ADD CONSTRAINT chk_wallet_nonneg
+  CHECK (
+    NOT (account_id IN (SELECT id FROM ledger_accounts WHERE type='liability' AND code LIKE 'Player.Wallet.%')
+         AND balance_after < 0)
+  ) NOT VALID;  -- 例外情境由 application 層特例放行
+</code></pre>
+    <p>負餘額保留給 chargeback 例外，帳戶需立即進入風控流程與凍結。</p>
+  </section>
+
+  <section>
+    <h2>6. 性能與一致性實作</h2>
+    <h3>6.1 寫入瓶頸（§9.1）</h3>
+    <ul>
+      <li>撮合事件寫入可靠訊息佇列，Ledger Worker 批次消費。</li>
+      <li>批次建議：100ms 一批、每批約 1000 events（依壓力測試調整）。</li>
+      <li>時間分區策略：PostgreSQL partition by time（每月 partition）。</li>
+      <li>冷資料 detach/archival 到外部存放，再透過 foreign table 保留可查詢能力。</li>
+      <li>必要時以 BRIN 作為主索引之一（依實測負載調整）。</li>
+      <li>熱資料可複製到 read-replica 供查詢。</li>
+    </ul>
+
+    <h3>6.2 讀取與一致性路徑（§9.2 / §9.3）</h3>
+    <ul>
+      <li>可使用 Redis 快取 wallet 最新餘額。</li>
+      <li>寫入時同步 invalidate。</li>
+      <li>cache miss 回源 ledger，以最新 balance_after 還原。</li>
+      <li>前端可結合 optimistic UI + WS push。</li>
+    </ul>
+
+    <h3>6.3 不一致監控（§9.3.4）</h3>
+<pre><code>proph_ledger_event_lag_seconds  histogram, labels: stage
+  - stage="kafka_publish"
+  - stage="kafka_consume"
+  - stage="batch_wait"
+  - stage="db_commit"
+  - stage="cache_invalidate"
+  - stage="end_to_end"
+</code></pre>
+    <p>預設告警：P99 端到端 lag &gt; 500ms 持續 5 分鐘為 P1；&gt; 1s 為 P0。</p>
+  </section>
+
+  <section>
+    <h2>7. 不可竄改性與稽核（§10）</h2>
+<pre><code class="language-sql">-- 每日 hash chain（實作腳本）
+H(day_N) = SHA256(H(day_N-1) || sorted_entries_of_day_N)
+</code></pre>
+    <ul>
+      <li>將每日 ledger_entries snapshot 寫入 R2 Object Lock 桶（或已定稿之替代儲存）。</li>
+      <li>定期驗證連續性，輸出稽核證明供第三方抽樣。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>8. 測試與驗收（實作級）</h2>
+    <ul>
+      <li>Migration 測試：schema、constraint、trigger 全部建立與回滾。</li>
+      <li>交易一致性測試：嘗試插入不平衡 transaction 須 fail。</li>
+      <li>並發回歸：模擬 1000+ 並發儲值，核對 wallet餘額與 entry 數。</li>
+      <li>對帳效能：5 分鐘內跑完 1M entries 對帳。</li>
+      <li>hash chain 腳本：30 分鐘內完成 30 天驗證（基準值）</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>9. 追溯關係</h2>
+    <ul>
+      <li><a href="../architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §5 不變式</a></li>
+      <li><a href="../architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006 §4.1 / §4.2</a></li>
+      <li><a href="../../specs/SPEC-002-funds-safety.html">SPEC-002</a>（本文對應實作）</li>
+    </ul>
+  </section>
+</body>
+</html>

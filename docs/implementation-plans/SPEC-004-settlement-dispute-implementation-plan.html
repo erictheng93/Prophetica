@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-004-settlement-dispute implementation plan</title>
+  <style>
+    body {
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      margin: 24px;
+      line-height: 1.6;
+      color: #0f172a;
+    }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    section { margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #dbeafe; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .meta { color: #334155; margin: 8px 0 18px; }
+    ul, ol { margin: 8px 0 8px 22px; }
+    .warn {
+      background: #fff7ed;
+      border-left: 4px solid #f59e0b;
+      padding: 10px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>SPEC-004-settlement-dispute implementation plan</h1>
+  <div class="meta">
+    <strong>版本：</strong> v0.1.2<br>
+    <strong>對應規格：</strong><a href="../specs/SPEC-004-settlement-dispute.html">SPEC-004-settlement-dispute.html</a><br>
+    <strong>範圍：</strong>Oracle 提交與驗證、爭議裁決、結算批次、取消/平局處理、公告推播、監控告警
+  </div>
+
+  <section>
+    <h2>1. 目標與非目標</h2>
+    <ul>
+      <li>提供可落地的結算/爭議系統實作序列：OPEN/CLOSED/PENDING/DISPUTED/SETTLING/SETTLED/CANCELLED 全流程。</li>
+      <li>確保任一市場在一個結算窗口內只產生一次最終結算結果，避免重複發放。</li>
+      <li>非目標：交易撮合、帳本資產服務核心入帳邏輯（仍依 SPEC-002/SPEC-003 既定規格實作）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 核心資料模型與欄位</h2>
+    <ul>
+      <li>使用 <code>oracle_submissions</code>、<code>dispute_resolutions</code> 及既有市場/持倉/帳本相關資料源。</li>
+      <li>結算結果狀態欄位至少包含：<code>market_id</code>、<code>status</code>、<code>state_version</code>、<code>settles_at</code>、<code>dispute_deadline</code>、<code>updated_by</code>、<code>updated_at</code>。</li>
+      <li>需保存 Oracle 證據與決策鏈 Hash：原始證據 URI、證據清單、提交者、提交時間、簽名摘要、決策結果、投票意見。</li>
+    </ul>
+    <h3>2.1 Invariants（必須成立）</h3>
+    <table>
+      <thead>
+        <tr><th>ID</th><th>不變式</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>INV-SET-1</td>
+          <td>任一市場在同一時刻只能有一個結算階段有效（狀態欄位唯一且具線性可追溯版本）。</td>
+        </tr>
+        <tr>
+          <td>INV-SET-2</td>
+          <td>一旦進入 SETTLING，該市場在結算完成前不得再次進入 PENDING。</td>
+        </tr>
+        <tr>
+          <td>INV-SET-3</td>
+          <td>同一市場同一結算輪次的結算交易僅可提交一次（防重複 payout）。</td>
+        </tr>
+        <tr>
+          <td>INV-SET-4</td>
+          <td>DISPUTED 需保留可驗證決策證據與投票紀錄，且結果可追溯至 2-of-N 前置簽核。</td>
+        </tr>
+        <tr>
+          <td>INV-SET-5</td>
+          <td>取消（CANCELLED）後不得再進入 SETTLING。</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>3. 狀態機實作</h2>
+    <ol>
+      <li><strong>OPEN → CLOSED</strong>：市場關閉時立即停止可成交行為，清理未成交訂單。</li>
+      <li><strong>CLOSED → PENDING</strong>：接收至少兩位 Oracle 的一致初判結果後進入。</li>
+      <li><strong>PENDING → SETTLING</strong>：無申訴或申訴結果駁回。</li>
+      <li><strong>PENDING → DISPUTED</strong>：申訴條件達標（持倉比例門檻、金額門檻或人工提報）或 Oracle 不一致。</li>
+      <li><strong>DISPUTED → SETTLING</strong>：合議/審核結果確定且可計算。</li>
+      <li><strong>DISPUTED → CANCELLED</strong>：可歸檔為無法裁決、或行政取消。</li>
+      <li><strong>SETTLING → SETTLED</strong>：付款與帳務一致性核對通過。</li>
+    </ol>
+    <p>所有 transition 都需寫入 transition log，包含操作人、原因代碼、前序/後序版本與冪等鍵。</p>
+  </section>
+
+  <section>
+    <h2>4. Oracle 提交流程（4.2）</h2>
+    <ul>
+      <li>兩位以上 Oracle 遞交結果時需做一致性校驗，不一致則直接轉入 DISPUTED。</li>
+      <li>每筆提交附 evidence refs 與 evidence hash，並產生不可變更的提交記錄。</li>
+      <li>簽名驗證：驗證提交者身份、時間窗、來源域名、附件完整性。</li>
+      <li>在前置驗證通過後，才可觸發 PENDING 公告。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 證據保存與稽核（4.3 / 6.3）</h2>
+    <ul>
+      <li>證據採「內容＋路徑＋hash 清單」三元模型保存，支持離線核對與爭議期間再取閱。</li>
+      <li>每筆裁決寫入決策摘要，含投票明細、反對意見、最終簽核者。</li>
+      <li>保存層需保留 5 年，且不可被覆寫，僅能新增新版本。</li>
+      <li>審核 Hash = votes JSON + decision + 版本號 + 時戳的串接雜湊。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 申訴入口與判定條件（5.1 / 5.2 / 5.3）</h2>
+    <ul>
+      <li>申訴權限：每位持倉玩家每市場一次，需提交理由與佐證。</li>
+      <li>PENDING 保持到人工決定，未結算期間不得進入帳務變更。</li>
+      <li>申訴門檻：固定 5%（可參數化）或大戶資產觸發的補充條件。</li>
+      <li>REST 介面需回傳 dispute_id、階段、處理期限、狀態。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. 取樣與裁決（6）</h2>
+    <ul>
+      <li>Dispute Adjudicator 三人以上獨立裁決，2 票以上可通過。</li>
+      <li>裁決結果支持：維持、轉向、作廢市場、延展審核。</li>
+      <li>3-way split 時升級 compliance review，需可追溯審核原因。</li>
+      <li>裁決紀錄必須可重算，對外展示最終結果與公開檢視摘要。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>8. 結算執行（7）</h2>
+    <h3>8.1 結算前凍結</h3>
+    <ul>
+      <li>進入 SETTLING 前鎖定持倉可動作；禁止並發轉移、賣出、手動干預。</li>
+      <li>維持「持倉快照版本」供重試與補償使用。</li>
+    </ul>
+    <h3>8.2 結算計算</h3>
+    <ul>
+      <li>以市場結果將每位持倉映射到 payout，保持與 SPEC-004 條款一致。</li>
+      <li>平局/取消市場依原市場規則退還金額（保留小數規則、四捨五入策略）。</li>
+      <li>所有賠付寫入帳本時先做對帳預估，再入帳。</li>
+    </ul>
+    <h3>8.3 大型批次與失敗恢復</h3>
+    <ul>
+      <li>每批次處理持倉時保留批次序號與窗口 checksum，用於比對「預期總和」與「實際入帳總和」。</li>
+      <li>單批失敗則回滾該批，保留已完成批次結果不變。</li>
+      <li>重試節奏（次數與間隔）需參數化，並有最大重試上限與人工升級開關。</li>
+    </ul>
+    <h3>8.4 排程與 off-peak</h3>
+    <ul>
+      <li>預設於 UTC 18:00~22:00（台北 02:00~06:00）排程；例外市場可延遲到下一可用窗口。</li>
+      <li>scheduler 層需可配置「市場鎖定」、可觀測「等待至下一窗口」的原因。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>9. 取消與退還（8）</h2>
+    <ul>
+      <li>CANCELLED 僅允許退還原持倉價值，不能新增風險曝險。</li>
+      <li>退還計算需使用持倉加權成本與小數精度，避免「整除」導致差異。</li>
+      <li>手續費保留原則：一般不退，但系統故障造成錯誤取消可走例外補償流程。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>10. 特殊情境與風控（9）</h2>
+    <ul>
+      <li>市場關閉前撤單：持倉凍結回補到錢包（遵守 idempotent）並通知玩家。</li>
+      <li>Oracle 超時：公告延遲、告警、允許自動延展、超時後轉入取消。</li>
+      <li>高額 payout 與異常結算需啟動 EDD 流程。</li>
+      <li>平局相關：首發版維持二元市場；若已存量違規事件，交由作廢與人工流程收斂。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>11. API 與推播（10）</h2>
+    <ul>
+      <li>對外 API 提供:
+        <ul>
+          <li>結算查詢（公開）</li>
+          <li>申訴建立/查詢</li>
+          <li>市場結算狀態訂閱（WS）</li>
+        </ul>
+      </li>
+      <li>WS 訊息需支援重連後差異重放，依序列號補齊缺失事件。</li>
+      <li>公開清單不包含玩家 PII，並保留不可變更的結算結果快照。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>12. 監控、SLO 與告警（12）</h2>
+    <ul>
+      <li>監控核心指標：Oracle 提交到 PENDING、申訴 API P99、結算完成時間、重試次數、DLQ/手動介入次數。</li>
+      <li>告警等級：
+        <ul>
+          <li>P1：Oracle 遲滯、重試超標、單批失敗率異常</li>
+          <li>P0：結算結果不一致、重複入帳、不可重建的狀態轉換</li>
+        </ul>
+      </li>
+      <li>每次人工 resume 前必須確認「未入帳批次 checksum」與「市場版本一致」。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>13. 實作檢核清單</h2>
+    <ul>
+      <li>狀態機遷移測試（含非法轉換）</li>
+      <li>Oracle 雙簽驗證與衝突處理</li>
+      <li>申訴 API 走一條龍與重放</li>
+      <li>批次結算成功/失敗/重試/中斷恢復場景</li>
+      <li>CANCELLED 退還與手續費例外分支</li>
+      <li>WS gap 重連與公開 API 跨批一致性</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>14. 開發順序建議</h2>
+    <ol>
+      <li>先完成狀態機、資料模型版本控制與 transition log。</li>
+      <li>接 Oracle 提交、爭議裁決、DECISION 簽核。</li>
+      <li>完成結算批次執行器與批次恢復。</li>
+      <li>落地 API / WS / 告警，補上測試與演練。</li>
+    </ol>
+  </section>
+</body>
+</html>

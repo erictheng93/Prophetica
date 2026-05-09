@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-016-payment-gateway implementation plan</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 24px; line-height: 1.65; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin-bottom: 16px; }
+    pre { background: #f8fafc; border: 1px solid #dbeafe; padding: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-016 payment gateway integration implementation plan</h1>
+  <div class="meta">
+    <strong>版本</strong>: v0.1.1<br>
+    <strong>更新日</strong>: 2026-05-09<br>
+    <strong>對應規格</strong>: <a href="../specs/SPEC-016-payment-gateway.html">SPEC-016</a><br>
+    <strong>目標</strong>: 固定支付 provider 介面、簽章驗證、對帳與 chargeback 失敗處理
+  </div>
+
+  <section>
+    <h2>1. 流程總覽</h2>
+    <pre><code>Provider Webhook -> provider driver 驗章 -> webhook queue -> idempotent handler -> trade/deposit event -> ledger posting</code></pre>
+    <ul>
+      <li>每個 provider 採獨立 adapter，輸入驗證與 schema 映射獨立管理。</li>
+      <li>Webhook endpoint 只接收已驗證簽名的事件。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 驗收門檻</h2>
+    <pre><code>POST /api/internal/webhooks/payment/{provider}</code></pre>
+    <ul>
+      <li>401/403：簽章失敗或重放事件拒絕。</li>
+      <li>400：payload 不合法，回傳可重試建議。</li>
+      <li>200：處理成功（含「already processed」。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. 帳本與賬戶對應</h2>
+    <ul>
+      <li>收款未入帳前屬於 provider 代收，不入 `Bank.TrustAccount`。</li>
+      <li>簽署 webhook 成功後先寫暫存帳戶 `Pending.Deposit.{provider}`，再依批次完成對 `Bank.TrustAccount.{currency}` 歸戶。</li>
+      <li>Chargeback 阈值與封號門檻對齊 SPEC-010 / SPEC-002（>= 1 封號）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 重試與對帳</h2>
+    <ol>
+      <li>Webhook 失敗時採 provider 重試；handler 必須冪等。</li>
+      <li>每日 reconciliation 檢查 event 數量與 provider 對帳檔一致；差異大於 0 進 `Suspense.Reconciliation`。</li>
+      <li>錯誤告警：差異率與重試次數超過閾值即發 P0。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>5. 不變式</h2>
+    <ul>
+      <li>接收 endpoint 全程 TLS1.3，拒絕明文回報。</li>
+      <li>同一事件在 24h 內只可進行一次最終處理。</li>
+      <li>不可在 webhook handler 直接進行長時間外部 call；僅寫入事件並排程 worker。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 驗收</h2>
+    <ol>
+      <li>至少一條 provider 的 end-to-end webhook 測試通過。</li>
+      <li>對帳缺口可追溯、能產出補帳單。</li>
+      <li>chargeback 事件會連動 risk / user status 變更。</li>
+    </ol>
+  </section>
+</body>
+</html>

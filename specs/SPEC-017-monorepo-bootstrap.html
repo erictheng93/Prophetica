@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-017 — Monorepo Bootstrap & Local Dev Environment</title>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.6;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre { overflow: auto; padding: 1rem; background: #f6f8fa; border: 1px solid #d8dee3; }
+    hr { border: none; border-top: 1px solid #d0d7de; }
+    blockquote { border-left: 4px solid #d0d7de; padding-left: 0.8rem; margin-left: 0; color: #374151; }
+    a { color: #0969da; }
+  </style>
+
+</head>
+<body>
+<h1>SPEC-017 — Monorepo Bootstrap &amp; Local Dev Environment</h1>
+<blockquote>
+<p>優先級：<strong>P0（必須在第一行業務 code 之前完成）</strong>
+版本：v0.2.6 · 最後更新：2026-05-07
+依賴：SPEC-014（架構定義）
+被依賴：所有 SPEC（實作載體）</p>
+<p><strong>v0.2.6 變更</strong>：§11 新增 §11.3「PR #1 動工前 PoC gating」，明示 PoC-A（EdDSA / LIFF）+ PoC-B（Cloudflare Edge runtime 5 場景）為 PR #1 acceptance check 之前置 gating，PoC 結果未回填即拒絕 merge；連結至 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md</code></a>。</p>
+<p><strong>v0.2.5 變更</strong>：(1) <strong>T-7 mutation testing 門檻分階段</strong>：§3.3 R-4 由「caught rate ≥ 75% 否則發 alert」修正為「MVP 起步 ≥ 60%、每季度 +5%、6 個月內達 75%」分階段門檻；(2) <strong>T-8 CI runner</strong>：§11.2.10 規模預期表新增 GitHub Actions larger runner <code>ubuntu-latest-4-cores</code> 為已配置時的加速選項（&lt; 15 min cold cache）；未配置 larger runner 的 repo 使用標準 <code>ubuntu-latest</code> fallback，避免 workflow indefinite queued。</p>
+<p><strong>v0.2.4 erratum（2026-05-07）</strong>：修正 §2 file tree 註解與 §8 CI workflow 中遺留的 Rust 1.78 化石標註，與 §3 toolchain 表 / §4.2.1 <code>rust-toolchain.toml</code> 之 <code>1.85</code>（edition 2024）對齊。發現過程：跨檔審視 H-2 版本一致性議題（SPEC-000 v0.2.4 sweep round 3）。</p>
+<p><strong>v0.2.3 erratum（2026-05-05）</strong>：修正 §3 toolchain 表與 §3.2 對 <code>@cloudflare/kumo</code> 套件來源的錯誤假設 —— Kumo 發佈於<strong>公開 npm registry</strong>，非 Cloudflare 私有 registry。連帶移除 <code>KUMO_NPM_TOKEN</code> 從 <code>.npmrc</code> / <code>make doctor</code> / CI secret / Vault 的依賴。發現過程：實作 <code>apps/web</code> 期間直接讀取 <code>github.com/cloudflare/kumo</code> README，並由 <code>pnpm add @cloudflare/kumo</code> 從公開 npm registry 解析成功（<code>v2.0.3</code>）雙重驗證。落地：<code>.npmrc</code> 移除 <code>@cloudflare:registry</code> 與 <code>_authToken</code> 兩行；<code>turbo.json</code> 移除 <code>KUMO_NPM_TOKEN</code> 從 <code>env</code> 列表；本 SPEC §3 第 114 列 <code>@cloudflare/kumo</code> 鎖定方式重寫；§3.2 整節重寫。
+<strong>v0.2.2 變更</strong>：§11 拆 §11.1（整體 DoD）+ §11.2（Codex PR #1 acceptance checklist，10 個子節 ~50 項，含規模預期與 reject 紅線）。
+<strong>v0.2.1 變更</strong>：新增 §3.3 Rust 工具鏈硬性決議 R-1..R-6（rustls 預設 + rdkafka OpenSSL 例外、edition 2024 / 1.85 MSRV、撮合 current_thread + thread pinning、cargo-mutants nightly 限縮 ledger+撮合、<code>#![forbid(unsafe_code)]</code> + cargo geiger gate、<code>.sqlx/</code> commit + sqlx prepare --check）；§4.2 Cargo.toml 加 <code>[workspace.lints]</code>、rustls feature、core_affinity / async-trait 依賴；§6.1.1 撮合引擎 main 範例；§8 CI 加 sqlx prepare check + cargo geiger + rdkafka 系統依賴；§8.2 nightly mutation testing workflow。
+<strong>v0.2.0 變更（重大）</strong>：跟隨 SPEC-014 v0.2.0 後端切 Rust，本 SPEC 大幅改寫：(1) §2 service 全標 Rust crate；新增 <code>crates/sdk/</code>、<code>crates/proto/</code>，移除 <code>packages/go-sdk/</code>；mocks 改 Rust；(2) §3 toolchain：Go / sqlc / golangci-lint / go-migrate / gofumpt 全替換為 Rust 1.78+ / clippy / rustfmt / sqlx / sqlx-cli + 新增 sccache / cargo-nextest / cargo-chef / cargo-deny；(3) §4.2 <code>go.work</code> → 根 <code>Cargo.toml</code> workspace；(4) §4.4 buf.gen.yaml Go plugin → prost/tonic Rust plugin；(5) §4.5 Makefile go 命令 → cargo；(6) §6.1 Rust axum 範例取代原 Echo 範例；(7) §8 CI 改 dtolnay/rust-toolchain action + sccache cache；(8) §11 acceptance / §12 OQ 內文同步。</p>
+</blockquote>
+<hr />
+<h2>1. Objective</h2>
+<p>定義 prophetica 從「git clone 到 <code>make dev</code> 啟動本地全套服務」的最小可重現流程。本 SPEC 是「可實施規格」中<strong>唯一不對應某個業務 service</strong> 的 meta-SPEC，目的是讓 Codex / 新進工程師在第一個 PR 之前有明確的 bootstrap 步驟，避免每位實作者各自詮釋 SPEC-014 §5 的目錄結構。</p>
+<h3>1.1 In-scope</h3>
+<ul>
+<li>Repository 骨架（Turborepo + pnpm workspaces + Cargo workspace）</li>
+<li>Docker Compose 本地開發環境</li>
+<li>Makefile / pnpm script 統一入口</li>
+<li>各 service / app 之最小 hello-world stub</li>
+<li>CI bootstrap（GitHub Actions 最小可運行 workflow）</li>
+<li>開發者首次設定流程</li>
+</ul>
+<h3>1.2 Out-of-scope</h3>
+<ul>
+<li>業務邏輯（由各 SPEC 定義）</li>
+<li>Production K8s / Helm / Terraform（由 SPEC-013 / SPEC-008 定義）</li>
+<li>protobuf message 內容（見 §4.3，schema 細節在 <code>packages/proto/v1/</code>）</li>
+</ul>
+<hr />
+<h2>2. 目錄結構（與 SPEC-014 §5 一致）</h2>
+<blockquote>
+<p>SPEC-014 §5 為<strong>規範來源</strong>，本節為<strong>實際 bootstrap 後的 file tree 對應</strong>。任一不一致以 SPEC-014 為準並更新本節。</p>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<hr />
+<h2>3. 工具鏈版本鎖定</h2>
+<blockquote>
+<p>工具版本不一致是 monorepo 最常見的 onboarding 摩擦。以下為<strong>強制版本</strong>，由 <code>Makefile</code> 之 <code>make doctor</code> 檢查。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>版本</th>
+<th>鎖定方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Node.js</td>
+<td>20 LTS</td>
+<td><code>.nvmrc</code></td>
+</tr>
+<tr>
+<td>pnpm</td>
+<td>9.x</td>
+<td><code>package.json#packageManager</code></td>
+</tr>
+<tr>
+<td>Next.js</td>
+<td>15.x</td>
+<td><code>apps/*/package.json</code> peer 鎖</td>
+</tr>
+<tr>
+<td>React / React-DOM</td>
+<td>19.x</td>
+<td>同上</td>
+</tr>
+<tr>
+<td><code>@cloudflare/kumo</code></td>
+<td>latest stable</td>
+<td><code>apps/*/package.json</code> peer 鎖；公開 npm registry，無需特殊 <code>.npmrc</code> 配置（見 §3.2 v0.2.3 erratum）</td>
+</tr>
+<tr>
+<td><code>@phosphor-icons/react</code></td>
+<td>與 Kumo peer 對齊</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>Rust</td>
+<td><strong>1.85+ stable</strong>（edition 2024）</td>
+<td><code>rust-toolchain.toml</code>（<code>channel = "1.85"</code>，鎖 components: rustfmt / clippy / rust-analyzer）</td>
+</tr>
+<tr>
+<td>Rust nightly（CI mutation testing only）</td>
+<td>latest nightly</td>
+<td><code>rust-toolchain-mutants.toml</code>（CI nightly job 自行 install via <code>rustup toolchain install nightly</code>）</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>24+</td>
+<td><code>make doctor</code> 檢查</td>
+</tr>
+<tr>
+<td>Docker Compose</td>
+<td>v2（plugin 形式）</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>buf</td>
+<td>1.30+</td>
+<td><code>Makefile</code> install target</td>
+</tr>
+<tr>
+<td>sqlx-cli</td>
+<td>0.7+</td>
+<td><code>cargo install sqlx-cli --no-default-features --features postgres</code> 由 <code>make doctor</code> 確認</td>
+</tr>
+<tr>
+<td>sccache</td>
+<td>0.7+</td>
+<td>同上；<code>.cargo/config.toml</code> 設 <code>rustc-wrapper = "sccache"</code></td>
+</tr>
+<tr>
+<td>cargo-nextest</td>
+<td>0.9+</td>
+<td>同上；<code>make test</code> 預設走 <code>cargo nextest run</code></td>
+</tr>
+<tr>
+<td>cargo-chef</td>
+<td>0.1+</td>
+<td>Dockerfile 用，本機可選</td>
+</tr>
+<tr>
+<td>cargo-deny</td>
+<td>0.14+</td>
+<td>CI 跑 <code>cargo deny check</code>（許可、advisory、bans）</td>
+</tr>
+<tr>
+<td>make</td>
+<td>任意（Linux）/ Make for Windows / WSL2</td>
+<td>文件提示</td>
+</tr>
+</tbody>
+</table>
+<h3>3.2 <code>@cloudflare/kumo</code> 安裝（v0.2.3 重寫）</h3>
+<blockquote>
+<p><strong>v0.2.3 erratum（2026-05-05）</strong>：先前版本錯誤假設 Kumo 由 Cloudflare 私有 registry 發佈，並要求 <code>KUMO_NPM_TOKEN</code>。實際上 <code>@cloudflare/kumo</code> 經 <code>github.com/cloudflare/kumo</code> README 與 <code>pnpm add</code> 雙重驗證，<strong>發佈於公開 npm registry</strong>（與 <code>@cloudflare/workers-types</code> 等其他 <code>@cloudflare/*</code> 套件一致）。本節重寫以反映正確真相。</p>
+</blockquote>
+<p><code>@cloudflare/kumo</code> 為 Cloudflare 維護的 React 元件庫（建立於 Base UI），發佈於公開 npm registry，<strong>不需要</strong>特殊 <code>.npmrc</code> registry 配置或 auth token。安裝指令與一般 npm 套件無異：</p>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<p>落地動作：</p>
+<ul>
+<li>repo 根 <code>.npmrc</code> <strong>不</strong>設 <code>@cloudflare:registry</code>、<strong>不</strong>注入 <code>KUMO_NPM_TOKEN</code></li>
+<li><code>make doctor</code> <strong>不</strong>檢查 Kumo 相關環境變數</li>
+<li>CI 不需 <code>KUMO_NPM_TOKEN</code> GitHub Actions secret</li>
+<li>Vault 不需託管 Kumo token</li>
+<li><code>turbo.json</code> 之 <code>tasks.build.env</code> 不含 <code>KUMO_NPM_TOKEN</code></li>
+</ul>
+<p>如未來 Cloudflare 將 Kumo 改回私有 registry，本節需再開 erratum 並更新 <code>.npmrc</code> / <code>make doctor</code> / CI / Vault / turbo.json 一致性鏈條。</p>
+<h3>3.3 Rust 工具鏈硬性決議（v0.2.0）</h3>
+<blockquote>
+<p>以下六項為 SPEC-014 v0.2.0 切 Rust 後一併拍板的硬性規範，CI / Cargo.toml / rust-toolchain.toml 已落地對應設定。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>決議</th>
+<th>落地位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>R-1 TLS</strong></td>
+<td><strong>rustls</strong> 為預設；sqlx / fred / reqwest / tonic / opentelemetry 皆 <code>rustls-tls</code> feature。<code>rdkafka</code> 為唯一例外，沿用 librdkafka OpenSSL（cmake-build + ssl feature）。CI Linux runner 須安裝 <code>libssl-dev cmake clang lld</code></td>
+<td>§4.2 <code>[workspace.dependencies]</code> 及 §8 CI install step</td>
+</tr>
+<tr>
+<td><strong>R-2 Edition</strong></td>
+<td>Rust <strong>edition 2024</strong> + MSRV <strong>1.85+ stable</strong>。新專案直接採最新 edition，避免日後 migrate 成本</td>
+<td>§4.2 <code>[workspace.package].edition = "2024"</code>；§4.2.1 <code>channel = "1.85"</code></td>
+</tr>
+<tr>
+<td><strong>R-3 Runtime topology</strong></td>
+<td>撮合引擎走 <code>tokio</code> <strong>current_thread runtime + per-market <code>LocalSet</code> + <code>core_affinity</code> thread pinning</strong>；其餘 11 個 service 走預設 multi-thread runtime（<code>#[tokio::main]</code>）</td>
+<td>§6.1.1 撮合引擎 <code>main</code> 範例；SPEC-003 §7 詳述</td>
+</tr>
+<tr>
+<td><strong>R-4 Mutation testing</strong></td>
+<td><code>cargo-mutants</code> <strong>僅針對核心邏輯 crate</strong>（<code>crates/sdk/ledger</code>、<code>services/wallet-ledger-service/src/ledger</code>、<code>services/matching-engine/src/{book,match}</code>）；走 <strong>Nightly CI</strong>（cron），不阻塞 PR；門檻<strong>分階段</strong>達標：MVP 起步 <strong>≥ 60%</strong>（首 4 週為 baseline）；每季度 +5%；6 個月內達 <strong>≥ 75%</strong>；caught rate 持續低於當期門檻 → Slack alert + 開 issue 由負責人補測試</td>
+<td>§8.2 nightly workflow</td>
+</tr>
+<tr>
+<td><strong>R-5 Unsafe policy</strong></td>
+<td>workspace 全域 <code>#![forbid(unsafe_code)]</code>；例外須 (a) crate-level <code>#![allow(unsafe_code)]</code> 屬性、(b) 對應 ADR、(c) SPEC-010 §9 4-eye review。CI 跑 <code>cargo geiger</code> 統計 unsafe 行數，新增 unsafe block 觸發 review-required label</td>
+<td>§4.2 <code>[workspace.lints.rust]</code>；§8 CI cargo geiger gate</td>
+</tr>
+<tr>
+<td><strong>R-6 sqlx offline cache</strong></td>
+<td><code>.sqlx/</code> 目錄 <strong>commit 進 git</strong>；<code>SQLX_OFFLINE=true</code> 為 CI 預設，無需 DB 即可編譯。schema drift 由 <code>make migrate</code> + sqlx-cli <code>prepare --check</code> 在 CI 捕捉</td>
+<td><code>.gitignore</code> 不排除 <code>.sqlx/</code>；§8 CI <code>cargo sqlx prepare --check --workspace</code></td>
+</tr>
+</tbody>
+</table>
+<h3>3.4 Windows 開發者特別說明</h3>
+<p>prophetica 主要開發機之一為 Windows + PowerShell。為避免每位開發者自行設定：</p>
+<ul>
+<li>所有 <code>make</code> 目標必須能在 <strong>WSL2 Ubuntu 22.04</strong> 上跑通</li>
+<li><code>docker-compose.local.yaml</code> 不依賴 host network mode（Windows Docker Desktop 不支援）</li>
+<li>路徑分隔符不用反斜線（一律 <code>/</code>）</li>
+</ul>
+<hr />
+<h2>4. Repository 根目錄關鍵檔案</h2>
+<h3>4.1 <code>pnpm-workspace.yaml</code></h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>4.2 <code>Cargo.toml</code>（workspace root）</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>4.2.1 <code>rust-toolchain.toml</code></h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>4.2.2 <code>.cargo/config.toml</code></h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>4.3 <code>turbo.json</code></h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>4.4 <code>buf.yaml</code> / <code>buf.gen.yaml</code></h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+<p>產出後，<code>crates/proto/src/lib.rs</code> 以 <code>pub mod proph { include!("gen/proph.v1.rs"); }</code> 形式 expose；service 透過 <code>proto::proph::v1::*</code> 引用。SPEC-017 §12 OQ #1 已 Resolved 為 commit gen/，本章 <code>crates/proto/src/gen/</code> 同樣 commit。</p>
+</blockquote>
+<h3>4.5 <code>Makefile</code>（最低 target）</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<hr />
+<h2>5. <code>infra/docker-compose.local.yaml</code> 服務清單</h2>
+<blockquote>
+<p>目標：<strong><code>make dev</code> 之後 60 秒內全部 healthy</strong>。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>Image</th>
+<th>預設 Port</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>postgres</code></td>
+<td><code>postgres:16-alpine</code></td>
+<td>5432</td>
+<td>主 DB（含 ledger schema）</td>
+</tr>
+<tr>
+<td><code>redis</code></td>
+<td><code>redis:7-alpine</code></td>
+<td>6379</td>
+<td>Cache / Rate limit / Idempotency</td>
+</tr>
+<tr>
+<td><code>kafka</code></td>
+<td><code>confluentinc/cp-kafka:7.6.0</code>（KRaft 模式單 broker）</td>
+<td>9092</td>
+<td>事件 bus</td>
+</tr>
+<tr>
+<td><code>vault</code></td>
+<td><code>hashicorp/vault:1.15</code>（dev mode）</td>
+<td>8200</td>
+<td>本地 secrets</td>
+</tr>
+<tr>
+<td><code>mailhog</code></td>
+<td><code>mailhog/mailhog:latest</code></td>
+<td>1025 / 8025</td>
+<td>Email 攔截</td>
+</tr>
+<tr>
+<td><code>mock-sumsub</code></td>
+<td>自建 stub（<code>tools/mocks/sumsub</code>）</td>
+<td>8081</td>
+<td>KYC webhook 模擬</td>
+</tr>
+<tr>
+<td><code>mock-payment</code></td>
+<td>自建 stub（<code>tools/mocks/payment</code>）</td>
+<td>8082</td>
+<td>通路 webhook 模擬</td>
+</tr>
+<tr>
+<td><code>prometheus</code></td>
+<td><code>prom/prometheus:latest</code></td>
+<td>9090</td>
+<td>Metrics scrape</td>
+</tr>
+<tr>
+<td><code>grafana</code></td>
+<td><code>grafana/grafana:latest</code></td>
+<td>3000（dev 改 3001 避撞 web）</td>
+<td>Dashboard</td>
+</tr>
+<tr>
+<td><code>tempo</code></td>
+<td><code>grafana/tempo:latest</code></td>
+<td>4317 (OTLP)</td>
+<td>Tracing</td>
+</tr>
+<tr>
+<td><code>loki</code></td>
+<td><code>grafana/loki:latest</code></td>
+<td>3100</td>
+<td>Logs</td>
+</tr>
+</tbody>
+</table>
+<h3>5.0 本地不啟用之元件</h3>
+<p>下列 SPEC-014 列出的元件<strong>本地 dev 不啟用</strong>，避免拖慢 <code>make dev</code>；服務在本地以 in-memory / 降級模式運行，於 staging 起方啟用。任何 service 之單元測試<strong>不得</strong>依賴下列元件可用：</p>
+<table>
+<thead>
+<tr>
+<th>元件</th>
+<th>SPEC-014 出處</th>
+<th>本地替代</th>
+<th>啟用環境</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TimescaleDB</td>
+<td>§3.1</td>
+<td>PostgreSQL（同 image，不啟用 timescaledb extension）</td>
+<td>staging+</td>
+</tr>
+<tr>
+<td>Meilisearch</td>
+<td>§3.1</td>
+<td>市場查詢走 PG ILIKE</td>
+<td>staging+</td>
+</tr>
+<tr>
+<td>ClickHouse</td>
+<td>§7.3</td>
+<td>分析查詢暫無</td>
+<td>staging+</td>
+</tr>
+</tbody>
+</table>
+<h3>5.1 Healthcheck 範例</h3>
+<p>每個服務必須有 healthcheck，使 <code>docker compose up -d</code> 等到 <code>healthy</code> 才返回：</p>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>5.2 種子資料（Seed）</h3>
+<p><code>make dev</code> 之後自動跑 <code>tools/scripts/seed.sh</code>：</p>
+<ul>
+<li>建立 PG schema（執行 SPEC-002 / SPEC-015 migrations）</li>
+<li>載入測試帳號 3 個：<code>alice</code>（kyc_tier=<code>TIER_2</code>）、<code>bob</code>（kyc_tier=<code>TIER_1</code>）、<code>dmm-001</code>（DMM 法人帳戶，kyc_tier=<code>TIER_2</code>）；enum 字面以 SPEC-005 §2.1 canonical identifier 為準</li>
+<li>載入 1 個測試市場 <code>mkt_dev_demo</code></li>
+<li>不建立 <code>PLATFORM_SYSTEM_USER_IDS</code> 之 user 紀錄（呼應 SPEC-003 §12.1）</li>
+</ul>
+<hr />
+<h2>6. 各 service 最小 stub</h2>
+<p>每個 service 必須提供以下五要素，方能列為「bootstrap complete」：</p>
+<table>
+<thead>
+<tr>
+<th>要素</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/main.rs</code> + <code>Cargo.toml</code></td>
+<td>tokio runtime 啟動 + signal handling + graceful shutdown</td>
+</tr>
+<tr>
+<td><code>/healthz/live</code></td>
+<td>liveness（process up）</td>
+</tr>
+<tr>
+<td><code>/healthz/ready</code></td>
+<td>readiness（DB / Redis / Kafka 可達）</td>
+</tr>
+<tr>
+<td><code>/metrics</code></td>
+<td>Prometheus scrape（<code>axum-prometheus</code> or <code>metrics-exporter-prometheus</code>）</td>
+</tr>
+<tr>
+<td>結構化 JSON log</td>
+<td>stdout（tracing-subscriber JSON formatter），符合 SPEC-007 §4.1 格式</td>
+</tr>
+</tbody>
+</table>
+<h3>6.1 Rust service 範例（<code>services/api-gateway/src/main.rs</code>）</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>6.1.1 撮合引擎 main 範例（<code>services/matching-engine/src/main.rs</code>）</h3>
+<blockquote>
+<p>撮合引擎為<strong>唯一</strong>走 current_thread runtime 的 service（R-3）；每個 market 一個專屬 OS thread，pinned 到固定 CPU core，避免 work-stealing 抖動。</p>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>6.2 Next.js app 範例（<code>apps/web/</code>）</h3>
+<ul>
+<li><code>app/page.tsx</code>：顯示 "prophetica web — bootstrapping"</li>
+<li><code>app/api/health/route.ts</code>：回 <code>{status: "ok"}</code></li>
+<li><code>next.config.mjs</code>：含 <code>@cloudflare/next-on-pages</code> 設定（呼應 ADR-0004）</li>
+</ul>
+<h3>6.3 admin / liff app stub 條件</h3>
+<table>
+<thead>
+<tr>
+<th>App</th>
+<th>最小 stub 要素</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apps/admin/</code></td>
+<td><code>app/page.tsx</code> 顯示登入佔位；<code>app/api/health/route.ts</code>；middleware 設置「僅內網 / mTLS placeholder」註記；不部署至公開 Cloudflare Pages</td>
+</tr>
+<tr>
+<td><code>apps/liff/</code></td>
+<td><code>app/page.tsx</code> 載入 LIFF SDK 並 <code>liff.init({ liffId: process.env.NEXT_PUBLIC_LIFF_ID })</code>；<code>app/api/health/route.ts</code>；<code>NEXT_PUBLIC_LIFF_ID</code> 缺值時 fail-fast</td>
+</tr>
+</tbody>
+</table>
+<p>三個 Next.js app（web / admin / liff）共用 <code>packages/ts-sdk</code> 與 Kumo 元件，由 Turborepo <code>^build</code> 依賴拓撲連動。</p>
+<hr />
+<h2>7. 環境變數與配置</h2>
+<h3>7.1 <code>.env.example</code>（repo 提供）</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>7.2 配置注入規則</h3>
+<ul>
+<li>開發環境：<code>.env</code> 透過 docker-compose <code>env_file</code> 注入；直接 <code>cargo run</code> 之開發者由 <code>dotenvy::dotenv()</code> 在 <code>main()</code> 起始載入</li>
+<li>生產環境：Vault sidecar agent（呼應 SPEC-010 §3.3）</li>
+<li>禁區：<strong>禁止</strong>將 secret 寫入 <code>ConfigMap</code> 或 image</li>
+<li>禁區：<strong>禁止</strong>在 Rust code 中 hardcode default secret（<code>std::env::var(...)</code> 沒值就 <code>anyhow::bail!</code> fail-fast，禁止 <code>.unwrap_or("dev-secret")</code> 之類 fallback）</li>
+</ul>
+<hr />
+<h2>8. CI Bootstrap（<code>.github/workflows/ci.yml</code>）</h2>
+<blockquote>
+<p>完整 CI 設計在 SPEC-013，本節僅定義 bootstrap 階段必須通過的最小 gate。</p>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><code>release.yml</code>（tag 觸發、build &amp; push image、產 SBOM、ArgoCD sync）之完整內容定義於 <a href="./SPEC-013-cicd-release.md">SPEC-013 § 3</a>；本 SPEC 不重複規範。Bootstrap 階段僅需在 <code>.github/workflows/release.yml</code> 放置一個 <code>on: push: tags: ['v*']</code> 的 placeholder workflow（內容為 <code>echo "release pipeline owned by SPEC-013"</code>），讓 tag push 不會 404。</p>
+</blockquote>
+<h3>8.2 Nightly mutation testing（R-4）</h3>
+<p><code>.github/workflows/nightly-mutants.yml</code>（cron <code>0 18 * * *</code> UTC = 02:00 台北）：</p>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+<p>不阻塞 PR merge；caught rate 持續 &lt; 75% 時開 issue 由負責人補測試。範圍刻意限縮在 ledger + 撮合，避免 CRUD service 大量產生意義低的 mutant 拖慢 nightly 跑時。</p>
+</blockquote>
+<h3>8.1 必過 gate</h3>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th>阻斷條件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pnpm install --frozen-lockfile</code></td>
+<td>pnpm-lock.yaml 不一致</td>
+</tr>
+<tr>
+<td><code>cargo build --workspace --locked</code></td>
+<td>Cargo.lock 不一致 / 編譯錯誤</td>
+</tr>
+<tr>
+<td><code>cargo sqlx prepare --check</code></td>
+<td><code>.sqlx/</code> cache 與 schema drift（R-6）</td>
+</tr>
+<tr>
+<td><code>buf lint</code></td>
+<td>proto 違反 lint</td>
+</tr>
+<tr>
+<td><code>buf breaking</code></td>
+<td>對 main 有 breaking change（未經 review）</td>
+</tr>
+<tr>
+<td><code>verify generated stubs in sync</code></td>
+<td>.proto 改了但 commit 內 gen/ 未同步 regenerate</td>
+</tr>
+<tr>
+<td><code>make lint</code></td>
+<td>clippy <code>-D warnings</code> / rustfmt / eslint / prettier 違反</td>
+</tr>
+<tr>
+<td><code>make test</code></td>
+<td>任一測試 fail（cargo nextest + pnpm turbo test）</td>
+</tr>
+<tr>
+<td><code>cargo deny check</code></td>
+<td>依賴授權 / advisory / banned crate 違反</td>
+</tr>
+<tr>
+<td><code>cargo geiger</code> regression</td>
+<td>新增 unsafe block 未經 ADR + 4-eye review（R-5）</td>
+</tr>
+<tr>
+<td><code>sentinel-scan</code> ADR-0001</td>
+<td>禁字命中</td>
+</tr>
+<tr>
+<td><code>sentinel-scan</code> mocks isolation</td>
+<td>production code 引用 <code>tools/mocks</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>9. 開發者首次設定流程</h2>
+<p>新進工程師 / Codex 第一次 clone 後執行：</p>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<p>預計<strong>首次完整 bootstrap 時間 &lt; 10 分鐘</strong>（不含 docker image pull）。</p>
+<hr />
+<h2>10. 與其他 SPEC 的銜接</h2>
+<table>
+<thead>
+<tr>
+<th>SPEC</th>
+<th>銜接點</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SPEC-014 §5</td>
+<td>目錄結構唯一定義來源；本 SPEC 之 §2 必與其一致</td>
+</tr>
+<tr>
+<td>SPEC-013 § 3</td>
+<td>CI 完整 pipeline；本 SPEC §8 為其最小 bootstrap 子集</td>
+</tr>
+<tr>
+<td>SPEC-010 §3.4</td>
+<td>依賴掃描在 bootstrap 後第一個 PR 啟用</td>
+</tr>
+<tr>
+<td>SPEC-007 §3 / §4</td>
+<td>各服務 stub 必輸出符合命名規範的 metric 與結構化 log</td>
+</tr>
+<tr>
+<td>SPEC-002 §4.3</td>
+<td>migration 工具（sqlx-cli）的腳本位置與 <code>migrations/</code> 目錄慣例</td>
+</tr>
+<tr>
+<td>SPEC-014 §6.3</td>
+<td>protobuf schema 治理（buf lint / breaking）；本 SPEC §4.4 / §8 將 schema gate 落地到 buf workspace 與 CI</td>
+</tr>
+<tr>
+<td>ADR-0001 §6</td>
+<td>sentinel scan 在 CI 落地</td>
+</tr>
+<tr>
+<td>ADR-0004</td>
+<td>Next.js 15 + <code>@cloudflare/kumo</code> 在 <code>apps/web/</code> 落地</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>11. 驗收條件</h2>
+<h3>11.1 SPEC-017 整體驗收（Definition of Done）</h3>
+<ul>
+<li>[ ] §2 file tree 全部建立且通過 <code>make doctor</code></li>
+<li>[ ] <code>make bootstrap</code> 在乾淨環境（無 cache）完成 &lt; 10 分鐘</li>
+<li>[ ] <code>make dev</code> 之後所有 docker-compose 服務 healthy &lt; 60 秒</li>
+<li>[ ] <code>make test</code> 在 bootstrap 完成後立即全綠（最小 stub 也算）</li>
+<li>[ ] CI <code>.github/workflows/ci.yml</code> 在第一個 PR 通過 lint / test / sentinel-scan 三 gate</li>
+<li>[ ] 任一新進工程師依 §9 流程能在 30 分鐘內首次 bootstrap 成功</li>
+<li>[ ] <code>buf generate</code> 為每個 .proto 產出 Rust（<code>crates/proto/src/gen/</code>）+ TS（<code>packages/proto/gen/ts/</code>）stub 並 commit 進 git</li>
+</ul>
+<h3>11.2 Codex PR #1 — Bootstrap PR 完整 acceptance checklist</h3>
+<blockquote>
+<p>本節為 Codex 第一個 PR（對應 SPEC-017 全篇）的驗收明細，PR description 須引用「SPEC-017 §11.2」並逐項對應檔案。任一項缺失即 reject。預估 PR diff 規模 80-130 個新檔。</p>
+</blockquote>
+<h4>11.2.1 Repo 根結構</h4>
+<ul>
+<li>[ ] <code>Cargo.toml</code>（workspace root）含 §4.2 之 <code>[workspace]</code> / <code>[workspace.package]</code> / <code>[workspace.lints]</code> / <code>[workspace.dependencies]</code> / <code>[profile.release]</code> 全部段落</li>
+<li>[ ] <code>Cargo.lock</code> commit</li>
+<li>[ ] <code>rust-toolchain.toml</code> 內容對齊 §4.2.1（channel = "1.85"）</li>
+<li>[ ] <code>.cargo/config.toml</code> 對齊 §4.2.2（sccache wrapper + lld linker）</li>
+<li>[ ] <code>pnpm-workspace.yaml</code> 列 <code>apps/*</code>、<code>packages/ts-sdk</code>、<code>packages/proto</code></li>
+<li>[ ] <code>turbo.json</code> 對齊 §4.3</li>
+<li>[ ] <code>Makefile</code> 之 9 個 target（<code>doctor / bootstrap / dev / down / test / lint / fmt / proto / migrate / clean</code>）行為對齊 §4.5</li>
+<li>[ ] <code>buf.yaml</code> / <code>buf.gen.yaml</code> 對齊 §4.4，產出 Rust（prost + tonic）與 TS（bufbuild/es）兩語言 stub</li>
+<li>[ ] <code>.gitignore</code> 包含 Rust / Cargo / Node 區塊；<strong>不</strong>排除 <code>.sqlx/</code> 與 <code>crates/proto/src/gen/</code> 與 <code>packages/proto/gen/ts/</code></li>
+<li>[ ] <code>.editorconfig</code> / <code>.nvmrc</code> / <code>.npmrc</code>（含 <code>@cloudflare:registry</code>）就緒</li>
+<li>[ ] <code>README.md</code> 後端技術棧 + 倉庫結構與本 SPEC 一致</li>
+</ul>
+<h4>11.2.2 Rust workspace（services + crates）</h4>
+<ul>
+<li>[ ] <strong>12 個 service crate</strong> 全建立（§4 列表），每個含 <code>Cargo.toml</code> + <code>src/main.rs</code> + <code>src/lib.rs</code>（若需）</li>
+<li>[ ] <strong>每個 service stub 含 §6 五要素</strong>：tokio main + signal handling、<code>/healthz/live</code>、<code>/healthz/ready</code>、<code>/metrics</code>、JSON log</li>
+<li>[ ] <code>services/api-gateway/src/main.rs</code> 對齊 §6.1 範例</li>
+<li>[ ] <strong><code>services/matching-engine/src/main.rs</code> 對齊 §6.1.1 範例</strong>（current_thread + LocalSet + core_affinity，<strong>不可</strong>用 <code>#[tokio::main]</code>）</li>
+<li>[ ] <code>crates/sdk/</code> 至少含 <code>observability</code>（tracing-subscriber init）、<code>errors</code>（thiserror 共用 ErrorEnvelope）、<code>config</code>（dotenvy + env 解析）三個模組</li>
+<li>[ ] <code>crates/proto/</code> 為合法 Cargo crate，<code>src/lib.rs</code> 以 <code>include!("gen/...")</code> expose 所有 .proto module</li>
+<li>[ ] <code>tools/mocks/sumsub</code> 與 <code>tools/mocks/payment</code> 為 binary crate，僅在 docker-compose mock-<em> service 中使用，</em><em>不</em>*被任一 <code>services/*</code> 之 Cargo.toml 依賴</li>
+<li>[ ] workspace 全域編譯通過 <code>cargo build --workspace --locked</code></li>
+<li>[ ] 全綠 <code>cargo clippy --workspace --all-targets --locked -- -D warnings</code></li>
+<li>[ ] 全綠 <code>cargo fmt --all -- --check</code></li>
+<li>[ ] 全綠 <code>cargo nextest run --workspace --locked</code>（即使是 hello-world 測試也算）</li>
+<li>[ ] 全綠 <code>cargo deny check</code>（提交 <code>deny.toml</code> 含 advisories / licenses / bans 三段）</li>
+</ul>
+<h4>11.2.3 Protobuf schema（<code>packages/proto/v1/</code>）</h4>
+<ul>
+<li>[ ] 6 份 .proto 已存在：<code>errors.proto / common.proto / ledger.proto / engine.proto / market.proto / kyc.proto / payment.proto</code>（呼應 SPEC-000 v0.1.5 changelog）</li>
+<li>[ ] <code>buf lint</code> / <code>buf breaking --against '.git#branch=main'</code> 全綠</li>
+<li>[ ] <code>buf generate</code> 產出寫入 <code>crates/proto/src/gen/</code> 與 <code>packages/proto/gen/ts/</code>，皆 commit</li>
+<li>[ ] <code>OrderID</code> 為 <code>bytes</code>（16 bytes ULID），對齊 SPEC-003 §19 OQ #3 與 v0.2.0 commit 之 common.proto</li>
+</ul>
+<h4>11.2.4 Frontend apps</h4>
+<ul>
+<li>[ ] <code>apps/web/</code> 為 Next.js 15 + React 19 + App Router + <code>@cloudflare/kumo</code> peer 安裝</li>
+<li>[ ] <code>apps/web/app/page.tsx</code> 顯示 "prophetica web — bootstrapping"</li>
+<li>[ ] <code>apps/web/app/api/health/route.ts</code> 回 <code>{status: "ok"}</code></li>
+<li>[ ] <code>apps/web/next.config.mjs</code> 含 <code>@cloudflare/next-on-pages</code> 設定（呼應 ADR-0004）</li>
+<li>[ ] <code>apps/admin/</code> 與 <code>apps/liff/</code> 對齊 §6.3 stub 條件</li>
+<li>[ ] <code>pnpm turbo run lint</code> 全綠（eslint + prettier）</li>
+<li>[ ] <code>pnpm turbo run test</code> 全綠</li>
+</ul>
+<h4>11.2.5 Local dev stack（<code>infra/docker-compose.local.yaml</code>）</h4>
+<ul>
+<li>[ ] §5 所列 11 個服務（postgres / redis / kafka / vault / mailhog / mock-sumsub / mock-payment / prometheus / grafana / tempo / loki）全部就緒並有 healthcheck</li>
+<li>[ ] §5.0 所列 timescaledb / meilisearch / clickhouse 不啟動</li>
+<li>[ ] grafana 由 host port 3001 暴露（避撞 web 之 3000）</li>
+<li>[ ] <code>make dev</code> 後所有 service <code>healthy</code> &lt; 60 秒（CI 跑一次端到端測試驗證）</li>
+<li>[ ] <code>tools/scripts/seed.sh</code> 載入 §5.2 之 3 個帳號（<code>alice/bob/dmm-001</code>，KYC tier 字面對齊 SPEC-005 §2.1 canonical enum <code>TIER_*</code>）+ 1 個測試市場 <code>mkt_dev_demo</code></li>
+</ul>
+<h4>11.2.6 環境變數與 secrets</h4>
+<ul>
+<li>[ ] repo 根 <code>.env.example</code> 對齊 §7.1 所有 key</li>
+<li>[ ] <code>make bootstrap</code> 首次執行偵測 <code>.env</code> 不存在則 copy 自 <code>.env.example</code></li>
+<li>[ ] <strong>無</strong>任何 service 之 Rust code 出現 <code>.unwrap_or("dev-...")</code> / hardcoded fallback secret（CI grep gate）</li>
+<li>[ ] <code>.env</code> 已加入 <code>.gitignore</code></li>
+<li>[ ] ~~<code>KUMO_NPM_TOKEN</code> 缺值時 <code>make doctor</code> fail-fast~~ —— <strong>作廢於 v0.2.3 erratum</strong>（§3.2），Kumo 走公開 npm registry，無 token 需求</li>
+</ul>
+<h4>11.2.7 CI pipelines</h4>
+<ul>
+<li>[ ] <code>.github/workflows/ci.yml</code> 對齊 §8 全部 step（rust-toolchain 1.85、Swatinem/rust-cache、sccache、rdkafka 系統依賴、buf、sqlx prepare check、cargo deny、cargo geiger、sentinel-scan）</li>
+<li>[ ] <code>.github/workflows/release.yml</code> 為 §8 所述 placeholder（內容為 <code>echo "release pipeline owned by SPEC-013"</code>）</li>
+<li>[ ] <code>.github/workflows/nightly-mutants.yml</code> 對齊 §8.2，限縮 ledger + 撮合三 crate</li>
+<li>[ ] <code>.github/workflows/macos-nightly.yml</code> 對齊 §12 OQ #5 解法（macos-latest 跑 unit test + <code>make doctor</code>，cron 排程）</li>
+<li>[ ] CI <strong>首次</strong>執行通過 §8.1 所有必過 gate</li>
+<li>[ ] CI artifact：<code>mutants.json</code> / <code>geiger.json</code> 上傳保存 30 天</li>
+</ul>
+<h4>11.2.8 Tools / scripts</h4>
+<ul>
+<li>[ ] <code>tools/scripts/check-versions.sh</code>（被 <code>make doctor</code> 呼叫）檢查 Rust / Node / pnpm / Docker / buf / sqlx-cli / sccache 版本</li>
+<li>[ ] <code>tools/scripts/migrate.sh up</code> 串接所有 service 之 <code>migrations/</code> 目錄（sqlx-cli）</li>
+<li>[ ] <code>tools/scripts/seed.sh</code> 含 §5.2 種子資料</li>
+<li>[ ] <code>tools/scripts/check-mutants.sh</code> / <code>tools/scripts/check-geiger.sh</code> 解析 JSON 報告並依門檻 exit code</li>
+</ul>
+<h4>11.2.9 文件與 ADR</h4>
+<ul>
+<li>[ ] PR description 引用 <strong>SPEC-017 §11.2</strong> 並逐項勾選對應 commit</li>
+<li>[ ] 若 PR 過程衍生新決策（例如 axum middleware 順序、sqlx pool size 預設），開新 ADR 落入 <code>docs/architecture/decisions/</code></li>
+<li>[ ] 不修改任何業務 SPEC（SPEC-002 ~ 016）；若發現 SPEC 與本 PR 衝突，先開獨立 SPEC patch PR 對齊後再續本 PR</li>
+</ul>
+<h4>11.2.10 規模與時間預期（Tech Lead review hint）</h4>
+<blockquote>
+<p>給 Codex 與 review 者的對齊基準。實際數字若大幅偏離，PR 應拆小或延後。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>預期</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PR diff（不含 gen/ 與 lock 檔）</td>
+<td>5,000 – 9,000 行</td>
+</tr>
+<tr>
+<td>Commit 數</td>
+<td>8 – 15（建議按 §11.2.1 ~ §11.2.8 分階段）</td>
+</tr>
+<tr>
+<td>CI 首次 cold cache 時間（標準 <strong><code>ubuntu-latest</code> runner</strong>）</td>
+<td>&lt; 30 分鐘（暖快取 &lt; 10 分鐘）</td>
+</tr>
+<tr>
+<td>CI 首次 cold cache 時間（已配置 <strong><code>ubuntu-latest-4-cores</code> larger runner</strong>）</td>
+<td>&lt; 15 分鐘（暖快取 &lt; 5 分鐘）</td>
+</tr>
+<tr>
+<td>CI 首次 cold cache 時間（標準 <code>ubuntu-22.04</code> 2-core runner，僅 fallback）</td>
+<td>&lt; 30 分鐘（暖快取 &lt; 10 分鐘）</td>
+</tr>
+<tr>
+<td>review 預估輪次</td>
+<td>2 – 3 輪（Tech Lead + 4-eye for ledger / engine stub，呼應 SPEC-010 §9.3 MS-10）</td>
+</tr>
+<tr>
+<td>Reject 紅線</td>
+<td>任一 §11.2.1 ~ §11.2.7 缺項；任何 unsafe block；任何 hardcoded secret；任何業務邏輯</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Runner 選擇（T-8）</strong>：CI 在未設定 GitHub larger runner / self-hosted runner label 時必須使用標準 <code>ubuntu-latest</code>，否則 job 會因找不到 runner 長時間 queued。若 repo/org 已明確配置 <code>ubuntu-latest-4-cores</code>（4 vCPU / 16GB RAM，計費為標準 runner 2x），可在 <code>.github/workflows/ci.yml</code> 將 <code>runs-on</code> 切回該 label，預期 cold cache 約 12-15 分鐘；標準 runner 作為安全預設。</p>
+</blockquote>
+<h3>11.3 PR #1 動工前 PoC gating（T-9 / T-10）</h3>
+<blockquote>
+<p>詳細 PoC plan 見 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md</code></a>。本節為 acceptance hook：以下 PoC <strong>必須先完成</strong>並回填結果至 PoC 文件 §3.5 / §4.4，才能正式啟動 Codex PR #1 之 §11.2 acceptance check。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>PoC</th>
+<th>對象</th>
+<th>阻擋之 PR #1 部件</th>
+<th>Acceptance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>PoC-A</strong></td>
+<td>EdDSA mobile / LIFF SDK 相容性（T-9）</td>
+<td>§11.2.4 LIFF stub 之 <code>liff.init()</code> 整合；user-service JWT signing 演算法定版</td>
+<td>LINE iPhone + Android webview 內 <code>crypto.subtle.generateKey({name:'Ed25519'})</code> 成功；或退路啟用 RS256 dual-algo / fallback，對應 SPEC-010 §3.1.2 patch 完成</td>
+</tr>
+<tr>
+<td><strong>PoC-B</strong></td>
+<td>Cloudflare Pages Edge runtime 限制（T-10）</td>
+<td>§11.2.4 <code>apps/web</code> 之 next.config.mjs 部署模式定版（Edge / Node.js / Hybrid）</td>
+<td>5 個子場景（KYC iframe / WS / Server Actions / fetch / env binding）pass；任一失敗對應退路啟用，SPEC-014 §3.2.1 patch 完成</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Codex PR #1 之 PR description 必須在開頭明示</strong>：</p>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<p>PoC plan 文件之 §3.5 / §4.4 PoC 紀錄欄位仍為 Pending → CI / review pipeline <strong>拒絕</strong> merge PR #1。</p>
+<hr />
+<h2>12. Open Questions</h2>
+<ol>
+<li>~~<code>packages/proto/gen/</code> 是否 commit 進 git？~~ ✅ <strong>Resolved 2026-05-05</strong>：<strong>commit 進 git</strong>（含 Rust + TS 雙語言）。理由：(a) 跨機器（macOS / Windows / Linux CI）import path 一致，rust-analyzer / IDE 立即可解析；(b) 新人首次 clone 即可 <code>cargo build</code>，不必先跑 <code>buf generate</code>；(c) PR diff 會明確顯示 schema 變更對 stub 的影響，作為 schema 評審輔證；(d) CI 跑 <code>git diff --exit-code crates/proto/src/gen packages/proto/gen/ts</code> 確保 .proto 與 gen/ 同步（不一致則 CI fail）。落地動作：兩個目錄皆不加入 <code>.gitignore</code>；新增 <code>make proto</code> target 規範 regenerate 流程。注意：Rust 慣例為 build.rs runtime codegen，本決策刻意偏離以對齊 monorepo 全語言一致性策略。</li>
+<li>~~<code>.env</code> 配置注入採 <code>direnv</code> vs <code>docker-compose env_file</code> vs <code>dotenv-cli</code>？~~ ✅ <strong>Resolved 2026-05-05</strong>：採 <strong><code>docker-compose env_file</code></strong> 為主，理由與落地：
+   - direnv 在 PowerShell / Windows 原生支援差，本團隊 macOS + Windows 雙平台 → 排除
+   - dotenv-cli 多一層 npm wrapper，Rust service 仍要自己讀 env，價值有限 → 排除
+   - <strong><code>docker-compose env_file: .env</code></strong> 為事實標準、跨平台、與 §5 docker stack 天然契合 → 採用
+   - 直接跑 <code>cargo run -p &lt;service&gt;</code> 之開發者：Rust side 統一用 <a href="https://docs.rs/dotenvy"><code>dotenvy</code></a>（<code>dotenvy::dotenv().ok();</code> 於 main 起始）；Next.js side 走內建 <code>.env.local</code>（apps/web/）
+   - 範本檔：repo 根 <code>.env.example</code>（已知 key + 註解 + 安全預設值），<code>make bootstrap</code> 首次執行時 copy 為 <code>.env</code> 若不存在
+   - <strong>嚴格禁止</strong> 將 <code>.env</code> commit 進 git（已加入 <code>.gitignore</code>）；secrets 載入 prod 走 SPEC-010 §6 secret manager</li>
+<li>~~mock servers（<code>tools/mocks/sumsub</code> / <code>payment</code>）是否獨立 repo 或同 monorepo？~~ ✅ <strong>Resolved 2026-05-05</strong>：<strong>同 monorepo</strong>（路徑 <code>tools/mocks/{sumsub,payment}/</code>）。理由：
+   - <strong>版本同步零成本</strong>：mock 必須與 SPEC-005 KYC webhook payload schema、SPEC-016 §5.5 6 家通路 webhook 對映表、<code>packages/proto/v1/kyc.proto</code> / <code>payment.proto</code> 同步演化。獨立 repo 會造成 schema drift，CI 無法在同一 PR 跨 repo 驗證。
+   - <strong>新人 onboarding 簡化</strong>：<code>make dev</code> 一次拉起含 mocks 的完整 stack，不必額外 clone repo / 設 token。
+   - <strong>CI 共享 cache</strong>：Rust workspace 與 protobuf stub 已在 monorepo 編譯，mocks 共用 sccache / cargo target cache。
+   - <strong>嚴格隔離</strong>：mocks 僅在 <code>make dev</code> / <code>make test</code> 啟用；<code>tools/mocks/</code> 透過 <code>.dockerignore</code> 與 Cargo feature flag（<code>[features] mock = []</code>，僅 mocks crate 自身依賴）確保<strong>絕無</strong>進入 production binary 之路徑；§8 CI 加 grep gate：<code>services/</code> 與 <code>crates/sdk/</code> 之 Cargo.toml 不得依賴 <code>tools/mocks/*</code> crate。</li>
+<li>Windows 主機之 host networking 限制如何處理 hostNetwork 撮合引擎部署？本地 dev 不啟用 hostNetwork（僅 prod K8s 啟用），由 SPEC-008 §3 監督。</li>
+<li>~~CI matrix（macOS / Linux / Windows）是否啟用？~~ ✅ <strong>Resolved 2026-05-05</strong>：採 <strong>「Linux 主 gate + macOS nightly + 不跑 Windows runner」</strong> 三層策略：
+   - <strong>PR gate（每次 push）</strong>：<code>ubuntu-latest</code> only — lint / test / build / sentinel-scan / <code>buf generate --check</code>。生產環境為 Linux，主 gate 必須與 prod 一致。
+   - <strong>Nightly（cron）</strong>：<code>macos-latest</code> 跑全套 unit test + <code>make doctor</code>。理由：團隊有 macOS 開發者，需早期捕捉路徑分隔符 / 檔名大小寫敏感性 / Apple Silicon (aarch64) 之 Rust cross-compile 差異（rdkafka 之 librdkafka native 綁定常見差異點）。Nightly 失敗發 Slack alert 但不阻塞 PR merge（單列 issue tracking）。
+   - <strong>不跑 Windows runner</strong>：Windows 開發者統一走 <strong>WSL2 + Docker Desktop</strong>（執行時等同 Linux），CI 加 Windows runner 成本高（GitHub Actions Windows runner 計價 2x、Docker-in-Docker 困難、librdkafka MSVC build 時常爆），ROI 低。
+   - 開發者本機行為：macOS / WSL2 直接 <code>make dev</code>；Windows 原生（非 WSL2）僅支援 <code>make dev-host</code>（純 cargo run 啟動，不含 docker stack），明列於 §9 setup 文件。</li>
+<li>~~§5.2 seed 帳號使用之 <code>Tier 1 / Tier 2</code> 命名是否與 SPEC-005 KYC 分層字面一致？~~（已 Resolved 2026-05-05：SPEC-005 §2.1 釘住 canonical enum <code>TIER_0 / TIER_1 / TIER_2 / TIER_3</code>，本 SPEC §5.2 已同步。）</li>
+</ol>
+</body>
+</html>

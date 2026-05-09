@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runbook: Engine P99 Over 50ms</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.55; color: #1f2937; }
+    h1 { margin-top: 0; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+<h1>Runbook: Engine P99 Over 50ms</h1>
+<h2>Alert</h2>
+<p><code>histogram_quantile(0.99, proph_engine_match_latency_seconds) &gt; 50ms</code></p>
+<h2>Severity</h2>
+<p>P0</p>
+<h2>Investigation</h2>
+<ol>
+<li>Check matching-engine spans for <code>engine.order.apply</code> and <code>engine.event.publish</code>.</li>
+<li>Compare hot market routing against SPEC-003 &#167;17.3.</li>
+<li>Inspect Kafka producer latency and WAL fsync duration.</li>
+</ol>
+<h2>Resolution</h2>
+<ol>
+<li>Stop noncritical market launches.</li>
+<li>Move hot markets to dedicated nodes or reduce batch contention.</li>
+<li>Roll back the latest matching-engine release if the regression is release-linked.</li>
+</ol>
+  </main>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-017-monorepo-bootstrap implementation plan</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 24px; line-height: 1.65; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin-bottom: 16px; }
+    pre { background: #f8fafc; border: 1px solid #dbeafe; padding: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-017 monorepo bootstrap implementation plan</h1>
+  <div class="meta">
+    <strong>版本</strong>: v0.2.6<br>
+    <strong>更新日</strong>: 2026-05-09<br>
+    <strong>對應規格</strong>: <a href="../specs/SPEC-017-monorepo-bootstrap.html">SPEC-017</a><br>
+    <strong>目標</strong>: 建立可重現開發環境與 PR #1 動工前 PoC gating
+  </div>
+
+  <section>
+    <h2>1. 開發前置（Environment）</h2>
+    <pre><code>git clone
+rtk make dev
+rtk pnpm install --frozen-lockfile
+make doctor
+make ci-setup</code></pre>
+    <ul>
+      <li>Node/Rust/python 工具鏈版本由 `make doctor` 驗證。</li>
+      <li>`.sqlx` 與 proto/stubs 維持可重建性。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 目錄與模組邏輯</h2>
+    <pre><code>services/api-gateway/
+services/matching-engine/
+services/ledger-service/
+packages/sdk/
+packages/proto/
+tools/</code></pre>
+    <ul>
+      <li>Rust crate 與 Node 套件分別維持 ownership 區隔，但共用 workspace 版本策略。</li>
+      <li>docs/poc 與 ADR 跨規格引用，避免重複決策文檔。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. CI Bootstrap</h2>
+    <ul>
+      <li>PR pipeline：lint + test + sentinel-scan 為最小通過條件。</li>
+      <li>main pipeline：加入 sqlx/check、nextest、clippy、prettier/eslint、fmt 驗證。</li>
+      <li>PR #1 前置 gating：PoC-A（EdDSA/LIFF）+ PoC-B（Edge runtime）必須有通過紀錄。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 工具鏈硬性</h2>
+    <ul>
+      <li>Rust 1.85+、rust-toolchain lock、sqlx cli、buf、cargo-deny。</li>
+      <li>Node：.nvmrc 與 packageManager（pnpm）需一致。</li>
+      <li>GitHub Actions runner 與 cache key 不得自行硬改。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 不變式</h2>
+    <ul>
+      <li>make dev 必須一次啟動至少一組前後端可用服務。</li>
+      <li>PoC 未回填不得 merge PR #1。</li>
+      <li>任何 bootstrap 失敗訊息需可重現並可在 1 小時內復現。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 交付清單</h2>
+    <ol>
+      <li>完成 bootstrap docs 與新進工程師 15 分鐘可跑起流程。</li>
+      <li>CI pipeline 可跑完 bootstrap gates。</li>
+      <li>PoC gating 指標入庫並提供最小可證明文件。</li>
+    </ol>
+  </section>
+</body>
+</html>

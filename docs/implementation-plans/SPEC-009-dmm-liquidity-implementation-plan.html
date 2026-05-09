@@ -1,0 +1,93 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPEC-009 DMM 與流動性策略實作計畫</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", sans-serif; margin: 24px; line-height: 1.6; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    section { margin: 16px 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #dbeafe; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-009 — DMM 計畫與流動性策略實作計畫</h1>
+  <p><strong>規格參照：</strong><a href="../specs/SPEC-009-dmm-liquidity.html">SPEC-009-dmm-liquidity.html</a> · <strong>版本：</strong>v0.1.0</p>
+
+  <section>
+    <h2>1. 實作目標</h2>
+    <ul>
+      <li>完成 DMM 接口與風險治理，確保平台不持倉。</li>
+      <li>上線 DMM API（TLS binary protobuf）與履約監控。</li>
+      <li>建立 liquidity mining 先決條件與反洗交易機制。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 紅線與不變式</h2>
+    <ul>
+      <li><strong>INV-DMM-1</strong>：平台、員工、受控帳戶不得直接在訂單簿掛單。</li>
+      <li><strong>INV-DMM-2</strong>：任何 DMM 訂單需標記 dmm_id 並通過 per-market limit 審核。</li>
+      <li><strong>INV-DMM-3</strong>：LM 需強制 KYC Tier 2+，并阻斷疑似套利 7 日內放款。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. DMM service 實作</h2>
+    <ul>
+      <li>服務路徑：<code>services/dmm-gateway</code>。</li>
+      <li>連線：TLS client endpoint（mTLS optional，先以 API key + token 驗證）。</li>
+      <li>訊息：LOGON, NEW_ORDER, CANCEL_ORDER, MASS_CANCEL, ORDER_ACK, ORDER_FILL, ORDER_REJECT, MARKET_DATA, HEARTBEAT。</li>
+      <li>每 connection 可承載 1000 ops/s。</li>
+      <li>下單 flow：</li>
+    </ul>
+    <ol>
+      <li>驗證允許市場集合。</li>
+      <li>檢查每市場 open orders / position 限制。</li>
+      <li>標記 dmm_id 寫入 engine。</li>
+      <li>失敗回傳 DMM-specific reject code。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>4. DMM 履約與治理</h2>
+    <ul>
+      <li>日誌欄位：spread、depth、uptime、trade volume、rebate。</li>
+      <li>超過門檻警示（spread、深度不足、在線率）-> suspend market。</li>
+      <li>連續 3 個月警示者終止合作並通知 Risk 團隊。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. Liquidity Mining</h2>
+    <ul>
+      <li>啟用前提：AML/anti-fraud 穩定性、DAU、DMM 覆蓋、監管簽核。</li>
+      <li>reward 公式保留：貢獻度（時間×深度×反價差）。</li>
+      <li>7 日確認期後發放，與洗量交易檢測掛鉤。</li>
+      <li>列入黑名單設備 / IP / 交易對關係的 LP 不得參與。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 排程與報表</h2>
+    <ul>
+      <li>每日出每個 DMM 的 uptime、spread、depth 報表。</li>
+      <li>LM 反 wash 交易檢測：同用戶短時間同合約方向對打、兩帳戶互打、共同儲值來源比對。</li>
+      <li>LP reward 發放可追溯至審計 ledger。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. 驗收</h2>
+    <ul>
+      <li>DMM 沙盒可完成下單/撤單/接收回報。</li>
+      <li>履約警示與制裁能自動發送。</li>
+      <li>代碼中不得殘留平台自營造市路徑。</li>
+      <li>LM 未啟用條件不會進行 reward 寫入。</li>
+    </ul>
+  </section>
+</body>
+</html>

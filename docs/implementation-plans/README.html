@@ -1,0 +1,287 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Implementation Plans</title>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 24px;
+      line-height: 1.65;
+      color: #111827;
+      background: #ffffff;
+    }
+
+    .container {
+      max-width: 980px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 1.8rem;
+    }
+
+    .meta {
+      color: #4b5563;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+      background: #f9fafb;
+      margin-bottom: 16px;
+    }
+
+    ul {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+
+    .paths {
+      margin: 0;
+      padding-left: 20px;
+      list-style: none;
+    }
+
+    .paths li {
+      margin: 8px 0;
+    }
+
+    .dot {
+      color: #9ca3af;
+      margin-right: 8px;
+    }
+
+    .path-link {
+      font-family: Consolas, "Courier New", monospace;
+      color: #1d4ed8;
+      text-decoration: none;
+    }
+
+    .path-link:hover {
+      text-decoration: underline;
+    }
+
+    .list-wrap {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .list-title {
+      margin: 0;
+      padding: 12px 14px;
+      background: #f3f4f6;
+      border-bottom: 1px solid #e5e7eb;
+      font-weight: 700;
+    }
+
+    .list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .list a {
+      display: block;
+      color: #1d4ed8;
+      text-decoration: none;
+      padding: 10px 14px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .list a:hover {
+      background: #f9fafb;
+      text-decoration: underline;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 8px;
+      font-size: 12px;
+      color: #374151;
+      background: #e5e7eb;
+      border-radius: 999px;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: #f3f4f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Implementation Plans</h1>
+    <p class="meta">
+      本目錄集中存放「Implementation Plan / 執行書 / 實作書」文件，避免與 <code>specs/</code> 規格文件混淆。
+    </p>
+
+    <section class="card">
+      <h2>本地目錄快速連結</h2>
+      <ul class="paths">
+        <li><span class="dot">➜</span><a class="path-link" href="../specs">../specs</a>（規格文件存放）</li>
+        <li><span class="dot">➜</span><a class="path-link" href="./">./</a>（實作書/執行書存放）</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>文件分類規則</h2>
+      <ul>
+        <li>規格正文（SPEC 文件）：放在 <code>specs/</code>，例如 <code>specs/SPEC-XXX-... .html</code></li>
+        <li>實作書/執行書：放在 <code>docs/implementation-plans/</code>，例如 <code>SPEC-011-affiliate-commission-implementation-plan.html</code>、<code>SPEC-xxx-...-execution-plan.html</code></li>
+      </ul>
+    </section>
+
+    <section>
+      <div class="list-wrap">
+        <div class="list-title">目前清單</div>
+        <ul class="list">
+          <li>
+            <a href="SPEC-003-matching-engine-implementation-plan.html">
+              SPEC-003-matching-engine-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-004-settlement-dispute-implementation-plan.html">
+              SPEC-004-settlement-dispute-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-002-funds-safety-implementation-plan.html">
+              SPEC-002-funds-safety-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-005-kyc-aml-implementation-plan.html">
+              SPEC-005-kyc-aml-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-005a-sumsub-frontend-contract-implementation-plan.html">
+              SPEC-005a-sumsub-frontend-contract-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-006-responsible-gaming-implementation-plan.html">
+              SPEC-006-responsible-gaming-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-007-observability-implementation-plan.html">
+              SPEC-007-observability-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-008-disaster-recovery-implementation-plan.html">
+              SPEC-008-disaster-recovery-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-009-dmm-liquidity-implementation-plan.html">
+              SPEC-009-dmm-liquidity-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-010-security-antifraud-implementation-plan.html">
+              SPEC-010-security-antifraud-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-011-affiliate-commission-implementation-plan.html">
+              SPEC-011-affiliate-commission-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-012-customer-support-implementation-plan.html">
+              SPEC-012-customer-support-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-013-cicd-release-implementation-plan.html">
+              SPEC-013-cicd-release-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-014-tech-architecture-implementation-plan.html">
+              SPEC-014-tech-architecture-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-015-market-lifecycle-implementation-plan.html">
+              SPEC-015-market-lifecycle-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-016-payment-gateway-implementation-plan.html">
+              SPEC-016-payment-gateway-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-017-monorepo-bootstrap-implementation-plan.html">
+              SPEC-017-monorepo-bootstrap-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-018-auditability-evidence-pack-implementation-plan.html">
+              SPEC-018-auditability-evidence-pack-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-019-incident-response-sre-implementation-plan.html">
+              SPEC-019-incident-response-sre-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+          <li>
+            <a href="SPEC-020-analytics-reporting-implementation-plan.html">
+              SPEC-020-analytics-reporting-implementation-plan.html
+              <span class="badge">implementation-plan</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+        <p class="meta" style="margin-top: 8px;">對應規格：<code>specs/SPEC-002-funds-safety.html</code>、<code>specs/SPEC-003-matching-engine.html</code>、<code>specs/SPEC-004-settlement-dispute.html</code>、<code>specs/SPEC-005-kyc-aml.html</code>、<code>specs/SPEC-005a-sumsub-frontend-contract.html</code>、<code>specs/SPEC-006-responsible-gaming.html</code>、<code>specs/SPEC-007-observability.html</code>、<code>specs/SPEC-008-disaster-recovery.html</code>、<code>specs/SPEC-009-dmm-liquidity.html</code>、<code>specs/SPEC-010-security-antifraud.html</code>、<code>specs/SPEC-011-affiliate-commission.html</code>、<code>specs/SPEC-012-customer-support.html</code>、<code>specs/SPEC-013-cicd-release.html</code>、<code>specs/SPEC-014-tech-architecture.html</code>、<code>specs/SPEC-015-market-lifecycle.html</code>、<code>specs/SPEC-016-payment-gateway.html</code>、<code>specs/SPEC-017-monorepo-bootstrap.html</code>、<code>specs/SPEC-018-auditability-evidence-pack.html</code>、<code>specs/SPEC-019-incident-response-sre.html</code>、<code>specs/SPEC-020-analytics-reporting.html</code></p>
+    </section>
+
+    <section class="card">
+      <h2>新增前先檢查清單</h2>
+      <ul>
+        <li><label><input type="checkbox" disabled> 檔名是否符合 <code>SPEC-xxx-...-implementation-plan.html</code> 或 <code>SPEC-xxx-...-execution-plan.html</code>。</label></li>
+        <li><label><input type="checkbox" disabled> 是否已確認對應的 <code>specs/SPEC-xxx-...</code> 規格已存在。</label></li>
+        <li><label><input type="checkbox" disabled> 文件是否放在 <code>docs/implementation-plans/</code>（非 <code>specs/</code>）。</label></li>
+        <li><label><input type="checkbox" disabled> 是否已在本目錄清單補上或更新對應連結。</label></li>
+      </ul>
+    </section>
+  </div>
+</body>
+</html>

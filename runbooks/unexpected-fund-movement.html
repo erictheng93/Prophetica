@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runbook: Unexpected Fund Movement</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.55; color: #1f2937; }
+    h1 { margin-top: 0; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+<h1>Runbook: Unexpected Fund Movement</h1>
+<h2>Alert</h2>
+<p>Unexpected account movement exceeds USD 1,000 equivalent.</p>
+<h2>Severity</h2>
+<p>P0</p>
+<h2>Investigation</h2>
+<ol>
+<li>Identify affected accounts and transaction ids.</li>
+<li>Verify INV-1 through INV-6 constraints for each transaction.</li>
+<li>Check recent payment, settlement, and admin actions.</li>
+</ol>
+<h2>Resolution</h2>
+<ol>
+<li>Freeze affected accounts through the approved compliance flow.</li>
+<li>Stop related wallet mutation routes.</li>
+<li>Require Compliance approval before reversal transactions.</li>
+</ol>
+  </main>
+</body>
+</html>

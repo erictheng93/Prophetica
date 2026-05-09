@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-013-cicd-release implementation plan</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 24px; line-height: 1.65; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin-bottom: 16px; }
+    pre { background: #f8fafc; border: 1px solid #dbeafe; padding: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-013 CI/CD &amp; 發佈策略 implementation plan</h1>
+  <div class="meta">
+    <strong>版本</strong>: v0.2.0<br>
+    <strong>更新日</strong>: 2026-05-09<br>
+    <strong>對應規格</strong>: <a href="../specs/SPEC-013-cicd-release.html">SPEC-013</a><br>
+    <strong>目標</strong>: 形成可複用、可追溯的 PR 與 Release gate 鏈路
+  </div>
+
+  <section>
+    <h2>1. 目的與邊界</h2>
+    <ul>
+      <li>本文件落地 SPEC-017 bootstrap CI，擴展 prod-targeting gate 與部署前安全檢核。</li>
+      <li>規格面向「何時可發佈」與「哪層環境可驗證」；本文面向「如何實作 pipeline」。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 環境分層（實作）</h2>
+    <ul>
+      <li>local / dev：只跑最小 lint + 單元測試，允許快速回饋。</li>
+      <li>staging：完整 workflow，含寬鬆告警與 artifact 產物可回溯。</li>
+      <li>prod：需通過 prod-targeting gate（SAST/SCA/image scan/IaC/secret migration/e2e）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. 必過門檻（必須 pass 的 gate）</h2>
+    <pre><code>pnpm install --frozen-lockfile
+cargo build --workspace --locked
+cargo sqlx prepare --check
+buf lint / buf breaking / stubs sync
+make lint（clippy -D warnings / rustfmt / eslint / prettier）
+make test（nextest + turbo test）
+cargo deny check
+cargo geiger regression
+secret scan / SAST / image scan / IaC lint / migration dry-run</code></pre>
+    <ul>
+      <li>任何 gate 失敗不得進入 PR merge gate。</li>
+      <li>prod gate 僅在 PR #1 後續 workflow 中啟動。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 路徑與快取</h2>
+    <h3>4.1 CI 快取</h3>
+    <ul>
+      <li>PNPM store、cargo target、cargo registry、sccache 或對應 cloud cache key。</li>
+      <li>workflow 中以 `restore-keys` 設計減少 cold cache 風險。</li>
+    </ul>
+    <h3>4.2 Runner 策略</h3>
+    <ul>
+      <li>預設 `ubuntu-latest`；若有 `ubuntu-latest-4-cores` 設定再用 larger runner。</li>
+      <li>未配置 larger runner 時不允許 pipeline 永久卡住於 queued。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 不變式</h2>
+    <ul>
+      <li>所有發佈路徑必須有可重現輸入（lockfile + sqlx metadata）。</li>
+      <li>prod 佈署前必須執行 secret-scan 與 SCA。</li>
+      <li>migration dry-run 過期或不一致直接阻斷 release。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 驗收</h2>
+    <ol>
+      <li>新 PR 依 spec 路徑進入最少 3 種環境驗證（至少 dev/staging/prod-preview）。</li>
+      <li>SAST/SCA/image scan 報表保留 30 天以上。</li>
+      <li>CI 導出版本與變更清單可回溯到 PR 編號與門檻結果。</li>
+    </ol>
+  </section>
+</body>
+</html>

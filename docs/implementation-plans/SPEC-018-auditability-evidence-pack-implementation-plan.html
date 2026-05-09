@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-018 Auditability &amp; Evidence Pack implementation plan</title>
+  <style>
+    body {
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      margin: 24px;
+      line-height: 1.65;
+      color: #0f172a;
+    }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin-bottom: 16px; }
+    pre { background: #f8fafc; border: 1px solid #dbeafe; padding: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-018 Auditability &amp; Evidence Pack implementation plan</h1>
+  <div class="meta">
+    <strong>版本</strong>: v0.1.0<br>
+    <strong>更新日</strong>: 2026-05-09<br>
+    <strong>對應規格</strong>: <a href="../specs/SPEC-018-auditability-evidence-pack.html">SPEC-018</a><br>
+    <strong>目標</strong>: 把可追溯、可稽核、可匯出變成可落地的工程任務
+  </div>
+
+  <section>
+    <h2>1. 目的與邊界</h2>
+    <ul>
+      <li>此文件為稽核與證據化的工程化實作計畫，不替代產品規格。</li>
+      <li>聚焦：不可變更歷史（immutable log）、4-eye 變更錄、事件關聯、證據封包（Evidence Pack）導出。</li>
+      <li>不聚焦：新風控模型設計與機器學習規則（保留在 SPEC-010）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 核心資料儲存</h2>
+
+    <h3>2.1 audit_events</h3>
+    <pre><code>CREATE TABLE audit_events (
+  id BIGSERIAL PRIMARY KEY,
+  event_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+  aggregate_type TEXT NOT NULL,
+  aggregate_id BIGINT NOT NULL,
+  action TEXT NOT NULL,
+  actor_id BIGINT NOT NULL,
+  actor_role TEXT NOT NULL,
+  actor_ip INET NOT NULL,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  correlation_id UUID NOT NULL,
+  request_id TEXT NOT NULL,
+  payload_hash CHAR(64) NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}',
+  idempotency_key TEXT,
+  source_service TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NOT NULL,
+  status TEXT NOT NULL
+);</code></pre>
+
+    <h3>2.2 audit_event_attachments</h3>
+    <pre><code>CREATE TABLE audit_event_attachments (
+  id BIGSERIAL PRIMARY KEY,
+  audit_event_id BIGINT NOT NULL REFERENCES audit_events(id),
+  evidence_type TEXT NOT NULL,
+  object_uri TEXT NOT NULL,
+  object_hash CHAR(64) NOT NULL,
+  object_size BIGINT NOT NULL,
+  redacted BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);</code></pre>
+
+    <h3>2.3 invariant_checks</h3>
+    <pre><code>CREATE TABLE invariant_checks (
+  id BIGSERIAL PRIMARY KEY,
+  check_name TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  check_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  result TEXT NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}',
+  actor_id BIGINT NOT NULL,
+  evidence_pack_id BIGINT
+);</code></pre>
+
+    <h3>2.4 report_exports</h3>
+    <pre><code>CREATE TABLE report_exports (
+  id BIGSERIAL PRIMARY KEY,
+  report_type TEXT NOT NULL,
+  requested_by BIGINT NOT NULL,
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  from_ts TIMESTAMPTZ NOT NULL,
+  to_ts TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL,
+  storage_uri TEXT NOT NULL,
+  manifest_uri TEXT NOT NULL,
+  retention_until TIMESTAMPTZ NOT NULL,
+  retention_policy TEXT NOT NULL
+);</code></pre>
+  </section>
+
+  <section>
+    <h2>3. 約束條件（Invariants）</h2>
+    <ul>
+      <li>audit_events 僅新增不刪除（APPEND ONLY），只允許在合法保留窗口內做 soft-archive 標記。</li>
+      <li>payload_hash 以 event payload canonical JSON 計算，匯出時需驗證 hash 與重算值一致。</li>
+      <li>對外回應/管理介面中的 idempotency_key 全域唯一。</li>
+      <li>任何影響資金、帳戶層級決策、風控封鎖、人工審核的操作，必須同時寫入 audit_events。</li>
+      <li>evidence_type 需能映射到 report_export 的來源；report_export 必須包含 manifest。</li>
+      <li>audit_events 與 report_exports 皆需可依 correlation_id 反查到完整事件鏈。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 實作流程</h2>
+    <h3>4.1 事件接收</h3>
+    <ul>
+      <li>以 outbox 或 middleware 包裝所有管理員 action、風控 action、支付/帳務關鍵 action。</li>
+      <li>對事件打上 correlation_id、request_id、actor identity。</li>
+      <li>寫入 audit_events 之前先校驗必填欄位與 hash。</li>
+    </ul>
+    <h3>4.2 附件封裝</h3>
+    <ul>
+      <li>原始日志、工單、裁決摘要、交易批次檔均可封包進 attachment。</li>
+      <li>附件上傳到 object storage 前先做壓縮與 hash。</li>
+      <li>附件與事件保留一致生命週期，不得過早刪除。</li>
+    </ul>
+    <h3>4.3 Evidence Pack 產出</h3>
+    <ul>
+      <li>輸入條件：report_type、時間窗、範圍、scope。</li>
+      <li>輸出條件：manifest（json）+ zip 包。</li>
+      <li>manifest 含欄位：
+        1. report_id
+        2. generated_at
+        3. coverage
+        4. count_events
+        5. invariant_checks
+      </li>
+      <li>輸出後立即產生 audit_event 記錄，記錄匯出人、條件與結果。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 交付與整合</h2>
+    <ul>
+      <li>後台新增「稽核匯出」功能，支援 CSV / ZIP / JSON manifest。</li>
+      <li>為 KYC、交易、佣金、支付與客服事件提供預設模板。</li>
+      <li>新增自訂保留政策：7 年法務資料、3 年一般營運資料。</li>
+      <li>提供「重建報表」與「覆核紀錄差異報告」。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 權限與遮罩</h2>
+    <ul>
+      <li>稽核匯出與附件下載僅限審計角色 + 指定 compliance 角色。</li>
+      <li>對 PII 欄位做 field-level mask，若需要明文，須通過強化許可。</li>
+      <li>所有敏感欄位訪問都寫入 audit_events。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. 監控與異常</h2>
+    <ul>
+      <li>每日比對事件筆數與實體匯入筆數，一致性不符立即觸發警報。</li>
+      <li>export_queue 失敗、hash mismatch、manifest 不可驗證必須進入 incident 路徑。</li>
+      <li>舊版 report_type 僅做 read-only，禁止新增欄位破壞回放。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>8. 驗收（工程）</h2>
+    <ol>
+      <li>資料表與索引建立完成，資料庫遷移可回滾。</li>
+      <li>管理員 action 100% 可對應至少一筆 audit_events。</li>
+      <li>每次 Evidence Pack 匯出都生成 manifest，並可透過 hash 驗證。</li>
+      <li>回填測試：刪除並重建某時間窗，版本差異可追溯且可比對。</li>
+      <li>PII 可見行為符合遮罩政策並有審計記錄。</li>
+      <li>3 個保留期測試通過（7 年、3 年、1 年）。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>9. 依賴檔案</h2>
+    <ul>
+      <li><a href="../specs/SPEC-002-funds-safety.html">SPEC-002-funds-safety.html</a></li>
+      <li><a href="../specs/SPEC-010-security-antifraud.html">SPEC-010-security-antifraud.html</a></li>
+      <li><a href="../specs/SPEC-011-affiliate-commission.html">SPEC-011-affiliate-commission.html</a></li>
+      <li><a href="../specs/SPEC-016-payment-gateway.html">SPEC-016-payment-gateway.html</a></li>
+    </ul>
+  </section>
+</body>
+</html>

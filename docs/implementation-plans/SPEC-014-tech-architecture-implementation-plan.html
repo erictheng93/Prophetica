@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-014-tech-architecture implementation plan</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 24px; line-height: 1.65; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    .meta { color: #334155; margin-bottom: 16px; }
+    pre { background: #f8fafc; border: 1px solid #dbeafe; padding: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    section { margin: 16px 0; }
+    ul, ol { margin: 8px 0 8px 22px; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-014 tech architecture implementation plan</h1>
+  <div class="meta">
+    <strong>版本</strong>: v0.2.6<br>
+    <strong>更新日</strong>: 2026-05-09<br>
+    <strong>對應規格</strong>: <a href="../specs/SPEC-014-tech-architecture.html">SPEC-014</a><br>
+    <strong>目標</strong>: 落實 Rust-first 架構、服務拓撲與 ADR 決議
+  </div>
+
+  <section>
+    <h2>1. 目的與邊界</h2>
+    <ul>
+      <li>把架構決策（服務、執行環境、資料層、通訊）轉為可執行的實施項目。</li>
+      <li>未重複描述產品行為，僅保留部署、組件、依賴與拓撲規格。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 技術棧硬性設定</h2>
+    <ul>
+      <li>後端：Rust 1.85+（edition 2024），Rustls 為預設，rDKafka 作 OpenSSL 例外。</li>
+      <li>前端：Next.js 15 / React，Cloudflare Kumo 元件系統。</li>
+      <li>DB：PostgreSQL 16；Cache/Session：Redis；訊息：Kafka。</li>
+      <li>Observability：OTLP/OpenTelemetry，保留告警、tracing、metrics。 </li>
+    </ul>
+    <div class="warn">補充：若前端邊界跨 edge runtime，需先檢視 Node API 相容表再決定分流。</div>
+  </section>
+
+  <section>
+    <h2>3. 服務拓撲（實作）</h2>
+    <pre><code>apps/web (Next.js SSR/RSC) ─┬─> API Gateway (axum)
+                          └─> ws-gateway (wss)
+API Gateway ──> auth | kyc | matching | ledger | payment | risk | settlement
+所有 service 共用 PostgreSQL event/command bus / Redis / Kafka</code></pre>
+    <ul>
+      <li>12 service crate 保留抽象邊界；必要時可做 7-binary 合併部署 advisory。</li>
+      <li>gRPC for internal RPC，HTTP for client-facing paths。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 工具鏈與 SDK</h2>
+    <ul>
+      <li>Cargo workspace + Rust edition 2024，`[workspace.lints]` 全域規範。</li>
+      <li>`forbid(unsafe_code)` + cargo-geiger gate；允許明確列白名單後例外。</li>
+      <li>SQL 檢核透過 sqlx prepare/check，`.sqlx` 目錄入版。</li>
+      <li>`crates/proto/` 統一管理 protobuf，移除舊 Go SDK 路徑。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 不變式</h2>
+    <ul>
+      <li>所有服務間溝通遵循版本化 schema，任何 producer/consumer 變更需兼容。</li>
+      <li>帳本關鍵路徑（撮合、ledger）禁止 dynamic schema fallback。</li>
+      <li>Rust 服務除經授權例外不得引入 unsafe。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 實施清單與里程碑</h2>
+    <ol>
+      <li>更新 Cargo workspace / toolchain / lints。</li>
+      <li>完成服務 container image 與 probe 設定。</li>
+      <li>完成 service 接口驗證（ADR + integration tests）。</li>
+      <li>完成可重現部署流程與 rollback runbook。</li>
+      <li>在 OQ 清單中記錄 7-binary 切換條件與回退條件。</li>
+    </ol>
+  </section>
+</body>
+</html>

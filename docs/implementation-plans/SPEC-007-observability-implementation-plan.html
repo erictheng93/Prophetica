@@ -1,0 +1,94 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPEC-007 可觀測性實作計畫</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", sans-serif; margin: 24px; line-height: 1.6; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    section { margin: 16px 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #dbeafe; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-007 — 可觀測性與監控實作計畫</h1>
+  <p><strong>規格參照：</strong><a href="../specs/SPEC-007-observability.html">SPEC-007-observability.html</a> · <strong>版本：</strong>v0.1.0</p>
+
+  <section>
+    <h2>1. 實作目標</h2>
+    <ul>
+      <li>完成 Metrics / Logging / Tracing 三柱並落地 Prometheus、OTel、Grafana 觀測。</li>
+      <li>把 service-level、業務級、合規級 SLO 都標準化。</li>
+      <li>定義跨 hop latency budget 與告警邏輯。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 不變式</h2>
+    <ul>
+      <li>所有服務必有 healthz 三階端點：live/readiness/startup。</li>
+      <li>所有核心告警都有對應 runbook 並可追溯。</li>
+      <li>任何 SLO breach 需可自動計算 burn rate 並回報。</li>
+      <li>跨服務 budget 為契約，不得未經 PR 擴張。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. Telemetry 規格</h2>
+    <ul>
+      <li><strong>Metrics</strong>：Counter / gauge / histogram，命名採 <code>proph_{domain}_{subject}_{unit}</code>。</li>
+      <li><strong>Logging</strong>：JSON 結構化，必含 service, version, level, trace_id, event。</li>
+      <li><strong>Tracing</strong>：OTel SDK with W3C traceparent，trace name 與 hop 命名對應 6.4。 </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 熱路徑 Latency Budget（實作對應）</h2>
+    <p>需建立每 hop 對應 OTel attribute（如 <code>latency.budget.order_submit_cf</code>），並輸出實測值供告警比較：</p>
+    <table>
+      <thead>
+        <tr><th>Hop</th><th>預算（P99）</th><th>監測器</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>edge + auth</td><td>約 6ms</td><td>api_gateway span</td></tr>
+        <tr><td>wallet pre-trade</td><td>約 3ms</td><td>wallet.reserve span</td></tr>
+        <tr><td>engine match</td><td>2-3ms</td><td>engine.order.apply span</td></tr>
+        <tr><td>response serialize</td><td>1ms</td><td>api.response.serialize span</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>5. 告警 / Runbook</h2>
+    <ul>
+      <li>P0 / P1 / P2 / P3 分層，Slack、PagerDuty、Email 分流。</li>
+      <li>必建 runbook 索引：ledger imbalance、engine 慢化、kafka lag、對帳失敗、WAF/網關事件。</li>
+      <li>每季至少一次故障演練。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. 工程落地清單</h2>
+    <ul>
+      <li>Rust 服務接入 OTEL + Prometheus registry。</li>
+      <li>Grafana dashboard：API、engine、wallet、settlement、compliance。</li>
+      <li>Prometheus 規則：P99 burn、queue lag、error rate、retry ratio。</li>
+      <li>AlertManager 路由與分群（prod / staging 區分）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. 驗收</h2>
+    <ul>
+      <li>Tracing 能在 1 次 user 下單中穿透主要 services。</li>
+      <li>各 SLO 指標 30 天穩定可取樣。</li>
+      <li>P0 告警有 100% runbook 連結且可執行。</li>
+      <li>跨 hop budget 告警不誤報率可接受，且可回歸。</li>
+    </ul>
+  </section>
+</body>
+</html>

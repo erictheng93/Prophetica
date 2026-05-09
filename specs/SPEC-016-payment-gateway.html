@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-016 — 支付通路整合（Payment Gateway Integration）</title>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.6;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre { overflow: auto; padding: 1rem; background: #f6f8fa; border: 1px solid #d8dee3; }
+    hr { border: none; border-top: 1px solid #d0d7de; }
+    blockquote { border-left: 4px solid #d0d7de; padding-left: 0.8rem; margin-left: 0; color: #374151; }
+    a { color: #0969da; }
+  </style>
+
+</head>
+<body>
+<h1>SPEC-016 — 支付通路整合（Payment Gateway Integration）</h1>
+<blockquote>
+<p>優先級：<strong>P0（必須在第一行 production code 之前完成）</strong>
+版本：v0.1.1 · 最後更新：2026-05-07
+依賴：SPEC-002, SPEC-005, SPEC-010
+被依賴：SPEC-007, SPEC-008, SPEC-013</p>
+<p><strong>v0.1.1 變更（H-5）</strong>：§6.1 chargeback 永久封號門檻明示為「<strong>≥ 1</strong>」並補 cross-ref 至 SPEC-010 §6.2 / SPEC-002 §8.1，三檔統一門檻；H-5 跨檔對齊。</p>
+</blockquote>
+<hr />
+<h2>1. Objective</h2>
+<p>定義玩家儲值（fiat → 站內點數）的端到端支付通路：通路選型、收款主體、webhook 簽章、退款 / chargeback、跨幣別匯率鎖定、PCI 範圍劃線、多通路備援、結帳 UX。本 SPEC 補齊 SPEC-002（資金安全 / 帳本）與實際支付路徑之間的銜接議題。</p>
+<h2>2. 範圍與不在範圍</h2>
+<h3>2.1 In-scope</h3>
+<ul>
+<li>支付通路選型與分級（Tier-1 / Tier-2 / 備援）</li>
+<li>收款主體與託管帳戶對應</li>
+<li>Webhook 簽章驗證、idempotency、retry 規範</li>
+<li>Chargeback / 退款流程</li>
+<li>跨幣別匯率鎖定機制</li>
+<li>PCI DSS 範圍劃線</li>
+<li>多通路備援切換策略</li>
+<li>結帳 UX 標準（含 RG 警示、上限提示）</li>
+</ul>
+<h3>2.2 Out-of-scope</h3>
+<ul>
+<li>帳本記錄細節（SPEC-002 §4）</li>
+<li>KYC 驗證（SPEC-005）</li>
+<li>金流相關反作弊（SPEC-010 §6）</li>
+<li>出金（<strong>本平台無出金通道</strong>）</li>
+</ul>
+<h2>3. 支付通路選型</h2>
+<h3>3.1 通路分級</h3>
+<table>
+<thead>
+<tr>
+<th>級別</th>
+<th>通路</th>
+<th>主要市場</th>
+<th>收款主體</th>
+<th>啟用優先序</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Tier-1</strong></td>
+<td>綠界 ECPay</td>
+<td>台灣（信用卡 / ATM 轉帳）</td>
+<td><strong>執照地 Op Co.</strong> 之台灣分行帳戶</td>
+<td>MVP Day 1</td>
+</tr>
+<tr>
+<td><strong>Tier-1</strong></td>
+<td>Stripe</td>
+<td>國際（信用卡 / Apple Pay / Google Pay）</td>
+<td>Op Co. 在執照地 Stripe 帳戶</td>
+<td>MVP Day 1</td>
+</tr>
+<tr>
+<td><strong>Tier-2</strong></td>
+<td>藍新 NewebPay</td>
+<td>台灣備援</td>
+<td>同綠界</td>
+<td>MVP + 30 天</td>
+</tr>
+<tr>
+<td><strong>Tier-2</strong></td>
+<td>PayMongo</td>
+<td>菲律賓本地</td>
+<td>Op Co. 信託帳戶</td>
+<td>Phase 2</td>
+</tr>
+<tr>
+<td><strong>Tier-2</strong></td>
+<td>Momo / VNPay</td>
+<td>越南</td>
+<td>Op Co. 信託帳戶</td>
+<td>Phase 2</td>
+</tr>
+<tr>
+<td><strong>備援</strong></td>
+<td>Wise / Airwallex（B2B 跨境）</td>
+<td>多國法幣</td>
+<td>Op Co.</td>
+<td>視情況啟用</td>
+</tr>
+</tbody>
+</table>
+<h3>3.2 通路接受度核實（動工前驗證項目）</h3>
+<blockquote>
+<p>對應 <a href="./SPEC-000-index.md">SPEC-000 §5 Q-4</a>。在簽通路合約前必須驗證：</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>議題</th>
+<th>驗證對象</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>通路是否接受「娛樂遊戲」MCC（7995 / 7993 / 7800）？</td>
+<td>各通路業務窗口</td>
+</tr>
+<tr>
+<td>收款主體可否為境外 Op Co.？</td>
+<td>通路合規部門</td>
+</tr>
+<tr>
+<td>通路是否在合約中限制 prediction market 業務？</td>
+<td>法律意見</td>
+</tr>
+<tr>
+<td>退款 / chargeback rate 上限與懲罰條款</td>
+<td>合約細則</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>⚠️ 若 Tier-1 通路之任一在簽約階段拒絕，<strong>不得</strong>降級為 Tier-2 帶風險上線；改尋找替代通路或調整營運計畫。</p>
+</blockquote>
+<h2>4. 收款主體與託管帳戶對應</h2>
+<h3>4.1 收款邏輯</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<p><strong>禁區</strong>（呼應 ADR-0002 §8）：
+- ❌ Tech Service Co. 名下之台灣銀行帳戶<strong>禁止</strong>接收任何玩家儲值
+- ❌ Holdings 帳戶<strong>禁止</strong>接收玩家儲值
+- ❌ 創辦人 / 員工<strong>個人帳戶</strong>永久禁止</p>
+<h3>4.2 結算頻率</h3>
+<table>
+<thead>
+<tr>
+<th>通路</th>
+<th>結算頻率</th>
+<th>T+N</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>綠界</td>
+<td>每日</td>
+<td>T+3 至 T+7</td>
+</tr>
+<tr>
+<td>Stripe</td>
+<td>每 2 日</td>
+<td>T+2 至 T+4</td>
+</tr>
+<tr>
+<td>藍新</td>
+<td>每日</td>
+<td>T+5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>重要</strong>：通路結算前該款項屬於通路代收，不算入 <code>Bank.TrustAccount</code> 餘額。Ledger 記帳順序：
+1. webhook 確認 → <code>Pending.Deposit</code> 帳戶（asset）+ <code>Player.Wallet</code> 同步（liability）
+2. 通路結算入帳 → <code>Pending.Deposit</code> 轉至 <code>Bank.TrustAccount.{currency}</code>
+3. 兩階段都需 idempotent</p>
+<blockquote>
+<p>SPEC-002 §4.2 之 Chart of Accounts 需擴增 <code>Pending.Deposit.{provider}</code> 子帳戶。</p>
+</blockquote>
+<h2>5. Webhook 處理</h2>
+<h3>5.1 必含驗證</h3>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>規則</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HMAC 簽章</td>
+<td>各通路規範各異；<strong>簽章驗證失敗直接 401，禁止記日誌</strong></td>
+</tr>
+<tr>
+<td>Replay 防護</td>
+<td>Webhook 必含 timestamp，視窗 5 分鐘外的事件拒收</td>
+</tr>
+<tr>
+<td>Idempotency</td>
+<td>以通路 transaction_id 為 key，呼應 SPEC-002 §6.1</td>
+</tr>
+<tr>
+<td>TLS</td>
+<td>接收 endpoint 強制 TLS 1.3</td>
+</tr>
+<tr>
+<td>IP 白名單</td>
+<td>各通路公告之 IP range；命中之外 → drop</td>
+</tr>
+</tbody>
+</table>
+<h3>5.2 Endpoint 規範</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<p>回應：
+- <code>200 OK</code>：處理成功（含「已處理過」case）
+- <code>4xx</code>：簽章 / 格式錯誤；通路會 retry，需審查
+- <code>5xx</code>：系統錯誤；通路 retry</p>
+<h3>5.3 Retry 規範</h3>
+<p>通路 retry 行為各異，後端必須假設：
+- <strong>同一 transaction_id 至少送達 1 次，最多送達 N 次</strong>
+- N 次 retry 都應產生<strong>同一筆</strong> ledger transaction（idempotent）
+- 通路規範之最終 retry 截止前未回 200 → 通路標記為「pending」並由運維介入</p>
+<h3>5.4 失敗對帳</h3>
+<p>每日 T+1：
+- 對比平台 ledger 之該日 <code>deposit</code> transaction 數量 vs 通路後台對帳檔
+- 差異 &gt; 0 自動寫入 <code>Suspense.Reconciliation</code>（SPEC-002 §7.2）+ P0 告警</p>
+<h3>5.5 通路 Webhook Payload 對映表</h3>
+<blockquote>
+<p>各通路 webhook payload schema 不一致。本節定義從<strong>通路原生格式</strong>到後端統一 <code>ProviderWebhookEnvelope</code>（見 <a href="../packages/proto/v1/payment.proto"><code>packages/proto/v1/payment.proto</code></a>）的對映規則。每個通路在 <code>services/payment-service/internal/providers/{provider}/</code> 內實作 driver-specific verifier。</p>
+</blockquote>
+<h4>5.5.1 共用流程</h4>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h4>5.5.2 通路對映表</h4>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>HMAC header</th>
+<th>HMAC algo</th>
+<th>Timestamp 來源</th>
+<th>Provider txn ID 欄位</th>
+<th>settled_amount 欄位</th>
+<th>Currency 欄位</th>
+<th>事件類型映射</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ECPay 綠界</strong></td>
+<td><code>CheckMacValue</code>（form field，非 header）</td>
+<td>MD5 / SHA256（依設定）</td>
+<td><code>PaymentDate</code></td>
+<td><code>MerchantTradeNo</code></td>
+<td><code>TradeAmt</code>（TWD 整數元）× 100</td>
+<td>固定 TWD</td>
+<td><code>RtnCode=1</code> → SETTLED；<code>RtnCode≠1</code> → FAILED</td>
+</tr>
+<tr>
+<td><strong>Stripe</strong></td>
+<td><code>Stripe-Signature</code></td>
+<td>HMAC-SHA256</td>
+<td>header <code>t=</code> 部分</td>
+<td><code>id</code>（event）+ <code>data.object.id</code>（charge）</td>
+<td><code>data.object.amount_received</code>（已是最小單位）</td>
+<td><code>data.object.currency</code>（lower case ISO）</td>
+<td><code>payment_intent.succeeded</code> → SETTLED；<code>charge.refunded</code> → REFUNDED；<code>charge.dispute.created</code> → CHARGEBACK</td>
+</tr>
+<tr>
+<td><strong>NewebPay 藍新</strong></td>
+<td><code>TradeSha</code>（form field）</td>
+<td>SHA256 + AES</td>
+<td><code>PayTime</code></td>
+<td><code>MerchantOrderNo</code></td>
+<td><code>Amt</code>（TWD 元）× 100</td>
+<td>固定 TWD</td>
+<td><code>Status=SUCCESS</code> → SETTLED</td>
+</tr>
+<tr>
+<td><strong>PayMongo</strong></td>
+<td><code>Paymongo-Signature</code></td>
+<td>HMAC-SHA256（含 <code>t=</code> / <code>te=</code> / <code>li=</code>）</td>
+<td>header <code>t=</code></td>
+<td><code>data.id</code>（event）</td>
+<td><code>data.attributes.amount</code></td>
+<td><code>data.attributes.currency</code></td>
+<td><code>payment.paid</code> → SETTLED；<code>payment.refunded</code> → REFUNDED</td>
+</tr>
+<tr>
+<td><strong>MoMo VN</strong></td>
+<td><code>Signature</code>（query param）</td>
+<td>HMAC-SHA256 + RSA</td>
+<td><code>responseTime</code></td>
+<td><code>requestId</code> + <code>transId</code></td>
+<td><code>amount</code>（VND 整數元）× 100</td>
+<td>固定 VND</td>
+<td><code>resultCode=0</code> → SETTLED</td>
+</tr>
+<tr>
+<td><strong>VNPay</strong></td>
+<td><code>vnp_SecureHash</code></td>
+<td>HMAC-SHA512</td>
+<td><code>vnp_PayDate</code></td>
+<td><code>vnp_TxnRef</code></td>
+<td><code>vnp_Amount</code>（VND × 100，已最小單位）</td>
+<td>固定 VND</td>
+<td><code>vnp_ResponseCode=00</code> → SETTLED</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>表中「× 100」表示 driver 在 decode 時必須換算為<strong>內部單位</strong>（SPEC-002 §3.2）。對於通路本身已用最小單位（如 Stripe / VNPay）則直接帶入。</p>
+</blockquote>
+<h4>5.5.3 Phase 1 換算規則</h4>
+<blockquote>
+<p>SPEC-016 §7.1 規定 Phase 1 ledger 僅有 <code>Bank.TrustAccount.TWD</code>。對非 TWD 通路（PayMongo / MoMo / VNPay 等）：</p>
+</blockquote>
+<ul>
+<li>Driver decode 時取通路提供的 <code>fx_rate</code>（若無則拒絕，要求業主與通路重簽合約包含 FX 透明欄位）</li>
+<li><code>settled_twd = original.amount × fx_rate</code>，存入 <code>ProviderWebhookEnvelope.settled_twd</code></li>
+<li>主流程僅 deposit <code>settled_twd</code> 到 <code>Bank.TrustAccount.TWD</code>，原幣別僅作 audit 紀錄</li>
+<li><code>fx_rate</code> 字串保留小數精度（如 <code>"31.5"</code>），不轉 float</li>
+</ul>
+<h4>5.5.4 Driver 必含介面（Rust）</h4>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h4>5.5.5 對映表維護規則</h4>
+<ul>
+<li>新增通路必須先在本表新增一列、實作 Driver、補 unit test 含 happy / replay / HMAC fail 三案例。</li>
+<li>通路若改變 webhook 格式，driver 需 bump version，driver registry 同時支援新舊版至少 30 天。</li>
+<li>任何「通路特殊處理」（如綠界 form-encoded vs JSON）都被 driver 層吸收，主流程<strong>只看</strong> <code>ProviderWebhookEnvelope</code>。</li>
+</ul>
+<h2>6. Chargeback 與退款</h2>
+<h3>6.1 Chargeback 流程</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>6.2 退款流程（玩家主動 / 平台主動）</h3>
+<table>
+<thead>
+<tr>
+<th>觸發</th>
+<th>處置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>玩家主動退款（未交易、KYC 失敗）</td>
+<td>退款至原入金通道；點數 reverse</td>
+</tr>
+<tr>
+<td>系統故障導致重複扣款</td>
+<td>自動偵測 + 退款；無需人工</td>
+</tr>
+<tr>
+<td>市場創建錯誤（呼應 SPEC-004 §8.3）</td>
+<td>平台自願退手續費 + 退款</td>
+</tr>
+<tr>
+<td>玩家身份證件造假被偵測</td>
+<td>退款至原通道（不論 chargeback）</td>
+</tr>
+</tbody>
+</table>
+<h3>6.3 退款限制</h3>
+<ul>
+<li>退款<strong>只能原路返回</strong>（信用卡退原卡、ATM 退原帳戶）</li>
+<li>部分退款最低粒度 = 1 點 = TWD 1（依計價單位）</li>
+<li>退款金額不得超過原始儲值</li>
+<li>退款超過 90 天則拒絕（通路普遍時限）</li>
+</ul>
+<h2>7. 跨幣別與匯率</h2>
+<blockquote>
+<p><strong>Phase 1 — 永遠單幣別 TWD</strong>（呼應 <a href="./SPEC-002-funds-safety.md">SPEC-002 §3.1</a> 已 Resolved 之 1 點 = TWD 1）。ledger 僅維持 <code>Bank.TrustAccount.TWD</code> 一個資產帳戶；國際玩家以非 TWD 法幣儲值時，<strong>由通路在 webhook 中換算為 TWD 後入帳</strong>，平台 ledger 永遠以 TWD 計價，<strong>任何幣別皆於通路端完成換算</strong>。</p>
+<p>Phase 2（多幣別）保留設計但<strong>目前無啟用計畫</strong>。Q-3 已 Resolved 為 TWD 1:1，Phase 2 不再被 Q-3 阻塞；觸發條件改為<strong>業務驅動</strong>：(a) Op Co. 開立非 TWD 計價之國際版本（例如 USD ledger）、或 (b) 平台需主動承擔 FX 對沖（例如向 DMM 結算非 TWD 點數）。在無上述業務需求前，§7.4 之多幣別 schema 不實作。</p>
+</blockquote>
+<h3>7.1 Phase 1 — 單幣別（TWD）入帳路徑</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h4>7.1.1 Webhook 必含欄位（FX 透明化）</h4>
+<p>不論玩家原儲值幣別，後端必須從 webhook 取得：</p>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>settled_amount_twd</code></td>
+<td>入 ledger 的金額（內部單位 × 100）</td>
+</tr>
+<tr>
+<td><code>original_amount</code> / <code>original_currency</code></td>
+<td>對玩家顯示「您儲值 100 USD ≈ 3,150 TWD」</td>
+</tr>
+<tr>
+<td><code>fx_rate</code> / <code>fx_locked_at</code></td>
+<td>稽核留痕（存入 <code>ledger_transactions.metadata</code>）</td>
+</tr>
+<tr>
+<td><code>provider_fee_twd</code></td>
+<td>通路手續費（換算成 TWD）</td>
+</tr>
+</tbody>
+</table>
+<h3>7.2 平台 FX 風險</h3>
+<p>Phase 1 平台不承擔 FX 風險（換算發生於通路端）。通路收取的 FX spread 視為玩家成本。</p>
+<h3>7.3 玩家 UI 對 FX 的呈現</h3>
+<ul>
+<li>結帳前顯示原幣別金額 + 預估 TWD 點數，並標注「最終點數依通路結算匯率為準，可能微幅變動」</li>
+<li>入帳完成後，玩家錢包與儲值紀錄統一以 TWD 點數呈現</li>
+<li>退款比照 §6.3 「原路返回」原則，TWD 對原幣金額之精算差額由通路端處理</li>
+</ul>
+<h3>7.4 Phase 2（保留設計，目前無啟用計畫）— 多幣別 ledger</h3>
+<blockquote>
+<p>以下為延伸設計，<strong>目前無啟用計畫</strong>。觸發條件為業務驅動（見 §7 開頭）：Op Co. 開非 TWD 計價國際版本、或平台主動承擔 FX 對沖。Phase 1 不實作此 schema，僅保留設計以避免未來大規模 migration。</p>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<p>匯率鎖定原則：
+- 匯率以通路結算時點（webhook 提供）為準
+- 平台不主動 hedge，FX 風險由 Op Co. 承擔
+- 每月將 <code>FX.Adjustment</code> 結轉至 <code>Revenue.FXGain</code> / <code>Expense.FXLoss</code></p>
+<h2>8. PCI DSS 範圍劃線</h2>
+<h3>8.1 PCI 範圍最小化</h3>
+<blockquote>
+<p>平台<strong>永遠不直接接觸卡片號碼</strong>。所有卡資料透過通路 SDK / 跳轉至通路頁面收集。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>元件</th>
+<th>PCI 範圍</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Web 前端</td>
+<td><strong>out-of-scope</strong>（卡資料以 iframe / redirect 至通路頁面收集）</td>
+</tr>
+<tr>
+<td>API Gateway</td>
+<td>out-of-scope</td>
+</tr>
+<tr>
+<td>Backend 服務</td>
+<td>out-of-scope</td>
+</tr>
+<tr>
+<td>Webhook receiver</td>
+<td>out-of-scope（通路只送 token / last 4 digits）</td>
+</tr>
+</tbody>
+</table>
+<h3>8.2 不可儲存的資料</h3>
+<ul>
+<li>❌ 完整 PAN（卡號）</li>
+<li>❌ CVV / CVC（任何時刻）</li>
+<li>❌ Track 1/2 magstripe data</li>
+<li>❌ PIN</li>
+</ul>
+<h3>8.3 可儲存（受限）</h3>
+<ul>
+<li>✅ Token（通路產生）</li>
+<li>✅ 卡號末 4 碼（顯示用）</li>
+<li>✅ Issuer / 國家 / 卡別（風控用）</li>
+<li>✅ Holder name（受限，僅 Tier 2/3 KYC 留存）</li>
+</ul>
+<h3>8.4 自評每年一次</h3>
+<ul>
+<li>SAQ A 等級即可（純 redirect / iframe 模型）</li>
+<li>由通路提供 Attestation of Compliance (AoC)</li>
+<li>Compliance 每年更新自評</li>
+</ul>
+<h2>9. 多通路備援與自動切換</h2>
+<h3>9.1 健康檢查</h3>
+<ul>
+<li>每 60 秒對每個啟用通路的 health endpoint ping</li>
+<li>連續 3 次失敗 → 標記 <code>degraded</code></li>
+<li>連續 10 次失敗 → 標記 <code>down</code></li>
+</ul>
+<h3>9.2 切換邏輯</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h3>9.3 玩家偏好</h3>
+<ul>
+<li>UI 提供通路選擇（卡 / ATM / 其他）</li>
+<li>玩家偏好不超越「healthy 通路」之約束</li>
+</ul>
+<h2>10. 結帳 UX 必含元素</h2>
+<p>呼應 SPEC-006 責任博弈要求：</p>
+<h3>10.1 儲值頁面</h3>
+<table>
+<thead>
+<tr>
+<th>元素</th>
+<th>規則</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>月度上限進度條</td>
+<td>顯示「本月已儲值 / 月上限」（呼應 SPEC-006 §7.2）</td>
+</tr>
+<tr>
+<td>接近上限警示</td>
+<td>≥ 80% 顯著紅字提醒；100% 拒絕儲值</td>
+</tr>
+<tr>
+<td>點數無回兌聲明</td>
+<td>結帳前最後一頁明示「此次儲值之點數無法兌回現金」並玩家勾選確認</td>
+</tr>
+<tr>
+<td>KYC tier 限額提示</td>
+<td>若玩家此次儲值會跨 Tier 上限，提前提示需升級</td>
+</tr>
+<tr>
+<td>RG 援助連結</td>
+<td>頁尾持續可見</td>
+</tr>
+</tbody>
+</table>
+<h3>10.2 結帳前最終確認</h3>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<p>未勾選兩個 checkbox 不可前進。</p>
+<h3>10.3 儲值完成後</h3>
+<ul>
+<li>顯示「點數已入帳」</li>
+<li>提示玩家設定 / 調整月度上限（如尚未設定）</li>
+<li>連結至「我的責任博弈」頁面</li>
+</ul>
+<h2>11. 監控指標（呼應 SPEC-007 §3）</h2>
+<blockquote>
+<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+</blockquote>
+<h2>12. 性能與可靠性 SLO</h2>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>目標</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>儲值頁載入 P99</td>
+<td>&lt; 2 秒</td>
+</tr>
+<tr>
+<td>Webhook 接收 → ledger commit P99</td>
+<td>&lt; 30 秒</td>
+</tr>
+<tr>
+<td>同一 transaction_id 重送 100 次 → ledger 只一筆</td>
+<td>100%</td>
+</tr>
+<tr>
+<td>通路切換（degraded → 備援啟用）</td>
+<td>&lt; 60 秒</td>
+</tr>
+<tr>
+<td>對帳差異率</td>
+<td>&lt; 0.001% / 月</td>
+</tr>
+</tbody>
+</table>
+<h2>13. 安全要求</h2>
+<ul>
+<li>Webhook endpoint 走 Cloudflare WAF + IP 白名單</li>
+<li>通路 API 金鑰存於 Vault，依各通路最小權限</li>
+<li>退款 API 內部呼叫需 4-eye 簽核（T3 客服 + Compliance）</li>
+<li>對帳差異 &gt; USD 1,000 自動凍結出帳</li>
+</ul>
+<h2>14. 驗收條件</h2>
+<ul>
+<li>[ ] Tier-1（綠界 + Stripe）通路接入並通過沙盒測試</li>
+<li>[ ] HMAC 驗證 + idempotency 端到端測試（重送 100 次只 commit 1 筆）</li>
+<li>[ ] FX 帳戶體系與 Ledger schema 整合測試</li>
+<li>[ ] Chargeback 流程演練：webhook → 凍結 → 反沖 → 上訴 → 結案</li>
+<li>[ ] 多通路備援切換演練：模擬 Tier-1 全部 down，自動切至 Tier-2</li>
+<li>[ ] PCI SAQ A 自評通過</li>
+<li>[ ] 結帳 UX 之 §10.2 同意 checkbox 通過 E2E 測試（未勾不可前進）</li>
+<li>[ ] 對帳腳本通過 1M 筆儲值資料對比 &lt; 5 分鐘</li>
+</ul>
+<h2>15. Open Questions</h2>
+<blockquote>
+<p>跨檔決策已收斂至 <a href="./SPEC-000-index.md">SPEC-000 §5</a> 中央追蹤表。本節僅保留 SPEC-016 自身範圍內議題。</p>
+</blockquote>
+<ol>
+<li>通路 chargeback rate 是否須在合約中爭取 &lt; 0.5%（業界標準）？</li>
+<li>玩家通路偏好是否要加密儲存（避免被推測使用習慣）？</li>
+<li>跨境匯率 hedge 是否在 Op Co. 規模達一定門檻後啟動（如 Wise 之 forward contract）？</li>
+<li>越南 / 菲律賓本地通路（Momo / PayMongo）是否需要設第二家 Op Co. 才能合規收款？</li>
+<li>退款是否提供「退至錢包點數」之選項（玩家未真的轉錯）？— 法律風險：點數無回兌原則之邊界</li>
+</ol>
+</body>
+</html>

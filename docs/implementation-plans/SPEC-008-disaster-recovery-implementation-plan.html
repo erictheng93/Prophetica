@@ -1,0 +1,95 @@
+﻿<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPEC-008 災備與高可用實作計畫</title>
+  <style>
+    body { font-family: "Noto Sans TC", "PingFang TC", sans-serif; margin: 24px; line-height: 1.6; color: #0f172a; }
+    h1, h2, h3 { color: #0f172a; }
+    section { margin: 16px 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #dbeafe; padding: 8px; vertical-align: top; }
+    th { background: #f1f5f9; text-align: left; }
+  </style>
+</head>
+<body>
+  <h1>SPEC-008 — 災備與高可用實作計畫</h1>
+  <p><strong>規格參照：</strong><a href="../specs/SPEC-008-disaster-recovery.html">SPEC-008-disaster-recovery.html</a> · <strong>版本：</strong>v0.1.0</p>
+
+  <section>
+    <h2>1. RTO / RPO 實作目標</h2>
+    <ul>
+      <li>關鍵服務（ledger、wallet、engine）Region-local RPO = 0。</li>
+      <li>Cross-region RPO ≤ 5 秒（非關鍵數據可放寬）。</li>
+      <li>關鍵服務 RTO：ledger/wallet < 5 分鐘；engine 市場 < 30 秒。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. 架構</h2>
+    <ul>
+      <li>Primary Tokyo + DR Singapore（hot standby）。</li>
+      <li>PostgreSQL：Tokyo synchronous standby + Tokyo→Singapore streaming。</li>
+      <li>Kafka：primary topic 與 mirror 1:1 DR。
+</li>
+      <li>撮合引擎：WAL + Kafka dual-write。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>3. 不變式</h2>
+    <ul>
+      <li>lock 與 idempotency 不可落 Redis；須 PG 確保精準一次。</li>
+      <li>WAL / Kafka 中任一故障不得使系統 write without replication。</li>
+      <li>失效切換後首時間軸必做一致性對帳。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. 載入重試與客戶端 DR 容錯</h2>
+    <ul>
+      <li>WebSocket 500ms 起始、2x、±20% jitter、30s cap、30 次。</li>
+      <li>GET GET retry 3 次（200ms, 400ms, 800ms）。</li>
+      <li>POST / PUT / DELETE 寫操作 retry 必須帶 idempotency key，重用 key。</li>
+      <li>reconcile：seq gap 以 snapshot API 補洞，超過上限進 fallback mode。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 備份</h2>
+    <ul>
+      <li>R2/S3 dual backup：pg_basebackup 每日、WAL archive 持續。</li>
+      <li>月度 cold archive + 7 年保留。</li>
+      <li>每週 restore 驗證，失敗標記 INVALID 並告警。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>6. Kill switch / 多重簽核</h2>
+    <ul>
+      <li>停盤 API：<code>POST /api/internal/admin/halt</code>。</li>
+      <li>解除必須對應 MS-9 流程：2-of-3（CTO/Compliance/SE），寫 <code>audit_logs</code>。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>7. 演練</h2>
+    <ul>
+      <li>每週 engine pod kill。</li>
+      <li>每月 DB failover。</li>
+      <li>每季 區域切換。</li>
+      <li>每年全局 DR 重建演練。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>8. 驗收</h2>
+    <ul>
+      <li>RTO/RPO 測試通過且結果留檔。</li>
+      <li>failover 演練 3 分鐘內完成主通道恢復。</li>
+      <li>kill switch 與解除流程演練通過。</li>
+    </ul>
+  </section>
+</body>
+</html>

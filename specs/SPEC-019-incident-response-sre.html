@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-019 Incident Response &amp; SRE</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.6;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre { overflow: auto; padding: 1rem; background: #f6f8fa; border: 1px solid #d8dee3; }
+    blockquote { border-left: 4px solid #d0d7de; padding-left: 0.8rem; margin-left: 0; color: #374151; }
+    a { color: #0969da; }
+  </style>
+</head>
+<body>
+<h1>SPEC-019 Incident Response &amp; SRE</h1>
+<blockquote>
+  <p>優先序：P1（可作為 P0 啟動條件的基礎能力）</p>
+  <p>版本：v0.1.0</p>
+  <p>更新日：2026-05-09</p>
+  <p>依賴：SPEC-002, SPEC-007, SPEC-008, SPEC-013, SPEC-017</p>
+</blockquote>
+<section>
+  <h2>1. 目的</h2>
+  <p>建立「事件管理」的產品行為標準，讓用戶在系統異常時可以清楚知道服務狀況、預計恢復時間、補償與風險處理方式，並確保事故後有可追溯的 SRE 記錄與回顧。</p>
+</section>
+
+<section>
+  <h2>2. 產品可見行為範圍</h2>
+  <ul>
+    <li>平台不可用、下單受阻、行情延遲、充值/提現暫停、客服系統不可用、風險預警升級。</li>
+    <li>對外通報包括：公開事故頁、應用內公告橫幅、客服頁更新、必要時短信/Email（依合規流程）。</li>
+    <li>事故影響只限在事件範圍內，不以猜測性文案宣稱所有模組均異常。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>3. 事故分級（S0~S3）</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>等級</th>
+        <th>判定條件</th>
+        <th>可見回應</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>S0</td>
+        <td>全域無法下單、帳戶不可登入、風險/支付核心全域中斷</td>
+        <td>立即上線事故公告；啟用戰情頁；指定回復時間點預估</td>
+      </tr>
+      <tr>
+        <td>S1</td>
+        <td>核心交易或金流受阻，影響高於 10% 的活躍用戶</td>
+        <td>24/7 升級處理；持續更新進度；明確列出已受影響功能</td>
+      </tr>
+      <tr>
+        <td>S2</td>
+        <td>單一模組退化（例如某市場結算/行情）</td>
+        <td>明確列出退化範圍與修復預估，非所有服務同時列為故障</td>
+      </tr>
+      <tr>
+        <td>S3</td>
+        <td>低風險輕微異常，可有延遲但可正常交易</td>
+        <td>在客服系統與內部通報即可，必要時短訊息通告</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>4. 事故生命周期（面向用戶）</h2>
+  <ol>
+    <li>偵測：監控告警或工單觸發。</li>
+    <li>評估：5 分鐘內定義事故等級與受影響服務邊界。</li>
+    <li>宣告：公告頁至少顯示 5 個欄位（狀態、影響範圍、預估恢復、回歸窗口、最後更新時間）。</li>
+    <li>修復：每 30 分鐘更新一次一次狀態（S1/S0 每 15 分鐘）。</li>
+    <li>恢復：恢復生效後立即廣播「部分/全部恢復」，並保留 24 小時追蹤窗。</li>
+    <li>回顧：72 小時內完成復盤摘要，對外摘要不必立即公開全部技術細節。</li>
+  </ol>
+</section>
+
+<section>
+  <h2>5. 用戶體驗要求</h2>
+  <ul>
+    <li>任何 S1 或 S0 事故，必須顯示「影響服務清單」與「暫停/降級項目」。</li>
+    <li>任何公告應清楚寫明「目前仍可進行的操作」與「暫時停用的操作」。</li>
+    <li>事故結束後，若事件造成已完成訂單可重放或資料延遲，需在公告頁補充說明。</li>
+    <li>事故通知文案預設用繁體中文與簡短英文摘要。</li>
+    <li>客服工單在事故期間可直接掛接事故編號，避免用戶重複回報。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>6. 外部溝通與帳務處理邊界</h2>
+  <ul>
+    <li>不在事故期承諾金額承擔，僅公告技術恢復進度與可能影響。</li>
+    <li>涉及充值、交易、佣金或審計的異常，需先通過「事故影響評估」後再決定補償/人工處理。</li>
+    <li>客服只能提供流程說明，不得在事件未完成前做主觀猜測。</li>
+    <li>若事故持續超過 2 小時，啟用主管級公告人員與法務/合規同步回報。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>7. 交叉參考</h2>
+  <ul>
+    <li><a href="./SPEC-002-funds-safety.html">SPEC-002</a>：事件期間資金一致性與對帳口徑</li>
+    <li><a href="./SPEC-007-observability.html">SPEC-007</a>：告警、可用性、追蹤指標</li>
+    <li><a href="./SPEC-008-disaster-recovery.html">SPEC-008</a>：切換與回復路徑</li>
+    <li><a href="./SPEC-013-cicd-release.html">SPEC-013</a>：變更回滾與風險降級</li>
+  </ul>
+</section>
+
+<section>
+  <h2>8. 可驗收（產品）</h2>
+  <ul>
+    <li>[ ] S0/S1 事故在 5 分鐘內完成等級判定並公告。</li>
+    <li>[ ] 事故公告含完整影響範圍與更新時間。</li>
+    <li>[ ] S1/S0 事故更新間隔符合 15~30 分鐘。</li>
+    <li>[ ] 72 小時內完成事故回顧摘要與責任歸檔。</li>
+    <li>[ ] 事故結束後，客服與公告內容一致且可由工單追溯。</li>
+  </ul>
+</section>
+</body>
+</html>

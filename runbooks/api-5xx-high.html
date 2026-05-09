@@ -1,0 +1,37 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runbook: API 5xx High</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.55; color: #1f2937; }
+    h1 { margin-top: 0; }
+    code, pre { font-family: Consolas, "Courier New", monospace; }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <main>
+<h1>Runbook: API 5xx High</h1>
+<h2>Alert</h2>
+<p>API 5xx rate exceeds 5% for 2 minutes.</p>
+<h2>Severity</h2>
+<p>P0</p>
+<h2>Investigation</h2>
+<ol>
+<li>Check api-gateway logs grouped by route and upstream service.</li>
+<li>Verify <code>/healthz/ready</code> for all Rust services.</li>
+<li>Inspect recent deploys, DB pool saturation, Redis errors, and Kafka availability.</li>
+</ol>
+<h2>Resolution</h2>
+<ol>
+<li>Roll back the api-gateway or failing upstream if tied to a release.</li>
+<li>Temporarily disable affected write routes when user funds or orders are at risk.</li>
+<li>Keep read-only routes available when possible.</li>
+</ol>
+  </main>
+</body>
+</html>
