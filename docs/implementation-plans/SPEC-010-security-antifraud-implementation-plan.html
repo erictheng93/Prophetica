@@ -16,7 +16,7 @@
 </head>
 <body>
   <h1>SPEC-010 — 安全與反作弊實作計畫</h1>
-  <p><strong>規格參照：</strong><a href="../../specs/SPEC-010-security-antifraud.html">SPEC-010-security-antifraud.html</a> · <strong>版本：</strong>v0.1.0</p>
+  <p><strong>規格參照：</strong><a href="../../specs/SPEC-010-security-antifraud.html">SPEC-010-security-antifraud.html</a> · <strong>版本：</strong>v0.2.2</p>
 
   <section>
     <h2>1. 實作邊界</h2>
@@ -37,6 +37,8 @@
       <li><strong>INV-SEC-4</strong>：多帳號風險 > 閥值必入 Compliance review queue。</li>
       <li><strong>INV-SEC-5</strong>：anti-cheat 所有高風險操作保有可觀測與審計紀錄。</li>
       <li><strong>INV-SEC-6</strong>：multi-sig 規則僅來源於中央表（MS-1 ~ MS-17）。</li>
+      <li><strong>INV-SEC-7</strong>：安全敏感 SQL 必須使用 <code>sqlx::query!</code> / <code>query_as!</code> compile-time checked SQL 與 parameterized binding；不得引入 ORM 或字串拼接 SQL。</li>
+      <li><strong>INV-SEC-8</strong>：累計 chargeback &gt;= 1 即永久封號 + 黑名單，門檻不得由服務各自覆寫。</li>
     </ul>
   </section>
 
@@ -53,7 +55,8 @@
     <h2>4. Token 與邊界流程</h2>
     <h3>4.1 JWT</h3>
     <ul>
-      <li>主流程採 EdDSA，若 PoC 回報 LIFF 無法支援則開 split-algo 路線。</li>
+      <li>主流程採 EdDSA；PoC-A（EdDSA / LIFF）結果回填 <code>docs/poc/PRE-FLIGHT-POCS.md §3</code> 前不得作為公開 Beta production token 策略。</li>
+      <li>若 PoC 回報 LIFF 無法支援 Ed25519，LIFF route 改用 RS256 fallback，其他 route 維持 EdDSA；此 split-algo 路線需 ADR 記錄。</li>
       <li>cookie mode：HTTP-only / secure / same-site=lax。</li>
     </ul>
     <h3>4.2 Refresh</h3>
@@ -73,9 +76,18 @@
         <tr><td>自我成交</td><td>交易雙方連結圖譜、循環交易</td><td>標記並進 STP / suspension</td></tr>
         <tr><td>洗售</td><td>新帳戶異常量能 + 異常成交</td><td>限速與手動 review</td></tr>
         <tr><td>Pump & Dump</td><td>事件前結算前 30 分鐘不正常集中買單</td><td>自動 freeze / 人工審核</td></tr>
-        <tr><td>Chargeback</td><td>黑名單 BIN 與多次失敗</td><td>帳本反沖 + 封號</td></tr>
+        <tr><td>Chargeback</td><td>provider dispute / chargeback webhook 或人工核實事件</td><td>帳本反沖 + 累計 &gt;= 1 永久封號 + 黑名單</td></tr>
       </tbody>
     </table>
+  </section>
+
+  <section>
+    <h2>5.1 SQL Injection 防護落地</h2>
+    <ul>
+      <li>所有安全、認證、風控與審核查詢使用 <code>sqlx::query!</code> 或 <code>sqlx::query_as!</code>；CI 必須跑 <code>cargo sqlx prepare --check --workspace</code>。</li>
+      <li>禁止建立泛用 raw SQL helper 接收未審核字串；動態條件以 enum / query builder 型別分支組合，不接受前端傳入欄位名或排序方向直接拼接。</li>
+      <li>安全 PR review checklist 必須檢查 <code>format!(... SQL ...)</code>、<code>push_str</code> SQL 與 ORM 依賴新增。</li>
+    </ul>
   </section>
 
   <section>
@@ -102,6 +114,8 @@
     <h2>8. 驗收</h2>
     <ul>
       <li>WAF / RBAC / injection countermeasures 完成並有 CI gate。</li>
+      <li>PoC-A EdDSA / LIFF 結果已回填，或 fallback ADR 已接受。</li>
+      <li>chargeback &gt;= 1 的封號與黑名單流程有單元測試與 webhook replay 測試。</li>
       <li>refresh 重放防護與 step-up 可用性測試。</li>
       <li>安全敏感模組遵循 4-eye 或規定簽核。</li>
       <li>多簽表與 spec 依賴（008/015/012/013/017）一致。</li>

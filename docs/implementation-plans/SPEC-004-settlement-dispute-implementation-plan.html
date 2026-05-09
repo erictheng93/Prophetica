@@ -151,8 +151,11 @@
     </ul>
     <h3>8.3 大型批次與失敗恢復</h3>
     <ul>
+      <li>當持倉數 &gt; 10,000 時啟用批次結算；單批大小固定為 500 positions（T-12），不得回退到 1000。</li>
       <li>每批次處理持倉時保留批次序號與窗口 checksum，用於比對「預期總和」與「實際入帳總和」。</li>
       <li>單批失敗則回滾該批，保留已完成批次結果不變。</li>
+      <li>每批 commit 後寫入 checkpoint；重試從最後成功 checkpoint 後的下一批開始，避免重複入帳。</li>
+      <li>批次 worker 需暴露 queue depth、batch duration、failure ratio；單批失敗率異常觸發 P1，總和不一致觸發 P0。</li>
       <li>重試節奏（次數與間隔）需參數化，並有最大重試上限與人工升級開關。</li>
     </ul>
     <h3>8.4 排程與 off-peak</h3>

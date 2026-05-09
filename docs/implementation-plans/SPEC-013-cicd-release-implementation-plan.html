@@ -20,10 +20,10 @@
 <body>
   <h1>SPEC-013 CI/CD &amp; 發佈策略 implementation plan</h1>
   <div class="meta">
-    <strong>版本</strong>: v0.2.0<br>
+    <strong>版本</strong>: v0.2.1<br>
     <strong>更新日</strong>: 2026-05-09<br>
     <strong>對應規格</strong>: <a href="../../specs/SPEC-013-cicd-release.html">SPEC-013</a><br>
-    <strong>目標</strong>: 形成可複用、可追溯的 PR 與 Release gate 鏈路
+    <strong>目標</strong>: 形成可複用、可追溯的 PR、Release gate 與公開 Beta 前 prod release gate 鏈路
   </div>
 
   <section>
@@ -44,6 +44,19 @@
   </section>
 
   <section>
+    <h2>2.1 Public Beta minimum prod release gate</h2>
+    <p>公開 Beta / 真實入金前，prod release gate 缺任一項即阻擋 release review。</p>
+    <ul>
+      <li>Feature flag：所有支付、下單、KYC、結算與管理端高風險路徑都需可關閉，flag 變更寫入 audit log。</li>
+      <li>Canary 或等價 staged rollout：先部署 prod-preview / canary，通過錯誤率、latency budget 與業務 smoke test 後才擴大。</li>
+      <li>Rollback drill：每個 release train 至少保留一筆最近 30 天內的應用回滾演練紀錄。</li>
+      <li>Migration rollback plan：每個 DB migration 必須標註 forward-only / reversible；reversible 需有 dry-run，forward-only 需有補償計畫。</li>
+      <li>安全 gate：secret scan、SCA、SAST、image scan、IaC lint、migration dry-run、E2E smoke 全部通過。</li>
+      <li>Prod approval：依 SPEC-010 §9.3 MS-12 執行，approval_snapshot 與 release artifact 一起封存。</li>
+    </ul>
+  </section>
+
+  <section>
     <h2>3. 必過門檻（必須 pass 的 gate）</h2>
     <pre><code>pnpm install --frozen-lockfile
 cargo build --workspace --locked
@@ -53,7 +66,8 @@ make lint（clippy -D warnings / rustfmt / eslint / prettier）
 make test（nextest + turbo test）
 cargo deny check
 cargo geiger regression
-secret scan / SAST / image scan / IaC lint / migration dry-run</code></pre>
+secret scan / SAST / image scan / IaC lint / migration dry-run
+prod approval MS-12 evidence check</code></pre>
     <ul>
       <li>任何 gate 失敗不得進入 PR merge gate。</li>
       <li>prod gate 僅在 PR #1 後續 workflow 中啟動。</li>
@@ -80,6 +94,8 @@ secret scan / SAST / image scan / IaC lint / migration dry-run</code></pre>
       <li>所有發佈路徑必須有可重現輸入（lockfile + sqlx metadata）。</li>
       <li>prod 佈署前必須執行 secret-scan 與 SCA。</li>
       <li>migration dry-run 過期或不一致直接阻斷 release。</li>
+      <li>未通過 canary / staged rollout 與 rollback drill 的 release 不得進入公開 Beta 或真實入金流量。</li>
+      <li>任何 prod approval 必須引用 SPEC-010 §9.3 MS-12，禁止 workflow 自刻另一套簽核規則。</li>
     </ul>
   </section>
 
@@ -88,6 +104,7 @@ secret scan / SAST / image scan / IaC lint / migration dry-run</code></pre>
     <ol>
       <li>新 PR 依 spec 路徑進入最少 3 種環境驗證（至少 dev/staging/prod-preview）。</li>
       <li>SAST/SCA/image scan 報表保留 30 天以上。</li>
+      <li>Public Beta 前可提供 feature flag、canary、rollback drill、migration rollback plan 與 MS-12 approval evidence。</li>
       <li>CI 導出版本與變更清單可回溯到 PR 編號與門檻結果。</li>
     </ol>
   </section>

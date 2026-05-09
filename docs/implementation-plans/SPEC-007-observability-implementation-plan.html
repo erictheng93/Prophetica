@@ -16,7 +16,7 @@
 </head>
 <body>
   <h1>SPEC-007 — 可觀測性與監控實作計畫</h1>
-  <p><strong>規格參照：</strong><a href="../../specs/SPEC-007-observability.html">SPEC-007-observability.html</a> · <strong>版本：</strong>v0.1.0</p>
+  <p><strong>規格參照：</strong><a href="../../specs/SPEC-007-observability.html">SPEC-007-observability.html</a> · <strong>版本：</strong>v0.2.0</p>
 
   <section>
     <h2>1. 實作目標</h2>
@@ -24,6 +24,7 @@
       <li>完成 Metrics / Logging / Tracing 三柱並落地 Prometheus、OTel、Grafana 觀測。</li>
       <li>把 service-level、業務級、合規級 SLO 都標準化。</li>
       <li>定義跨 hop latency budget 與告警邏輯。</li>
+      <li>對齊 v0.2.x close-out：OTLP exporter、OTel Collector、Prometheus / Grafana / Tempo / Loki local stack 必須可由 bootstrap 啟動並被 CI smoke 檢查。</li>
     </ul>
   </section>
 
@@ -43,6 +44,8 @@
       <li><strong>Metrics</strong>：Counter / gauge / histogram，命名採 <code>proph_{domain}_{subject}_{unit}</code>。</li>
       <li><strong>Logging</strong>：JSON 結構化，必含 service, version, level, trace_id, event。</li>
       <li><strong>Tracing</strong>：OTel SDK with W3C traceparent，trace name 與 hop 命名對應 6.4。 </li>
+      <li>若 <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> 已配置，Rust SDK 必須接 OTLP exporter；未配置時允許 local no-op / stdout exporter。</li>
+      <li>Collector config 固定於 <code>infra/otel-collector/otel-collector.yaml</code>，本地與 CI smoke test 使用同一路徑。</li>
     </ul>
   </section>
 
@@ -78,6 +81,7 @@
       <li>Grafana dashboard：API、engine、wallet、settlement、compliance。</li>
       <li>Prometheus 規則：P99 burn、queue lag、error rate、retry ratio。</li>
       <li>AlertManager 路由與分群（prod / staging 區分）。</li>
+      <li>Local compose health：Prometheus、Grafana、Tempo、Loki、OTel Collector 均需有 readiness probe，供 SPEC-017 bootstrap gate 檢查。</li>
     </ul>
   </section>
 

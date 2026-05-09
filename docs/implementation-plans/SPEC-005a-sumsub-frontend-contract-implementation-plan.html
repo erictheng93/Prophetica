@@ -16,7 +16,7 @@
 </head>
 <body>
   <h1>SPEC-005a — SumSub 前端整合契約實作計畫</h1>
-  <p><strong>規格參照：</strong><a href="../../specs/SPEC-005a-sumsub-frontend-contract.html">SPEC-005a-sumsub-frontend-contract.html</a> · <strong>版本：</strong>v0.1.0</p>
+  <p><strong>規格參照：</strong><a href="../../specs/SPEC-005a-sumsub-frontend-contract.html">SPEC-005a-sumsub-frontend-contract.html</a> · <strong>版本：</strong>v0.1.1</p>
 
   <section>
     <h2>1. 實作目的</h2>
@@ -30,7 +30,8 @@
       <li><strong>INV-UI-2</strong>：provider mount/unmount 必須具備可控生命週期與事件回傳。</li>
       <li><strong>INV-UI-3</strong>：adapter chain 只做 client-side 串接，帳號提升結果以 webhook + 後端 API 為唯一真相。</li>
       <li><strong>INV-UI-4</strong>：POST start upgrade 與 server action 不得由 client 傳 user_id。</li>
-      <li><strong>INV-UI-5</strong>：retry 上限及 idempotency key 嚴格使用 server-generated key，不可由使用者重構。</li>
+      <li><strong>INV-UI-5</strong>：retry 上限及 idempotency key 嚴格使用 server-derived key，不可由使用者傳入或重構。</li>
+      <li><strong>INV-UI-6</strong>：server action 的唯一可信身份來源是 server-side session / auth context，client input 不得包含 <code>userId</code>、<code>externalUserId</code>、<code>applicantId</code> 或任何可推導 subject 的欄位。</li>
     </ul>
   </section>
 
@@ -57,6 +58,7 @@
       <li>Tier2: 只有 sumsub stage。</li>
       <li>Tier3: sumsub + iproov（可先提供 manifest 與 stub，不啟用時回退錯誤）。</li>
       <li>backend 回傳 chain 且以 chain 為主。</li>
+      <li>backend 尚未提供 <code>chain</code> 前，frontend 可由 <code>sdkToken</code> 推導相容 manifest；一旦後端回傳 <code>chain</code>，後端值為 authoritative。</li>
     </ul>
   </section>
 
@@ -75,6 +77,7 @@
       <li>mock provider 5 秒自動 emit submitted，必要時全域 hook 觸發。</li>
       <li>所有 SDK 測試覆蓋：mount 時序、error 映射、event 轉換、unsubscribe 釋放。</li>
       <li>E2E：兩次送出只建立一筆 pending；submitted 後 3-5 分鐘 polling 轉 done。</li>
+      <li>Server action test：client 嘗試傳入不同 user identity 時必須被忽略或拒絕，idempotency key 由 server-derived userId 重建。</li>
     </ul>
   </section>
 

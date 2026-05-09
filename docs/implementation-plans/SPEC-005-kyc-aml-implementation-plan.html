@@ -17,7 +17,17 @@
 </head>
 <body>
   <h1>SPEC-005 — KYC / AML 實作計畫</h1>
-  <p><strong>規格參照：</strong><a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005-kyc-aml.html</a> · <strong>版本：</strong>v0.1.0</p>
+  <p><strong>規格參照：</strong><a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005-kyc-aml.html</a> · <strong>版本：</strong>v0.1.4</p>
+
+  <section>
+    <h2>0. 實作狀態與 Launch Gate</h2>
+    <ul>
+      <li>已完成：backend in-memory contract、API trait、mock provider、基本 migration 與 secret hardening 校準。</li>
+      <li>PR #1 後 P0 sprint：Postgres provider wiring、SQLx offline metadata 對齊最終 queries、SumSub / Onfido sandbox secret fallback hardening。</li>
+      <li>Frontend 待完成：真實 SumSub iframe、Tier 2 / Tier 3 OCR flow、RED / PENDING replay、PEP / sanctions rescan。</li>
+      <li>Public Beta blocker：真實入金 / 真實下單前，Tier 2 SumSub iframe、webhook HMAC、GREEN / RED / PENDING replay、RED→Frozen、PEP / sanctions rescan 必須 sandbox E2E 通過並回填 SPEC-000 LG-3 evidence。</li>
+    </ul>
+  </section>
 
   <section>
     <h2>1. 實作目標</h2>

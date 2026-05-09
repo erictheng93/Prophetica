@@ -22,11 +22,22 @@
 <body>
   <h1>SPEC-012 customer support implementation plan</h1>
   <div class="meta">
-    <strong>版本</strong>: v0.1.0<br>
+    <strong>版本</strong>: v0.1.1<br>
     <strong>更新日</strong>: 2026-05-09<br>
     <strong>對應規格</strong>: <a href="../../specs/SPEC-012-customer-support.html">SPEC-012</a><br>
     <strong>目標</strong>: 將客服、SLA、工單、審核與帳本關聯流程轉為工程可落地清單
   </div>
+
+  <section>
+    <h2>0. Public Beta minimum</h2>
+    <p>公開 Beta / 真實入金前需具備最小客服能力；缺任一項時只能做 internal alpha / sandbox demo。</p>
+    <ul>
+      <li>單一客服入口與可追蹤 ticket id。</li>
+      <li>KYC / 支付 / 結算 / RG 四類分流與 assignee team。</li>
+      <li>SLA 告警與違反升級。</li>
+      <li>所有影響帳本或帳戶狀態的客服動作寫入 audit log。</li>
+    </ul>
+  </section>
 
   <section>
     <h2>1. 目的與邊界</h2>

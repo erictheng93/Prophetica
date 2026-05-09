@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>SPEC-008 — 災備與高可用實作計畫</h1>
-  <p><strong>規格參照：</strong><a href="../../specs/SPEC-008-disaster-recovery.html">SPEC-008-disaster-recovery.html</a> · <strong>版本：</strong>v0.1.0</p>
+  <p><strong>規格參照：</strong><a href="../../specs/SPEC-008-disaster-recovery.html">SPEC-008-disaster-recovery.html</a> · <strong>版本：</strong>v0.2.1</p>
 
   <section>
     <h2>1. RTO / RPO 實作目標</h2>
@@ -50,9 +50,12 @@
     <h2>4. 載入重試與客戶端 DR 容錯</h2>
     <ul>
       <li>WebSocket 500ms 起始、2x、±20% jitter、30s cap、30 次。</li>
-      <li>GET GET retry 3 次（200ms, 400ms, 800ms）。</li>
+      <li>WebSocket heartbeat interval 固定 15s；missed heartbeat 需進入 reconnect flow。</li>
+      <li>GET retry 3 次（200ms, 400ms, 800ms）。</li>
       <li>POST / PUT / DELETE 寫操作 retry 必須帶 idempotency key，重用 key。</li>
-      <li>reconcile：seq gap 以 snapshot API 補洞，超過上限進 fallback mode。</li>
+      <li>Idempotency-Key 採 UUID v7，由共用 helper 產生，禁止各頁面自刻格式。</li>
+      <li>reconcile：per-subscription monotonic seq + 60s tail；seq gap 以 snapshot API 補洞，超過上限進 fail-soft mode。</li>
+      <li>fail-soft mode：顯示單一連線狀態 banner、禁用下單、保留 polling 降級與手動重試。</li>
     </ul>
   </section>
 
@@ -69,7 +72,8 @@
     <h2>6. Kill switch / 多重簽核</h2>
     <ul>
       <li>停盤 API：<code>POST /api/internal/admin/halt</code>。</li>
-      <li>解除必須對應 MS-9 流程：2-of-3（CTO/Compliance/SE），寫 <code>audit_logs</code>。</li>
+      <li>解除必須對應 SPEC-010 §9.3 MS-9 流程：2-of-3（CTO/Compliance/SE），寫 <code>audit_logs</code>。</li>
+      <li>admin / Compliance UI 不得為 MS-9 自刻簽核流程，必須使用 SPEC-010 multi-sig central component 與 approval snapshot。</li>
     </ul>
   </section>
 

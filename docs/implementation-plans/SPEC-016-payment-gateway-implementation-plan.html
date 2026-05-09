@@ -20,11 +20,22 @@
 <body>
   <h1>SPEC-016 payment gateway integration implementation plan</h1>
   <div class="meta">
-    <strong>版本</strong>: v0.1.1<br>
+    <strong>版本</strong>: v0.1.2<br>
     <strong>更新日</strong>: 2026-05-09<br>
     <strong>對應規格</strong>: <a href="../../specs/SPEC-016-payment-gateway.html">SPEC-016</a><br>
-    <strong>目標</strong>: 固定支付 provider 介面、簽章驗證、對帳與 chargeback 失敗處理
+    <strong>目標</strong>: 固定支付 provider 介面、簽章驗證、對帳、chargeback 失敗處理與公開 Beta 前支付啟用證據
   </div>
+
+  <section>
+    <h2>0. Public Beta / 真實入金 Gate</h2>
+    <p>在 SPEC-000 §2 LG-2 與 SPEC-016 §3.2 完成前，本模組只能啟用 mock 或 sandbox payment flow，不得開放真實儲值、真實交易或對外行銷。</p>
+    <ul>
+      <li>至少一家 provider 需有 signed terms 或 LOI，明確接受 MCC / prediction-market 類業務與 chargeback 條款。</li>
+      <li>需完成 sandbox webhook E2E：建立 payment intent、成功入帳、refund、chargeback / dispute created、retry 與 replay。</li>
+      <li>需產出 PCI SAQ A scope note，確認卡號不進入本平台服務、log、queue 或資料庫。</li>
+      <li>需完成 refund / chargeback drill log，並回填至 SPEC-000 LG-2 evidence。</li>
+    </ul>
+  </section>
 
   <section>
     <h2>1. 流程總覽</h2>
@@ -41,7 +52,8 @@
     <ul>
       <li>401/403：簽章失敗或重放事件拒絕。</li>
       <li>400：payload 不合法，回傳可重試建議。</li>
-      <li>200：處理成功（含「already processed」。</li>
+      <li>200：處理成功（含「already processed」）。</li>
+      <li>公開 Beta 前驗收需附 provider sandbox evidence、PCI scope note 與 refund / chargeback drill log。</li>
     </ul>
   </section>
 
@@ -76,8 +88,10 @@
     <h2>6. 驗收</h2>
     <ol>
       <li>至少一條 provider 的 end-to-end webhook 測試通過。</li>
+      <li>至少一家 provider 完成 MCC / prediction-market 接受度書面確認或 signed LOI。</li>
+      <li>PCI SAQ A 邊界文件完成，且驗證本平台不接觸 PAN / CVV。</li>
       <li>對帳缺口可追溯、能產出補帳單。</li>
-      <li>chargeback 事件會連動 risk / user status 變更。</li>
+      <li>chargeback 事件會連動 risk / user status 變更，且累計 chargeback &gt;= 1 立即永久封號與黑名單。</li>
     </ol>
   </section>
 </body>

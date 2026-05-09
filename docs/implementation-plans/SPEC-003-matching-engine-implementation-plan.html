@@ -139,6 +139,15 @@ pub struct PriceLevel {
 <ul>
   <li>對同帳號或可疑關聯的對碰，採 CANCEL_NEWEST / CANCEL_OLDEST / CANCEL_BOTH / DECREMENT_BOTH 四策略之一（預設對零售用戶 CANCEL_NEWEST）。</li>
   <li>參數與策略矩陣由配置中心供給，含違規後封鎖與告警。</li>
+  <li>Hedge 允許：不得在撮合 hot path 增加 <code>HEDGE_NOT_ALLOWED</code> pre-trade 檢查；自我對沖刷量由 SPEC-010 post-trade 偵測處理。</li>
+</ul>
+
+<h2>4.1 Platform Sentinel 紅線（R-2）</h2>
+<ul>
+  <li><code>system.platform_announcement</code> / <code>uid=4</code> 已移除，且必須列入 <code>RESERVED_REMOVED_USER_IDS</code>，避免歷史紀錄與未來 user id 撞號。</li>
+  <li><code>PLATFORM_SYSTEM_USER_IDS</code> 不得包含 <code>uid=4</code>；測試需覆蓋 removed id 不會被視為 active sentinel。</li>
+  <li>冷啟動流動性不得使用平台公告錢包或任何平台自營掛單；流動性不足走 SPEC-009 DMM rebate 放大或延後上架。</li>
+  <li>CI sentinel-scan 必須阻擋 <code>auto_quote</code>、<code>market_balancer</code>、<code>house_book</code>、<code>probability_symmetry</code>、<code>auto_hedge</code> 與 DMM gateway 引用 platform sentinel users。</li>
 </ul>
 
 <h2>5. 並發模型與執行時</h2>
@@ -192,12 +201,14 @@ pub struct PriceLevel {
   <li>成交價區間：0~100（內部以 0.01 點位）。</li>
   <li>市場關閉後不得新進單；既有未成交單撤銷與鎖定反向處理。</li>
   <li>snapshot 與 WAL 損毀時要有校驗與恢復路徑。</li>
+  <li>任何新 sentinel 或 removed sentinel 變更需先更新 SPEC / ADR，並附 Compliance 4-eye review。</li>
 </ul>
 
 <h2>9. 測試與驗收（工程）</h2>
 <ul>
   <li>單元測試：核心撮合、撤單、IOC/FOK/POST_ONLY、STP、status transitions。</li>
   <li>屬性測試：量守恆、無交叉訂單簿、seq 單調、撤單一致。</li>
+  <li>sentinel tests：<code>uid=4</code> 不在 active set、存在於 <code>RESERVED_REMOVED_USER_IDS</code>、active / removed 集合不重疊。</li>
   <li>重放測試：snapshot+WAL replay 的幂等與 determinism。</li>
   <li>壓測與災難回復：1M 單量測試、kill-9 恢復、disk full 行為、Kafka/網路暫時不可用恢復。</li>
   <li>Mutation testing：關鍵模組定期跑 mutation，達到既定門檻。</li>

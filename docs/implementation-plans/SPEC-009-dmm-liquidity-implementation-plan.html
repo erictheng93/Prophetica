@@ -15,7 +15,7 @@
 </head>
 <body>
   <h1>SPEC-009 — DMM 計畫與流動性策略實作計畫</h1>
-  <p><strong>規格參照：</strong><a href="../../specs/SPEC-009-dmm-liquidity.html">SPEC-009-dmm-liquidity.html</a> · <strong>版本：</strong>v0.1.0</p>
+  <p><strong>規格參照：</strong><a href="../../specs/SPEC-009-dmm-liquidity.html">SPEC-009-dmm-liquidity.html</a> · <strong>版本：</strong>v0.2.1</p>
 
   <section>
     <h2>1. 實作目標</h2>
@@ -32,6 +32,7 @@
       <li><strong>INV-DMM-1</strong>：平台、員工、受控帳戶不得直接在訂單簿掛單。</li>
       <li><strong>INV-DMM-2</strong>：任何 DMM 訂單需標記 dmm_id 並通過 per-market limit 審核。</li>
       <li><strong>INV-DMM-3</strong>：LM 需強制 KYC Tier 2+，并阻斷疑似套利 7 日內放款。</li>
+      <li><strong>INV-DMM-4</strong>：冷啟動補貼 / 平台公告錢包路徑已永久移除；不得以 <code>system.platform_announcement</code>、<code>uid=4</code> 或任何平台 sentinel 送單。</li>
     </ul>
   </section>
 
@@ -39,7 +40,7 @@
     <h2>3. DMM service 實作</h2>
     <ul>
       <li>服務路徑：<code>services/dmm-gateway</code>。</li>
-      <li>連線：TLS client endpoint（mTLS optional，先以 API key + token 驗證）。</li>
+      <li>連線：Rust + tokio + tokio-rustls 的 TLS client endpoint（mTLS optional，先以 API key + token 驗證）。</li>
       <li>訊息：LOGON, NEW_ORDER, CANCEL_ORDER, MASS_CANCEL, ORDER_ACK, ORDER_FILL, ORDER_REJECT, MARKET_DATA, HEARTBEAT。</li>
       <li>每 connection 可承載 1000 ops/s。</li>
       <li>下單 flow：</li>
@@ -68,6 +69,7 @@
       <li>reward 公式保留：貢獻度（時間×深度×反價差）。</li>
       <li>7 日確認期後發放，與洗量交易檢測掛鉤。</li>
       <li>列入黑名單設備 / IP / 交易對關係的 LP 不得參與。</li>
+      <li>流動性不足時只能提高 DMM rebate 或延後市場上架，不得新增平台自營補貼。</li>
     </ul>
   </section>
 
