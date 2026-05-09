@@ -1,0 +1,394 @@
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
+
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{get, post},
+};
+use serde::{Deserialize, Serialize};
+
+pub trait AdminOpsStore {
+    /// Builds the internal admin member summary facade.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the backing store cannot be read.
+    fn member_summary(&self, user_id: &str) -> Result<MemberSummaryResponse, AdminOpsStoreError>;
+
+    /// Persists a compensation proposal without posting a ledger transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the proposal or audit record cannot be persisted.
+    fn create_compensation_proposal(
+        &self,
+        user_id: &str,
+        request: CompensationProposalRequest,
+    ) -> Result<CompensationProposalResponse, AdminOpsStoreError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MemberSummaryResponse {
+    pub member: MemberIdentitySummary,
+    pub wallet: WalletOpsSummary,
+    pub kyc_risk: KycRiskSummary,
+    pub affiliate: AffiliateOpsSummary,
+    pub open_cases: Vec<OpenCaseSummary>,
+    pub audit: AuditPostureSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MemberIdentitySummary {
+    pub user_id: String,
+    pub display_name: String,
+    pub email_masked: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WalletOpsSummary {
+    pub balance: WalletBalanceSummary,
+    pub entries_summary: WalletEntriesSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WalletBalanceSummary {
+    pub available_minor_units: i64,
+    pub locked_minor_units: i64,
+    pub frozen_minor_units: i64,
+    pub currency: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WalletEntriesSummary {
+    pub recent_entries_count: u32,
+    pub last_entry_at_epoch_seconds: Option<i64>,
+    pub pending_adjustments_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct KycRiskSummary {
+    pub kyc_status: String,
+    pub risk_level: String,
+    pub risk_score: Option<u32>,
+    pub last_reviewed_at_epoch_seconds: Option<i64>,
+    pub restrictions: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AffiliateOpsSummary {
+    pub referral_code: Option<String>,
+    pub successful_referrals_count: u32,
+    pub total_rewards_minor_units: i64,
+    pub pending_rewards_minor_units: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OpenCaseSummary {
+    pub case_id: String,
+    pub case_type: String,
+    pub status: String,
+    pub owner_role: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AuditPostureSummary {
+    pub correlation_id: String,
+    pub source: String,
+    pub audit_required: bool,
+    pub latest_admin_action_at_epoch_seconds: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct CompensationProposalRequest {
+    pub ticket_id: Option<String>,
+    pub reason: Option<String>,
+    pub amount_minor_units: Option<i64>,
+    pub approvals: Option<Vec<CompensationApprovalRequest>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompensationApprovalRequest {
+    pub approver_user_id: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompensationProposalResponse {
+    pub proposal: CompensationProposal,
+    pub audit: CompensationAuditMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompensationProposal {
+    pub proposal_id: String,
+    pub user_id: String,
+    pub ticket_id: String,
+    pub reason: String,
+    pub amount_minor_units: i64,
+    pub status: CompensationProposalStatus,
+    pub approvals: Vec<CompensationApprovalRequest>,
+    pub ledger_transaction_posted: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompensationProposalStatus {
+    PendingApproval,
+    ApprovedReadyForLedger,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompensationAuditMetadata {
+    pub action: String,
+    pub subject_user_id: String,
+    pub ticket_id: String,
+    pub correlation_id: String,
+    pub approval_roles: Vec<String>,
+    pub ledger_transaction_posted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ErrorResponse {
+    error: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminOpsStoreError {
+    message: String,
+}
+
+impl AdminOpsStoreError {
+    #[must_use]
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+pub fn internal_admin_router<S>(store: S) -> Router
+where
+    S: AdminOpsStore + Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route(
+            "/api/internal/admin/members/:user_id/summary",
+            get(member_summary::<S>),
+        )
+        .route(
+            "/api/internal/admin/members/:user_id/compensation-proposals",
+            post(create_compensation_proposal::<S>),
+        )
+        .with_state(store)
+}
+
+async fn member_summary<S>(
+    State(store): State<S>,
+    Path(user_id): Path<String>,
+) -> Result<Json<MemberSummaryResponse>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    store
+        .member_summary(&user_id)
+        .map(Json)
+        .map_err(|_| internal_error())
+}
+
+async fn create_compensation_proposal<S>(
+    State(store): State<S>,
+    Path(user_id): Path<String>,
+    Json(request): Json<CompensationProposalRequest>,
+) -> Result<Json<CompensationProposalResponse>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    validate_compensation_proposal(&request)?;
+    store
+        .create_compensation_proposal(&user_id, request)
+        .map(Json)
+        .map_err(|_| internal_error())
+}
+
+fn validate_compensation_proposal(
+    request: &CompensationProposalRequest,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if request
+        .ticket_id
+        .as_deref()
+        .is_none_or(|ticket_id| ticket_id.trim().is_empty())
+        || request
+            .reason
+            .as_deref()
+            .is_none_or(|reason| reason.trim().is_empty())
+        || request.amount_minor_units.is_none_or(|amount| amount <= 0)
+        || request
+            .approvals
+            .as_ref()
+            .is_none_or(|approvals| approvals.len() != 2)
+    {
+        return Err(invalid_proposal());
+    }
+
+    let mut approver_ids = HashSet::new();
+    let approvals = request.approvals.as_ref().ok_or_else(invalid_proposal)?;
+    for approval in approvals {
+        if approval.approver_user_id.trim().is_empty()
+            || approval.role.trim().is_empty()
+            || !approver_ids.insert(approval.approver_user_id.clone())
+        {
+            return Err(invalid_proposal());
+        }
+    }
+
+    Ok(())
+}
+
+fn invalid_proposal() -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            error: "ERROR_CODE_INVALID_COMPENSATION_PROPOSAL",
+        }),
+    )
+}
+
+fn internal_error() -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "ERROR_CODE_INTERNAL",
+        }),
+    )
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryAdminOpsStore {
+    state: Arc<Mutex<AdminOpsState>>,
+}
+
+#[derive(Debug, Default)]
+struct AdminOpsState {
+    next_proposal_number: u64,
+    audit_records: Vec<CompensationAuditMetadata>,
+}
+
+impl InMemoryAdminOpsStore {
+    #[must_use]
+    pub fn audit_records(&self) -> Vec<CompensationAuditMetadata> {
+        self.state.lock().map_or_else(
+            |poisoned| poisoned.into_inner().audit_records.clone(),
+            |state| state.audit_records.clone(),
+        )
+    }
+}
+
+impl AdminOpsStore for InMemoryAdminOpsStore {
+    fn member_summary(&self, user_id: &str) -> Result<MemberSummaryResponse, AdminOpsStoreError> {
+        Ok(MemberSummaryResponse {
+            member: MemberIdentitySummary {
+                user_id: user_id.to_owned(),
+                display_name: format!("Member {user_id}"),
+                email_masked: "not_connected".to_owned(),
+                status: "placeholder".to_owned(),
+            },
+            wallet: WalletOpsSummary {
+                balance: WalletBalanceSummary {
+                    available_minor_units: 0,
+                    locked_minor_units: 0,
+                    frozen_minor_units: 0,
+                    currency: "minor_units".to_owned(),
+                },
+                entries_summary: WalletEntriesSummary {
+                    recent_entries_count: 0,
+                    last_entry_at_epoch_seconds: None,
+                    pending_adjustments_count: 0,
+                },
+            },
+            kyc_risk: KycRiskSummary {
+                kyc_status: "not_connected".to_owned(),
+                risk_level: "unknown".to_owned(),
+                risk_score: None,
+                last_reviewed_at_epoch_seconds: None,
+                restrictions: Vec::new(),
+            },
+            affiliate: AffiliateOpsSummary {
+                referral_code: None,
+                successful_referrals_count: 0,
+                total_rewards_minor_units: 0,
+                pending_rewards_minor_units: 0,
+            },
+            open_cases: Vec::new(),
+            audit: AuditPostureSummary {
+                correlation_id: format!("admin-summary-{user_id}"),
+                source: "api-gateway:admin-ops".to_owned(),
+                audit_required: true,
+                latest_admin_action_at_epoch_seconds: None,
+            },
+        })
+    }
+
+    fn create_compensation_proposal(
+        &self,
+        user_id: &str,
+        request: CompensationProposalRequest,
+    ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        state.next_proposal_number += 1;
+        let ticket_id = request
+            .ticket_id
+            .ok_or_else(|| AdminOpsStoreError::new("validated ticket id is missing"))?;
+        let reason = request
+            .reason
+            .ok_or_else(|| AdminOpsStoreError::new("validated reason is missing"))?;
+        let amount_minor_units = request
+            .amount_minor_units
+            .ok_or_else(|| AdminOpsStoreError::new("validated amount is missing"))?;
+        let approvals = request
+            .approvals
+            .ok_or_else(|| AdminOpsStoreError::new("validated approvals are missing"))?;
+        let correlation_id = format!(
+            "admin-compensation-{ticket_id}-{}",
+            state.next_proposal_number
+        );
+        let audit = CompensationAuditMetadata {
+            action: "compensation_proposal_created".to_owned(),
+            subject_user_id: user_id.to_owned(),
+            ticket_id: ticket_id.clone(),
+            correlation_id,
+            approval_roles: approvals
+                .iter()
+                .map(|approval| approval.role.clone())
+                .collect(),
+            ledger_transaction_posted: false,
+        };
+        state.audit_records.push(audit.clone());
+
+        Ok(CompensationProposalResponse {
+            proposal: CompensationProposal {
+                proposal_id: format!("cmp-{number:06}", number = state.next_proposal_number),
+                user_id: user_id.to_owned(),
+                ticket_id,
+                reason,
+                amount_minor_units,
+                status: CompensationProposalStatus::ApprovedReadyForLedger,
+                approvals,
+                ledger_transaction_posted: false,
+            },
+            audit,
+        })
+    }
+}

@@ -1,0 +1,187 @@
+#![allow(clippy::expect_used)]
+
+use api_gateway::admin_ops::{InMemoryAdminOpsStore, internal_admin_router};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
+use http_body_util::BodyExt;
+use serde_json::{Value, json};
+use tower::ServiceExt;
+
+#[tokio::test]
+async fn summary_returns_aggregate_shape() {
+    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/internal/admin/members/user_123/summary")
+                .body(Body::empty())
+                .unwrap_or_else(|error| panic!("request should build: {error}")),
+        )
+        .await
+        .expect("summary request should be handled");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["member"]["user_id"], json!("user_123"));
+    assert_eq!(body["member"]["display_name"], json!("Member user_123"));
+    assert_eq!(body["wallet"]["balance"]["available_minor_units"], json!(0));
+    assert_eq!(
+        body["wallet"]["entries_summary"]["recent_entries_count"],
+        json!(0)
+    );
+    assert_eq!(body["kyc_risk"]["kyc_status"], json!("not_connected"));
+    assert_eq!(body["kyc_risk"]["risk_level"], json!("unknown"));
+    assert_eq!(body["affiliate"]["referral_code"], json!(null));
+    assert_eq!(body["open_cases"], json!([]));
+    assert_eq!(
+        body["audit"]["correlation_id"],
+        json!("admin-summary-user_123")
+    );
+    assert_eq!(body["audit"]["source"], json!("api-gateway:admin-ops"));
+}
+
+#[tokio::test]
+async fn compensation_rejects_missing_or_invalid_amount() {
+    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+
+    let missing = app
+        .clone()
+        .oneshot(json_post(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            &json!({
+                "ticket_id": "TICKET-1",
+                "reason": "manual adjustment review",
+                "approvals": [
+                    { "approver_user_id": "ops-1", "role": "ops_manager" },
+                    { "approver_user_id": "compliance-1", "role": "compliance" }
+                ]
+            }),
+        ))
+        .await
+        .expect("missing amount request should be handled");
+
+    assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(missing).await["error"],
+        json!("ERROR_CODE_INVALID_COMPENSATION_PROPOSAL")
+    );
+
+    let invalid = app
+        .oneshot(json_post(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            &json!({
+                "ticket_id": "TICKET-1",
+                "reason": "manual adjustment review",
+                "amount_minor_units": 0,
+                "approvals": [
+                    { "approver_user_id": "ops-1", "role": "ops_manager" },
+                    { "approver_user_id": "compliance-1", "role": "compliance" }
+                ]
+            }),
+        ))
+        .await
+        .expect("invalid amount request should be handled");
+
+    assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(invalid).await["error"],
+        json!("ERROR_CODE_INVALID_COMPENSATION_PROPOSAL")
+    );
+}
+
+#[tokio::test]
+async fn compensation_rejects_same_approver_twice() {
+    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+
+    let response = app
+        .oneshot(json_post(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            &json!({
+                "ticket_id": "TICKET-2",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000,
+                "approvals": [
+                    { "approver_user_id": "ops-1", "role": "ops_manager" },
+                    { "approver_user_id": "ops-1", "role": "compliance" }
+                ]
+            }),
+        ))
+        .await
+        .expect("duplicate approver request should be handled");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(response).await["error"],
+        json!("ERROR_CODE_INVALID_COMPENSATION_PROPOSAL")
+    );
+}
+
+#[tokio::test]
+async fn compensation_accepts_two_distinct_approvals_and_records_audit_metadata() {
+    let store = InMemoryAdminOpsStore::default();
+    let app = internal_admin_router(store.clone());
+
+    let response = app
+        .oneshot(json_post(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            &json!({
+                "ticket_id": "TICKET-3",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000,
+                "approvals": [
+                    { "approver_user_id": "ops-1", "role": "ops_manager" },
+                    { "approver_user_id": "compliance-1", "role": "compliance" }
+                ]
+            }),
+        ))
+        .await
+        .expect("valid compensation request should be handled");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["proposal"]["proposal_id"], json!("cmp-000001"));
+    assert_eq!(
+        body["proposal"]["status"],
+        json!("approved_ready_for_ledger")
+    );
+    assert_eq!(body["proposal"]["amount_minor_units"], json!(5000));
+    assert_eq!(body["proposal"]["ledger_transaction_posted"], json!(false));
+    assert_eq!(
+        body["audit"]["action"],
+        json!("compensation_proposal_created")
+    );
+    assert_eq!(body["audit"]["subject_user_id"], json!("user_123"));
+    assert_eq!(
+        body["audit"]["correlation_id"],
+        json!("admin-compensation-TICKET-3-1")
+    );
+
+    let records = store.audit_records();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].action, "compensation_proposal_created");
+    assert_eq!(records[0].subject_user_id, "user_123");
+    assert_eq!(records[0].correlation_id, "admin-compensation-TICKET-3-1");
+}
+
+fn json_post(uri: &str, body: &Value) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap_or_else(|error| panic!("request should build: {error}"))
+}
+
+async fn response_json(response: axum::response::Response) -> Value {
+    let collected = response
+        .into_body()
+        .collect()
+        .await
+        .unwrap_or_else(|error| panic!("response body should collect: {error}"));
+    serde_json::from_slice(&collected.to_bytes())
+        .unwrap_or_else(|error| panic!("response should be json: {error}"))
+}
