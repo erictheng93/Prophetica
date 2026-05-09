@@ -25,9 +25,10 @@
 <h1>SPEC-016 — 支付通路整合（Payment Gateway Integration）</h1>
 <blockquote>
 <p>優先級：<strong>P0（必須在第一行 production code 之前完成）</strong>
-版本：v0.1.1 · 最後更新：2026-05-07
+版本：v0.1.2 · 最後更新：2026-05-09
 依賴：SPEC-002, SPEC-005, SPEC-010
 被依賴：SPEC-007, SPEC-008, SPEC-013</p>
+<p><strong>v0.1.2 變更</strong>：補 public beta / 真實入金 blocker：SPEC-000 §5 Q-4 未 resolved、未完成至少一家 provider sandbox webhook + MCC / prediction-market 接受度 + chargeback 條款 + PCI scope note 前，不得開放真實儲值。</p>
 <p><strong>v0.1.1 變更（H-5）</strong>：§6.1 chargeback 永久封號門檻明示為「<strong>≥ 1</strong>」並補 cross-ref 至 SPEC-010 §6.2 / SPEC-002 §8.1，三檔統一門檻；H-5 跨檔對齊。</p>
 </blockquote>
 <hr />
@@ -109,10 +110,11 @@
 </tr>
 </tbody>
 </table>
-<h3>3.2 通路接受度核實（動工前驗證項目）</h3>
+<h3>3.2 通路接受度核實（公開 Beta 前驗證項目）</h3>
 <blockquote>
-<p>對應 <a href="./SPEC-000-index.md">SPEC-000 §5 Q-4</a>。在簽通路合約前必須驗證：</p>
+<p>對應 <a href="./SPEC-000-index.html">SPEC-000 §5 Q-4</a>。在簽通路合約前必須驗證：</p>
 </blockquote>
+<p><strong>Public Beta blocker</strong>：Q-4 未 resolved 時，平台可以實作 payment mock / sandbox，但不得開放真實儲值、真實交易或對外行銷。公開 Beta 前至少需完成 1 家 provider 的 signed terms 或 LOI、sandbox webhook E2E、MCC / prediction-market 接受度書面確認、refund / chargeback 演練、PCI SAQ A scope note，並回填 SPEC-000 §2 LG-2 evidence。</p>
 <table>
 <thead>
 <tr>
@@ -145,7 +147,7 @@
 <h2>4. 收款主體與託管帳戶對應</h2>
 <h3>4.1 收款邏輯</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <p><strong>禁區</strong>（呼應 ADR-0002 §8）：
 - ❌ Tech Service Co. 名下之台灣銀行帳戶<strong>禁止</strong>接收任何玩家儲值
@@ -219,7 +221,7 @@
 </table>
 <h3>5.2 Endpoint 規範</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <p>回應：
 - <code>200 OK</code>：處理成功（含「已處理過」case）
@@ -240,7 +242,7 @@
 </blockquote>
 <h4>5.5.1 共用流程</h4>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h4>5.5.2 通路對映表</h4>
 <table>
@@ -334,7 +336,7 @@
 </ul>
 <h4>5.5.4 Driver 必含介面（Rust）</h4>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h4>5.5.5 對映表維護規則</h4>
 <ul>
@@ -345,7 +347,7 @@
 <h2>6. Chargeback 與退款</h2>
 <h3>6.1 Chargeback 流程</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h3>6.2 退款流程（玩家主動 / 平台主動）</h3>
 <table>
@@ -383,12 +385,12 @@
 </ul>
 <h2>7. 跨幣別與匯率</h2>
 <blockquote>
-<p><strong>Phase 1 — 永遠單幣別 TWD</strong>（呼應 <a href="./SPEC-002-funds-safety.md">SPEC-002 §3.1</a> 已 Resolved 之 1 點 = TWD 1）。ledger 僅維持 <code>Bank.TrustAccount.TWD</code> 一個資產帳戶；國際玩家以非 TWD 法幣儲值時，<strong>由通路在 webhook 中換算為 TWD 後入帳</strong>，平台 ledger 永遠以 TWD 計價，<strong>任何幣別皆於通路端完成換算</strong>。</p>
+<p><strong>Phase 1 — 永遠單幣別 TWD</strong>（呼應 <a href="./SPEC-002-funds-safety.html">SPEC-002 §3.1</a> 已 Resolved 之 1 點 = TWD 1）。ledger 僅維持 <code>Bank.TrustAccount.TWD</code> 一個資產帳戶；國際玩家以非 TWD 法幣儲值時，<strong>由通路在 webhook 中換算為 TWD 後入帳</strong>，平台 ledger 永遠以 TWD 計價，<strong>任何幣別皆於通路端完成換算</strong>。</p>
 <p>Phase 2（多幣別）保留設計但<strong>目前無啟用計畫</strong>。Q-3 已 Resolved 為 TWD 1:1，Phase 2 不再被 Q-3 阻塞；觸發條件改為<strong>業務驅動</strong>：(a) Op Co. 開立非 TWD 計價之國際版本（例如 USD ledger）、或 (b) 平台需主動承擔 FX 對沖（例如向 DMM 結算非 TWD 點數）。在無上述業務需求前，§7.4 之多幣別 schema 不實作。</p>
 </blockquote>
 <h3>7.1 Phase 1 — 單幣別（TWD）入帳路徑</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h4>7.1.1 Webhook 必含欄位（FX 透明化）</h4>
 <p>不論玩家原儲值幣別，後端必須從 webhook 取得：</p>
@@ -429,7 +431,7 @@
 <h3>7.4 Phase 2（保留設計，目前無啟用計畫）— 多幣別 ledger</h3>
 <blockquote>
 <p>以下為延伸設計，<strong>目前無啟用計畫</strong>。觸發條件為業務驅動（見 §7 開頭）：Op Co. 開非 TWD 計價國際版本、或平台主動承擔 FX 對沖。Phase 1 不實作此 schema，僅保留設計以避免未來大規模 migration。</p>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <p>匯率鎖定原則：
 - 匯率以通路結算時點（webhook 提供）為準
@@ -495,7 +497,7 @@
 </ul>
 <h3>9.2 切換邏輯</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h3>9.3 玩家偏好</h3>
 <ul>
@@ -537,7 +539,7 @@
 </table>
 <h3>10.2 結帳前最終確認</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <p>未勾選兩個 checkbox 不可前進。</p>
 <h3>10.3 儲值完成後</h3>
@@ -548,7 +550,7 @@
 </ul>
 <h2>11. 監控指標（呼應 SPEC-007 §3）</h2>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h2>12. 性能與可靠性 SLO</h2>
 <table>
@@ -601,7 +603,7 @@
 </ul>
 <h2>15. Open Questions</h2>
 <blockquote>
-<p>跨檔決策已收斂至 <a href="./SPEC-000-index.md">SPEC-000 §5</a> 中央追蹤表。本節僅保留 SPEC-016 自身範圍內議題。</p>
+<p>跨檔決策已收斂至 <a href="./SPEC-000-index.html">SPEC-000 §5</a> 中央追蹤表。本節僅保留 SPEC-016 自身範圍內議題。</p>
 </blockquote>
 <ol>
 <li>通路 chargeback rate 是否須在合約中爭取 &lt; 0.5%（業界標準）？</li>

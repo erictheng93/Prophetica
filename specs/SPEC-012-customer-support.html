@@ -24,14 +24,17 @@
 <body>
 <h1>SPEC-012 — 客服與爭議升級</h1>
 <blockquote>
-<p>優先級：<strong>P2</strong>
-版本：v0.1.0 · 最後更新：2026-05-05
+<p>優先級：<strong>P1</strong>
+版本：v0.1.1 · 最後更新：2026-05-09
 依賴：SPEC-004, SPEC-006
-被依賴：—</p>
+被依賴：SPEC-000 Public Beta Launch Gate</p>
+<p><strong>v0.1.1 變更</strong>：公開 Beta 前最低客服能力上移至 P1 launch gate；未完成客服入口、SLA 告警、KYC / 支付 / 結算爭議分流與帳本影響操作留痕時，不得開放真實入金 / 真實下單。</p>
 </blockquote>
 <hr />
 <h2>1. Objective</h2>
 <p>建立 24/7 客服體系，處理玩家一般查詢、KYC 異議、結算申訴、責任博弈個案、技術故障。</p>
+<h3>1.1 Public Beta minimum</h3>
+<p>公開 Beta 前不要求完整 24/7 自建客服中心，但必須具備以下最小能力：單一客服入口、KYC / 支付 / 結算 / RG 四類分流、SLA 告警、可追蹤工單編號、所有影響帳本或帳戶狀態的客服動作寫入 audit log。缺任一項時，只能做 internal alpha / sandbox demo。</p>
 <h2>2. 服務管道與 SLA</h2>
 <table>
 <thead>
@@ -136,7 +139,7 @@
 </table>
 <h3>3.2 工單狀態機</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-012-customer-support-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-012-customer-support-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h3>3.3 SLA 違反告警</h3>
 <ul>
@@ -228,7 +231,7 @@
 <p>呼應 SPEC-006：</p>
 <h3>6.1 主動關懷流程（系統觸發）</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-012-customer-support-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-012-customer-support-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h3>6.2 玩家主動求助</h3>
 <ul>

@@ -38,7 +38,7 @@
 </blockquote>
 <hr>
 <h2>0. 文件性質</h2>
-<p>本目錄下所有 <code>SPEC-*.md</code> 文件均為<strong>可實施規格</strong>（Implementable Specification），遵循 SDD（Spec-Driven Development）方法論。</p>
+<p>本目錄下所有 <code>SPEC-*.html</code> 文件均為<strong>可實施規格</strong>（Implementable Specification），遵循 SDD（Spec-Driven Development）方法論。</p>
 <ul>
 <li>每份 SPEC 都是 Codex 開發任務的輸入。</li>
 <li>所有實作 PR 必須在 description 中引用 <code>SPEC-XXX § N.N</code> 章節。</li>
@@ -187,6 +187,24 @@
 <td>🟢 v0.2.2</td>
 </tr>
 <tr>
+  <td><a href="./SPEC-012-customer-support.html">SPEC-012</a></td>
+  <td>客服與爭議升級</td>
+  <td>公開 Beta 最低客服 SLA、KYC / 支付 / 結算爭議分流、帳本影響操作留痕</td>
+  <td>🟢 v0.1.1（P1 launch gate）</td>
+</tr>
+<tr>
+  <td><a href="./SPEC-013-cicd-release.html">SPEC-013</a></td>
+  <td>CI/CD 與發布</td>
+  <td>Pipeline（SPEC-017 §8 超集，H-3）、Coverage 分層（H-6）、Feature Flag、回滾；公開 Beta 前必須具備 prod release gate</td>
+  <td>🟢 v0.2.1（P1 launch gate）</td>
+</tr>
+<tr>
+  <td><a href="./SPEC-018-auditability-evidence-pack.html">SPEC-018</a></td>
+  <td>稽核與合規證據化</td>
+  <td>帳本與關鍵事件稽核、不可變更日誌、Evidence Pack 匯出；真實入金前必須具備最小證據鏈</td>
+  <td>🟢 v0.1.0</td>
+</tr>
+<tr>
   <td><a href="./SPEC-019-incident-response-sre.html">SPEC-019</a></td>
   <td>事件與事故回應</td>
   <td>事故分級（S0~S3）、SLA、公告更新節奏、72 小時事故回顧</td>
@@ -207,25 +225,7 @@
 <td><a href="./SPEC-011-affiliate-commission.html">SPEC-011</a></td>
 <td>代理分潤體系</td>
 <td>單層介紹費 + 交易佣金、業務 B2B 路徑（<strong>獨立法律關係，不從玩家錢包出口；R-1</strong>）、稅務扣繳、§4.1.2 延遲 30 天發放 + §4.6 月度 / 終身 / 群組上限（G-3 / G-8）</td>
-<td>🟢 v0.2.1</td>
-</tr>
-<tr>
-<td><a href="./SPEC-012-customer-support.html">SPEC-012</a></td>
-<td>客服與爭議升級</td>
-<td>SLA、工單系統</td>
-<td>🟢 v0.1</td>
-</tr>
-<tr>
-<td><a href="./SPEC-013-cicd-release.html">SPEC-013</a></td>
-<td>CI/CD 與發布</td>
-<td>Pipeline（SPEC-017 §8 超集，H-3）、Coverage 分層（H-6）、Feature Flag、回滾</td>
-<td>🟢 v0.2.0</td>
-</tr>
-<tr>
-  <td><a href="./SPEC-018-auditability-evidence-pack.html">SPEC-018</a></td>
-  <td>稽核與合規證據化</td>
-  <td>帳本與關鍵事件稽核、不可變更日誌、Evidence Pack 匯出</td>
-  <td>🟢 v0.1.0</td>
+<td>🟢 v0.2.3</td>
 </tr>
 <tr>
   <td><a href="./SPEC-020-analytics-reporting.html">SPEC-020</a></td>
@@ -251,6 +251,56 @@
 <td>🟢 v0.2.6</td>
 </tr>
 </tbody></table>
+<h3>Public Beta Launch Gate（真實入金 / 公開 Beta 前必須全部通過）</h3>
+<p>本 gate 是跨 SPEC 的上線門檻；它不阻擋 PR #1 / 內部開發，但<strong>阻擋公開 Beta、真實入金、真實下單與對外行銷</strong>。任何一列未完成時，只能做 internal alpha / sandbox demo。</p>
+<table>
+<thead>
+<tr>
+<th>Gate</th>
+<th>阻擋條件</th>
+<th>Required evidence</th>
+<th>Owner</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LG-1 Legal / licence</td>
+<td>SPEC-000 §5 Q-2 仍為 Pending；Op Co. 執照地、允許市場類型、玩家所在地限制未由執照地律師書面確認</td>
+<td>Legal memo + jurisdiction decision + market category allow/deny matrix</td>
+<td>Owner / Legal / Compliance</td>
+</tr>
+<tr>
+<td>LG-2 Payment acquiring</td>
+<td>SPEC-000 §5 Q-4 仍為 Pending；至少一家支付通路未完成 MCC / prediction-market 接受度、chargeback 條款、sandbox webhook、PCI SAQ A 邊界驗證</td>
+<td>Signed provider terms 或 LOI、sandbox webhook evidence、PCI scope note、refund / chargeback drill log</td>
+<td>Owner / Finance / Backend</td>
+</tr>
+<tr>
+<td>LG-3 KYC / AML production path</td>
+<td>SPEC-005 / SPEC-005a 尚未跑通真實 SumSub 或替代 provider sandbox；Tier 2 iframe、webhook HMAC、RED→freeze、PEP / sanctions flow 未 E2E 驗證</td>
+<td>Sandbox credential record、E2E test log、frontend screenshot、webhook replay evidence</td>
+<td>Frontend / Backend / Compliance</td>
+</tr>
+<tr>
+<td>LG-4 Platform PoC closure</td>
+<td>PoC-A EdDSA / LIFF 或 PoC-B Cloudflare Edge runtime live verification 仍為 Pending，且未採用 fallback ADR</td>
+<td>docs/poc/PRE-FLIGHT-POCS.md §3.5 / §4.4 completed，或 fallback ADR accepted</td>
+<td>Frontend / Tech Lead</td>
+</tr>
+<tr>
+<td>LG-5 Release safety</td>
+<td>SPEC-013 minimum prod release gate 未完成：feature flag、canary / rollback、migration rollback、secret scan、prod approval MS-12</td>
+<td>Staging release run, rollback drill, CI run URL, approval audit log</td>
+<td>SRE / Tech Lead</td>
+</tr>
+<tr>
+<td>LG-6 Support / incident / audit</td>
+<td>SPEC-012 / SPEC-018 / SPEC-019 最小上線子集未完成：客服入口、事故公告節奏、帳本 / 支付 / KYC evidence pack、S0/S1 runbook</td>
+<td>Support queue URL, incident drill, evidence export sample, P0/S0 runbook links</td>
+<td>Operations / SRE / Compliance</td>
+</tr>
+</tbody>
+</table>
 <h2>3. 全域名詞表（Glossary）</h2>
 <table>
 <thead>
@@ -325,6 +375,10 @@
 <section class="changelog">
 <div class="changelog-list">
   <article class="changelog-entry">
+    <h3>2026-05-09 · v0.3.3 · Tech Lead</h3>
+    <p><strong>Launch readiness gate 補強</strong>：新增 §2 Public Beta Launch Gate（LG-1 ~ LG-6），明確區分「不阻擋內部開發」與「阻擋公開 Beta / 真實入金 / 真實下單」之門檻；Q-2 / Q-4 待動作改為公開 Beta blocker；SPEC-012 / SPEC-013 / SPEC-018 從 P2 上移至 P1 launch gate；SPEC-011 狀態對齊 v0.2.3。同步修復 HTML 產物 drift：SPEC-003 亂碼重生、過期 Markdown 副檔名敘述改為 HTML 副檔名。</p>
+  </article>
+  <article class="changelog-entry">
     <h3>2026-05-07 · v0.3.2 · Tech Lead</h3>
     <p><strong>SPEC-011 v0.2.1 pre-implementation gap closure（G-1 ~ G-8）</strong>：Tech Lead 對 SPEC-011 v0.2.0 進行落地前審視，發現合規層（§2 / §6）成熟但落地細節有 8 個技術 gap 將導致 Codex 動工後 PR 退回。本輪閉環如下：</p>
     <ul>
@@ -377,7 +431,7 @@
     <p><strong>動工前最後兩件 round 6</strong>（ADR-0005 retroactive + PoC plan 文件化）：</p>
     <ul>
       <li><strong>ADR-0005 新增（Accepted, retroactive）</strong>：補做 SPEC-014 v0.2.0「後端 Go → Rust」切換之 governance ADR。涵蓋 driver（GC pause / 不變式型別化 / 業界對標 Kalshi）、4 個 considered options（維持 Go / Rust+Go 混搭 / 全 Rust / C++ hot path）、為何選全 Rust 之具體論證（單語言 SDK 維運成本 &lt; CRUD borrow checker 成本）、Negative consequences 與 Mitigation Plan、Notes for Codex 6 條紀律。SPEC-014 §3.1 v0.2.0 變更說明補 cross-ref 至 ADR-0005；SPEC-014 v0.2.4 → v0.2.5。</li>
-      <li><strong>PoC plan 文件落地</strong>：建立 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md</code></a>，涵蓋 PoC-A（EdDSA / LIFF SDK 三步驟驗證 + 退路）+ PoC-B（Cloudflare Edge runtime 5 場景驗證 + 退路）+ §5 PoC 完成後 SPEC 回填規則 + §6 失敗 escalation 流程；SPEC-010 §3.1.2 / SPEC-014 §3.2.1 補 cross-ref；SPEC-017 §11.3 新增「PR #1 動工前 PoC gating」明示 PoC 結果未回填即拒絕 merge PR #1；SPEC-010 v0.2.1 → v0.2.2、SPEC-017 v0.2.5 → v0.2.6。</li>
+      <li><strong>PoC plan 文件落地</strong>：建立 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md</code></a>，涵蓋 PoC-A（EdDSA / LIFF SDK 三步驟驗證 + 退路）+ PoC-B（Cloudflare Edge runtime 5 場景驗證 + 退路）+ §5 PoC 完成後 SPEC 回填規則 + §6 失敗 escalation 流程；SPEC-010 §3.1.2 / SPEC-014 §3.2.1 補 cross-ref；SPEC-017 §11.3 新增 PoC gating（2026-05-09 v0.3.3 後校準為 launch acceptance gate，不阻擋 PR #1 / internal alpha，但阻擋公開 Beta / 真實入金 / prod deployment）；SPEC-010 v0.2.1 → v0.2.2、SPEC-017 v0.2.5 → v0.2.6。</li>
       <li>ADR README 索引補 ADR-0005。本輪後<strong>所有動工前清單已 closed</strong>：兩條紅線清除（R-1 / R-2）+ 跨檔一致性（H-1~H-6）+ 跨檔治理（M-1, M-3, multi-sig 中央表）+ 12 個技術風險點（T-1~T-12）+ ADR-0001 §6 patch + ADR-0005 retroactive + ADR-0006 INV-6 + PoC plan 文件化。Codex 拿到 SPEC + ADR + PoC plan 即可依 SPEC-017 §11.3 跑 PoC，PoC 通過後依 §11.2 開 PR #1。</li>
     </ul>
   </article>
@@ -572,7 +626,7 @@
 <td>ADR-0002 §11 V-1</td>
 <td>🟡 Pending</td>
 <td>—</td>
-<td>動工前由執照地律師擇一，影響 Op Co. 設立地</td>
+<td>公開 Beta / 真實入金前由執照地律師擇一，並完成 LG-1 evidence；未完成時僅允許 internal alpha / sandbox demo</td>
 </tr>
 <tr>
 <td>Q-3</td>
@@ -588,7 +642,7 @@
 <td>SPEC-016</td>
 <td>🟡 Pending</td>
 <td><a href="./SPEC-016-payment-gateway.html">SPEC-016 §3.2</a> 列驗證項</td>
-<td>簽通路合約前完成至少 3 家詢價，並對齊支付 Gateway BIN 檢查</td>
+<td>公開 Beta / 真實入金前完成至少 3 家詢價與 1 家 sandbox webhook + MCC 接受度驗證，並對齊支付 Gateway BIN 檢查；未完成時不得開放真實儲值</td>
 </tr>
 <tr>
 <td>Q-5</td>

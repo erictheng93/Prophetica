@@ -1,6 +1,6 @@
 # packages/proto — Protocol Buffer Schema (v1)
 
-> 對應 [SPEC-014 §6.3](../../specs/SPEC-014-tech-architecture.md) 與 [SPEC-017](../../specs/SPEC-017-monorepo-bootstrap.md) §4.4。
+> 對應 [SPEC-014 §6.3](../../specs/SPEC-014-tech-architecture.html) 與 [SPEC-017](../../specs/SPEC-017-monorepo-bootstrap.html) §4.4。
 
 本目錄為 prophetica 跨服務 RPC 與事件流的**單一真相 schema**。所有 service 之 IDL（gRPC service / Kafka event message）皆於此定義，再由 `buf generate` 產出 Rust（`crates/proto/src/gen/`）與 TypeScript（`packages/proto/gen/ts/`）stub。
 

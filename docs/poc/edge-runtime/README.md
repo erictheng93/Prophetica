@@ -1,6 +1,6 @@
 # PoC-B: Cloudflare Pages Edge runtime
 
-> 對應 [SPEC-014 §3.2.1](../../../specs/SPEC-014-tech-architecture.md) + [PRE-FLIGHT-POCS §4](../PRE-FLIGHT-POCS.md)
+> 對應 [SPEC-014 §3.2.1](../../../specs/SPEC-014-tech-architecture.html) + [PRE-FLIGHT-POCS §4](../PRE-FLIGHT-POCS.md)
 >
 > **狀態**：🟢 Desk Research Done · 🟡 Live Verification Pending（artifacts 已就緒，工程師跑完回填）
 

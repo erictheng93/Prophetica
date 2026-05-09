@@ -166,10 +166,10 @@ D 否決，但採納其**設計理念**：撮合 hot path 之 lock-free / cache-
 
 ### 8.1 內部文件
 
-- [SPEC-014 §3.1](../../../specs/SPEC-014-tech-architecture.md) — 技術棧定版（Rust 1.85+）
-- [SPEC-014 §3.1 R-1 ~ R-6](../../../specs/SPEC-014-tech-architecture.md) — Rust 工具鏈硬性決議
-- [SPEC-017 §3.3](../../../specs/SPEC-017-monorepo-bootstrap.md) — Rust 工具鏈硬性決議落地
-- [SPEC-003 §6 開頭註記](../../../specs/SPEC-003-matching-engine.md) — pseudo-code / canonical Rust 之邊界說明
+- [SPEC-014 §3.1](../../../specs/SPEC-014-tech-architecture.html) — 技術棧定版（Rust 1.85+）
+- [SPEC-014 §3.1 R-1 ~ R-6](../../../specs/SPEC-014-tech-architecture.html) — Rust 工具鏈硬性決議
+- [SPEC-017 §3.3](../../../specs/SPEC-017-monorepo-bootstrap.html) — Rust 工具鏈硬性決議落地
+- [SPEC-003 §6 開頭註記](../../../specs/SPEC-003-matching-engine.html) — pseudo-code / canonical Rust 之邊界說明
 - [ADR-0001](./ADR-0001-order-book-with-dmm-over-lmsr.md) — Order Book + DMM（撮合架構決策，本 ADR 為其語言選擇之下游）
 - [ADR-0003](./ADR-0003-double-entry-ledger.md) — 雙簿記帳本（INV 集合，依賴 Rust 型別系統強制）
 - [ADR-0006](./ADR-0006-ledger-invariant-set-extension-inv6.md) — INV-6 落地（plpgsql trigger 與 Rust application validate 雙層保護）

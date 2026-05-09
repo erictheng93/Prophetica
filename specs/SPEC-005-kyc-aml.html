@@ -195,6 +195,7 @@
 <li>但 SPEC-005 §0 不可再標 ✅ Complete，避免誤導 Compliance / 監管面試陳述</li>
 <li>PR #1 merge 後第一輪 sprint 之優先級：跑 PoC-B → 整合真實 SumSub iframe → §0.3 第一列轉 ✅；同步啟動 §0.2 M1-M7 backend P0 follow-up</li>
 <li>外部供應商合約、真實 SumSub / Onfido sandbox 帳號、監管報表提交管道與 Compliance Officer 實際作業配置屬營運啟用項；不阻塞本 SPEC 之 backend in-memory contract 完成</li>
+<li><strong>Public Beta blocker</strong>：真實入金 / 真實下單前，Tier 2 SumSub iframe、webhook HMAC、GREEN / RED / PENDING replay、RED→Frozen、PEP / sanctions rescan 必須在 sandbox E2E 跑通並連回 SPEC-000 §2 LG-3 evidence；否則只能做 internal alpha / sandbox demo。</li>
 </ul>
 <h2>1. Objective</h2>
 <p>建立分層的客戶身份驗證（KYC）與反洗錢（AML）系統，以最低摩擦、最高合規覆蓋的方式處理玩家入場、儲值、交易、結算過程的身份與風險審查。<strong>不自建 KYC 流程</strong>，採用業界 SaaS 整合節省成本與法律風險。</p>

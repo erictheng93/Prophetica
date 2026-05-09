@@ -28,7 +28,7 @@
 版本：v0.1.1 · 最後更新：2026-05-07
 依賴：SPEC-003, SPEC-004
 被依賴：SPEC-002, SPEC-009, SPEC-010</p>
-<p><strong>v0.1.1 變更</strong>：§8.1 hedge 政策依 <a href="./SPEC-000-index.md">SPEC-000 §5 Q-7</a> Resolved 為「允許」，刪除原「同一玩家不可同時持 YES + NO」禁令該行，改為呼應 SPEC-002 §4.4.4 NOTE 3 之 hedge 結算邏輯說明；自我對沖刷量交由 SPEC-010 §4.2.2 post-trade 偵測。</p>
+<p><strong>v0.1.1 變更</strong>：§8.1 hedge 政策依 <a href="./SPEC-000-index.html">SPEC-000 §5 Q-7</a> Resolved 為「允許」，刪除原「同一玩家不可同時持 YES + NO」禁令該行，改為呼應 SPEC-002 §4.4.4 NOTE 3 之 hedge 結算邏輯說明；自我對沖刷量交由 SPEC-010 §4.2.2 post-trade 偵測。</p>
 </blockquote>
 <hr />
 <h2>1. Objective</h2>
@@ -53,7 +53,7 @@
 </ul>
 <h2>3. 市場狀態機</h2>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-015-market-lifecycle-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-015-market-lifecycle-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 <p>本 SPEC 控管 <code>DRAFT → REVIEW → SCHEDULED → OPEN → CLOSED</code>；<code>CLOSED</code> 之後交給 SPEC-004。</p>
 </blockquote>
 <h2>4. 角色與權限</h2>
@@ -169,11 +169,11 @@
 </ol>
 <h2>6. 市場資料模型</h2>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-015-market-lifecycle-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-015-market-lifecycle-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h3>6.7 表間關係簡圖</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-015-market-lifecycle-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-015-market-lifecycle-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 <p><strong>Schema 真相來源規則</strong>：
 - 上述 6 張表為 SPEC-015 唯一 schema 定義來源。
 - SPEC-004 §6.3 之 <code>dispute_resolutions</code> 表結構<strong>已遷移至本 SPEC</strong>，SPEC-004 將以「呼應 SPEC-015 §6.5」方式引用。
@@ -257,11 +257,11 @@
 <li><code>closes_at - opens_at ≥ 1 hour</code>（最低 1 小時開放，避免人為操盤）</li>
 <li><code>closes_at &lt; settles_at</code>（必須留時間給 Oracle）</li>
 <li><code>settles_at - closes_at ≥ 24 hours</code>（呼應 SPEC-004 §5.1 申訴窗口）</li>
-<li><strong>Hedge 允許</strong>：同一玩家可在同一市場同時持 YES + NO（呼應 <a href="./SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker">SPEC-000 §5 Q-7</a> Resolved；結算邏輯見 SPEC-002 §4.4.4 NOTE 3）。風控前置層<strong>不</strong>加 <code>HEDGE_NOT_ALLOWED</code> 檢查；潛在自我對沖刷量由 SPEC-010 §4.2.2 wash trading post-trade 偵測處理。</li>
+<li><strong>Hedge 允許</strong>：同一玩家可在同一市場同時持 YES + NO（呼應 <a href="./SPEC-000-index.html#5-跨檔決策追蹤表cross-cutting-decision-tracker">SPEC-000 §5 Q-7</a> Resolved；結算邏輯見 SPEC-002 §4.4.4 NOTE 3）。風控前置層<strong>不</strong>加 <code>HEDGE_NOT_ALLOWED</code> 檢查；潛在自我對沖刷量由 SPEC-010 §4.2.2 wash trading post-trade 偵測處理。</li>
 </ul>
 <h3>8.2 自動狀態轉換</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-015-market-lifecycle-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-015-market-lifecycle-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h3>8.3 排程變更限制</h3>
 <ul>
@@ -362,7 +362,7 @@
 </ul>
 <h2>15. Open Questions</h2>
 <blockquote>
-<p>跨檔決策已收斂至 <a href="./SPEC-000-index.md">SPEC-000 §5</a> 中央追蹤表。本節僅保留 SPEC-015 自身範圍內議題。</p>
+<p>跨檔決策已收斂至 <a href="./SPEC-000-index.html">SPEC-000 §5</a> 中央追蹤表。本節僅保留 SPEC-015 自身範圍內議題。</p>
 </blockquote>
 <ol>
 <li>是否引入「市場創建 RFC」公開徵集機制（讓玩家提案）？或保留純 Operator 提案？</li>

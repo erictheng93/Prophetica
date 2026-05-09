@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
@@ -20,569 +20,934 @@
     }
     table { border-collapse: collapse; width: 100%; }
     th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    blockquote { border-left: 4px solid #d0d7de; padding-left: 0.8rem; margin-left: 0; color: #374151; }
     a { color: #0969da; }
-    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
-    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
-    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
-    .changelog-entry p,
-    .changelog-entry ul { margin: 0.35rem 0; }
-    .changelog-entry ul { padding-left: 1.15rem; }
-    .changelog-entry li { margin-bottom: 0.35rem; }
   </style>
 </head>
 <body>
-<h1>SPEC-003 �X ���X�����ԳW�]Matching Engine�^</h1>
+<h1>SPEC-003 — 撮合引擎詳規（Matching Engine）</h1>
 <blockquote>
-<p>�u���šG<strong>P0</strong>
-�����Gv0.2.3 �P �̫��s�G2026-05-07
-�̿�GSPEC-002
-�Q�̿�GSPEC-004, SPEC-007, SPEC-009</p>
+<p>優先級：<strong>P0</strong><br>版本：v0.2.3 · 最後更新：2026-05-07<br>依賴：SPEC-002<br>被依賴：SPEC-004, SPEC-007, SPEC-009</p>
 </blockquote>
 <section class="changelog">
-<div class="changelog-list">
-    <article class="changelog-entry">
-    <h3>v0.2.3 �ܧ�</h3>
+  <h2>變更紀錄</h2>
+  <article>
+    <h3>v0.2.3 變更</h3>
     <ul>
-      <li><strong>T-4 hostNetwork ������Ѿ���a</strong>�G���g ��17.2�A����������ѻP���t�W�h�B�G���ಾ�P�ɯŴ�����í�w�ʦ欰�A��@�Ӹ`�Ш� implementation plan�C</li>
-      <li><strong>T-6 Thread / Runtime �ҫ����y</strong>�G���g ��17.3�A�ɱj��/�N���� runtime ���y�P�`�I�귽�����A��@�Ӹ`�Ш� implementation plan�C</li>
-      <li>��17.5 �s�W�ɯŴ�����ѭᵲ�y�{�A�H���C�E���������~�P�C</li>
+      <li><strong>T-4 hostNetwork 市場路由機制落地</strong>：§17.2 重寫為 etcd-driven consistent hash routing、5 種觸發場景、跨服務銜接與 MVP / scale-up / scale-out 演進路徑；補 SPEC-007 §6.4 之 etcd lookup 0.5ms hop budget。</li>
+      <li><strong>T-6 Thread / Runtime 模型分流</strong>：§17.3 明示熱市場獨佔 node + current_thread runtime + core pinning，冷市場 multiplex node + multi-thread runtime + work-stealing。</li>
+      <li>§17.5 升級流程補「升級期間凍結 reroute 決策」防止誤判。</li>
     </ul>
   </article>
-  <article class="changelog-entry">
-    <h3>v0.2.2 �ܧ�]R-2 ���u�M���^</h3>
-    <p>�̷~�D�Mĳ�A�����t�ΫO�d�ҥ~�P�����ɶK�����A�N�欰���Ĭ��u�L�ҥ~�v�C�����W�h�l���� SPEC-000�BADR-0001 ��s�C</p>
+  <article>
+    <h3>v0.2.2 變更（R-2 紅線清除）</h3>
+    <p>依業主決議移除 §12.1.1 sentinel <code>system.platform_announcement</code> (uid=4)，連帶 §12.1.4「例外情況」改為「<strong>無</strong>」；新增 <code>RESERVED_REMOVED_USER_IDS</code> 防止 uid=4 未來被重用；對齊 SPEC-009 §5 移除冷啟動補貼。</p>
   </article>
-  <article class="changelog-entry">
-    <h3>v0.2.1 �ܧ�</h3>
+  <article>
+    <h3>v0.2.1 變更</h3>
     <ul>
-      <li>��12 �ɻ� hedge ���\���O�޿�A���T���W�[�B�~ pre-trade ����C</li>
-      <li>��ݹ�@�y���P�u�{�Ƶ����v�B������ Rust�A�ù����P�B���ջP���O�����M�z�A�Ԩ� implementation plan�C</li>
-      <li>�ɻ���յ����A�N�ݩʴ��ջP mutation testing �л\�ݨD���s�W��C</li>
-      <li>��6~��11 ����r�ƺt��k���O�d���ѦҡA�����@�`���w�m�� implementation plan�C</li>
+      <li>§12 加 hedge 允許註記，明示不加 <code>HEDGE_NOT_ALLOWED</code> pre-trade 檢查。</li>
+      <li>sentinel、金額計算、orderbook 範例與測試策略改寫為 Rust 工具鏈。</li>
+      <li>§6 ~ §11 的演算法 pseudo-code 保留作為設計說明；canonical Rust 實作細節以 implementation plan 為準。</li>
     </ul>
   </article>
-  <article class="changelog-entry">
-    <h3>v0.2.0 �ܧ�</h3>
-    <p>�֤߼��X��|�D�y�{��V�s�޳N�̻P�s OrderID �W�d�A�O�� P99 < 5ms �ؼФ��ܡC</p>
+  <article>
+    <h3>v0.2.0 變更</h3>
+    <p>跟隨 SPEC-014 後端切 Rust；OrderID canonical 型別改為 ULID <code>[u8; 16]</code>；撮合熱路徑 P99 &lt; 5ms SLO 不變。</p>
   </article>
-</div>
 </section>
 <hr>
 <h2>1. Objective</h2>
-<p>�]�p�@�� <strong>��g�̡Bin-process�Bevent-sourced</strong> ���q��ï���X�����A�䴩�w������ YES/NO ���L�X�����U��B�M��B����B�����A�F�� P99 &lt; 5ms �����X����A�ô��ѧ��㪺�ƥ�y�ѤU��b���B����B�����A�Ȯ��O�C</p>
-<h2>2. �]�p��h</h2>
+<p>設計一個 <strong>單寫者、in-process、event-sourced</strong> 的訂單簿撮合引擎，支援預測市場 YES/NO 雙腿合約的下單、撤單、成交、推播，達成 P99 &lt; 5ms 的撮合延遲，並提供完整的事件流供下游帳本、結算、推播服務消費。</p>
+<h2>2. 設計原則</h2>
 <table>
 <thead>
-<tr>
-<th>��h</th>
-<th>���[</th>
-</tr>
+<tr><th>原則</th><th>內涵</th></tr>
 </thead>
-<tbody><tr>
-<td><strong>��@�g��</strong>�]Single Writer�^</td>
-<td>�C�ӥ����@�ӱM�ݳB�z�y�{�W���ӥ������q��ï�A�T����B�T��õo�g�J</td>
-</tr>
-<tr>
-<td><strong>In-Process Memory</strong></td>
-<td>�q��ï�O���b���X�A�ȶi�{�����O����A�קK�����n���P�@�Χ֨��̿�</td>
-</tr>
-<tr>
-<td><strong>Event Sourcing</strong></td>
-<td>���X�����u���ͨƥ�A�Ҧ��U��]�b���B�����B���ܡBK �u�^�Ѯ��O�̭���</td>
-</tr>
-<tr>
-<td><strong>WAL + Snapshot</strong></td>
-<td>�H�i����ƥ�C�P�w���ַӤ䴩�G�٫�^�_</td>
-</tr>
-<tr>
-<td><strong>�T�w��</strong>�]Deterministic�^</td>
-<td>���w�ۦP�ƥ�ǦC�A���إX���q��ï���A���� 100% �@�P</td>
-</tr>
-<tr>
-<td><strong>Price-Time FIFO</strong></td>
-<td>���X�t��k��<strong>�����u�� �� �ɶ��u��</strong>�A�P Kalshi �@�P</td>
-</tr>
-<tr>
-<td><strong>���x������</strong></td>
-<td>�����L house book�A�L�۰ʳy���A�Ҧ� quote �Ӧ۪��a�� DMM</td>
-</tr>
-</tbody></table>
-<h2>3. �X���ҫ�</h2>
-<h3>3.1 �����]Market�^</h3>
-<p>�C�ӥ����N��@�� <strong>�G�����G�]Binary Outcome�^</strong> �ƥ�C�� struct �� SPEC-015 ��6 �� <code>markets</code> ��ǦC�ƦӨӡA�`�J���X���� in-memory�]�I�� SPEC-015 ��10.1�^�C</p>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>3.2 ���G�L�]Outcome�^</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>3.3 ����u�� YES �L�A���ݭn NO �q��ï�H</h3>
-<blockquote>
-<p><strong>����]�p�M��</strong>�G���t�αĥ� Kalshi �ҫ��A<strong>�u���@ YES �L�q��ï</strong>�C�� YES @ 0.65 ������R NO @ 0.35�C</p>
-</blockquote>
-<h4>3.3.1 �]�p�z��</h4>
-<ul>
-<li>�q��ï��@�ơA�O����P CPU ��b</li>
-<li>����� 1 �� YES = $1�]�����^�� $0�]�S���^�A1 �� NO ����</li>
-<li>�Ҧ� NO �ާ@�b��������ഫ�� YES �ާ@</li>
-</ul>
-<h4>3.3.2 ����ഫ�W�h</h4>
-<table>
-<thead>
-<tr>
-<th>���a�ʧ@</th>
-<th>���������B�z</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>�R YES @ 0.65 �� 100</td>
-<td>Bid YES @ 65 �� 100</td>
-</tr>
-<tr>
-<td>�� YES @ 0.65 �� 100</td>
-<td>Ask YES @ 65 �� 100</td>
-</tr>
-<tr>
-<td>�R NO @ 0.35 �� 100</td>
-<td>Ask YES @ 65 �� 100�]�ഫ�^</td>
-</tr>
-<tr>
-<td>�� NO @ 0.35 �� 100</td>
-<td>Bid YES @ 65 �� 100�]�ഫ�^</td>
-</tr>
-</tbody></table>
-<blockquote>
-<p>��ɼh SDK �۰��ഫ�A���a�b UI �ݨ쪺���O�u�R NO�v�A����ݤ����u�B�z YES�C</p>
-</blockquote>
-<h2>4. �q��ҫ�</h2>
-<h3>4.1 �q�������]Order Types�^</h3>
-<table>
-<thead>
-<tr>
-<th>����</th>
-<th>�t�q</th>
-<th>�欰</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><strong>LIMIT</strong></td>
-<td>������</td>
-<td>���w����A�����泡�����J�q��ï</td>
-</tr>
-<tr>
-<td><strong>MARKET</strong></td>
-<td>������</td>
-<td>�����w����A�Y��ܦ���ίӺɡA�Ѿl cancel</td>
-</tr>
-<tr>
-<td><strong>IOC</strong> (Immediate-Or-Cancel)</td>
-<td>�Y�ɦ���_�h����</td>
-<td>�ߧY���X�i���泡���A�Ѿl�۰ʨ���</td>
-</tr>
-<tr>
-<td><strong>FOK</strong> (Fill-Or-Kill)</td>
-<td>��������_�h����</td>
-<td>�����@�����q����A�_�h��������</td>
-</tr>
-<tr>
-<td><strong>POST_ONLY</strong></td>
-<td>�u����</td>
-<td>���� maker�A�Y�|�ߧY����h�ڵ�</td>
-</tr>
-</tbody></table>
-<h3>4.2 �q�檬�A��</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>4.3 �q���Ƶ��c</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h2>5. �q��ï��Ƶ��c</h2>
-<h3>5.1 ���鵲�c</h3>
-<p>�C�� Market �@���q��ï�G</p>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>5.2 ���� BTreeMap �ӫD skip list / RB-tree�H</h3>
-<table>
-<thead>
-<tr>
-<th>���c</th>
-<th>���J</th>
-<th>�R��</th>
-<th>�d�򱽴y</th>
-<th>�O����</th>
-<th>����</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>sorted Vec</td>
-<td>O(N)</td>
-<td>O(N)</td>
-<td>O(K)</td>
-<td>�̧C</td>
-<td>�C</td>
-</tr>
-<tr>
-<td>RB-tree</td>
-<td>O(logN)</td>
-<td>O(logN)</td>
-<td>O(K logN)</td>
-<td>��</td>
-<td>OK</td>
-</tr>
-<tr>
-<td>skip list</td>
-<td>O(logN)</td>
-<td>O(logN)</td>
-<td>O(K)</td>
-<td>��</td>
-<td>OK</td>
-</tr>
-<tr>
-<td><strong><code>std::collections::BTreeMap</code></strong></td>
-<td>O(logN)</td>
-<td>O(logN)</td>
-<td>O(K)</td>
-<td><strong>�C�]cache friendly�^</strong></td>
-<td><strong>�̨�</strong></td>
-</tr>
-</tbody></table>
-<p>Rust �зǨ禡�w <code>BTreeMap</code> �w�O B-tree�]�C�`�I�h entries�Acache friendly�^�A���ݲĤT�� crate�C�M�����|�z�L <code>OrderHandle</code>�]�O������ + queue ����m�^�F�� O(1)�A�קK BTreeMap ���s�d��C</p>
-<h3>5.3 ���� VecDeque�]���ݦ�C�^�ӫD Vec�H</h3>
-<p>�C�� PriceLevel �����q���C�G</p>
-<ul>
-<li><strong>���X</strong>�G<code>pop_front()</code> �� O(1)</li>
-<li><strong>�[�J</strong>�G<code>push_back()</code> �� O(1)</li>
-<li><strong>�M��</strong>�G�z�L <code>OrderHandle{price_pts, queue_index_or_marker}</code> ����m �� O(1) �޿�R���]tombstone�^�A�U�����X�ɸ��L</li>
-</ul>
-<p><code>Vec</code> �����q�R���� O(N)�A���i��F<code>VecDeque</code> �����q�R���� O(N)�A�G�M��� tombstone �Ҧ��C</p>
-<h2>6. ���X�t��k</h2>
-<blockquote>
-<p><strong>工程實作說明</strong>：以下 §6 / §7 / §8 / §10 / §11 主要保留邏輯示意；完整實作語言、型別、效能與重構內容已集中於 implementation plan。</p>
-</blockquote>
-<h3>6.1 �D�y�{���X</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>6.2 �����e�P�w</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>6.3 ����ƥ󲣥�</h3>
-<p>�C�����X���ͤ@�� <code>Trade</code> �ƥ�G</p>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>6.4 �M��</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h2>7. �õo�ҫ�</h2>
-<h3>7.1 Per-Market Single Writer</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>7.2 �����g�̳ӹL mutex�H</h3>
-<ul>
-<li>�L���v���A�L spin lock�A�L priority inversion</li>
-<li>���U��í�w������Ǩí��C�ݰʻP���o����</li>
-<li>���X�޿襻��ǦC�ơ]���涶�ǥ����T�w�^</li>
-<li>�קK�@����~�V�A���C���Ǻ}���綠���ʪ��v�T</li>
-</ul>
-<h3>7.3 �󥫳��æ�</h3>
-<p>���P���������W�ߡA�i����B�z���P�����y�q�C</p>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<tbody>
+<tr><td><strong>單一寫者</strong>（Single Writer）</td><td>每個市場一個專屬 tokio task 獨佔該市場的訂單簿（per-market <code>mpsc::Receiver</code> 為唯一輸入），禁止鎖、禁止並發寫入</td></tr>
+<tr><td><strong>In-Process Memory</strong></td><td>訂單簿完全在 Rust 進程記憶體，不經 Redis、不經網路</td></tr>
+<tr><td><strong>Event Sourcing</strong></td><td>撮合引擎只產生事件，所有下游（帳本、推播、持倉、K 線）由消費者重建</td></tr>
+<tr><td><strong>WAL + Snapshot</strong></td><td>寫入 append-only log（磁碟 + Kafka），定期 snapshot，crash recovery 從 snapshot + replay</td></tr>
+<tr><td><strong>確定性</strong>（Deterministic）</td><td>給定相同事件序列，重建出的訂單簿狀態必須 100% 一致</td></tr>
+<tr><td><strong>Price-Time FIFO</strong></td><td>撮合演算法為<strong>價格優先 → 時間優先</strong>，與 Kalshi 一致</td></tr>
+<tr><td><strong>平台不持倉</strong></td><td>引擎無 house book，無自動造市，所有 quote 來自玩家或 DMM</td></tr>
+</tbody>
+</table>
+<h2>3. 合約模型</h2>
+<h3>3.1 市場（Market）</h3>
+<p>每個市場代表一個 <strong>二元結果（Binary Outcome）</strong> 事件。本 struct 由 SPEC-015 §6 之 <code>markets</code> 表序列化而來，注入撮合引擎 in-memory（呼應 SPEC-015 §10.1）。</p>
+<pre><code class="language-rust">use chrono::{DateTime, Utc};
 
-<h2>8. ���[�ơ]Event Sourcing + WAL�^</h2>
-<h3>8.1 �g�J��|</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>8.2 WAL �榡</h3>
-<p>�ƥ��Ʒ|���[�Ʀs�ɨåi����A�榡�P�����Ш� implementation plan�G</p>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+pub struct Market {
+    pub id:                String,            // 'mkt_2026_election_winner'
+    pub title:             String,
+    pub description:       String,
+    pub outcome_yes:       Outcome,           // YES 腿
+    pub outcome_no:        Outcome,           // NO 腿
+    pub opens_at:          DateTime&lt;Utc&gt;,
+    pub closes_at:         DateTime&lt;Utc&gt;,     // 截止下單
+    pub settles_at:        DateTime&lt;Utc&gt;,     // 預計結算
+    pub status:            MarketStatus,      // Open / Closed / Settling / Settled / Cancelled
+    pub oracle_source:     String,            // 結果來源
+    pub min_tick_pts:      i64,               // 最小價格單位（內部單位百分點），預設 1 = 0.01 點
+    pub min_lot:           i64,               // 最小股數，預設 1
+    pub max_order_qty:     i64,               // 單筆最大股數，防作弊
+    pub fee_bps:           u32,               // 手續費 basis points，預設 200 (=2%)
+}</code></pre>
+<h3>3.2 結果腿（Outcome）</h3>
+<pre><code class="language-rust">#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Outcome {
+    Yes = 0,
+    No  = 1,
+}
+
+impl Outcome {
+    pub const fn as_str(self) -&gt; &amp;'static str {
+        match self { Outcome::Yes =&gt; "YES", Outcome::No =&gt; "NO" }
+    }
+}</code></pre>
+<h3>3.3 為何只用 YES 腿，不需要 NO 訂單簿？</h3>
+<blockquote>
+<p><strong>關鍵設計決策</strong>：本系統採用 Kalshi 模型，<strong>只維護 YES 腿訂單簿</strong>。賣 YES @ 0.65 等價於買 NO @ 0.35。</p>
+</blockquote>
+<h4>3.3.1 設計理由</h4>
+<ul>
+<li>訂單簿單一化，記憶體與 CPU 減半</li>
+<li>結算時 1 股 YES = $1（中獎）或 $0（沒中），1 股 NO 互補</li>
+<li>所有 NO 操作在引擎邊界轉換為 YES 操作</li>
+</ul>
+<h4>3.3.2 邊界轉換規則</h4>
+<table>
+<thead>
+<tr><th>玩家動作</th><th>引擎內部處理</th></tr>
+</thead>
+<tbody>
+<tr><td>買 YES @ 0.65 × 100</td><td>Bid YES @ 65 × 100</td></tr>
+<tr><td>賣 YES @ 0.65 × 100</td><td>Ask YES @ 65 × 100</td></tr>
+<tr><td>買 NO @ 0.35 × 100</td><td>Ask YES @ 65 × 100（轉換）</td></tr>
+<tr><td>賣 NO @ 0.35 × 100</td><td>Bid YES @ 65 × 100（轉換）</td></tr>
+</tbody>
+</table>
+<blockquote>
+<p>邊界層 SDK 自動轉換，玩家在 UI 看到的仍是「買 NO」，但後端引擎只處理 YES。</p>
+</blockquote>
+<h2>4. 訂單模型</h2>
+<h3>4.1 訂單類型（Order Types）</h3>
+<table>
+<thead>
+<tr><th>類型</th><th>含義</th><th>行為</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>LIMIT</strong></td><td>限價單</td><td>指定價格，未成交部分掛入訂單簿</td></tr>
+<tr><td><strong>MARKET</strong></td><td>市價單</td><td>不指定價格，吃單至成交或耗盡，剩餘 cancel</td></tr>
+<tr><td><strong>IOC</strong> (Immediate-Or-Cancel)</td><td>即時成交否則取消</td><td>立即撮合可成交部分，剩餘自動取消</td></tr>
+<tr><td><strong>FOK</strong> (Fill-Or-Kill)</td><td>全部成交否則取消</td><td>必須一次全量成交，否則完全取消</td></tr>
+<tr><td><strong>POST_ONLY</strong></td><td>只掛單</td><td>必為 maker，若會立即成交則拒絕</td></tr>
+</tbody>
+</table>
+<h3>4.2 訂單狀態機</h3>
+<pre><code>                  ┌─────────────┐
+                  │   PENDING   │  接收 API、尚未進入撮合佇列
+                  └──────┬──────┘
+                         │ enqueue
+                         ▼
+                  ┌─────────────┐
+                  │   ACTIVE    │  在訂單簿上等待撮合
+                  └──┬───────┬──┘
+            partial  │       │  full match
+                     ▼       ▼
+              ┌─────────┐ ┌──────────┐
+              │ PARTIAL │ │  FILLED  │
+              └────┬────┘ └──────────┘
+                   │ user cancel / time-in-force
+                   ▼
+              ┌──────────┐
+              │ CANCELLED│
+              └──────────┘</code></pre>
+<h3>4.3 訂單資料結構</h3>
+<pre><code class="language-rust">// Canonical Order ID: ULID (128-bit, 已於 §19 OQ #3 拍板)
+// Rust 下直接以 [u8; 16] 落地（serde / Display 包裝為 "ord_&lt;ULID&gt;" 字串）
+pub type OrderID = [u8; 16];
+
+#[repr(i8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Side {
+    Bid = 1,   // 買 YES
+    Ask = -1,  // 賣 YES
+}
+
+pub struct Order {
+    pub id:              OrderID,
+    pub user_id:         u64,
+    pub market_id:       String,
+    pub side:            Side,
+    pub kind:            OrderType,       // Limit / Market / IOC / FOK / PostOnly
+    pub price_pts:       i64,             // 內部單位（0-100, 對應 0.00 ~ 1.00）
+    pub qty_total:       i64,             // 原始數量
+    pub qty_remaining:   i64,             // 剩餘未成交
+    pub status:          OrderStatus,
+    pub submitted_at_ns: i64,             // unix nano，作為時間優先依據
+    pub client_order_id: String,          // 玩家自定義 ID，用於冪等
+    pub tif:             TimeInForce,     // GTC / IOC / FOK / DAY
+    pub post_only:       bool,
+}</code></pre>
+<h2>5. 訂單簿資料結構</h2>
+<h3>5.1 整體結構</h3>
+<p>每個 Market 一份訂單簿：</p>
+<pre><code class="language-rust">use std::collections::{BTreeMap, VecDeque, HashMap};
+use std::cmp::Reverse;
+
+pub struct OrderBook {
+    pub market_id: String,
+
+    // 價格 → 該價位的訂單佇列
+    // 採 BTreeMap（B-tree based），bid 以 Reverse(price) 為 key 達成由高到低
+    pub bids: BTreeMap&lt;Reverse&lt;i64&gt;, PriceLevel&gt;,
+    pub asks: BTreeMap&lt;i64, PriceLevel&gt;,
+
+    // 訂單 ID → 訂單 handle，用於 O(1) 撤單
+    pub orders_by_id: HashMap&lt;OrderID, OrderHandle&gt;,
+
+    // 性能指標
+    pub last_trade_pts: i64,
+    pub best_bid_pts:   i64,
+    pub best_ask_pts:   i64,
+    pub seq_no:         u64,  // 嚴格遞增的事件序號
+}
+
+pub struct PriceLevel {
+    pub price_pts: i64,
+    pub queue:     VecDeque&lt;OrderID&gt;,  // FIFO；O(1) push_back / pop_front
+    pub total_qty: i64,                // 該價位累計掛單量（cache）
+}</code></pre>
+<h3>5.2 為何 BTreeMap 而非 skip list / RB-tree？</h3>
+<table>
+<thead>
+<tr><th>結構</th><th>插入</th><th>刪除</th><th>範圍掃描</th><th>記憶體</th><th>評價</th></tr>
+</thead>
+<tbody>
+<tr><td>sorted Vec</td><td>O(N)</td><td>O(N)</td><td>O(K)</td><td>最低</td><td>慢</td></tr>
+<tr><td>RB-tree</td><td>O(logN)</td><td>O(logN)</td><td>O(K logN)</td><td>中</td><td>OK</td></tr>
+<tr><td>skip list</td><td>O(logN)</td><td>O(logN)</td><td>O(K)</td><td>高</td><td>OK</td></tr>
+<tr><td><strong><code>std::collections::BTreeMap</code></strong></td><td>O(logN)</td><td>O(logN)</td><td>O(K)</td><td><strong>低（cache friendly）</strong></td><td><strong>最佳</strong></td></tr>
+</tbody>
+</table>
+<p>Rust 標準函式庫 <code>BTreeMap</code> 已是 B-tree（每節點多 entries，cache friendly），不需第三方 crate。撤單熱路徑透過 <code>OrderHandle</code>（記錄價位 + queue 中位置）達成 O(1)，避免 BTreeMap 重新查找。</p>
+<h3>5.3 為何 VecDeque（雙端佇列）而非 Vec？</h3>
+<p>每個 PriceLevel 內部訂單佇列：</p>
+<ul>
+<li><strong>撮合</strong>：<code>pop_front()</code> → O(1)</li>
+<li><strong>加入</strong>：<code>push_back()</code> → O(1)</li>
+<li><strong>撤單</strong>：透過 <code>OrderHandle{price_pts, queue_index_or_marker}</code> 找到位置 → O(1) 邏輯刪除（tombstone），下次撮合時跳過</li>
+</ul>
+<p><code>Vec</code> 之中段刪除為 O(N)，不可行；<code>VecDeque</code> 之中段刪除亦 O(N)，故撤單採 tombstone 模式。</p>
+<h2>6. 撮合演算法</h2>
+<blockquote>
+<p><strong>語言註記（v0.2.0）</strong>：以下 §6 / §7 / §8 / §10 / §11 之 <code>go</code> 程式區塊為<strong>演算法說明用的 pseudo-code</strong>，沿用 v0.1 之 Go 風格表述。canonical 型別定義已於 §4.3 改為 Rust（<code>OrderID = [u8; 16]</code>、<code>Order</code> struct、<code>Side</code> enum），實作以 Rust 為準（per-market <code>tokio::task</code> 取代 goroutine、<code>mpsc::Sender</code> 取代 channel、<code>BTreeMap</code> 取代 google/btree）。SPEC-017 之 PR #1 落地時依本節邏輯翻譯為 Rust，演算法本身不變。</p>
+</blockquote>
+<h3>6.1 主流程偽碼</h3>
+<pre><code class="language-go">func (e *Engine) handleOrder(o *Order) []Event {
+    events := []Event{OrderAccepted{o.ID, e.SeqNo()}}
+
+    book := e.books[o.MarketID]
+    var oppositeSide *btree.BTreeG[*PriceLevel]
+    if o.Side == Bid { oppositeSide = book.Asks } else { oppositeSide = book.Bids }
+
+    for o.QtyRemaining &gt; 0 {
+        bestLevel := peekBestPriceLevel(oppositeSide)
+        if bestLevel == nil { break }
+
+        // 價格不交叉 → 不可成交
+        if !canCross(o, bestLevel) { break }
+
+        // FOK 預檢
+        if o.Type == FOK &amp;&amp; !canFillCompletely(o, oppositeSide) {
+            return append(events, OrderCancelled{o.ID, ReasonFOKReject})
+        }
+
+        // POST_ONLY 命中對手單 → 拒絕
+        if o.PostOnly {
+            return append(events, OrderRejected{o.ID, ReasonPostOnlyCross})
+        }
+
+        match, ev := matchAtLevel(o, bestLevel)
+        events = append(events, ev...)
+        if !match { break }
+    }
+
+    if o.QtyRemaining &gt; 0 {
+        switch o.Type {
+        case LIMIT:
+            insertIntoBook(book, o)
+            events = append(events, OrderResting{o.ID})
+        case MARKET, IOC:
+            events = append(events, OrderCancelled{o.ID, ReasonIOCRemainder})
+        }
+    }
+    return events
+}</code></pre>
+<h3>6.2 價格交叉判定</h3>
+<pre><code class="language-go">func canCross(taker *Order, level *PriceLevel) bool {
+    if taker.Type == MARKET { return true }
+    if taker.Side == Bid {
+        return taker.PricePts &gt;= level.PricePts
+    }
+    return taker.PricePts &lt;= level.PricePts
+}</code></pre>
+<h3>6.3 成交事件產生</h3>
+<p>每筆撮合產生一筆 <code>Trade</code> 事件：</p>
+<pre><code class="language-go">type Trade struct {
+    SeqNo      uint64
+    MarketID   string
+    PricePts   int64
+    Qty        int64
+    TakerID    OrderID
+    MakerID    OrderID
+    TakerUserID uint64
+    MakerUserID uint64
+    TakerFeeBps int
+    MakerFeeBps int   // maker rebate 可為負
+    TimestampNs int64
+}</code></pre>
+<h3>6.4 撤單</h3>
+<pre><code class="language-go">func (e *Engine) cancelOrder(orderID OrderID) []Event {
+    book := e.books[orderID.MarketID()]  // 假設 ID 內含 market
+    o, ok := book.OrdersByID[orderID]
+    if !ok { return []Event{CancelRejected{orderID, NotFound}} }
+    if o.Status == FILLED || o.Status == CANCELLED {
+        return []Event{CancelRejected{orderID, AlreadyFinal}}
+    }
+
+    level := findLevel(o)
+    level.Queue.Remove(o.element)        // O(1)
+    level.TotalQty -= o.QtyRemaining
+    if level.Queue.Len() == 0 {
+        deleteLevel(book, o.Side, level.PricePts)
+    }
+    delete(book.OrdersByID, orderID)
+    o.Status = CANCELLED
+    return []Event{OrderCancelled{orderID, ReasonUserRequest}}
+}</code></pre>
+<h2>7. 並發模型</h2>
+<h3>7.1 Per-Market Single Writer</h3>
+<pre><code class="language-go">type Engine struct {
+    markets map[string]*MarketShard
+}
+
+type MarketShard struct {
+    book      *OrderBook
+    ingressCh chan command         // 該市場所有寫入命令
+    eventCh   chan Event           // 輸出事件流
+}
+
+// 每個市場一個 goroutine
+func (s *MarketShard) run() {
+    for cmd := range s.ingressCh {
+        switch c := cmd.(type) {
+        case *PlaceOrderCmd:
+            events := s.book.handleOrder(c.Order)
+            s.publish(events)
+        case *CancelCmd:
+            events := s.book.cancelOrder(c.OrderID)
+            s.publish(events)
+        }
+    }
+}</code></pre>
+<h3>7.2 為何單寫者勝過 mutex？</h3>
+<ul>
+<li>無鎖競爭，無 spin lock，無 priority inversion</li>
+<li>CPU cache locality 最優（同一 goroutine 反覆操作同一資料結構）</li>
+<li>撮合邏輯本質序列化（成交順序必須確定）</li>
+<li>鎖會限制吞吐至 ~10k ops/sec，single writer 可達 ~500k ops/sec</li>
+</ul>
+<h3>7.3 跨市場並行</h3>
+<p>不同市場彼此獨立，不同 goroutine 並行運行。</p>
+<pre><code>CPU Core 0: tokio task for Market A（pinned via runtime affinity）
+CPU Core 1: tokio task for Market B
+CPU Core 2: tokio task for Market C
+...</code></pre>
+<p>Linux 用 <code>runtime.LockOSThread()</code> 將熱市場鎖到特定 core，搭配 <code>taskset</code> 提升 cache hit rate。</p>
+<h2>8. 持久化（Event Sourcing + WAL）</h2>
+<h3>8.1 寫入路徑</h3>
+<pre><code>Order API → ingressCh (in-memory) → MarketShard.run()
+                                          ↓
+                                    生成 Events
+                                    ↙          ↘
+                              WAL (本地磁碟)   Kafka topic
+                                    ↓              ↓
+                              Snapshot 用      下游 consumers:
+                                              - Ledger Service
+                                              - Position Service
+                                              - WebSocket Pub
+                                              - K 線 / Tick DB
+                                              - 風控服務</code></pre>
+<h3>8.2 WAL 格式</h3>
+<p>每筆事件序列化為 protobuf，append 到 daily log file：</p>
+<pre><code>/var/lib/proph/wal/2026-05-05/market_X.wal.gz</code></pre>
+<ul>
+<li>每行：<code>[seq_no][timestamp][event_type][payload_proto]</code></li>
+<li>gzip 壓縮、fdatasync 每 100 events 或 50ms（whichever 先）</li>
+<li>Kafka 寫入用 <code>acks=all</code> + idempotent producer</li>
+</ul>
 <h3>8.3 Snapshot</h3>
-<p>snapshot �g���P�榡�B��_�y�{�аѦ� implementation plan�G</p>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
+<p>每 60 秒（或每 100k events）產生 snapshot：</p>
+<pre><code>/var/lib/proph/snapshots/2026-05-05T14-30-00/market_X.snap</code></pre>
+<p>包含：</p>
+<ul>
+<li>完整 OrderBook 序列化</li>
+<li>最後處理的 SeqNo</li>
+</ul>
 <h3>8.4 Crash Recovery</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<p>��_�ɶ��ؼСG<strong>&lt; 30 ��</strong> for ����@�����]&lt; 1M �ƥ�^�C</p>
-<h2>9. �ƥ󫬧O�M��</h2>
+<pre><code class="language-go">func (s *MarketShard) recover() {
+    snap := loadLatestSnapshot(s.MarketID)
+    s.book = snap.Book
+    nextSeq := snap.SeqNo + 1
+
+    walEvents := readWALFrom(s.MarketID, nextSeq)
+    for _, ev := range walEvents {
+        s.book.applyEvent(ev)  // 純函數重建
+    }
+}</code></pre>
+<p>恢復時間目標：<strong>&lt; 30 秒</strong> for 任何單一市場（&lt; 1M 事件）。</p>
+<h2>9. 事件型別清單</h2>
 <table>
 <thead>
-<tr>
-<th>Event</th>
-<th>Ĳ�o</th>
-<th>�U����O</th>
-</tr>
+<tr><th>Event</th><th>觸發</th><th>下游消費</th></tr>
 </thead>
-<tbody><tr>
-<td><code>OrderAccepted</code></td>
-<td>�q�L���Ҷi�J����</td>
-<td>�����B�]��</td>
-</tr>
-<tr>
-<td><code>OrderRejected</code></td>
-<td>�ڦ��]�l�B�B���B�B�����^</td>
-<td>���a�q��</td>
-</tr>
-<tr>
-<td><code>OrderResting</code></td>
-<td>�i�J�q��ï����</td>
-<td>�q��ï WS ����</td>
-</tr>
-<tr>
-<td><code>Trade</code></td>
-<td>���X����</td>
-<td>�b���B���ܡBK �u�B�]��</td>
-</tr>
-<tr>
-<td><code>OrderFilled</code></td>
-<td>�q�槹������</td>
-<td>���a�q��</td>
-</tr>
-<tr>
-<td><code>OrderPartiallyFilled</code></td>
-<td>��������</td>
-<td>���a�q��</td>
-</tr>
-<tr>
-<td><code>OrderCancelled</code></td>
-<td>�Τ�M��� IOC/FOK</td>
-<td>���a�q���B�q��ï WS</td>
-</tr>
-<tr>
-<td><code>MarketStatusChanged</code></td>
-<td>open �� closed �� settling �� settled</td>
-<td>�����a</td>
-</tr>
-<tr>
-<td><code>BookSnapshot</code></td>
-<td>�q�\�̪즸�s�u���e</td>
-<td>WS �q�\��</td>
-</tr>
-<tr>
-<td><code>BookDelta</code></td>
-<td>�W�q��s</td>
-<td>WS �q�\��</td>
-</tr>
-</tbody></table>
-<h2>10. API ����</h2>
-<h3>10.1 REST �U��]�P�B�^</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>10.2 �M��</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>10.3 WebSocket �q��ï����</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<p>WebSocket �s�u������z�L <code>seq</code> ���� gap�]�|�T�^�A�Ȥ�� detect gap �᭫�s snapshot�C</p>
-<h3>10.4 WebSocket �ӤH�q�����</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h2>11. �ʯ� SLO</h2>
+<tbody>
+<tr><td><code>OrderAccepted</code></td><td>通過驗證進入引擎</td><td>風控、稽核</td></tr>
+<tr><td><code>OrderRejected</code></td><td>拒收（餘額、限額、風控）</td><td>玩家通知</td></tr>
+<tr><td><code>OrderResting</code></td><td>進入訂單簿掛單</td><td>訂單簿 WS 推播</td></tr>
+<tr><td><code>Trade</code></td><td>撮合成交</td><td>帳本、持倉、K 線、稽核</td></tr>
+<tr><td><code>OrderFilled</code></td><td>訂單完全成交</td><td>玩家通知</td></tr>
+<tr><td><code>OrderPartiallyFilled</code></td><td>部分成交</td><td>玩家通知</td></tr>
+<tr><td><code>OrderCancelled</code></td><td>用戶撤單或 IOC/FOK</td><td>玩家通知、訂單簿 WS</td></tr>
+<tr><td><code>MarketStatusChanged</code></td><td>open → closed → settling → settled</td><td>全玩家</td></tr>
+<tr><td><code>BookSnapshot</code></td><td>訂閱者初次連線推送</td><td>WS 訂閱者</td></tr>
+<tr><td><code>BookDelta</code></td><td>增量更新</td><td>WS 訂閱者</td></tr>
+</tbody>
+</table>
+<h2>10. API 介面</h2>
+<h3>10.1 REST 下單（同步）</h3>
+<pre><code>POST /api/v1/markets/{market_id}/orders
+Headers:
+  Authorization: Bearer &lt;jwt&gt;
+  Idempotency-Key: &lt;client-uuid&gt;
+  X-Client-Order-Id: &lt;player-supplied&gt;
+
+Body:
+{
+  "side": "buy" | "sell",
+  "outcome": "YES" | "NO",
+  "type": "LIMIT" | "MARKET" | "IOC" | "FOK" | "POST_ONLY",
+  "price_pts": 65,           // 0-100, optional for MARKET
+  "quantity": 100,
+  "time_in_force": "GTC" | "DAY" | "IOC" | "FOK"
+}
+
+Response 200:
+{
+  "order_id": "ord_01H...",
+  "status": "ACTIVE" | "FILLED" | "PARTIAL" | "CANCELLED",
+  "filled_qty": 50,
+  "avg_price_pts": 64,
+  "remaining_qty": 50,
+  "fee_pts": 65
+}</code></pre>
+<h3>10.2 撤單</h3>
+<pre><code>DELETE /api/v1/orders/{order_id}</code></pre>
+<h3>10.3 WebSocket 訂單簿推播</h3>
+<pre><code>ws://api.../ws/markets/{market_id}/book
+
+→ subscribe: { "depth": 10 }
+← snapshot: { "seq": 12345, "bids": [...], "asks": [...] }
+← delta:    { "seq": 12346, "side": "bid", "price_pts": 65, "qty_delta": -100 }
+← trade:    { "seq": 12347, "price_pts": 65, "qty": 100, "ts": ... }</code></pre>
+<p>WebSocket 連線必須能透過 <code>seq</code> 偵測 gap（漏訊），客戶端 detect gap 後重新 snapshot。</p>
+<h3>10.4 WebSocket 個人訂單推播</h3>
+<pre><code>ws://api.../ws/me/orders
+
+← order_update: { "order_id": ..., "status": "FILLED", ... }</code></pre>
+<h2>11. 性能 SLO</h2>
 <table>
 <thead>
-<tr>
-<th>����</th>
-<th>�ؼ�</th>
-<th>�q��</th>
-</tr>
+<tr><th>指標</th><th>目標</th><th>量測</th></tr>
 </thead>
-<tbody><tr>
-<td>���X����]API ���� �� �ƥ�o���^</td>
-<td>P50 &lt; 1ms, P99 &lt; 5ms</td>
-<td>OpenTelemetry span</td>
-</tr>
-<tr>
-<td>�楫���]�R</td>
-<td>���� 30,000 orders/sec</td>
-<td>����</td>
-</tr>
-<tr>
-<td>�����x�]�R</td>
-<td>100,000 orders/sec�]100 �ӥ����^</td>
-<td>����</td>
-</tr>
-<tr>
-<td>WebSocket ��������</td>
-<td>P99 &lt; 30ms (engine �� �Ȥ�� receive)</td>
-<td>RUM</td>
-</tr>
-<tr>
-<td>Crash Recovery</td>
-<td>&lt; 30 �� / ����</td>
-<td>DR �t�m</td>
-</tr>
-<tr>
-<td>�q��ï�`�׬d��</td>
-<td>P99 &lt; 5ms�]snapshot ���ѡ^</td>
-<td>API �ʱ�</td>
-</tr>
-</tbody></table>
-<h2>12. �����e�m�]Pre-trade Risk Check�^</h2>
-<p>����<strong>�����q��e</strong>�����q�L�G</p>
+<tbody>
+<tr><td>撮合延遲（API 接收 → 事件發布）</td><td>P50 &lt; 1ms, P99 &lt; 5ms</td><td>OpenTelemetry span</td></tr>
+<tr><td>單市場吞吐</td><td>持續 30,000 orders/sec</td><td>壓測</td></tr>
+<tr><td>全平台吞吐</td><td>100,000 orders/sec（100 個市場）</td><td>壓測</td></tr>
+<tr><td>WebSocket 推播延遲</td><td>P99 &lt; 30ms (engine → 客戶端 receive)</td><td>RUM</td></tr>
+<tr><td>Crash Recovery</td><td>&lt; 30 秒 / 市場</td><td>DR 演練</td></tr>
+<tr><td>訂單簿深度查詢</td><td>P99 &lt; 5ms（snapshot 提供）</td><td>API 監控</td></tr>
+</tbody>
+</table>
+<h2>12. 風控前置（Pre-trade Risk Check）</h2>
+<p>引擎<strong>接收訂單前</strong>必須通過：</p>
 <table>
 <thead>
-<tr>
-<th>�ˬd</th>
-<th>����</th>
-<th>���Ѧ^��</th>
-</tr>
+<tr><th>檢查</th><th>條件</th><th>失敗回應</th></tr>
 </thead>
-<tbody><tr>
-<td>�l�B�R��</td>
-<td><code>wallet.available ? price * qty + fee</code></td>
-<td>INSUFFICIENT_FUNDS</td>
-</tr>
-<tr>
-<td>���ܤW��</td>
-<td><code>position.qty + new_qty ? market.MaxPositionPerUser</code></td>
-<td>POSITION_LIMIT_EXCEEDED</td>
-</tr>
-<tr>
-<td>�浧�W��</td>
-<td><code>qty ? market.MaxOrderQty</code></td>
-<td>ORDER_QTY_TOO_LARGE</td>
-</tr>
-<tr>
-<td>�ۧڦ���</td>
-<td><code>taker.userID != maker.userID</code>�]����e��^</td>
-<td>SELF_TRADE_PREVENTED</td>
-</tr>
-<tr>
-<td>����϶�</td>
-<td><code>0 &lt; price &lt; 100</code>�]�Y��϶��A0 / 100 ����Ρ^</td>
-<td>INVALID_PRICE</td>
-</tr>
-<tr>
-<td>�������A</td>
-<td><code>market.status == OPEN</code></td>
-<td>MARKET_NOT_OPEN</td>
-</tr>
-<tr>
-<td>���a���A</td>
-<td><code>user.status == ACTIVE</code> &amp; <code>!self_excluded</code></td>
-<td>USER_RESTRICTED</td>
-</tr>
-<tr>
-<td>�ϧ@������</td>
-<td><code>risk_score &lt; 80</code></td>
-<td>RISK_REJECTED</td>
-</tr>
-<tr>
-<td><strong>���x�b��T��</strong></td>
-<td><code>order.user_id ? PLATFORM_SYSTEM_USER_IDS</code>�]�I�� ADR-0001 ��6�^</td>
-<td>PLATFORM_USER_NOT_ALLOWED</td>
-</tr>
-</tbody></table>
+<tbody>
+<tr><td>餘額充足</td><td><code>wallet.available ≥ price * qty + fee</code></td><td>INSUFFICIENT_FUNDS</td></tr>
+<tr><td>持倉上限</td><td><code>position.qty + new_qty ≤ market.MaxPositionPerUser</code></td><td>POSITION_LIMIT_EXCEEDED</td></tr>
+<tr><td>單筆上限</td><td><code>qty ≤ market.MaxOrderQty</code></td><td>ORDER_QTY_TOO_LARGE</td></tr>
+<tr><td>自我成交</td><td><code>taker.userID != maker.userID</code>（找對手前驗）</td><td>SELF_TRADE_PREVENTED</td></tr>
+<tr><td>價格區間</td><td><code>0 &lt; price &lt; 100</code>（嚴格區間，0 / 100 結算用）</td><td>INVALID_PRICE</td></tr>
+<tr><td>市場狀態</td><td><code>market.status == OPEN</code></td><td>MARKET_NOT_OPEN</td></tr>
+<tr><td>玩家狀態</td><td><code>user.status == ACTIVE</code> &amp; <code>!self_excluded</code></td><td>USER_RESTRICTED</td></tr>
+<tr><td>反作弊評分</td><td><code>risk_score &lt; 80</code></td><td>RISK_REJECTED</td></tr>
+<tr><td><strong>平台帳戶禁區</strong></td><td><code>order.user_id ∉ PLATFORM_SYSTEM_USER_IDS</code>（呼應 ADR-0001 §6）</td><td>PLATFORM_USER_NOT_ALLOWED</td></tr>
+</tbody>
+</table>
 <blockquote>
-<p><strong>Hedge ���\</strong>�G����<strong>��</strong>�]�t <code>HEDGE_NOT_ALLOWED</code> �ˬd�]�I�� <a href="./SPEC-000-index.html#5-%E8%B7%A8%E6%AA%94%E6%B1%BA%E7%AD%96%E8%BF%BD%E8%B9%A4%E8%A1%A8cross-cutting-decision-tracker">SPEC-000 ��5 Q-7</a> Resolved�^�C�P�@���a�b�P�@�����P�ɫ� YES + NO ���X�k�~�ȳ����A�� SPEC-002 ��4.4.4 NOTE 3 ���v <code>position_id</code> �����޿�伵�F��b wash trading �� SPEC-010 ��4.2.2 post-trade �����d�I�A��N���b hot path pre-trade �ˬd�]�קK�C�i�q�� query position-service �W�[ P99 1 hop�^�C</p>
+<p><strong>Hedge 允許</strong>：本表<strong>不</strong>包含 <code>HEDGE_NOT_ALLOWED</code> 檢查（呼應 <a href="./SPEC-000-index.html#5-跨檔決策追蹤表cross-cutting-decision-tracker">SPEC-000 §5 Q-7</a> Resolved）。同一玩家在同一市場同時持 YES + NO 為合法業務場景，由 SPEC-002 §4.4.4 NOTE 3 之逐 <code>position_id</code> 結算邏輯支撐；潛在 wash trading 由 SPEC-010 §4.2.2 post-trade 偵測攔截，刻意不在 hot path pre-trade 檢查（避免每張訂單 query position-service 增加 P99 1 hop）。</p>
 </blockquote>
-<p>�����e�m�b�W�� service �����A���X�������]��J�w�q�L�C</p>
-<h3>12.1 PLATFORM_SYSTEM_USER_IDS Sentinel Set�]Compliance ���u�^</h3>
+<p>風控前置在獨立 service 完成，撮合引擎假設輸入已通過。</p>
+<h3>12.1 PLATFORM_SYSTEM_USER_IDS Sentinel Set（Compliance 紅線）</h3>
 <blockquote>
-<p><strong>�j����u</strong>�G�I�� <a href="../docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md">ADR-0001 ��6</a>�C���� <code>ingressCh</code> ������ incoming order ���� <code>order.user_id != PLATFORM_SYSTEM_USER_IDS</code> �ˬd�F�R���h���� reject �üg�J SIEM�C���N���x / �t�� user_id �[�J�U���O�� PR <strong>���� CI fail + reject</strong>�C</p>
+<p><strong>強制紅線</strong>：呼應 <a href="../docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md">ADR-0001 §6</a>。引擎 <code>ingressCh</code> 必須對 incoming order 執行 <code>order.user_id != PLATFORM_SYSTEM_USER_IDS</code> 檢查；命中則直接 reject 並寫入 SIEM。任何將平台 / 系統 user_id 加入下單能力之 PR <strong>必須 CI fail + reject</strong>。</p>
 </blockquote>
-<h4>12.1.1 �`�Ʃw�q�]Rust�^</h4>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h4>12.1.2 �����J�f�ˬd�]�j��^</h4>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h4>12.1.3 CI �R�A���y</h4>
-<p>�I�� ADR-0001 ��6 �P SPEC-017 ��8 sentinel-scan job�ACI pipeline ���t�H�U�ˬd�]�b SPEC-013 ��3.2 �C�����_ gate�^�G</p>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h4>12.1.4 �ҥ~���p�G<strong>�L</strong></h4>
+<h4>12.1.1 常數定義（Rust）</h4>
+<pre><code class="language-rust">// services/matching-engine/src/sentinel.rs
+
+//! `PLATFORM_SYSTEM_USER_IDS` 列舉所有「禁止下單」之系統 user_id。
+//! 任何 incoming order 的 `user_id` 命中本集合則直接拒絕。
+//!
+//! # 紅線理由
+//!   - 平台不得在自家訂單簿掛單
+//!   - ADR-0001 §6 列為靜態掃描禁字
+//!
+//! # 新增 user_id 至本集合需要
+//!   1. ADR-XXXX 簽核
+//!   2. Compliance Officer 4-eye review（呼應 SPEC-010 §9.3 MS-14）
+//!   3. 與本檔案的 git blame 對照可追溯
+
+/// Sentinel `user_id` → 用途註記。Sorted const slice，O(log N) lookup，零 alloc。
+///
+/// 註：uid=4 (`system.platform_announcement`) 已於 v0.2.2 移除（呼應 SPEC-009 §5 R-2 紅線清除）。
+/// 集合刻意保留 id 4 之 gap，**不**重新編號 5/6/7/8 為 4/5/6/7，避免歷史 audit log 與 DB 引用斷鏈。
+/// `binary_search_by_key` 對 sorted slice with gap 仍正確運作。
+pub const PLATFORM_SYSTEM_USER_IDS: &amp;[(u64, &amp;str)] = &amp;[
+    (1, "system.root"),                  // bootstrap / migration only, never used at runtime
+    (2, "system.compliance"),            // 凍結 / 解凍帳戶之 audit shim, never trades
+    (3, "system.settlement_oracle"),     // Oracle 提交 shim, never trades
+    // uid=4 reserved (formerly system.platform_announcement; 已移除，永不重用)
+    (5, "system.cs_compensation"),       // 客服補償帳戶，呼應 SPEC-002 §8
+    (6, "system.suspense"),              // 對帳暫掛，呼應 SPEC-002 §4.2
+    (7, "system.affiliate_pool"),        // 推薦獎勵發放暫存池，呼應 SPEC-011
+    (8, "system.dmm_rebate_pool"),       // DMM 補貼暫存池，呼應 SPEC-009
+];
+
+/// `RESERVED_REMOVED_USER_IDS` 列舉曾經存在但已正式移除之 sentinel id；
+/// 任何嘗試重新註冊此集合中的 id（即便用途不同）必須 reject + 寫 critical audit log，
+/// 避免歷史 ledger / WAL 中之 `user_id=4` 紀錄被誤認為新 sentinel。
+pub const RESERVED_REMOVED_USER_IDS: &amp;[(u64, &amp;str)] = &amp;[
+    (4, "formerly system.platform_announcement, removed 2026-05-07 per R-2"),
+];
+
+/// Returns `true` iff the given `user_id` is reserved as a platform sentinel
+/// and must **never** appear as an order placer.
+#[inline]
+pub fn is_platform_system_user(uid: u64) -&gt; bool {
+    PLATFORM_SYSTEM_USER_IDS
+        .binary_search_by_key(&amp;uid, |&amp;(id, _)| id)
+        .is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sentinel_ids_are_sorted() {
+        // binary_search_by_key 之正確性前提：必須維持 sorted
+        let ids: Vec&lt;u64&gt; = PLATFORM_SYSTEM_USER_IDS.iter().map(|&amp;(id, _)| id).collect();
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        assert_eq!(ids, sorted, "PLATFORM_SYSTEM_USER_IDS must be sorted by user_id");
+    }
+
+    #[test]
+    fn sentinel_ids_are_unique() {
+        use std::collections::HashSet;
+        let set: HashSet&lt;u64&gt; = PLATFORM_SYSTEM_USER_IDS.iter().map(|&amp;(id, _)| id).collect();
+        assert_eq!(set.len(), PLATFORM_SYSTEM_USER_IDS.len(), "duplicate sentinel user_id");
+    }
+
+    #[test]
+    fn ordinary_user_is_not_sentinel() {
+        assert!(!is_platform_system_user(42));
+        assert!(!is_platform_system_user(1_000_000));
+    }
+
+    #[test]
+    fn all_sentinel_ids_match() {
+        for &amp;(id, _) in PLATFORM_SYSTEM_USER_IDS {
+            assert!(is_platform_system_user(id));
+        }
+    }
+
+    #[test]
+    fn removed_uid_4_is_not_active_sentinel() {
+        // R-2: system.platform_announcement (uid=4) removed; must NOT be active.
+        // 但仍視為「系統保留」— 不應被一般 user 註冊使用。
+        assert!(!is_platform_system_user(4),
+            "uid=4 已於 v0.2.2 移除，不應作為 active sentinel");
+        assert!(RESERVED_REMOVED_USER_IDS.iter().any(|&amp;(id, _)| id == 4),
+            "uid=4 必須記錄於 RESERVED_REMOVED_USER_IDS 防止重用");
+    }
+
+    #[test]
+    fn reserved_removed_ids_do_not_overlap_with_active() {
+        let active: std::collections::HashSet&lt;u64&gt; =
+            PLATFORM_SYSTEM_USER_IDS.iter().map(|&amp;(id, _)| id).collect();
+        for &amp;(id, _) in RESERVED_REMOVED_USER_IDS {
+            assert!(!active.contains(&amp;id),
+                "removed uid {} must not reappear in active sentinel set", id);
+        }
+    }
+}</code></pre>
+<h4>12.1.2 引擎入口檢查（強制）</h4>
+<pre><code class="language-rust">// services/matching-engine/src/ingress.rs
+
+use tracing::error;
+
+use crate::events::{OrderRejected, RejectReason};
+use crate::metrics;
+use crate::sentinel::is_platform_system_user;
+use crate::shard::MarketShard;
+use crate::types::Command;
+
+impl MarketShard {
+    pub async fn handle_command(&amp;mut self, cmd: Command) {
+        if let Command::PlaceOrder(order) = &amp;cmd {
+            if is_platform_system_user(order.user_id) {
+                // 立即 reject，並產生 critical 等級 audit log
+                self.publish_event(OrderRejected {
+                    order_id: order.id,
+                    reason: RejectReason::PlatformUserNotAllowed,
+                });
+                metrics::PLATFORM_USER_ORDER_BLOCKED.inc();
+                error!(
+                    target: "audit.critical",
+                    user_id = order.user_id,
+                    order_id = ?order.id,
+                    market_id = %order.market_id,
+                    "platform sentinel user attempted order"
+                );
+                return;
+            }
+        }
+        // ... 進入正常撮合
+        self.dispatch(cmd).await;
+    }
+}</code></pre>
+<h4>12.1.3 CI 靜態掃描</h4>
+<p>呼應 ADR-0001 §6 與 SPEC-017 §8 sentinel-scan job，CI pipeline 必含以下檢查（在 SPEC-013 §3.2 列為阻斷 gate）：</p>
+<pre><code class="language-bash"># .github/workflows/sentinel-scan.yml （示意；對齊 SPEC-017 §8 sentinel-scan job）
+# 1. 禁字掃描（ADR-0001 §6）
+rg -n -e 'auto_quote|market_balancer|house_book|probability_symmetry|auto_hedge' \
+   --type rust services/ crates/ \
+   &amp;&amp; echo "ADR-0001 §6 forbidden words detected" &amp;&amp; exit 1
+
+# 2. PLATFORM_SYSTEM_USER_IDS 集合不得在 sentinel / ingress 路徑外被旁路
+rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type rust services/matching-engine/ \
+   | grep -vE '(sentinel\.rs|ingress\.rs|sentinel/tests\.rs|tests/sentinel)' \
+   &amp;&amp; echo "PLATFORM_SYSTEM_USER_IDS referenced outside whitelisted paths" &amp;&amp; exit 1
+
+# 3. DMM session 檢查：DMM order 進入 engine 前必須轉換 user_id 為 DMM 法人帳戶
+#    （SPEC-009 §3.4），不可使用 system user_id
+rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type rust services/dmm-gateway/ \
+   &amp;&amp; echo "DMM gateway must not reference platform sentinel users" &amp;&amp; exit 1</code></pre>
+<h4>12.1.4 例外情況：<strong>無</strong></h4>
 <blockquote>
-<p><strong>���`��y�z�u<code>system.platform_announcement</code> (uid=4) ���ߤ@�ҥ~�v���N�ҰʸɶK��|�w�� v0.2.2 ��q����</strong>�]�I�� <a href="./SPEC-000-index.html#5-%E8%B7%A8%E6%AA%94%E6%B1%BA%E7%AD%96%E8%BF%BD%E8%B9%A4%E8%A1%A8cross-cutting-decision-tracker">SPEC-000 ��5 R-2</a> �~�D�Mĳ�P SPEC-009 ��5 �P�B�^�C</p>
-<p>���x<strong>�û���</strong>�b�ۮa�q��ï����A<strong>�L</strong>��� feature flag�Bñ�֬y�{�B�� UI �аO�i�H�ҥΥ��x order�C</p>
-<p>��12.1.1 sentinel ���X�� uid=4 �w�����A�æC�J <code>RESERVED_REMOVED_USER_IDS</code> ������v�����P���� user_id �����F��12.1.3 CI sentinel-scan ���ݯS�O whitelist�C�N�Ұʬy�ʩʤ����� SPEC-009 ��3.3 DMM rebate ��j�Υ�������W�[�C</p>
-<p>ADR-0001 ��6 �u�ߤ@�ҥ~�v�y�z�ݷs ADR �аO�� superseded�]���򸨦a�^�C</p>
+<p><strong>本節原描述「<code>system.platform_announcement</code> (uid=4) 為唯一例外」之冷啟動補貼路徑已於 v0.2.2 整段移除</strong>（呼應 <a href="./SPEC-000-index.html#5-跨檔決策追蹤表cross-cutting-decision-tracker">SPEC-000 §5 R-2</a> 業主決議與 SPEC-009 §5 同步）。</p>
+<p>平台<strong>永遠不</strong>在自家訂單簿掛單，<strong>無</strong>任何 feature flag、簽核流程、或 UI 標記可以啟用平台 order。</p>
+<p>§12.1.1 sentinel 集合中 uid=4 已移除，並列入 <code>RESERVED_REMOVED_USER_IDS</code> 防止歷史紀錄與未來 user_id 撞號；§12.1.3 CI sentinel-scan 不需特別 whitelist。冷啟動流動性不足走 SPEC-009 §3.3 DMM rebate 放大或市場延後上架。</p>
+<p>ADR-0001 §6 「唯一例外」描述待新 ADR 標記為 superseded（後續落地）。</p>
 </blockquote>
-<h2>13. �ۧڦ��樾��]Self-Trade Prevention, STP�^</h2>
-<h3>13.1 Ĳ�o</h3>
-<p>�� incoming taker order �N�P<strong>�P�@ user_id</strong> �� resting order ���X�ɡC</p>
-<h3>13.2 �B�m�����]�i�t�m�A�w�] CANCEL_NEWEST�^</h3>
+<h2>13. 自我成交防止（Self-Trade Prevention, STP）</h2>
+<h3>13.1 觸發</h3>
+<p>當 incoming taker order 將與<strong>同一 user_id</strong> 的 resting order 撮合時。</p>
+<h3>13.2 處置策略（可配置，預設 CANCEL_NEWEST）</h3>
 <table>
 <thead>
-<tr>
-<th>����</th>
-<th>�欰</th>
-</tr>
+<tr><th>策略</th><th>行為</th></tr>
 </thead>
-<tbody><tr>
-<td><code>CANCEL_NEWEST</code></td>
-<td>���� incoming order</td>
-</tr>
-<tr>
-<td><code>CANCEL_OLDEST</code></td>
-<td>���� resting maker</td>
-</tr>
-<tr>
-<td><code>CANCEL_BOTH</code></td>
-<td>��̬Ҩ���</td>
-</tr>
-<tr>
-<td><code>DECREMENT_BOTH</code></td>
-<td>���ƶq�����p�Ȫ��t���~��</td>
-</tr>
-</tbody></table>
-<p>DMM / ���c�b��i�]���P�����A�s�⪱�a�j�� <code>CANCEL_NEWEST</code> ���@���C</p>
-<h2>14. ��ɱ��� / �w������</h2>
-<h3>14.1 ��ƹB��P���</h3>
+<tbody>
+<tr><td><code>CANCEL_NEWEST</code></td><td>取消 incoming order</td></tr>
+<tr><td><code>CANCEL_OLDEST</code></td><td>取消 resting maker</td></tr>
+<tr><td><code>CANCEL_BOTH</code></td><td>兩者皆取消</td></tr>
+<tr><td><code>DECREMENT_BOTH</code></td><td>兩單數量取較小值的差後繼續</td></tr>
+</tbody>
+</table>
+<p>DMM / 機構帳戶可設不同策略，零售玩家強制 <code>CANCEL_NEWEST</code> 防作弊。</p>
+<h2>14. 邊界條件 / 已知陷阱</h2>
+<h3>14.1 整數運算與精度</h3>
 <ul>
-<li><strong>�����ϥ� float</strong>�C�Ҧ�����P�ƶq�� int64�C</li>
-<li>���椺�����G1 = 0.01�]0-100 ���� 0.00-1.00�^</li>
-<li>�I�Ƥ������G1 = 0.01 �I�]�P SPEC-002 �@�P�^</li>
-<li>����O basis points�G1 bp = 0.01%</li>
+<li><strong>絕不使用 float</strong>。所有價格與數量為 int64。</li>
+<li>價格內部單位：1 = 0.01（0-100 對應 0.00-1.00）</li>
+<li>點數內部單位：1 = 0.01 點（與 SPEC-002 一致）</li>
+<li>手續費 basis points：1 bp = 0.01%</li>
 </ul>
-<h3>14.2 ���B�p��</h3>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h3>14.3 NO �L��������</h3>
-<p>NO �q���ഫ�� YES �ɡG<code>yes_price = 100 - no_price</code>�C�ഫ����楲�����b (0, 100) �϶��C</p>
-<h3>14.4 ���������ɨ誺�q��</h3>
-<p><code>market.ClosesAt</code> ����G</p>
+<h3>14.2 金額計算</h3>
+<pre><code class="language-rust">// trade value (in 點 internal units, 100 = 1 點)
+// price_pts: 0-100, qty: 股數
+// trade_value = price_pts * qty  →  internal pts × 1
+// 例: 65 × 100 = 6500 internal pts = 65.00 點
+let trade_value: i64 = i64::from(price_pts) * qty;
+
+// fee = trade_value * fee_bps / 10000
+let fee: i64 = trade_value * i64::from(fee_bps) / 10_000;</code></pre>
+<h3>14.3 NO 腿價格驗證</h3>
+<p>NO 訂單轉換為 YES 時：<code>yes_price = 100 - no_price</code>。轉換後價格必須仍在 (0, 100) 區間。</p>
+<h3>14.4 市場關閉時刻的訂單</h3>
+<p><code>market.ClosesAt</code> 之後：</p>
 <ul>
-<li>�s�q��<strong>�����ڵ�</strong></li>
-<li>�q��ï�W�����D�q��<strong>���� cancel</strong>�A������ƶq reverse ���</li>
-<li>Ĳ�o <code>MarketStatusChanged</code> �� <code>CLOSED</code> �ƥ�</li>
-<li>���ݵ���]�� SPEC-004�^</li>
+<li>新訂單<strong>直接拒絕</strong></li>
+<li>訂單簿上的活躍訂單<strong>全部 cancel</strong>，未成交數量 reverse 鎖倉</li>
+<li>觸發 <code>MarketStatusChanged</code> → <code>CLOSED</code> 事件</li>
+<li>等待結算（見 SPEC-004）</li>
 </ul>
-<h2>15. �{���X����d��</h2>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h2>16. ���յ���</h2>
-<p>���եؼлP��@�Ӹ`�Ш� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h2>17. ���p�P�B��</h2>
-<h3>17.1 ���p�Ҧ�</h3>
+<h2>15. 程式碼風格範例</h2>
+<pre><code class="language-rust">// services/matching-engine/src/orderbook.rs
+
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, HashMap};
+
+use crate::events::{Event, OrderAccepted, OrderResting};
+use crate::types::{Order, OrderId, OrderType, PriceLevel, Side};
+
+pub struct OrderBook {
+    market_id: String,
+    bids: BTreeMap&lt;Reverse&lt;i64&gt;, PriceLevel&gt;,
+    asks: BTreeMap&lt;i64, PriceLevel&gt;,
+    orders_by_id: HashMap&lt;OrderId, OrderHandle&gt;,
+    seq: u64,
+}
+
+struct OrderHandle {
+    price_pts: i64,
+    side:      Side,
+    /// VecDeque tombstone marker — 撤單時不真的移除（O(N)），
+    /// 改 mark active=false，撮合時跳過已 cancel。
+    active:    bool,
+}
+
+impl OrderBook {
+    /// `apply_order` is the **only** mutator. It must be called from the
+    /// market's dedicated `tokio::task::LocalSet` runtime — no `Mutex`,
+    /// no `RwLock`, no `Arc&lt;RefCell&gt;`. Returns events in deterministic order.
+    pub fn apply_order(&amp;mut self, mut order: Order) -&gt; Vec&lt;Event&gt; {
+        self.seq += 1;
+        order.seq_no = self.seq;
+
+        let mut events = Vec::with_capacity(4);
+        events.push(Event::OrderAccepted(OrderAccepted {
+            seq: self.seq,
+            order_id: order.id,
+        }));
+
+        while order.qty_remaining &gt; 0 {
+            let Some(best) = self.peek_best_opposite(order.side) else { break };
+            if !can_cross(&amp;order, best) { break; }
+            events.extend(self.match_at_level(&amp;mut order));
+        }
+
+        if order.qty_remaining &gt; 0 &amp;&amp; order.kind == OrderType::Limit {
+            self.insert_resting(&amp;order);
+            events.push(Event::OrderResting(OrderResting { order_id: order.id }));
+        }
+        events
+    }
+}
+
+fn can_cross(taker: &amp;Order, level: &amp;PriceLevel) -&gt; bool {
+    match (taker.kind, taker.side) {
+        (OrderType::Market, _) =&gt; true,
+        (_, Side::Bid) =&gt; taker.price_pts &gt;= level.price_pts,
+        (_, Side::Ask) =&gt; taker.price_pts &lt;= level.price_pts,
+    }
+}</code></pre>
+<h2>16. 測試策略</h2>
+<h3>16.1 單元測試（cargo nextest）</h3>
 <ul>
-<li>���X�����H <strong>DaemonSet + hostNetwork: true</strong> ���p�b K8s</li>
-<li>�ΡGbare-metal Linux server�Asystemd �޲z</li>
-<li>����b sidecar / sidecar mesh ���]�קK Envoy �ޤJ����^</li>
+<li>對應檔案：<code>services/matching-engine/src/orderbook.rs</code> 之 <code>#[cfg(test)] mod tests</code></li>
+<li>撮合 hot path crate（<code>book</code> / <code>match</code> 模組）line coverage <strong>≥ 95% baseline</strong>（呼應 <a href="./SPEC-013-cicd-release.html">SPEC-013 §3.3</a> 分層門檻 + §18 整體 ≥ 95%；H-6 跨檔對齊）；剩餘 ≤ 5% 須為<strong>經 ADR 標註之 unreachable 分支</strong>（如 <code>unreachable!()</code> / <code>panic!("invariant violated")</code>），不可為缺測之業務 path。stretch goal 100%（追蹤剩餘 5% 之 dead code / error path 並逐筆消除）</li>
+<li>涵蓋情境：</li>
+<li>撮合 happy path（單筆 / 多檔位 sweep）</li>
+<li>自我成交防止（STP 各策略：CANCEL_NEWEST / CANCEL_OLDEST / CANCEL_BOTH / DECREMENT_BOTH）</li>
+<li>IOC / FOK / POST_ONLY 行為</li>
+<li>撤單（resting / partial fill 後撤 / 不存在 / 已 FILLED）</li>
+<li>runner：<code>cargo nextest run -p matching-engine --locked</code>（對齊 SPEC-017 §4.5 Makefile 之 <code>make test</code>）</li>
 </ul>
-<h3>17.2 ������ѻP���t����]T-4�^</h3>
+<h3>16.2 屬性測試（<a href="https://docs.rs/proptest">proptest</a>）</h3>
+<p>針對任意訂單序列，不變式皆成立：</p>
+<ul>
+<li><code>Σ(bid qty) + Σ(ask qty) + Σ(filled qty) == Σ(submitted qty)</code></li>
+<li>任意時刻 <code>best_bid &lt; best_ask</code>（無交叉）</li>
+<li><code>seq</code> 嚴格遞增且無 gap</li>
+<li>撤單後 <code>total_qty</code> 與 queue 長度一致</li>
+<li>POST_ONLY 不可成交，違反必觸發 <code>OrderRejected</code></li>
+</ul>
+<p>採 <code>proptest::prop_compose!</code> 生成 <code>Order</code> 序列，shrink 失敗最小集；CI 跑種子固定（<code>PROPTEST_SEED</code>）以利重現。</p>
+<h3>16.3 重放確定性測試</h3>
+<ul>
+<li>從 WAL 重放歷史事件，重建狀態必須與 snapshot byte-equal（對 <code>bincode</code> / <code>rmp-serde</code> 序列化結果做 SHA256 比對）</li>
+<li>跨 build 之 determinism：clippy <code>clippy::float_arithmetic = "deny"</code>（禁 float），確保不同 CPU 不會給出不同結果</li>
+</ul>
+<h3>16.4 壓力測試</h3>
+<ul>
+<li>100 萬 orders、1 個市場：吞吐、P99 latency 達 §11 SLO</li>
+<li>100 個市場、每市場 10k orders：跨核擴展性（per-market <code>tokio::task::LocalSet</code> + core_affinity，呼應 SPEC-014 §3.1 R-3）</li>
+<li>工具：<code>criterion</code> benchmark + <code>tokio-console</code> 觀測 task starvation</li>
+</ul>
+<h3>16.5 混沌測試</h3>
+<ul>
+<li>kill -9 + 自動 recovery：30 秒內必須完整恢復（從 snapshot + WAL replay）</li>
+<li>磁碟滿：必須拒收新訂單，已接受訂單持續處理至 graceful shutdown</li>
+<li>網路分區：Kafka 不可達時 WAL 仍寫入磁碟，待 Kafka 恢復後 producer 自動補送（呼應 SPEC-008 §4.2）</li>
+</ul>
+<h3>16.6 Mutation testing（nightly）</h3>
+<ul>
+<li>由 SPEC-017 §8.2 nightly workflow 限縮跑 <code>crates/sdk/ledger</code> + <code>services/matching-engine/src/{book,match}</code> + <code>services/wallet-ledger-service/src/ledger</code></li>
+<li>門檻：caught mutation rate ≥ 75%（呼應 SPEC-017 §3.3 R-4）</li>
+<li>不阻塞 PR；持續 &lt; 75% 開 issue 補測試</li>
+</ul>
+<h2>17. 部署與運維</h2>
+<h3>17.1 部署模式</h3>
+<ul>
+<li>撮合引擎以 <strong>DaemonSet + hostNetwork: true</strong> 部署在 K8s</li>
+<li>或：bare-metal Linux server，systemd 管理</li>
+<li>不放在 sidecar / sidecar mesh 內（避免 Envoy 引入延遲）</li>
+</ul>
+<h3>17.2 市場路由與分配機制（T-4）</h3>
 <blockquote>
-<p>���X������ hostNetwork DaemonSet �Ҧ��]��17.1�^�A�N���ۨC�� K8s node �W���@�Ӽ��X process�F����μз� K8s Service load balancer�A�ݦۭq������Ѿ���C</p>
+<p>撮合引擎走 hostNetwork DaemonSet 模式（§17.1），意味著每個 K8s node 上有一個撮合 process；不能用標準 K8s Service load balancer，需自訂市場路由機制。</p>
 </blockquote>
-<h4>17.2.1 ��Ѭ[�c</h4>
-<p>���`����@�Ӹ`�B��쵲�c�B�į�ѼƻP�t��k��@�`���A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h4>17.2.2 ��ѨM��</h4>
-<p>���`�y�{�]�����ЫءB�}�L��ѡB�U��ɦV�B�G�٤����B�X�Y�e�P���N���y�^�P�Ҧ���@����A�ХH implementation plan ���ǡC</p>
-<h4>17.2.3 ��A�Ȼα�</h4><p>��A�Ⱦ�X�Bclient / broker �]�w�P��� hot path budget ��@�A�Ԩ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h4>17.2.4 �t�i��|</h4>
+<h4>17.2.1 路由架構</h4>
+<pre><code>                                     ┌─────────────────────┐
+                                     │   etcd cluster      │
+                                     │  /market-routing/   │
+                                     │  {market_id} = node │
+                                     └──────────┬──────────┘
+                                                │
+                                                │ watch
+                                                ▼
+                  ┌──────────────────────────────────────────────────────┐
+                  │             market-service                            │
+                  │    (consistent_hash with virtual nodes; 24×replicas)  │
+                  │     publishes routing decisions to etcd               │
+                  └──────────┬─────────────────────┬─────────────────────┘
+                             │                     │
+              POST /orders   │ lookup              │ event: market.routing.changed
+                             ▼                     ▼
+                ┌────────────────────┐   ┌────────────────────┐
+                │   api-gateway      │   │  matching-engine   │
+                │  forwards to       │   │  pod on selected   │
+                │  designated node   │   │  node (hostPort)   │
+                └────────────────────┘   └────────────────────┘</code></pre>
+<h4>17.2.2 路由決策</h4>
+<table>
+<thead>
+<tr><th>階段</th><th>機制</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>市場創建（DRAFT → SCHEDULED）</strong></td><td>market-service 計算 <code>consistent_hash(market_id, virtual_nodes=24)</code> 對應到當前 active node 集合；寫入 etcd <code>/market-routing/{market_id} = {node_ip, hostPort}</code></td></tr>
+<tr><td><strong>市場開盤（SCHEDULED → OPEN）</strong></td><td>matching-engine pod watch etcd 該 key，被指派之 pod 從 SPEC-008 §6.1 snapshot + WAL 還原 OrderBook，載入 in-memory；ingress ready 後寫 <code>/market-routing/{market_id}/state = ready</code></td></tr>
+<tr><td><strong>下單路由</strong></td><td>api-gateway 查 etcd（cached 30s）取得目標 node IP + hostPort；轉發 gRPC 至該 node 之撮合引擎；若 etcd state 不為 ready，回 503 + Retry-After header</td></tr>
+<tr><td><strong>node failure</strong></td><td>Kubernetes node failure detector（kubelet liveness）+ market-service 同步偵測 etcd lease expiry → 觸發該 node 之所有市場 reroute；新 node 從 snapshot + Kafka WAL replay 還原（呼應 SPEC-008 §4.2 RTO &lt; 5 分鐘）</td></tr>
+<tr><td><strong>node 添加（scale up）</strong></td><td>新 node 加入後，market-service 重新計算 consistent hash；<strong>僅</strong> rebalance 受影響之 1/N 市場（virtual nodes 設計使 rebalance 量最小）；rebalance 時市場進入 <code>MIGRATING</code> 狀態，拒收新 order 直至新 node ready</td></tr>
+<tr><td><strong>熱 / 冷市場分類</strong></td><td>每日 cron 計算前 24 小時各市場成交量；前 5% 之熱市場標記為 <code>hot</code>，獨佔一個 K8s node（hostPort + node taint + affinity）；冷市場 multiplex 共享 node</td></tr>
+</tbody>
+</table>
+<h4>17.2.3 跨服務銜接</h4>
 <ul>
-<li><strong>MVP�]&lt; 100 markets�^</strong>�G�H��ϰ��¦��Ѻ���í�w�W�u�C</li>
-<li><strong>Scale-up�]100-1000 markets�^</strong>�G�[�j��ѧ֨��P�y�q���O����A�ǳƸ�ϰ�W�ҤơC</li>
-<li><strong>Scale-out�]&gt; 1000 markets�^</strong>�G�ݭn�s ADR �ɥR��ϰ���p�������p�����C</li>
+<li>market-service 之路由決策邏輯位於 <code>services/market-service/src/routing.rs</code></li>
+<li>etcd client 採 <code>etcd-client</code> crate（tokio-async）</li>
+<li>routing 變更事件透過 Kafka topic <code>market.routing</code> broadcast（呼應 SPEC-014 §6.2）</li>
+<li>路由決策之 hot path P99 budget：api-gateway → etcd cache lookup ≤ 0.5ms（呼應 SPEC-007 §6.4 將 hop budget 補為 etcd lookup 之 0.5ms 而非 default 0ms）</li>
 </ul>
-<h3>17.3 Thread / Runtime �ҫ��]T-6�^</h3>
-<p>��/�N���� runtime ���y�P�ɯŬy�{�A�t�֤߸귽�t�m�B�^��`���B���Ĥ����A�аѦ� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</p>
-<h2>18. �禬����</h2>
+<h4>17.2.4 演進路徑</h4>
 <ul>
-<li><input disabled="" type="checkbox"> �椸���� + �ݩʴ����л\�v ? 95%</li>
-<li><input disabled="" type="checkbox"> �����G1M orders �B�z�B���� P50/P99 �F SLO</li>
-<li><input disabled="" type="checkbox"> ����T�w�ʴ��ճq�L</li>
-<li><input disabled="" type="checkbox"> Kafka �뻼 zero-loss ���ҡ]kill -9 ��ƥ󤣥ᥢ�^</li>
-<li><input disabled="" type="checkbox"> WebSocket �������� P99 &lt; 30ms �b 1000 �õo�q�\�̤U</li>
-<li><input disabled="" type="checkbox"> STP �欰�P�t�m�����@�P</li>
-<li><input disabled="" type="checkbox"> Crash recovery &lt; 30 ��</li>
+<li><strong>MVP（&lt; 100 markets）</strong>：consistent hash + 單 etcd cluster</li>
+<li><strong>Scale-up（100-1000 markets）</strong>：考慮加 routing cache 至 api-gateway（Redis）；reduce etcd watch fan-out</li>
+<li><strong>Scale-out（&gt; 1000 markets）</strong>：考慮多區 etcd（federation）；本 SPEC 不細化，留待規模確認後新 ADR</li>
+</ul>
+<h3>17.3 Thread / Runtime 模型（T-6）</h3>
+<blockquote>
+<p>SPEC-017 §6.1.1 範例之「每 market 一個 thread + core_affinity pin」假設<strong>僅在熱市場 ≤ CPU cores 時成立</strong>。實務上 100 market on 16 cores 時，<code>core_affinity::set_for_current</code> 退化為「群組親和性」，多 thread 仍會被 OS scheduler 在共用 core 上切換，P99 抖動仍會發生。本節定義熱 / 冷市場分流策略。</p>
+</blockquote>
+<h4>17.3.1 熱市場（trade volume &gt; 閾值，標記為 <code>hot</code>）</h4>
+<ul>
+<li><strong>獨佔 K8s node</strong>：透過 §17.2.2 hot 標記 + node taint + pod affinity，確保該 node 上僅運行該熱市場的 matching-engine pod</li>
+<li><strong>單一 process + tokio current_thread runtime + LocalSet + core_affinity</strong>：呼應 SPEC-017 §6.1.1 / SPEC-014 R-3 原始設計</li>
+<li><strong>CPU pinning</strong>：thread pin 到 node 上的單一 core（透過 <code>taskset</code> 或 K8s <code>cpuManagerPolicy: static</code>）</li>
+<li><strong>適用場景</strong>：成交量前 5% 之熱市場，P99 對 tail latency 敏感</li>
+<li><strong>預估規模</strong>：MVP 階段熱市場 ≤ 10 個（每個獨佔一台中等規格 node：8 vCPU / 16GB / NVMe SSD）</li>
+</ul>
+<h4>17.3.2 冷市場（其餘 95%）</h4>
+<ul>
+<li><strong>multiplex 共享 node</strong>：每 node 運行一個 matching-engine pod，承載多個冷市場</li>
+<li><strong>tokio multi-thread runtime + per-market <code>tokio::task</code></strong>（不採 LocalSet，避免 OS thread 數爆炸）</li>
+<li><strong>無 CPU pinning</strong>：work-stealing 適用於冷市場（成交量不集中、scheduling jitter 影響可忽略）</li>
+<li><strong>適用場景</strong>：長尾市場、剛上架市場、低成交量市場</li>
+<li><strong>預估規模</strong>：MVP 階段每 node 承載 ~50 冷市場</li>
+</ul>
+<h4>17.3.3 動態升降級</h4>
+<ul>
+<li><strong>冷 → 熱</strong>：每日 cron 偵測前 24 小時成交量 ≥ 熱市場閾值 → 自動觸發 promotion 流程：(a) 新 node 啟動專屬 pod；(b) snapshot + WAL replay 還原 OrderBook；(c) 流量切換；(d) 舊 node 上該市場 evict</li>
+<li><strong>熱 → 冷</strong>：連續 7 天成交量低於熱閾值 → 自動 demotion，反向流程</li>
+<li><strong>promotion / demotion governance</strong>：每次升降級寫 audit log，week-over-week 報表給 Compliance</li>
+</ul>
+<h4>17.3.4 SPEC-017 §6.1.1 之範例對齊</h4>
+<p>SPEC-017 §6.1.1 之 <code>main.rs</code> 範例（每 market 一 thread + core_affinity）對應<strong>熱市場</strong>之撮合引擎 binary。冷市場 binary 為<strong>獨立 main.rs</strong>，採 <code>#[tokio::main]</code> multi-thread runtime + <code>tokio::spawn</code> per-market task。兩個 binary 共用 <code>crates/sdk</code> + <code>services/matching-engine/src/{book,match}</code> 核心邏輯。</p>
+<p>實作落地：</p>
+<ul>
+<li><code>services/matching-engine-hot/src/main.rs</code> — 熱市場 binary</li>
+<li><code>services/matching-engine-cold/src/main.rs</code> — 冷市場 binary</li>
+<li><code>services/matching-engine/</code> — 共用 core lib crate（不含 main.rs）</li>
+</ul>
+<p>或者單一 binary 透過 env var (<code>PROPH_ENGINE_MODE=hot|cold</code>) 在 main.rs 啟動時 dispatch — 取決於 Codex PR #1 之拆分粒度決議；SPEC-017 §11.2 acceptance check 應反映此選擇。</p>
+<h3>17.5 升級</h3>
+<ul>
+<li>滾動升級：新機器啟動 → 從 snapshot + WAL 恢復 → ingress 切換 → 舊機器排乾</li>
+<li>強制 graceful shutdown：拒收新 order，處理完佇列後 snapshot 並退出</li>
+<li>升級期間市場路由由 market-service 暫時凍結 reroute 決策（避免升級中誤判 node failure 觸發不必要 rebalance）</li>
+</ul>
+<h2>18. 驗收條件</h2>
+<ul>
+<li>&lt;input disabled="" type="checkbox"&gt; 單元測試 + 屬性測試覆蓋率 ≥ 95%</li>
+<li>&lt;input disabled="" type="checkbox"&gt; 壓測：1M orders 處理、平均 P50/P99 達 SLO</li>
+<li>&lt;input disabled="" type="checkbox"&gt; 重放確定性測試通過</li>
+<li>&lt;input disabled="" type="checkbox"&gt; Kafka 投遞 zero-loss 驗證（kill -9 後事件不丟失）</li>
+<li>&lt;input disabled="" type="checkbox"&gt; WebSocket 推播延遲 P99 &lt; 30ms 在 1000 並發訂閱者下</li>
+<li>&lt;input disabled="" type="checkbox"&gt; STP 行為與配置策略一致</li>
+<li>&lt;input disabled="" type="checkbox"&gt; Crash recovery &lt; 30 秒</li>
 </ul>
 <h2>19. Open Questions</h2>
 <blockquote>
-<p>���ɨM���w���Ħ� <a href="./SPEC-000-index.html">SPEC-000 ��5</a> �����l�ܪ�C���`�ȫO�d SPEC-003 �ۨ��d��ĳ�D�C</p>
+<p>跨檔決策已收斂至 <a href="./SPEC-000-index.html">SPEC-000 §5</a> 中央追蹤表。本節僅保留 SPEC-003 自身範圍內議題。</p>
 </blockquote>
 <ol>
-<li>WAL �O�_�ݭn mmap �[�t�H�Ϊ��� buffered write �w�����H</li>
-<li>Snapshot �ǦC�Ʈ榡�Gprotobuf vs MessagePack vs custom binary�H</li>
-<li><del>�q�� ID �ͦ������Gsnowflake vs ULID vs DB sequence�H</del> ? <strong>Resolved</strong>�G�� <strong>ULID</strong>�A��@���a�覡�� <a href="./implementation-plans/SPEC-003-matching-engine-implementation-plan.html">implementation plan</a>�C</li>
-
-<li>�O�_�䴩 stop-limit / trailing-stop �������q�������]���o�����ݭn�^�H</li>
-<li><del>DMM API �O�_���W�� binary protocol�]FIX ��ĳ�^�٬O�@�� REST�H</del>�]�w Resolved by <a href="./SPEC-009-dmm-liquidity.html">SPEC-009 ��3.4</a>�G�۫� binary protobuf over TLS�^</li>
+<li>WAL 是否需要 mmap 加速？或直接 buffered write 已足夠？</li>
+<li>Snapshot 序列化格式：protobuf vs MessagePack vs custom binary？</li>
+<li><del>訂單 ID 生成策略：snowflake vs ULID vs DB sequence？</del> ✅ <strong>Resolved 2026-05-05</strong>：採 <strong>ULID</strong> 為 canonical Order.ID。理由：</li>
 </ol>
-
+<ul>
+<li><strong>無需協調</strong>：snowflake 需 worker ID 分配（撮合引擎為 per-market goroutine，DaemonSet 部署時 worker ID 配置成本高）；DB sequence 在撮合熱路徑要往返 Postgres（破壞 single-writer in-memory 性能）。ULID 由撮合引擎本地生成，zero-coordination。</li>
+<li><strong>時序友善</strong>：ULID 前 48 bit 為毫秒 timestamp，字典序自然遞增，方便 log / debug / 範圍查詢；同毫秒內 monotonic flag 確保唯一順序。</li>
+<li><strong>128-bit 無碰撞</strong>：跨 market goroutine 同毫秒生成不會撞，撮合引擎 crash recovery 重啟後 ID 不重複（不像 in-memory uint64 sequence 需從 WAL 還原）。</li>
+<li><strong>API / DB / log 一致</strong>：對外 API 已用 <code>ord_01H...</code> 字串格式（§9 API 範例），與 ULID Crockford Base32 編碼天然契合。DB 儲 <code>bytea(16)</code> 或 PostgreSQL <code>uuid</code> 型別（ULID 為 UUID 相容 128-bit）。</li>
+<li><strong>撮合 FIFO 優先序仍用 per-market <code>seq uint64</code></strong>：ULID 作為持久 ID 與 idempotency key；撮合引擎內部排序仍以 leader 賦予的 <code>seq</code> 為準（呼應 §4.3 <code>OrderResting{Seq: b.seq}</code>），兩者並存。</li>
+<li><strong>落地動作</strong>：(a) <code>packages/proto/v1/engine.proto</code> 之 <code>OrderID</code> 定義為 <code>bytes order_id = 1</code>（節省序列化成本）；(b) §4.3 <code>OrderID = [u8; 16]</code> 為 canonical Rust 型別；Display 包裝輸出 <code>ord_&lt;ULID&gt;</code> 字串；(c) Rust 端採 <a href="https://docs.rs/ulid">ulid crate 1.x</a>（撮合引擎自管 entropy source，per-market <code>Generator</code> 確保 monotonic）。</li>
+</ul>
+<ol>
+<li>是否支援 stop-limit / trailing-stop 等高階訂單類型（首發版不需要）？</li>
+<li><del>DMM API 是否走獨立 binary protocol（FIX 協議）還是共用 REST？</del>（已 Resolved by <a href="./SPEC-009-dmm-liquidity.html">SPEC-009 §3.4</a>：自建 binary protobuf over TLS）</li>
+</ol>
 </body>
 </html>
-
-
-
-
-
-
-
-

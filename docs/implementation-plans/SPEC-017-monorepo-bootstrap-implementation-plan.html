@@ -22,8 +22,8 @@
   <div class="meta">
     <strong>版本</strong>: v0.2.6<br>
     <strong>更新日</strong>: 2026-05-09<br>
-    <strong>對應規格</strong>: <a href="../specs/SPEC-017-monorepo-bootstrap.html">SPEC-017</a><br>
-    <strong>目標</strong>: 建立可重現開發環境與 PR #1 動工前 PoC gating
+    <strong>對應規格</strong>: <a href="../../specs/SPEC-017-monorepo-bootstrap.html">SPEC-017</a><br>
+    <strong>目標</strong>: 建立可重現開發環境與公開 Beta 前 PoC gating
   </div>
 
   <section>
@@ -58,7 +58,7 @@ tools/</code></pre>
     <ul>
       <li>PR pipeline：lint + test + sentinel-scan 為最小通過條件。</li>
       <li>main pipeline：加入 sqlx/check、nextest、clippy、prettier/eslint、fmt 驗證。</li>
-      <li>PR #1 前置 gating：PoC-A（EdDSA/LIFF）+ PoC-B（Edge runtime）必須有通過紀錄。</li>
+      <li>公開 Beta 前置 gate：PoC-A（EdDSA/LIFF）+ PoC-B（Edge runtime）必須有通過紀錄或 fallback ADR。</li>
     </ul>
   </section>
 
@@ -75,7 +75,7 @@ tools/</code></pre>
     <h2>5. 不變式</h2>
     <ul>
       <li>make dev 必須一次啟動至少一組前後端可用服務。</li>
-      <li>PoC 未回填不得 merge PR #1。</li>
+      <li>PoC 未回填不得進入公開 Beta / production deployment mode finalization。</li>
       <li>任何 bootstrap 失敗訊息需可重現並可在 1 小時內復現。</li>
     </ul>
   </section>

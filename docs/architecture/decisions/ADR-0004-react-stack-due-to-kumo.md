@@ -255,9 +255,9 @@ E 推翻「採用元件庫」這個前提。本 ADR 的範圍是接受業主指�
 
 ### 8.1 內部文件
 
-- [SPEC-014 §3.2 前端](../../../specs/SPEC-014-tech-architecture.md) — 技術選型表（v0.1.2 已更新）
-- [SPEC-014 §8.2 React / Next.js 15 範例](../../../specs/SPEC-014-tech-architecture.md)
-- [SPEC-014 §9 命名規範](../../../specs/SPEC-014-tech-architecture.md)
+- [SPEC-014 §3.2 前端](../../../specs/SPEC-014-tech-architecture.html) — 技術選型表（v0.1.2 已更新）
+- [SPEC-014 §8.2 React / Next.js 15 範例](../../../specs/SPEC-014-tech-architecture.html)
+- [SPEC-014 §9 命名規範](../../../specs/SPEC-014-tech-architecture.html)
 - [`design/COMPONENTS.md`](../../../design/COMPONENTS.md) — Kumo 詳細選用文件、技術棧驗證來源
 - [`design/landing-apple.html`](../../../design/landing-apple.html) — 候選方案 1 視覺化
 - [`design/landing-airbnb.html`](../../../design/landing-airbnb.html) — 候選方案 2 視覺化
@@ -292,7 +292,7 @@ E 推翻「採用元件庫」這個前提。本 ADR 的範圍是接受業主指�
 
 ## 10. Pre-Execution Validation Items（動工前驗證項目）
 
-> **MADR 體裁註記**：本節非「待重新決定的問題」（ADR 已 Accepted，React + Kumo 為架構定案）。以下為動工前必須驗證的實作細節，由 `apps/web/` 第一個 PR 之前釐清。所有跨 SPEC 的決策議題改由 [SPEC-000 §5](../../../specs/SPEC-000-index.md) 中央追蹤表收斂。
+> **MADR 體裁註記**：本節非「待重新決定的問題」（ADR 已 Accepted，React + Kumo 為架構定案）。以下為動工前必須驗證的實作細節，由 `apps/web/` 第一個 PR 之前釐清。所有跨 SPEC 的決策議題改由 [SPEC-000 §5](../../../specs/SPEC-000-index.html) 中央追蹤表收斂。
 
 | ID | 待驗證項目 | 驗證對象 | 影響 |
 |----|----------|---------|------|

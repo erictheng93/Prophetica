@@ -129,7 +129,7 @@ FOR EACH ROW EXECUTE FUNCTION fn_ledger_balance_check();
 
     <h3>3.2 INV-6：wallet outflow 白名單（ADR-0006）</h3>
     <ul>
-      <li>實作依賴 <code>is_inv6_whitelisted_target()</code>（位於 <a href="../crates/sdk/src/ledger/mod.rs">crates/sdk/src/ledger/mod.rs</a>）。</li>
+      <li>實作依賴 <code>is_inv6_whitelisted_target()</code>（位於 <a href="../../crates/sdk/src/ledger/mod.rs">crates/sdk/src/ledger/mod.rs</a>）。</li>
       <li>Trigger 腳本實作參考：<a href="../../services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql">services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql</a></li>
       <li>規格治理依據：<a href="../architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006</a></li>
     </ul>

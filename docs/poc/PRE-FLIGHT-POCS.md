@@ -1,6 +1,6 @@
 # Pre-Flight Proof-of-Concept Plans
 
-> **動工前必跑之 PoC 清單**。Codex PR #1（SPEC-017 §11.2）merge 之前，本文件所列之 PoC 必須由前端 / 全端工程師跑通並回填 PoC 結果至本文件 §3 / §4。任一 PoC 失敗 → 觸發退路選項並更新對應 SPEC 章節，再續進 PR #1。
+> **公開 Beta 前必跑之 PoC 清單**。Codex PR #1 / internal alpha 可在 live verification pending 時繼續，但公開 Beta、真實入金、真實下單與 production deployment mode finalization 之前，本文件所列之 PoC 必須由前端 / 全端工程師跑通並回填 PoC 結果至本文件 §3 / §4。任一 PoC 失敗 → 觸發退路選項並更新對應 SPEC 章節，再續進 release review。
 
 | 文件版本 | v1.1 |
 | --- | --- |
@@ -23,14 +23,14 @@
 
 | PoC | SPEC 章節 | 阻擋之實作項目 |
 |-----|----------|--------------|
-| PoC-A: EdDSA mobile / LIFF SDK 相容性 | [SPEC-010 §3.1.2](../../specs/SPEC-010-security-antifraud.md) | JWT signing key 演算法定版；SPEC-017 §11.2.4 LIFF stub 之 `liff.init()` 整合 |
-| PoC-B: Cloudflare Pages Edge runtime 限制 | [SPEC-014 §3.2.1](../../specs/SPEC-014-tech-architecture.md) | apps/web 部署模式定版（Edge runtime vs Node.js runtime）；apps/web 之 KYC iframe / WebSocket / Server Actions 設計選擇 |
+| PoC-A: EdDSA mobile / LIFF SDK 相容性 | [SPEC-010 §3.1.2](../../specs/SPEC-010-security-antifraud.html) | JWT signing key 演算法公開 Beta 定版；LIFF production path |
+| PoC-B: Cloudflare Pages Edge runtime 限制 | [SPEC-014 §3.2.1](../../specs/SPEC-014-tech-architecture.html) | apps/web 公開 Beta 部署模式定版（Edge runtime vs Node.js runtime）；apps/web 之 KYC iframe / WebSocket / Server Actions 設計選擇 |
 
 ---
 
 ## 3. PoC-A：EdDSA mobile / LIFF SDK 相容性
 
-> 對應 [T-9](../../specs/SPEC-000-index.md)；驗證 SPEC-010 §3.1.2 採 Ed25519 之 JWT 在 LIFF SDK / 主流 mobile JWT lib / browser fetch 端能否正常驗證。
+> 對應 [T-9](../../specs/SPEC-000-index.html)；驗證 SPEC-010 §3.1.2 採 Ed25519 之 JWT 在 LIFF SDK / 主流 mobile JWT lib / browser fetch 端能否正常驗證。
 
 ### 3.1 場景
 
@@ -137,7 +137,7 @@ Commit SHA of live verification: ___
 
 ## 4. PoC-B：Cloudflare Pages Edge runtime 限制
 
-> 對應 [T-10](../../specs/SPEC-000-index.md)；驗證 SPEC-014 §3.2.1 列出之五個動工前必驗證場景。
+> 對應 [T-10](../../specs/SPEC-000-index.html)；驗證 SPEC-014 §3.2.1 列出之五個公開 Beta 前必驗證場景。
 
 ### 4.1 場景
 
@@ -306,13 +306,13 @@ ADR (if Node.js / Hybrid chosen): pending; do not open until rerun proves runtim
 
 ---
 
-## 5. PoC 完成 → 進 Codex PR #1 之 acceptance check
+## 5. PoC 完成 → 進公開 Beta release review
 
 PoC 完成後，**必須**更新以下 SPEC 章節並隨同 PoC 結果回填本文件：
 
 | PoC | 必更新章節 | 形式 |
 |-----|-----------|------|
-| PoC-A | SPEC-010 §3.1.2 之「Client 相容性 PoC」表 | 將「動工前必須完成」改為「✅ 通過 / ⚠️ 部分通過（採 dual-algo） / ❌ 全部 RS256」並補 PoC commit SHA |
+| PoC-A | SPEC-010 §3.1.2 之「Client 相容性 PoC」表 | 將「公開 Beta 前必須完成」改為「✅ 通過 / ⚠️ 部分通過（採 dual-algo） / ❌ 全部 RS256」並補 PoC commit SHA |
 | PoC-B | SPEC-014 §3.2.1 之 5 個場景表 | 每個場景補「✅ 通過 / ❌ 失敗 + 退路啟用」標註 + PoC commit SHA |
 
 PoC commit 之版本號 bump 規則：
@@ -332,15 +332,15 @@ PoC commit 之版本號 bump 規則：
 3. 若退路涉及架構變更（如場景 C 失敗需要 web-bff service）→ 開新 ADR + 對應 SPEC PR
 4. 若退路為小範圍配置變更（如場景 E 失敗只需 server-only API route）→ 直接 SPEC patch + commit
 
-PoC 失敗**不**自動阻擋 Codex PR #1，但對應退路必須**先**落地 SPEC 變更，再續進 PR #1 實作。
+PoC 失敗**不**自動阻擋 Codex PR #1 / internal alpha，但對應退路必須**先**落地 SPEC 變更，才可續進公開 Beta release review。
 
 ---
 
 ## 7. 參考
 
-- [SPEC-010 §3.1.2](../../specs/SPEC-010-security-antifraud.md) — JWT EdDSA 設計與 client 相容性 PoC 表
-- [SPEC-014 §3.2.1](../../specs/SPEC-014-tech-architecture.md) — Cloudflare Pages Edge runtime 限制
-- [SPEC-017 §11.2](../../specs/SPEC-017-monorepo-bootstrap.md) — Codex PR #1 acceptance checklist
+- [SPEC-010 §3.1.2](../../specs/SPEC-010-security-antifraud.html) — JWT EdDSA 設計與 client 相容性 PoC 表
+- [SPEC-014 §3.2.1](../../specs/SPEC-014-tech-architecture.html) — Cloudflare Pages Edge runtime 限制
+- [SPEC-017 §11.3](../../specs/SPEC-017-monorepo-bootstrap.html) — PoC launch acceptance hook
 - [SumSub Web SDK Documentation](https://docs.sumsub.com/docs/websdk-integration)
 - [Cloudflare Pages Documentation: next-on-pages](https://developers.cloudflare.com/pages/framework-guides/nextjs/ssr/)
 - [LINE LIFF Documentation](https://developers.line.biz/en/docs/liff/overview/)

@@ -29,7 +29,7 @@
 <p><strong>v0.2.6 變更</strong>：§4.1 新增 §4.1.1「目前實作狀態」+ §4.1.1.1「轉 7-binary 之觸發條件」，紀錄 round 7 程式碼驗證結果（當前採 12-binary 拓撲）+ 後續轉換時機之 4 條觸發條件 + 簡述轉換流程；採 12-binary 之 acceptance 補強寫入。SDD 紀律：spec 反映現況。</p>
 <p><strong>v0.2.5 變更</strong>：(1) §3.1 v0.2.0 變更說明補 cross-ref 至 <a href="../docs/architecture/decisions/ADR-0005-backend-language-rust-over-go.md">ADR-0005</a>（後端 Go → Rust 之 retroactive ADR 落地）；(2) §3.2.1 補 cross-ref 至 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md §4</code></a>（Cloudflare Pages Edge runtime PoC 詳細 plan）。</p>
 <p><strong>v0.2.4 變更</strong>：(1) <strong>T-1 service 拓撲 advisory</strong>：§4 新增 §4.1「MVP 合併部署 advisory」，建議 MVP / 公開 Beta 階段將 12 個 service binary 合併為 7 個（保留 service crate 結構不變，僅合併 binary）；列拆分時機 + 合併好處（latency budget 寬鬆 / onboarding -40% / CI -30%）+ 代價（scaling 顆粒度）+ Codex PR #1 落地建議。本節為 advisory 不強制；(2) §4 service 表補 cross-ref 至 SPEC-003 §17.2 routing 與 §17.3 thread model 分流。
-<strong>v0.2.3 變更（T-10）</strong>：§3.2 新增 §3.2.1「Cloudflare Pages Edge runtime 限制」，明列 KYC iframe / WebSocket fan-out / Server Actions / fetch 行為 / env binding 五個動工前必須完成 E2E PoC 之場景，含已知限制與退路選項（Node.js runtime / 後端 BFF）。</p>
+<strong>v0.2.3 變更（T-10）</strong>：§3.2 新增 §3.2.1「Cloudflare Pages Edge runtime 限制」，明列 KYC iframe / WebSocket fan-out / Server Actions / fetch 行為 / env binding 五個公開 Beta 前必須完成 E2E PoC 之場景，含已知限制與退路選項（Node.js runtime / 後端 BFF）。</p>
 <p><strong>v0.2.2 erratum（2026-05-07）</strong>：修正 §3.1 表格首列遺留之「Rust 1.78+ stable」化石為「Rust 1.85+ stable（edition 2024）」，與 v0.2.1 變更說明一致。發現過程：跨檔審視 H-2 版本一致性議題（SPEC-000 v0.2.4 sweep round 3）。</p>
 <p><strong>v0.2.1 變更</strong>：§3.1 補硬性決議 R-1 TLS（rustls 為預設 + rdkafka OpenSSL 例外）、撮合引擎 runtime topology（current_thread + per-market LocalSet + core_affinity）、其餘 service multi-thread runtime、unsafe 全域 forbid + cargo geiger 監測。MSRV 由 1.78 改為 <strong>1.85</strong>（edition 2024）。</p>
 <p><strong>v0.2.0 變更（重大）</strong>：後端語言由 Go 1.22 切換至 <strong>Rust 1.85+ stable</strong>（edition 2024）。所有 12 個 service 改以 Rust 實作，HTTP 層採 axum，gRPC 採 tonic，async runtime tokio，DB 採 sqlx（compile-time checked SQL）。撮合引擎不再保留「未來切 Rust」之選項——直接 Rust first。<code>go.work</code> → Cargo workspace；<code>go-sdk/</code> → <code>crates/sdk/</code>；§14 OQ #5「撮合切 Rust」隨之 Resolved。<strong>本決策之 governance 已於 2026-05-07 由 <a href="../docs/architecture/decisions/ADR-0005-backend-language-rust-over-go.md">ADR-0005</a> 補做追溯化記錄</strong>（含 driver / 為何全 Rust 而非混搭 / 為何 Rust 而非 C++ / mitigation 細節）。</p>
@@ -40,7 +40,7 @@
 <p>定版整個系統的服務拓撲、技術棧、Repo 結構、訊息流、跨服務協議。供所有 SPEC 引用。</p>
 <h2>2. 服務拓撲（High-level）</h2>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h2>3. 技術棧定版</h2>
 <h3>3.1 後端</h3>
@@ -291,9 +291,10 @@
 </tr>
 </tbody>
 </table>
-<h4>3.2.1 Cloudflare Pages Edge runtime 限制（T-10，動工前 PoC）</h4>
+<h4>3.2.1 Cloudflare Pages Edge runtime 限制（T-10，公開 Beta 前 PoC）</h4>
 <p><strong>Status (2026-05-08): ❌ live verification blocked before preview deploy.</strong> <code>apps/web</code> production <code>next build</code> passes, but <code>@cloudflare/next-on-pages</code> v1.13.16 failed to generate <code>.vercel/output/static</code> on the Windows host while probing <code>pnpm --version</code>; a shim retry timed out after 240s. <code>prophetica-web-poc</code> Pages project exists, but no preview deployment was produced. Rerun PoC-B on Linux/CI or a fixed Windows toolchain before deciding Edge runtime vs Node.js runtime.</p>
-<p><code>apps/web</code> 透過 <a href="https://github.com/cloudflare/next-on-pages"><code>@cloudflare/next-on-pages</code></a> 部署至 Cloudflare Pages（Workers runtime）。Edge runtime 與標準 Node.js runtime 行為差異會在以下場景踩坑，動工前需完成 E2E PoC 驗證（<strong>詳細 PoC plan 見 <a href="../docs/poc/PRE-FLIGHT-POCS.md">PRE-FLIGHT-POCS §4</a></strong>）：</p>
+<p><strong>Public Beta blocker</strong>：PoC-B live verification 未完成、且未接受 fallback ADR 前，<code>apps/web</code> 不得以 Cloudflare Pages Edge runtime 作為公開 Beta 生產部署模式。允許內部開發繼續，但公開 Beta 前必須在 <a href="../docs/poc/PRE-FLIGHT-POCS.md">PRE-FLIGHT-POCS §4.4</a> 回填 pass / fail 證據；若失敗，需明確採 Node.js runtime 或 K8s BFF fallback。</p>
+<p><code>apps/web</code> 透過 <a href="https://github.com/cloudflare/next-on-pages"><code>@cloudflare/next-on-pages</code></a> 部署至 Cloudflare Pages（Workers runtime）。Edge runtime 與標準 Node.js runtime 行為差異會在以下場景踩坑，公開 Beta 前需完成 E2E PoC 驗證（<strong>詳細 PoC plan 見 <a href="../docs/poc/PRE-FLIGHT-POCS.md">PRE-FLIGHT-POCS §4</a></strong>）：</p>
 <table>
 <thead>
 <tr>
@@ -582,7 +583,7 @@
 <p>採用 <strong>Turborepo + pnpm workspaces</strong> + <strong>Cargo workspace（root <code>Cargo.toml</code>）</strong></p>
 <blockquote>
 <p>此處為<strong>規範來源（normative）</strong>；SPEC-017 §2 為 bootstrap 後的實際 file tree，必須與本節一致。</p>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h2>6. 跨服務通訊協議</h2>
 <h3>6.1 同步呼叫</h3>
@@ -654,7 +655,7 @@
 <h3>7.1 分庫原則</h3>
 <p>不嚴格 microservice 拆庫，採用 <strong>schema-per-service</strong> 在同一 PG cluster：</p>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <p>理由：跨服務 ACID transaction 需求（撮合 + 帳本）；DBA 統一管理。</p>
 <h3>7.2 隔離</h3>
@@ -672,11 +673,11 @@
 <h2>8. Code Style 範例</h2>
 <h3>8.1 Rust</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h3>8.2 React / Next.js 15</h3>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h2>9. 命名規範</h2>
 <table>
@@ -767,7 +768,7 @@
 </table>
 <h2>10. 開發者必裝工具</h2>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-014-tech-architecture-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h2>11. 本地開發環境</h2>
 <p><code>docker-compose.local.yaml</code> 提供：</p>

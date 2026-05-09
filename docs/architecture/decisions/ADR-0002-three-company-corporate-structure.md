@@ -308,7 +308,7 @@ E 列為**第 12–18 月**升級選項，待 MVP 驗證商業模式且首張執
 
 ## 11. Pre-Execution Validation Items（動工前驗證項目）
 
-> **MADR 體裁註記**：本節非「待重新決定的問題」（ADR 已 Accepted，三公司架構為定案）。本節為**動工前必須由律師 / 會計師驗證的執行細節**——不確認則不得執行 §10 Validation Criteria 之公司註冊步驟。所有跨 SPEC / 跨檔的決策議題改由 [SPEC-000 §5](../../../specs/SPEC-000-index.md) 中央追蹤表收斂。
+> **MADR 體裁註記**：本節非「待重新決定的問題」（ADR 已 Accepted，三公司架構為定案）。本節為**動工前必須由律師 / 會計師驗證的執行細節**——不確認則不得執行 §10 Validation Criteria 之公司註冊步驟。所有跨 SPEC / 跨檔的決策議題改由 [SPEC-000 §5](../../../specs/SPEC-000-index.html) 中央追蹤表收斂。
 
 | ID | 待驗證項目 | 驗證對象 | 影響 |
 |----|----------|---------|------|
@@ -326,9 +326,9 @@ V-1 ~ V-3 標記為 **deal-breaker class**（任一未過則暫停 §10 第一�
 
 ### 12.1 內部文件
 
-- [SPEC-000 §5](../../../specs/SPEC-000-index.md#5-跨檔決策追蹤表cross-cutting-decision-tracker) — 跨檔決策追蹤
+- [SPEC-000 §5](../../../specs/SPEC-000-index.html#5-跨檔決策追蹤表cross-cutting-decision-tracker) — 跨檔決策追蹤
 - [ADR-0001](./ADR-0001-order-book-with-dmm-over-lmsr.md) — 撮合機制（共構平台基本面）
-- [SPEC-002 §4.2](../../../specs/SPEC-002-funds-safety.md) — Chart of Accounts（託管帳戶 ledger account 分離設計）
+- [SPEC-002 §4.2](../../../specs/SPEC-002-funds-safety.html) — Chart of Accounts（託管帳戶 ledger account 分離設計）
 
 ### 12.2 外部參考
 

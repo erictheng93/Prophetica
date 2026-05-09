@@ -154,7 +154,7 @@ B 模型的 `wallet_logs` 只能描述「這筆變動」，不能描述「這筆
 ```
 T1 (10:00): 玩家儲值 1000  → balance: 0 → 1000, log: +1000
 T2 (10:30): 玩家下單 500   → balance: 1000 → 500, log: -500
-T3 (15:00): Chargeback     → balance: 500 → ???
+T3 (15:00): Chargeback     → balance: 500 → -500（或被迫修改歷史）
 ```
 
 B 必須選擇：
@@ -339,10 +339,10 @@ E 否決。但本決策中採納其**設計理念**：SPEC-002 §4.2 的 Chart o
 
 ### 9.1 內部文件
 
-- [SPEC-002 §4](../../../specs/SPEC-002-funds-safety.md) — 雙簿記實作（表結構、trigger、典型範例）
-- [SPEC-002 §5](../../../specs/SPEC-002-funds-safety.md) — 不變式清單
-- [SPEC-002 §6](../../../specs/SPEC-002-funds-safety.md) — Idempotency 機制
-- [SPEC-002 §7](../../../specs/SPEC-002-funds-safety.md) — 對帳機制
+- [SPEC-002 §4](../../../specs/SPEC-002-funds-safety.html) — 雙簿記實作（表結構、trigger、典型範例）
+- [SPEC-002 §5](../../../specs/SPEC-002-funds-safety.html) — 不變式清單
+- [SPEC-002 §6](../../../specs/SPEC-002-funds-safety.html) — Idempotency 機制
+- [SPEC-002 §7](../../../specs/SPEC-002-funds-safety.html) — 對帳機制
 - [ADR-0001](./ADR-0001-order-book-with-dmm-over-lmsr.md) — 撮合決策（消費 ledger 之主要事件流）
 - [ADR-0002](./ADR-0002-three-company-corporate-structure.md) — 三公司架構（ledger 跨 entity 設計依據）
 
@@ -372,7 +372,7 @@ E 否決。但本決策中採納其**設計理念**：SPEC-002 §4.2 的 Chart o
 
 ## 11. Pre-Execution Validation Items（動工前驗證項目）
 
-> **MADR 體裁註記**：本節非「待重新決定的問題」（ADR 已 Accepted，雙簿記為架構定案）。以下為動工前必須驗證的實作細節，由 wallet-ledger-service 第一個 PR 之前釐清。所有跨 SPEC 的決策議題改由 [SPEC-000 §5](../../../specs/SPEC-000-index.md) 中央追蹤表收斂。
+> **MADR 體裁註記**：本節非「待重新決定的問題」（ADR 已 Accepted，雙簿記為架構定案）。以下為動工前必須驗證的實作細節，由 wallet-ledger-service 第一個 PR 之前釐清。所有跨 SPEC 的決策議題改由 [SPEC-000 §5](../../../specs/SPEC-000-index.html) 中央追蹤表收斂。
 
 | ID | 待驗證項目 | 驗證對象 | 影響 |
 |----|----------|---------|------|
@@ -391,4 +391,4 @@ V-1 ~ V-2 標記為 **must-resolve**（影響第一個 migration script），需
 | 2026-05-05 | v1.0 | Tech Lead | 首版 Accepted |
 | 2026-05-05 | v1.0.1 | Tech Lead | typo-level：§1 對 SPEC-002 不變式的引用由「INV-3」修正為「INV-1」，以對齊本 ADR §5 之編號（SPEC-002 §5 同步重排）。決策內容無變動。 |
 | 2026-05-05 | v1.0.2 | Tech Lead | typo-level：§11「Open Questions」改名為「Pre-Execution Validation Items」並重組為驗證表格，將跨檔決策議題改由 SPEC-000 §5 中央追蹤表收斂。決策內容無變動。 |
-| 2026-05-07 | v1.0.3 | Tech Lead | **§5 INV 集合 partial superseded by [ADR-0006](./ADR-0006-ledger-invariant-set-extension-inv6.md)**：(a) INV-2 公式擴展含 `Player.Frozen.*`（事後 governance 追認 SPEC-002 v0.1.1 自我排除 / Compliance 凍結 / EDD 待審子科目）；(b) INV-4 範圍擴展含 `Player.Frozen.X`（同上）；(c) 新增 INV-6 `Player.Wallet.*` outflow 白名單（連動 [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.md) 紅線清除）。本表保留原 v1.0 形式作為歷史紀錄，現行有效 INV 集合請以 ADR-0006 §4.1 為準。本次屬於「INV 集合擴展」而非「決策反轉」（雙簿記主決策維持 Accepted），故不採 Superseded 狀態；嚴格論本次已超出「typo-level」範疇但屬於「事後 governance 追認 + 紅線強化」之 boundary case，比照 ADR-0001 v1.0.2 處理。 |
+| 2026-05-07 | v1.0.3 | Tech Lead | **§5 INV 集合 partial superseded by [ADR-0006](./ADR-0006-ledger-invariant-set-extension-inv6.md)**：(a) INV-2 公式擴展含 `Player.Frozen.*`（事後 governance 追認 SPEC-002 v0.1.1 自我排除 / Compliance 凍結 / EDD 待審子科目）；(b) INV-4 範圍擴展含 `Player.Frozen.X`（同上）；(c) 新增 INV-6 `Player.Wallet.*` outflow 白名單（連動 [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.html) 紅線清除）。本表保留原 v1.0 形式作為歷史紀錄，現行有效 INV 集合請以 ADR-0006 §4.1 為準。本次屬於「INV 集合擴展」而非「決策反轉」（雙簿記主決策維持 Accepted），故不採 Superseded 狀態；嚴格論本次已超出「typo-level」範疇但屬於「事後 governance 追認 + 紅線強化」之 boundary case，比照 ADR-0001 v1.0.2 處理。 |

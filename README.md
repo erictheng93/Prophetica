@@ -9,7 +9,7 @@
 
 Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站內**虛擬點數**對未公開事件結果（如選舉、體育賽事、經濟指標）進行預測。平台採用 **Order Book（訂單簿）** 機制（見 [ADR-0001](./docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md)），由平台審查上架市場、執行結算，玩家依自身對事件機率的判斷以價格下單，與其他玩家**對手撮合**。
 
-入金端整合在地化通路（超商代碼 / 虛擬帳號 / 信用卡，見 [SPEC-016](./specs/SPEC-016-payment-gateway.md)）；用戶獲取方面採多層代理分潤體系（見 [SPEC-011](./specs/SPEC-011-affiliate-commission.md)）。
+入金端整合在地化通路（超商代碼 / 虛擬帳號 / 信用卡，見 [SPEC-016](./specs/SPEC-016-payment-gateway.html)）；用戶獲取方面採多層代理分潤體系（見 [SPEC-011](./specs/SPEC-011-affiliate-commission.html)）。
 
 > 站內點數用於顯示餘額、鎖倉與結算結果；實際使用規則由業主與營運方另行維護。
 
@@ -34,42 +34,46 @@ Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站�
 
 ## SPEC 索引
 
-從 [`specs/SPEC-000-index.md`](./specs/SPEC-000-index.md) 開始閱讀。完整跨檔決策追蹤表亦位於 SPEC-000 §5。
+從 [`specs/SPEC-000-index.html`](./specs/SPEC-000-index.html) 開始閱讀。完整跨檔決策追蹤表亦位於 SPEC-000 §5。
 
 ### P0 — 第一行 production code 之前必須完成（6 份）
 
 | ID | 標題 |
 |----|------|
-| [SPEC-002](./specs/SPEC-002-funds-safety.md) | 資金安全與虛擬點數帳本 |
-| [SPEC-003](./specs/SPEC-003-matching-engine.md) | 撮合引擎詳規 |
-| [SPEC-004](./specs/SPEC-004-settlement-dispute.md) | 結算與爭議處理 |
-| [SPEC-015](./specs/SPEC-015-market-lifecycle.md) | 市場生命週期管理 |
-| [SPEC-016](./specs/SPEC-016-payment-gateway.md) | 支付通路整合 |
+| [SPEC-002](./specs/SPEC-002-funds-safety.html) | 資金安全與虛擬點數帳本 |
+| [SPEC-003](./specs/SPEC-003-matching-engine.html) | 撮合引擎詳規 |
+| [SPEC-004](./specs/SPEC-004-settlement-dispute.html) | 結算與爭議處理 |
+| [SPEC-015](./specs/SPEC-015-market-lifecycle.html) | 市場生命週期管理 |
+| [SPEC-016](./specs/SPEC-016-payment-gateway.html) | 支付通路整合 |
+| [SPEC-017](./specs/SPEC-017-monorepo-bootstrap.html) | Monorepo bootstrap 與本地開發 |
 
-### P1 — 公開 Beta 前完成（6 份）
-
-| ID | 標題 |
-|----|------|
-| [SPEC-005](./specs/SPEC-005-kyc-aml.md) | KYC/AML 整合（✅ 可視為完成） |
-| [SPEC-006](./specs/SPEC-006-responsible-gaming.md) | 責任博弈機制 |
-| [SPEC-007](./specs/SPEC-007-observability.md) | 可觀測性與監控 |
-| [SPEC-008](./specs/SPEC-008-disaster-recovery.md) | 災備與高可用 |
-| [SPEC-009](./specs/SPEC-009-dmm-liquidity.md) | DMM 與流動性 |
-| [SPEC-010](./specs/SPEC-010-security-antifraud.md) | 安全與反作弊 |
-
-### P2 — Beta 後 90 天內完成（3 份）
+### P1 — 公開 Beta 前完成（10 份）
 
 | ID | 標題 |
 |----|------|
-| [SPEC-011](./specs/SPEC-011-affiliate-commission.md) | 代理分潤體系 |
-| [SPEC-012](./specs/SPEC-012-customer-support.md) | 客服與爭議升級 |
-| [SPEC-013](./specs/SPEC-013-cicd-release.md) | CI/CD 與發布 |
+| [SPEC-005](./specs/SPEC-005-kyc-aml.html) | KYC/AML 整合（✅ 可視為完成） |
+| [SPEC-006](./specs/SPEC-006-responsible-gaming.html) | 責任博弈機制 |
+| [SPEC-007](./specs/SPEC-007-observability.html) | 可觀測性與監控 |
+| [SPEC-008](./specs/SPEC-008-disaster-recovery.html) | 災備與高可用 |
+| [SPEC-009](./specs/SPEC-009-dmm-liquidity.html) | DMM 與流動性 |
+| [SPEC-010](./specs/SPEC-010-security-antifraud.html) | 安全與反作弊 |
+| [SPEC-012](./specs/SPEC-012-customer-support.html) | 客服與爭議升級 |
+| [SPEC-013](./specs/SPEC-013-cicd-release.html) | CI/CD 與發布 |
+| [SPEC-018](./specs/SPEC-018-auditability-evidence-pack.html) | 稽核與合規證據化 |
+| [SPEC-019](./specs/SPEC-019-incident-response-sre.html) | 事件與事故回應 |
+
+### P2 — Beta 後 90 天內完成（2 份）
+
+| ID | 標題 |
+|----|------|
+| [SPEC-011](./specs/SPEC-011-affiliate-commission.html) | 代理分潤體系 |
+| [SPEC-020](./specs/SPEC-020-analytics-reporting.html) | 分析與報表 |
 
 ### 跨章節
 
 | ID | 標題 |
 |----|------|
-| [SPEC-014](./specs/SPEC-014-tech-architecture.md) | 整體技術架構 |
+| [SPEC-014](./specs/SPEC-014-tech-architecture.html) | 整體技術架構 |
 
 ## 架構決策（ADR）
 
@@ -90,7 +94,7 @@ Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站�
 - **觀測**：Prometheus + Grafana + Loki + Tempo (OpenTelemetry)
 - **KYC SaaS**：SumSub（主）+ Onfido（備）
 
-詳見 [SPEC-014 整體技術架構](./specs/SPEC-014-tech-architecture.md) 與 [ADR-0004](./docs/architecture/decisions/ADR-0004-react-stack-due-to-kumo.md)。
+詳見 [SPEC-014 整體技術架構](./specs/SPEC-014-tech-architecture.html) 與 [ADR-0004](./docs/architecture/decisions/ADR-0004-react-stack-due-to-kumo.md)。
 
 ## 倉庫結構
 
@@ -116,13 +120,13 @@ prophetica/
 make dev
 ```
 
-詳見 [SPEC-014 §11](./specs/SPEC-014-tech-architecture.md)。
+詳見 [SPEC-014 §11](./specs/SPEC-014-tech-architecture.html)。
 
 ## 文件版本
 
-當前 SPEC 套件版本：**v0.2.3**（2026-05-06）— SPEC-005 KYC/AML 工程實作已完成並驗證通過；P1 KYC/AML 可視為完成。
+當前 SPEC 套件版本：**v0.3.3**（2026-05-09）— 新增 Public Beta Launch Gate，將客服、發布安全、稽核證據化上移為 P1 launch gate，並修復 HTML 規格產物漂移。
 
-完整變更紀錄見 [SPEC-000 §4](./specs/SPEC-000-index.md#4-變更紀錄)。
+完整變更紀錄見 [SPEC-000 §4](./specs/SPEC-000-index.html#4-變更紀錄)。
 
 ## 維護人
 

@@ -1,6 +1,6 @@
 # PoC-A: EdDSA / LIFF SDK 相容性
 
-> 對應 [SPEC-010 §3.1.2](../../../specs/SPEC-010-security-antifraud.md) + [PRE-FLIGHT-POCS §3](../PRE-FLIGHT-POCS.md)
+> 對應 [SPEC-010 §3.1.2](../../../specs/SPEC-010-security-antifraud.html) + [PRE-FLIGHT-POCS §3](../PRE-FLIGHT-POCS.md)
 >
 > **狀態**：🟢 Desk Research Done · 🟡 Live Verification Pending（artifacts 已就緒，工程師跑完回填）
 

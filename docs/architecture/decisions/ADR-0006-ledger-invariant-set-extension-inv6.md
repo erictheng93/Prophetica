@@ -28,7 +28,7 @@ ADR README §修訂規則「Accepted 後不可直接修改 ADR 主體」嚴格�
 
 ### 1.2 R-1 紅線清除暴露 INV 集合對「點數出口」的保護不足
 
-[SPEC-000 §5 R-1](../../../specs/SPEC-000-index.md) 業主決議 2026-05-07：點數**永不可回兌**，包含 B2B 應付帳款 / 現金 / 任何形式之兌換。SPEC-011 §6 整節重寫切斷「玩家錢包 → 應付帳款」之 application 層路徑。
+[SPEC-000 §5 R-1](../../../specs/SPEC-000-index.html) 業主決議 2026-05-07：點數**永不可回兌**，包含 B2B 應付帳款 / 現金 / 任何形式之兌換。SPEC-011 §6 整節重寫切斷「玩家錢包 → 應付帳款」之 application 層路徑。
 
 但 application 層保護有以下風險：
 - 任何 service code bug、admin UI 誤操作、未來新功能設計變更，可能不小心引入 `Player.Wallet → AccountsPayable` 之 ledger entry
@@ -163,7 +163,7 @@ FOR EACH ROW EXECUTE FUNCTION fn_inv6_outflow_whitelist_check();
 
 #### 4.2.3 CI 層（程式碼禁字）
 
-[SPEC-017 §8](../../../specs/SPEC-017-monorepo-bootstrap.md) sentinel-scan job 加 R-1 grep gate：
+[SPEC-017 §8](../../../specs/SPEC-017-monorepo-bootstrap.html) sentinel-scan job 加 R-1 grep gate：
 
 ```bash
 rg -n -e 'Player\.Wallet.*->\s*AccountsPayable' \
@@ -247,10 +247,10 @@ ADR-0003 v1.0 §5 之 INV-2 公式「`Σ(Wallet) + Σ(Locked)`」與 INV-4 範�
 - [ADR-0001 §6 v1.0.2](./ADR-0001-order-book-with-dmm-over-lmsr.md) — 平台不下場紅線（連動 R-2）
 - [ADR-0002](./ADR-0002-three-company-corporate-structure.md) — 三公司架構（INV-3 之 Bank.TrustAccount 即 Op Co. 託管）
 - [ADR-0003](./ADR-0003-double-entry-ledger.md) — 雙簿記主決策（本 ADR §4.1 為 §5 之擴展）
-- [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.md) — 點數出口紅線追蹤
-- [SPEC-002 §4.2.1 / §5 / §8.1](../../../specs/SPEC-002-funds-safety.md) — Frozen 子科目 / INV 表 / Chargeback 處理
-- [SPEC-011 §6.3](../../../specs/SPEC-011-affiliate-commission.md) — INV-6 在業務分潤路徑的 application 層引用
-- [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.md) — R-1 紅線清除追蹤
+- [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.html) — 點數出口紅線追蹤
+- [SPEC-002 §4.2.1 / §5 / §8.1](../../../specs/SPEC-002-funds-safety.html) — Frozen 子科目 / INV 表 / Chargeback 處理
+- [SPEC-011 §6.3](../../../specs/SPEC-011-affiliate-commission.html) — INV-6 在業務分潤路徑的 application 層引用
+- [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.html) — R-1 紅線清除追蹤
 
 ### 8.2 外部參考
 

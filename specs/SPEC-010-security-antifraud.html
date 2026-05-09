@@ -47,7 +47,7 @@
   <article class="changelog-entry">
     <h3>v0.2.1 變更</h3>
     <ul>
-      <li>§3.1.2 補 EdDSA mobile / LIFF SDK 相容性 PoC 要求（T-9），動工前需驗證 LIFF SDK 對 Ed25519 token 之支援；不支援則對 LIFF route 回退 RS256 token；</li>
+      <li>§3.1.2 補 EdDSA mobile / LIFF SDK 相容性 PoC 要求（T-9），公開 Beta 前需驗證 LIFF SDK 對 Ed25519 token 之支援；不支援則對 LIFF route 回退 RS256 token；</li>
       <li>§3.2 OWASP A03 Injection 對策由「ORM + parameterized query」修正為「<code>sqlx::query!</code> 編譯時檢查 SQL + parameterized binding」（H-4），對齊 SPEC-014 §3.1「不引入 ORM」決議；</li>
       <li>§6.2 chargeback 永久封號門檻由「&gt; 1」修正為「<strong>≥ 1</strong>」（H-5），與 SPEC-016 §6.1 / SPEC-002 §8.1 統一；</li>
       <li>§6.2 帳本反沖 cross-ref 補至 SPEC-002 §8.2。</li>
@@ -152,7 +152,7 @@
 <h4>3.1.2 JWT Access Token 設計</h4>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 <blockquote>
-<p><strong>Client 相容性 PoC（T-9，動工前驗證）</strong>：Ed25519 簽章 / 驗證性能優於 RS256 ~10x，但部分 mobile / browser JWT lib 預設僅支援 RS256 / HS256。動工前必須完成以下 PoC（<strong>詳細 PoC plan 見 <a href="../docs/poc/PRE-FLIGHT-POCS.md">PRE-FLIGHT-POCS §3</a></strong>）：</p>
+<p><strong>Client 相容性 PoC（T-9，公開 Beta 前驗證）</strong>：Ed25519 簽章 / 驗證性能優於 RS256 ~10x，但部分 mobile / browser JWT lib 預設僅支援 RS256 / HS256。公開 Beta 前必須完成以下 PoC（<strong>詳細 PoC plan 見 <a href="../docs/poc/PRE-FLIGHT-POCS.md">PRE-FLIGHT-POCS §3</a></strong>）：</p>
 <table>
 <thead>
 <tr>

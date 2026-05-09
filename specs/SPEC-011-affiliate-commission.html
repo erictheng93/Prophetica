@@ -136,7 +136,7 @@
 <h2>3. 推薦關係模型</h2>
 <h3>3.1 資料結構</h3>
 <p>本節只保留行為規則：每位玩家只能被一位介紹人綁定，且綁定點在註冊時落定且不可更改（first-touch）。</p>
-<p>具體欄位、索引與遷移流程請參考 <a href="./implementation-plans/SPEC-011-affiliate-commission-implementation-plan.html">implementation plan</a>。</p>
+<p>具體欄位、索引與遷移流程請參考 <a href="../docs/implementation-plans/SPEC-011-affiliate-commission-implementation-plan.html">implementation plan</a>。</p>
 <h3>3.2 推薦碼生成</h3>
 <p>每位玩家於註冊成功後<strong>同 transaction 內</strong>自動分配唯一推薦碼。</p>
 <h4>3.2.1 演算法（<strong>G-1 釘死</strong>）</h4>
@@ -186,7 +186,7 @@ taker_fee × 佣金百分比 → referrer</code></pre>
 </blockquote>
 <p>實作細節（Kafka topic、worker、每日批次、idempotency key、去重策略）放在 implementation plan。</p>
 <h4>4.2.2 Staging 表</h4>
-<p>commission_accruals 作為交易佣金前置暫存，欄位、索引、唯一鍵（trade_id）與 paid_out 流程詳見 <a href="./implementation-plans/SPEC-011-affiliate-commission-implementation-plan.html">implementation plan</a>。</p>
+<p>commission_accruals 作為交易佣金前置暫存，欄位、索引、唯一鍵（trade_id）與 paid_out 流程詳見 <a href="../docs/implementation-plans/SPEC-011-affiliate-commission-implementation-plan.html">implementation plan</a>。</p>
 <h3>4.3 佣金期限</h3>
 <p>交易佣金<strong>僅持續被推薦人註冊後 12 個月</strong>，之後不再計算。</p>
 <blockquote>

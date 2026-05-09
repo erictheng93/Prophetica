@@ -25,7 +25,7 @@
 > **驗證來源**：2026-05-05 直接讀取 https://github.com/cloudflare/kumo 的 README + package.json。
 > repo 內**零 Vue / Nuxt / Svelte / web component** 依賴或範例。Kumo 為 React-only。
 >
-> **本專案因此於同日決定**：前端框架由 Nuxt 3 (Vue 3) 切換至 **Next.js 15 (React 19, App Router)**，以與 Kumo 對齊。詳見 `specs/SPEC-014-tech-architecture.md` v0.1.2 變更日誌。
+> **本專案因此於同日決定**：前端框架由 Nuxt 3 (Vue 3) 切換至 **Next.js 15 (React 19, App Router)**，以與 Kumo 對齊。詳見 `specs/SPEC-014-tech-architecture.html` v0.1.2 變更日誌。
 
 ## 安裝
 

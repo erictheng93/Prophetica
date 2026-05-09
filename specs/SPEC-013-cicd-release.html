@@ -24,15 +24,18 @@
 <body>
 <h1>SPEC-013 — CI/CD 與發布策略</h1>
 <blockquote>
-<p>優先級：<strong>P2</strong>
-版本：v0.2.0 · 最後更新：2026-05-07
+<p>優先級：<strong>P1</strong>
+版本：v0.2.1 · 最後更新：2026-05-09
 依賴：SPEC-007, SPEC-008, SPEC-010, SPEC-014, SPEC-017
-被依賴：—</p>
+被依賴：SPEC-000 Public Beta Launch Gate</p>
+<p><strong>v0.2.1 變更</strong>：CI/CD 與發布安全由 P2 上移至 P1 launch gate。公開 Beta / 真實入金前必須完成 minimum prod release gate：feature flag、canary 或等價 staged rollout、rollback drill、migration rollback plan、secret / SCA / SAST gate、prod approval MS-12。</p>
 <p><strong>v0.2.0 變更</strong>：(1) <strong>H-3 CI gate 對齊</strong>：§3.1 改為「SPEC-017 §8 之超集」明示繼承 bootstrap CI 全部 gate（pnpm/cargo/sqlx/buf/clippy/nextest/deny/geiger/sentinel-scan）+ 加上 prod-targeting gate（SAST / SCA / image scan / IaC / secret / migration / E2E）；§3.2 必過 gate 表合併重整 19 列，每列標註來源 SPEC；nightly 區塊新增 cargo-mutants / macos-latest / terraform plan diff（呼應 SPEC-017 §8.2 / §12 OQ #5）。(2) <strong>H-6 Coverage 分層</strong>：§3.3 新增分層覆蓋率表（ledger / 撮合 hot path ≥ 95% / 結算 ≥ 90% / 安全敏感 ≥ 85% / 其他預設 ≥ 80% / web ≥ 70% / mocks 不檢查），消除 SPEC-013（80%）vs SPEC-003 §16.1（100%）vs SPEC-003 §18（95%）三處數字不一致。(3) §3.1 prod approval cross-ref 至 SPEC-010 §9.3 MS-12。SPEC-013 v0.1.0 → v0.2.0；「依賴」加 SPEC-017。</p>
 </blockquote>
 <hr />
 <h2>1. Objective</h2>
 <p>確保程式碼從 commit 到 production 全程自動化、可重現、可回滾，並包含必要的安全與品質檢核點。</p>
+<h3>1.1 Public Beta minimum prod release gate</h3>
+<p>公開 Beta 前必須完成一輪 staging → production-like canary 演練，並留下可稽核證據：CI run URL、artifact / image digest、SBOM、feature flag 預設 OFF、migration rollback plan、rollback drill log、prod approval MS-12 audit log。若任一證據缺失，不得開放真實入金或真實下單。</p>
 <h2>2. 環境分層</h2>
 <table>
 <thead>
@@ -84,7 +87,7 @@
 - <code>cargo deny check</code>
 - <code>cargo geiger</code> regression（R-5 unsafe 監測）
 - <code>sentinel-scan</code>（ADR-0001 §6 禁字 + tools/mocks 隔離 + R-1 紅線 grep gate <code>wallet_to_payable|cash_out_player_pts|redeem_points_to_cash</code>）</p>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-013-cicd-release-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-013-cicd-release-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h3>3.2 必須通過的 Gate（含繼承自 SPEC-017 §8）</h3>
 <table>
@@ -325,7 +328,7 @@
 </table>
 <h2>5. Release Tag 規範</h2>
 <blockquote>
-<p><strong>??????</strong>????????API?State machine??????????????? <a href="../docs/implementation-plans/SPEC-013-cicd-release-implementation-plan.html">implementation plan</a>?????????????</p>
+<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-013-cicd-release-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <ul>
 <li>MAJOR：不向後兼容</li>
