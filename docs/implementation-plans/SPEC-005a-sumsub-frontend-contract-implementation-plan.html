@@ -19,6 +19,16 @@
   <p><strong>規格參照：</strong><a href="../../specs/SPEC-005a-sumsub-frontend-contract.html">SPEC-005a-sumsub-frontend-contract.html</a> · <strong>版本：</strong>v0.1.2</p>
 
   <section>
+    <h2>0. Current implementation status</h2>
+    <ul>
+      <li>已落地：KycIdentityProvider 抽象、mock / mock-SumSub provider、Tier 2 / Tier 3 page state machine、adapter chain manifest、idempotency / polling / CSP / telemetry contract 測試。</li>
+      <li>PR #2 後仍未完成：真實 SumSub sandbox iframe mount、真實 webhook replay evidence、iProov real adapter、行動裝置 LIFF / Edge runtime live verification。</li>
+      <li>Public Beta blocker：必須取得 SumSub sandbox credentials 並跑通 Tier 2 iframe、GREEN / RED / PENDING replay、RED→Frozen、PEP / sanctions flow；Tier 3 必須完成 iProov real adapter 或接受 fallback ADR。</li>
+      <li>Evidence target：回填 <a href="../../specs/SPEC-000-index.html">SPEC-000</a> LG-3 / Q-9 與 <a href="../poc/PRE-FLIGHT-POCS.md">PRE-FLIGHT-POCS</a> §4.4。</li>
+    </ul>
+  </section>
+
+  <section>
     <h2>1. 實作目的</h2>
     <p>解耦前端 KYC 流程與供應商實作，將整合入口收斂為可替換的 provider adapter；保證 SumSub / iProov / mock 的生命週期一致。</p>
   </section>

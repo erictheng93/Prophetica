@@ -15,6 +15,7 @@ anyhow.workspace = true
 axum.workspace = true
 kyc-service = { path = "../../kyc-service" }
 sdk = { path = "../../../crates/sdk" }
+sqlx.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 

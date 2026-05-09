@@ -27,6 +27,15 @@
   </div>
 
   <section>
+    <h2>0. Current implementation status</h2>
+    <ul>
+      <li>Done 2026-05-09: <code>.github/workflows/release.yml</code> is no longer a placeholder. It now runs frontend / Rust release gates, checks generated protobuf drift, writes a release evidence artifact, and enters the GitHub <code>production</code> environment approval checkpoint.</li>
+      <li>Still pending for Public Beta: secret scan / SAST / SCA / image scan / IaC lint / migration dry-run / E2E smoke as prod-targeting gates, plus a real rollback drill and SPEC-010 MS-12 approval snapshot with artifact checksum.</li>
+      <li>This status advances LG-5 but does not close it. SPEC-000 LG-5 remains blocked until a staging release run, rollback drill, CI run URL, and approval audit log are attached.</li>
+    </ul>
+  </section>
+
+  <section>
     <h2>1. 目的與邊界</h2>
     <ul>
       <li>本文件落地 SPEC-017 bootstrap CI，擴展 prod-targeting gate 與部署前安全檢核。</li>

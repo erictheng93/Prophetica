@@ -10,6 +10,7 @@ use std::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use sqlx::{PgPool, Row};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KycTier {
@@ -221,6 +222,497 @@ impl InMemoryKycStore {
 impl Default for InMemoryKycStore {
     fn default() -> Self {
         Self::new("dev-only-kyc-document-salt")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PostgresKycStore {
+    pool: PgPool,
+    document_hash_salt: Arc<str>,
+}
+
+impl PostgresKycStore {
+    #[must_use]
+    pub fn new(pool: PgPool, document_hash_salt: impl Into<String>) -> Self {
+        Self {
+            pool,
+            document_hash_salt: Arc::from(document_hash_salt.into()),
+        }
+    }
+
+    #[cfg(test)]
+    fn tier_one_record_from_draft(
+        id: i64,
+        draft: &TierOneVerificationDraft,
+        document_hash_salt: &str,
+        submitted_at: impl Into<String>,
+    ) -> KycRecord {
+        let country = draft.country.to_ascii_uppercase();
+        KycRecord {
+            id,
+            user_id: draft.user_id.clone(),
+            tier: KycTier::Tier1,
+            status: KycStatus::Passed,
+            provider: provider_for(KycTier::Tier1).to_owned(),
+            provider_applicant_id: None,
+            document_id_hash: Some(hash_document_id(
+                document_hash_salt,
+                &country,
+                &draft.document_id,
+            )),
+            country: Some(country),
+            declared_monthly_income: None,
+            submitted_at: submitted_at.into(),
+            reviewed_at: None,
+            expires_at: None,
+            idempotency_key: draft.idempotency_key.clone(),
+        }
+    }
+
+    async fn find_by_idempotency_key(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<Option<KycRecord>, KycStoreError> {
+        sqlx::query(RECORD_SELECT_SQL)
+            .bind(idempotency_key)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlx_store_error)?
+            .map(|row| row_to_kyc_record(&row))
+            .transpose()
+    }
+}
+
+#[async_trait]
+impl KycStore for PostgresKycStore {
+    async fn current_record(&self, user_id: &str) -> Result<Option<KycRecord>, KycStoreError> {
+        sqlx::query(
+            r"
+            SELECT id, user_id, tier, status, provider, provider_applicant_id, document_id_hash,
+                   country, declared_monthly_income, submitted_at::text AS submitted_at,
+                   reviewed_at::text AS reviewed_at, expires_at::text AS expires_at,
+                   idempotency_key
+            FROM user_kyc_records
+            WHERE user_id = $1
+            ORDER BY tier DESC, id DESC
+            LIMIT 1
+            ",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?
+        .map(|row| row_to_kyc_record(&row))
+        .transpose()
+    }
+
+    async fn tier_one_record(&self, user_id: &str) -> Result<Option<KycRecord>, KycStoreError> {
+        sqlx::query(
+            r"
+            SELECT id, user_id, tier, status, provider, provider_applicant_id, document_id_hash,
+                   country, declared_monthly_income, submitted_at::text AS submitted_at,
+                   reviewed_at::text AS reviewed_at, expires_at::text AS expires_at,
+                   idempotency_key
+            FROM user_kyc_records
+            WHERE user_id = $1 AND tier = 1
+            ORDER BY id DESC
+            LIMIT 1
+            ",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?
+        .map(|row| row_to_kyc_record(&row))
+        .transpose()
+    }
+
+    async fn verify_tier_one(
+        &self,
+        draft: TierOneVerificationDraft,
+    ) -> Result<TierOneVerificationOutcome, KycStoreError> {
+        if let Some(existing) = self.find_by_idempotency_key(&draft.idempotency_key).await? {
+            return Ok(TierOneVerificationOutcome {
+                record: existing,
+                replayed: true,
+            });
+        }
+
+        let document_hash =
+            hash_document_id(&self.document_hash_salt, &draft.country, &draft.document_id);
+        let inserted = sqlx::query(
+            r"
+            INSERT INTO user_kyc_records (
+                user_id, tier, status, provider, document_id_hash, country,
+                submitted_at, reviewed_at, idempotency_key
+            )
+            VALUES ($1, 1, 'passed', 'manual', $2, $3, now(), now(), $4)
+            RETURNING id, user_id, tier, status, provider, provider_applicant_id, document_id_hash,
+                      country, declared_monthly_income, submitted_at::text AS submitted_at,
+                      reviewed_at::text AS reviewed_at, expires_at::text AS expires_at,
+                      idempotency_key
+            ",
+        )
+        .bind(&draft.user_id)
+        .bind(document_hash)
+        .bind(draft.country.to_ascii_uppercase())
+        .bind(&draft.idempotency_key)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+
+        Ok(TierOneVerificationOutcome {
+            record: row_to_kyc_record(&inserted)?,
+            replayed: false,
+        })
+    }
+
+    async fn apply_sumsub_webhook(
+        &self,
+        draft: SumsubWebhookDraft,
+    ) -> Result<Option<SumsubWebhookOutcome>, KycStoreError> {
+        if let Some(existing) = sqlx::query(
+            r"
+            SELECT r.id, r.user_id, r.tier, r.status, r.provider, r.provider_applicant_id,
+                   r.document_id_hash, r.country, r.declared_monthly_income,
+                   r.submitted_at::text AS submitted_at, r.reviewed_at::text AS reviewed_at,
+                   r.expires_at::text AS expires_at, r.idempotency_key
+            FROM kyc_webhook_events e
+            JOIN user_kyc_records r ON r.id = e.record_id
+            WHERE e.raw_payload_sha256 = $1
+            LIMIT 1
+            ",
+        )
+        .bind(&draft.raw_payload_sha256)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?
+        {
+            return Ok(Some(SumsubWebhookOutcome {
+                record: row_to_kyc_record(&existing)?,
+                replayed: true,
+            }));
+        }
+
+        let status = if draft.sanction_matches.is_empty() {
+            match draft.review_answer {
+                ReviewAnswer::Green => KycStatus::Passed,
+                ReviewAnswer::Red => KycStatus::Frozen,
+                ReviewAnswer::Yellow => KycStatus::Pending,
+            }
+        } else {
+            KycStatus::Frozen
+        };
+
+        let Some(updated) = sqlx::query(
+            r"
+            UPDATE user_kyc_records
+            SET status = $1, reviewed_at = now(), review_result = $2, sanction_match = $3
+            WHERE user_id = $4 AND provider_applicant_id = $5
+            RETURNING id, user_id, tier, status, provider, provider_applicant_id, document_id_hash,
+                      country, declared_monthly_income, submitted_at::text AS submitted_at,
+                      reviewed_at::text AS reviewed_at, expires_at::text AS expires_at,
+                      idempotency_key
+            ",
+        )
+        .bind(status.as_str())
+        .bind(serde_json::json!({
+            "review_answer": review_answer_str(draft.review_answer),
+            "kyc_reason": draft.kyc_reason,
+        }))
+        .bind(serde_json::json!(draft.sanction_matches))
+        .bind(&draft.external_user_id)
+        .bind(&draft.applicant_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?
+        else {
+            return Ok(None);
+        };
+
+        let record = row_to_kyc_record(&updated)?;
+        sqlx::query(
+            r"
+            INSERT INTO kyc_webhook_events (
+                provider, provider_event_id, raw_payload_sha256, payload, record_id
+            )
+            VALUES ('sumsub', NULL, $1, $2, $3)
+            ON CONFLICT (raw_payload_sha256) DO NOTHING
+            ",
+        )
+        .bind(&draft.raw_payload_sha256)
+        .bind(serde_json::json!({
+            "applicant_id": draft.applicant_id,
+            "external_user_id": draft.external_user_id,
+            "review_answer": review_answer_str(draft.review_answer),
+        }))
+        .bind(record.id)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+
+        Ok(Some(SumsubWebhookOutcome {
+            record,
+            replayed: false,
+        }))
+    }
+
+    async fn record_aml_event(
+        &self,
+        draft: AmlEventDraft,
+    ) -> Result<AmlEventOutcome, KycStoreError> {
+        let reason = aml_review_reason(draft.ml_score, &draft.rule_flags);
+        let event_id: i64 = sqlx::query(
+            r"
+            INSERT INTO aml_events (user_id, event_type, amount_minor_units, ml_score, rule_flags)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+            ",
+        )
+        .bind(&draft.user_id)
+        .bind(&draft.event_type)
+        .bind(draft.amount_minor_units)
+        .bind(draft.ml_score)
+        .bind(serde_json::json!(draft.rule_flags))
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?
+        .try_get("id")
+        .map_err(sqlx_store_error)?;
+
+        let sar_candidate_id = if let Some(reason) = reason {
+            let existing_count: i64 = sqlx::query(
+                "SELECT COUNT(*)::BIGINT AS count FROM sar_candidates WHERE user_id = $1",
+            )
+            .bind(&draft.user_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(sqlx_store_error)?
+            .try_get("count")
+            .map_err(sqlx_store_error)?;
+            let candidate_key = format!("sar_{}_{}", draft.user_id, existing_count + 1);
+            sqlx::query(
+                r"
+                INSERT INTO sar_candidates (candidate_key, user_id, reason, source_event_id)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (candidate_key) DO NOTHING
+                ",
+            )
+            .bind(&candidate_key)
+            .bind(&draft.user_id)
+            .bind(reason)
+            .bind(event_id)
+            .execute(&self.pool)
+            .await
+            .map_err(sqlx_store_error)?;
+            Some(candidate_key)
+        } else {
+            None
+        };
+
+        Ok(AmlEventOutcome {
+            user_id: draft.user_id,
+            requires_compliance_review: reason.is_some(),
+            sar_candidate_id,
+            reason,
+        })
+    }
+
+    async fn monthly_report(&self, month: String) -> Result<KycMonthlyReport, KycStoreError> {
+        let total_records: i64 =
+            sqlx::query("SELECT COUNT(*)::BIGINT AS count FROM user_kyc_records")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(sqlx_store_error)?
+                .try_get("count")
+                .map_err(sqlx_store_error)?;
+        let tier_rows = sqlx::query(
+            "SELECT tier, COUNT(*)::BIGINT AS count FROM user_kyc_records GROUP BY tier",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        let status_rows = sqlx::query(
+            "SELECT status, COUNT(*)::BIGINT AS count FROM user_kyc_records GROUP BY status",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        let open_sar_candidates: i64 = sqlx::query(
+            "SELECT COUNT(*)::BIGINT AS count FROM sar_candidates WHERE status = 'needs_review'",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?
+        .try_get("count")
+        .map_err(sqlx_store_error)?;
+
+        let mut by_tier = HashMap::new();
+        for row in tier_rows {
+            let tier: i16 = row.try_get("tier").map_err(sqlx_store_error)?;
+            let count: i64 = row.try_get("count").map_err(sqlx_store_error)?;
+            by_tier.insert(
+                tier_from_db(tier)?.as_str().to_owned(),
+                count_to_usize(count)?,
+            );
+        }
+        let mut by_status = HashMap::new();
+        for row in status_rows {
+            let status: String = row.try_get("status").map_err(sqlx_store_error)?;
+            let count: i64 = row.try_get("count").map_err(sqlx_store_error)?;
+            by_status.insert(status, count_to_usize(count)?);
+        }
+
+        Ok(KycMonthlyReport {
+            month,
+            total_records: count_to_usize(total_records)?,
+            by_tier,
+            by_status,
+            open_sar_candidates,
+        })
+    }
+
+    async fn apply_screening_rescan(
+        &self,
+        matches: Vec<ScreeningMatchDraft>,
+    ) -> Result<ScreeningRescanOutcome, KycStoreError> {
+        let mut frozen_users = Vec::new();
+        let mut edd_users = Vec::new();
+
+        for screening_match in &matches {
+            match screening_match.match_type {
+                ScreeningMatchType::Sanction => {
+                    let updated = sqlx::query(
+                        r"
+                        UPDATE user_kyc_records
+                        SET status = 'frozen', reviewed_at = now()
+                        WHERE id = (
+                            SELECT id FROM user_kyc_records
+                            WHERE user_id = $1
+                            ORDER BY tier DESC, id DESC
+                            LIMIT 1
+                        )
+                        RETURNING id
+                        ",
+                    )
+                    .bind(&screening_match.user_id)
+                    .fetch_optional(&self.pool)
+                    .await
+                    .map_err(sqlx_store_error)?;
+                    if updated.is_some() {
+                        frozen_users.push(screening_match.user_id.clone());
+                    }
+                    insert_screening_event(&self.pool, screening_match, "freeze").await?;
+                }
+                ScreeningMatchType::Pep => {
+                    let exists: bool = sqlx::query(
+                        "SELECT EXISTS(SELECT 1 FROM user_kyc_records WHERE user_id = $1 AND tier = 3) AS exists",
+                    )
+                    .bind(&screening_match.user_id)
+                    .fetch_one(&self.pool)
+                    .await
+                    .map_err(sqlx_store_error)?
+                    .try_get("exists")
+                    .map_err(sqlx_store_error)?;
+                    if !exists {
+                        sqlx::query(
+                            r"
+                            INSERT INTO user_kyc_records (
+                                user_id, tier, status, provider, submitted_at, idempotency_key
+                            )
+                            VALUES ($1, 3, 'pending', 'manual', now(), $2)
+                            ",
+                        )
+                        .bind(&screening_match.user_id)
+                        .bind(format!("screening:pep:{}", screening_match.user_id))
+                        .execute(&self.pool)
+                        .await
+                        .map_err(sqlx_store_error)?;
+                    }
+                    edd_users.push(screening_match.user_id.clone());
+                    insert_screening_event(&self.pool, screening_match, "edd").await?;
+                }
+            }
+        }
+
+        Ok(ScreeningRescanOutcome {
+            scanned_matches: matches.len(),
+            frozen_users,
+            edd_users,
+        })
+    }
+
+    async fn start_upgrade(
+        &self,
+        draft: StartUpgradeDraft,
+    ) -> Result<StartUpgradeOutcome, KycStoreError> {
+        if let Some(existing) = self.find_by_idempotency_key(&draft.idempotency_key).await? {
+            let sdk_token = format!(
+                "sumsub_sandbox_{}_{}_{}",
+                existing.user_id,
+                existing.tier.as_str(),
+                existing.id
+            );
+            return Ok(StartUpgradeOutcome {
+                record: existing,
+                sdk_token,
+                replayed: true,
+            });
+        }
+
+        let inserted = sqlx::query(
+            r"
+            INSERT INTO user_kyc_records (
+                user_id, tier, status, provider, provider_applicant_id,
+                declared_monthly_income, submitted_at, idempotency_key
+            )
+            VALUES ($1, $2, 'pending', $3, NULL, $4, now(), $5)
+            RETURNING id, user_id, tier, status, provider, provider_applicant_id, document_id_hash,
+                      country, declared_monthly_income, submitted_at::text AS submitted_at,
+                      reviewed_at::text AS reviewed_at, expires_at::text AS expires_at,
+                      idempotency_key
+            ",
+        )
+        .bind(&draft.user_id)
+        .bind(i16::from(draft.target_tier.rank()))
+        .bind(provider_for(draft.target_tier))
+        .bind(draft.declared_monthly_income)
+        .bind(&draft.idempotency_key)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+
+        let mut record = row_to_kyc_record(&inserted)?;
+        let applicant_id = format!("applicant_{}", record.id);
+        let updated = sqlx::query(
+            r"
+            UPDATE user_kyc_records
+            SET provider_applicant_id = $1
+            WHERE id = $2
+            RETURNING id, user_id, tier, status, provider, provider_applicant_id, document_id_hash,
+                      country, declared_monthly_income, submitted_at::text AS submitted_at,
+                      reviewed_at::text AS reviewed_at, expires_at::text AS expires_at,
+                      idempotency_key
+            ",
+        )
+        .bind(applicant_id)
+        .bind(record.id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        record = row_to_kyc_record(&updated)?;
+        let sdk_token = format!(
+            "sumsub_sandbox_{}_{}_{}",
+            record.user_id,
+            record.tier.as_str(),
+            record.id
+        );
+
+        Ok(StartUpgradeOutcome {
+            record,
+            sdk_token,
+            replayed: false,
+        })
     }
 }
 
@@ -601,6 +1093,110 @@ fn aml_review_reason(ml_score: i32, rule_flags: &[String]) -> Option<&'static st
     }
 }
 
+const RECORD_SELECT_SQL: &str = r"
+    SELECT id, user_id, tier, status, provider, provider_applicant_id, document_id_hash,
+           country, declared_monthly_income, submitted_at::text AS submitted_at,
+           reviewed_at::text AS reviewed_at, expires_at::text AS expires_at,
+           idempotency_key
+    FROM user_kyc_records
+    WHERE idempotency_key = $1
+    LIMIT 1
+";
+
+fn row_to_kyc_record(row: &sqlx::postgres::PgRow) -> Result<KycRecord, KycStoreError> {
+    let tier_value: i16 = row.try_get("tier").map_err(sqlx_store_error)?;
+    let status_value: String = row.try_get("status").map_err(sqlx_store_error)?;
+    Ok(KycRecord {
+        id: row.try_get("id").map_err(sqlx_store_error)?,
+        user_id: row.try_get("user_id").map_err(sqlx_store_error)?,
+        tier: tier_from_db(tier_value)?,
+        status: status_from_db(&status_value)?,
+        provider: row.try_get("provider").map_err(sqlx_store_error)?,
+        provider_applicant_id: row
+            .try_get("provider_applicant_id")
+            .map_err(sqlx_store_error)?,
+        document_id_hash: row.try_get("document_id_hash").map_err(sqlx_store_error)?,
+        country: row.try_get("country").map_err(sqlx_store_error)?,
+        declared_monthly_income: row
+            .try_get("declared_monthly_income")
+            .map_err(sqlx_store_error)?,
+        submitted_at: row.try_get("submitted_at").map_err(sqlx_store_error)?,
+        reviewed_at: row.try_get("reviewed_at").map_err(sqlx_store_error)?,
+        expires_at: row.try_get("expires_at").map_err(sqlx_store_error)?,
+        idempotency_key: row.try_get("idempotency_key").map_err(sqlx_store_error)?,
+    })
+}
+
+fn tier_from_db(value: i16) -> Result<KycTier, KycStoreError> {
+    match value {
+        0 => Ok(KycTier::Tier0),
+        1 => Ok(KycTier::Tier1),
+        2 => Ok(KycTier::Tier2),
+        3 => Ok(KycTier::Tier3),
+        _ => Err(KycStoreError::Unavailable),
+    }
+}
+
+fn status_from_db(value: &str) -> Result<KycStatus, KycStoreError> {
+    match value {
+        "pending" => Ok(KycStatus::Pending),
+        "passed" => Ok(KycStatus::Passed),
+        "rejected" => Ok(KycStatus::Rejected),
+        "expired" => Ok(KycStatus::Expired),
+        "frozen" => Ok(KycStatus::Frozen),
+        _ => Err(KycStoreError::Unavailable),
+    }
+}
+
+fn count_to_usize(value: i64) -> Result<usize, KycStoreError> {
+    usize::try_from(value).map_err(|_| KycStoreError::Unavailable)
+}
+
+fn sqlx_store_error(error: sqlx::Error) -> KycStoreError {
+    if let sqlx::Error::Database(database_error) = &error {
+        if database_error
+            .constraint()
+            .is_some_and(|constraint| constraint == "idx_kyc_document_hash_unique")
+        {
+            return KycStoreError::DuplicateDocument;
+        }
+    }
+    drop(error);
+    KycStoreError::Unavailable
+}
+
+async fn insert_screening_event(
+    pool: &PgPool,
+    screening_match: &ScreeningMatchDraft,
+    action: &str,
+) -> Result<(), KycStoreError> {
+    sqlx::query(
+        r"
+        INSERT INTO screening_rescan_events (user_id, match_type, list_name, action)
+        VALUES ($1, $2, $3, $4)
+        ",
+    )
+    .bind(&screening_match.user_id)
+    .bind(match screening_match.match_type {
+        ScreeningMatchType::Sanction => "sanction",
+        ScreeningMatchType::Pep => "pep",
+    })
+    .bind(&screening_match.list_name)
+    .bind(action)
+    .execute(pool)
+    .await
+    .map_err(sqlx_store_error)?;
+    Ok(())
+}
+
+fn review_answer_str(review_answer: ReviewAnswer) -> &'static str {
+    match review_answer {
+        ReviewAnswer::Green => "GREEN",
+        ReviewAnswer::Red => "RED",
+        ReviewAnswer::Yellow => "YELLOW",
+    }
+}
+
 fn hash_document_id(salt: &str, country: &str, document_id: &str) -> String {
     let normalized = normalize_document_id(country, document_id);
     let mut hasher = Sha256::new();
@@ -700,4 +1296,50 @@ fn iso_like_now() -> String {
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs());
     format!("unix:{seconds}")
+}
+
+#[cfg(test)]
+mod postgres_store_contract_tests {
+    use super::{
+        KycStatus, KycStore, KycTier, PostgresKycStore, TierOneVerificationDraft,
+        normalize_document_id,
+    };
+
+    fn assert_kyc_store<S: KycStore>() {}
+
+    #[test]
+    fn postgres_store_implements_kyc_store_contract() {
+        assert_kyc_store::<PostgresKycStore>();
+    }
+
+    #[test]
+    fn postgres_tier_one_record_draft_matches_in_memory_normalization() {
+        let draft = TierOneVerificationDraft {
+            user_id: "user_pg_01".to_owned(),
+            idempotency_key: "kyc:user_pg_01:tier1:001".to_owned(),
+            legal_name: "Postgres User".to_owned(),
+            birthday: "1990-01-02".to_owned(),
+            country: "tw".to_owned(),
+            document_id: " a123456789 ".to_owned(),
+        };
+
+        let record = PostgresKycStore::tier_one_record_from_draft(
+            42,
+            &draft,
+            "salt",
+            "2026-05-09T00:00:00Z",
+        );
+
+        assert_eq!(record.id, 42);
+        assert_eq!(record.user_id, "user_pg_01");
+        assert_eq!(record.tier, KycTier::Tier1);
+        assert_eq!(record.status, KycStatus::Passed);
+        assert_eq!(record.provider, "manual");
+        assert_eq!(record.country.as_deref(), Some("TW"));
+        assert_eq!(record.submitted_at, "2026-05-09T00:00:00Z");
+        assert_eq!(record.idempotency_key, "kyc:user_pg_01:tier1:001");
+        assert_eq!(normalize_document_id("tw", " a123456789 "), "A123456789");
+        assert_ne!(record.document_id_hash.as_deref(), Some("A123456789"));
+        assert_eq!(record.document_id_hash.as_deref().map(str::len), Some(64));
+    }
 }
