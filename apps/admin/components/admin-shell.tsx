@@ -34,6 +34,12 @@ export function AdminShell({ children, eyebrow = "Internal operations", title, d
             <Link className="rounded-proph-sm px-3 py-2 text-[14px] text-proph-primary-on-dark hover:bg-white/10" href="/">
               Overview
             </Link>
+            <Link
+              className="rounded-proph-sm px-3 py-2 text-[14px] text-proph-primary-on-dark hover:bg-white/10"
+              href="/dashboard"
+            >
+              Dashboard
+            </Link>
             {routes.map((route) => (
               <Link
                 className="rounded-proph-sm px-3 py-2 text-[14px] text-proph-primary-on-dark hover:bg-white/10"

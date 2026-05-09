@@ -55,3 +55,14 @@ test("admin test script typechecks then runs compiled node tests", () => {
   assert.match(packageJson.scripts?.test ?? "", /tsc --project tsconfig\.test\.json/);
   assert.match(packageJson.scripts?.test ?? "", /node --test \.test-out\/tests\/\*\.test\.js/);
 });
+
+test("decision support dashboard stays read-only and covers required insight areas", () => {
+  const dashboardSource = readAdminFile("app/dashboard/page.tsx");
+
+  assert.match(dashboardSource, /decision-support/);
+  assert.match(dashboardSource, /kpi/);
+  assert.match(dashboardSource, /alerts/);
+  assert.match(dashboardSource, /versioned-reports/);
+  assert.match(dashboardSource, /audit-trail/);
+  assert.doesNotMatch(dashboardSource, /<form\b/);
+});

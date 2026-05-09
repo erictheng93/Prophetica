@@ -43,6 +43,30 @@ export interface AdminOperationsSnapshot {
   queue: OpsQueueItem[];
 }
 
+export interface DecisionSupportMetric {
+  id: "kpi" | "alerts" | "versioned-reports" | "audit-trail";
+  label: string;
+  value: string;
+  detail: string;
+  tone: OpsTone;
+}
+
+export interface DecisionSupportReport {
+  reportId: string;
+  title: string;
+  version: string;
+  generatedAt: string;
+  hash: string;
+  owner: string;
+}
+
+export interface DecisionSupportSnapshot {
+  generatedAt: string;
+  metrics: DecisionSupportMetric[];
+  reports: DecisionSupportReport[];
+  auditQueries: string[];
+}
+
 const routes: OpsRoute[] = [
   {
     href: "/members",
@@ -152,6 +176,64 @@ const queue: OpsQueueItem[] = [
   },
 ];
 
+const decisionSupportMetrics: DecisionSupportMetric[] = [
+  {
+    id: "kpi",
+    label: "KPI",
+    value: "99.92%",
+    detail: "Operations SLA coverage across review queues.",
+    tone: "success",
+  },
+  {
+    id: "alerts",
+    label: "Alerts",
+    value: "9",
+    detail: "Risk and approval alerts requiring same-day review.",
+    tone: "critical",
+  },
+  {
+    id: "versioned-reports",
+    label: "Versioned reports",
+    value: "12",
+    detail: "Published report snapshots with stable version and hash.",
+    tone: "neutral",
+  },
+  {
+    id: "audit-trail",
+    label: "Audit trail",
+    value: "100%",
+    detail: "Dashboard reads are audit-backed and mutation-free.",
+    tone: "warning",
+  },
+];
+
+const decisionSupportReports: DecisionSupportReport[] = [
+  {
+    reportId: "RPT-OPS-2026-05-10",
+    title: "Daily operations KPI",
+    version: "v2026.05.10.1",
+    generatedAt: "2026-05-10T08:00:00+08:00",
+    hash: "sha256:ops-kpi-preview",
+    owner: "Operations Control",
+  },
+  {
+    reportId: "RPT-RISK-2026-05-10",
+    title: "Risk alert summary",
+    version: "v2026.05.10.1",
+    generatedAt: "2026-05-10T08:15:00+08:00",
+    hash: "sha256:risk-alert-preview",
+    owner: "Risk Ops",
+  },
+  {
+    reportId: "RPT-AUDIT-2026-05-10",
+    title: "Audit query evidence",
+    version: "v2026.05.10.1",
+    generatedAt: "2026-05-10T08:30:00+08:00",
+    hash: "sha256:audit-query-preview",
+    owner: "Compliance",
+  },
+];
+
 export function getAdminOperationsSnapshot(): AdminOperationsSnapshot {
   return {
     generatedAt: "2026-05-10T00:00:00+08:00",
@@ -169,4 +251,18 @@ export function getOpsRoute(domain: OpsDomainId): OpsRoute {
   }
 
   return route;
+}
+
+export function getDecisionSupportSnapshot(): DecisionSupportSnapshot {
+  return {
+    generatedAt: "2026-05-10T08:30:00+08:00",
+    metrics: decisionSupportMetrics,
+    reports: decisionSupportReports,
+    auditQueries: [
+      "admin.actions.by_actor",
+      "compensation.proposals.by_ticket",
+      "affiliate.rate_changes.by_scope",
+      "kyc_risk.events.by_member",
+    ],
+  };
 }
