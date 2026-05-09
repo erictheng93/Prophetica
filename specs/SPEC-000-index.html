@@ -34,7 +34,7 @@
 <h1>Master Index — 規格總索引</h1>
 <blockquote>
 <p><strong>prophetica</strong> — 趣味預測娛樂遊戲平台
-文件版本：v0.3.3 · 最後更新：2026-05-09 · 維護人：Tech Lead</p>
+文件版本：v0.3.4 · 最後更新：2026-05-09 · 維護人：Tech Lead</p>
 <p>Legacy file path：<code>specs/SPEC-000-index.html</code>；本文件不作為單一功能 SPEC 實作輸入。</p>
 </blockquote>
 <hr>
@@ -149,13 +149,13 @@
 <td><a href="./SPEC-005-kyc-aml.html">SPEC-005</a></td>
 <td>KYC/AML 整合</td>
 <td>分層 KYC、SaaS 整合、制裁名單篩查</td>
-<td>⚠️ Backend in-memory contract / P0 follow-up · v0.1.3</td>
+<td>🟡 Backend Postgres wiring 待 P0 sprint / Frontend 主路徑 done（PR #2 merged）；blocker: <a href="#cross-cutting-q9">Q-9</a> SumSub sandbox · v0.1.4</td>
 </tr>
 <tr>
 <td><a href="./SPEC-005a-sumsub-frontend-contract.html">SPEC-005a</a></td>
 <td>SumSub 前端整合契約</td>
 <td><code>KycIdentityProvider</code> 抽象、Tier 2 page state machine、idempotency / polling / CSP 紀律</td>
-<td>⚠️ Contract draft · v0.1.0</td>
+<td>🟡 Frontend 主路徑 done（PR #2 merged 2026-05-09）；blocker: <a href="#cross-cutting-q9">Q-9</a> SumSub sandbox + iProov real adapter · v0.1.1</td>
 </tr>
 <tr>
 <td><a href="./SPEC-006-responsible-gaming.html">SPEC-006</a></td>
@@ -375,6 +375,16 @@
 <h2>4. 變更紀錄</h2>
 <section class="changelog">
 <div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>2026-05-09 · v0.3.4 · Tech Lead</h3>
+    <p><strong>Post-PR #2 status realignment</strong>：PR #1（SPEC-008 DR + governance kill switch，merged 2026-05-08）/ PR #2（SPEC-005a SumSub 前端骨架，stacked on PR #1，merged 2026-05-09）皆 merged 後，本檔 P1 表對 SPEC-005 / SPEC-005a 之狀態與版本與實際 SPEC 文件 drift。本輪閉環如下：</p>
+    <ul>
+      <li><strong>SPEC-005</strong> P1 列從「⚠️ Backend in-memory contract / P0 follow-up · v0.1.3」更新為「🟡 Backend Postgres wiring 待 P0 sprint / Frontend 主路徑 done · v0.1.4」反映 SPEC-005 v0.1.4 §0 之實作狀態 + PR #2 frontend 落地；</li>
+      <li><strong>SPEC-005a</strong> P1 列從「⚠️ Contract draft · v0.1.0」更新為「🟡 Frontend 主路徑 done（PR #2 merged）；blocker: Q-9 SumSub sandbox + iProov real adapter · v0.1.1」反映 PR #2 已交付 §2 / §5.2.1 / §6.1 / §7.3 / §8 / §10 / §11.2 之 frontend 實作；</li>
+      <li><strong>§5 新增 Q-9</strong>「SumSub sandbox credentials 採購」為 LG-3（KYC production path）+ LG-4（PoC-B Cloudflare Edge live verification）之共同單點瓶頸；採購清單包含 tenant credentials、webhook signing secret、Tier 2/3 applicant levels、iProov liveness add-on、staging webhook URL allow-list；如 SumSub 拒給 sandbox iProov 則改評估 Onfido / Veriff fallback；Owner / Compliance 為 driver；</li>
+      <li>對應 <code>docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html</code> §0 同步精煉，「Frontend 待完成」改為「Frontend 主路徑已落地（PR #2）」+「Frontend 剩餘工作（blocked on Q-9 採購）」雙段，避免後續 reviewer 誤判 frontend 進度。</li>
+    </ul>
+  </article>
   <article class="changelog-entry">
     <h3>2026-05-09 · v0.3.3 · Tech Lead</h3>
     <p><strong>Launch readiness gate 補強</strong>：新增 §2 Public Beta Launch Gate（LG-1 ~ LG-6），明確區分「不阻擋內部開發」與「阻擋公開 Beta / 真實入金 / 真實下單」之門檻；Q-2 / Q-4 待動作改為公開 Beta blocker；SPEC-012 / SPEC-013 / SPEC-018 從 P2 上移至 P1 launch gate；SPEC-011 狀態對齊 v0.2.3。同步修復 HTML 產物 drift：SPEC-003 亂碼重生、過期 Markdown 副檔名敘述改為 HTML 副檔名。</p>
@@ -692,6 +702,14 @@
 <td>✅ Resolved</td>
 <td><a href="./SPEC-011-affiliate-commission.html">SPEC-011 v0.2.1</a> 2026-05-07</td>
 <td><strong>G-1</strong> BLAKE3 + Crockford Base32 + 5 retries；<strong>G-2</strong> <code>affiliate_kinship_link</code> 子規則 6 特徵 + 雙 gate；<strong>G-3</strong> 延遲 30 天發放（從根源繞開 INV-6 clawback 衝突）；<strong>G-4</strong> 獨立每日批次 txn + <code>commission_accruals</code> staging；<strong>G-5</strong> chargeback 反沖：介紹獎勵 G-3 路徑無需 clawback、持續佣金自停、已付佣金不追回；<strong>G-6</strong> sign convention cross-ref SPEC-002 §4.3；<strong>G-7</strong>「推薦樹」→「推薦清單」；<strong>G-8</strong> 月度 20 / 終身 200 / 月度佣金 TWD 50k 上限。SPEC-002 §5 INV-6 <strong>不</strong>需新增 affiliate clawback carve-out。Codex 動工輸入完備</td>
+</tr>
+<tr id="cross-cutting-q9">
+<td>Q-9</td>
+<td>SumSub sandbox credentials 採購：tenant credentials / webhook signing secret / Tier 2+3 applicant levels / iProov liveness add-on</td>
+<td>SPEC-005 §0.2 / SPEC-005a §10 / SPEC-014 §3.2.1 / SPEC-000 §2 LG-3 + LG-4 / docs/poc/PRE-FLIGHT-POCS.md §4.4</td>
+<td>🔴 Pending（launch blocker）</td>
+<td>—</td>
+<td><strong>單點瓶頸</strong>同時阻擋 LG-3（KYC production path）與 LG-4（PoC-B Cloudflare Edge live verification）；採購清單：(a) <code>SUMSUB_APP_TOKEN</code> + <code>SUMSUB_SECRET_KEY</code>，(b) webhook signing secret（SPEC-005 INV-KYC-4 HMAC-SHA256 用），(c) Tier 2 applicant level（ID + selfie），(d) Tier 3 applicant level（含 iProov liveness add-on，對應 SPEC-005a §11.2 stage 2），(e) staging / dev webhook URL allow-list；如 SumSub 拒給 sandbox iProov 則改評估 Onfido / Veriff fallback（SPEC-005 plan §0 已預留 secret fallback hardening）。Owner / Compliance 為 driver；Tech Lead 接收 credentials 後啟動 mock → real adapter 替換 + iProov real provider 寫入</td>
 </tr>
 </tbody></table>
 <h3>5.1 議題狀態圖示</h3>

@@ -17,15 +17,16 @@
 </head>
 <body>
   <h1>SPEC-005 — KYC / AML 實作計畫</h1>
-  <p><strong>規格參照：</strong><a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005-kyc-aml.html</a> · <strong>版本：</strong>v0.1.4</p>
+  <p><strong>規格參照：</strong><a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005-kyc-aml.html</a> · <strong>版本：</strong>v0.1.5</p>
 
   <section>
     <h2>0. 實作狀態與 Launch Gate</h2>
     <ul>
-      <li>已完成：backend in-memory contract、API trait、mock provider、基本 migration 與 secret hardening 校準。</li>
-      <li>PR #1 後 P0 sprint：Postgres provider wiring、SQLx offline metadata 對齊最終 queries、SumSub / Onfido sandbox secret fallback hardening。</li>
-      <li>Frontend 待完成：真實 SumSub iframe、Tier 2 / Tier 3 OCR flow、RED / PENDING replay、PEP / sanctions rescan。</li>
-      <li>Public Beta blocker：真實入金 / 真實下單前，Tier 2 SumSub iframe、webhook HMAC、GREEN / RED / PENDING replay、RED→Frozen、PEP / sanctions rescan 必須 sandbox E2E 通過並回填 SPEC-000 LG-3 evidence。</li>
+      <li><strong>Backend 已完成（PR #1 之前）</strong>：in-memory contract、API trait、mock provider、基本 migration、secret hardening 校準。</li>
+      <li><strong>Backend P0 sprint（Codex 範圍，可立即啟動）</strong>：Postgres provider wiring、SQLx offline metadata 對齊最終 queries、SumSub / Onfido sandbox secret fallback hardening。</li>
+      <li><strong>Frontend 主路徑已落地（PR #2 merged 2026-05-09）</strong>：<code>KycIdentityProvider</code> 抽象、Tier 2/3 state machine、Tier 3 polling fail-soft（SPEC-005a §6.1）、CSP（§8）、5 個 KYC telemetry metrics（§7.3）、Tier 3 SumSub → iProov adapter chain 骨架（§11.2）；acceptance gates 3 / 6 / 9 / 11 closed。<strong>Tier 3 stage 2 iProov real adapter 仍為 <code>not_implemented</code> stub</strong>。</li>
+      <li><strong>Frontend 剩餘工作（blocked on <a href="../../specs/SPEC-000-index.html#cross-cutting-q9">SPEC-000 §5 Q-9</a> 採購）</strong>：等 SumSub sandbox credentials 到位後（a）執行 mock → real provider 替換、（b）iProov real adapter 寫入並退掉 <code>not_implemented</code> stub、（c）Tier 2 SumSub iframe 真實 mount E2E 驗證、（d）webhook HMAC + GREEN/RED/PENDING replay sandbox E2E 通過。在 sandbox credentials 到位前無法啟動，且這同時是 LG-3 evidence 回填條件。</li>
+      <li><strong>Public Beta blocker</strong>：真實入金 / 真實下單前，Tier 2 SumSub iframe、webhook HMAC、GREEN / RED / PENDING replay、RED→Frozen、PEP / sanctions rescan 必須 sandbox E2E 通過並回填 SPEC-000 LG-3 evidence；採購進度追蹤於 SPEC-000 §5 Q-9。</li>
     </ul>
   </section>
 
