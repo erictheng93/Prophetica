@@ -4,9 +4,126 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: "Git ref, tag, or SHA to validate for release"
+        required: true
+        type: string
+      deployment_mode:
+        description: "Deployment mode under review"
+        required: true
+        default: "internal-alpha"
+        type: choice
+        options:
+          - internal-alpha
+          - public-beta
+          - production
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  placeholder:
-    runs-on: ubuntu-22.04
+  release-gates:
+    name: release gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SQLX_OFFLINE: "true"
+      RELEASE_REF: ${{ inputs.release_ref || github.ref_name }}
+      DEPLOYMENT_MODE: ${{ inputs.deployment_mode || 'production' }}
     steps:
-      - run: echo "release pipeline owned by SPEC-013"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - uses: mozilla-actions/sccache-action@v0.0.6
+      - name: install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
+
+      - name: install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: frontend tests
+        run: pnpm test
+
+      - name: frontend build
+        run: pnpm build
+
+      - name: rust check
+        run: cargo check --workspace --locked
+
+      - name: rust lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: rust tests
+        run: cargo nextest run --workspace --locked
+
+      - name: rust format
+        run: cargo fmt --all -- --check
+
+      - name: generated protobuf is committed
+        run: git diff --exit-code crates/proto/src/gen packages/proto/gen/ts
+
+      - name: release blocker scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          legacy_marker="release pipeline owned by SPEC-"
+          legacy_marker="${legacy_marker}013"
+          if grep -RIn "$legacy_marker" .github/workflows; then
+            echo "release placeholder remains in workflow files" >&2
+            exit 1
+          fi
+
+      - name: write release evidence manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-evidence
+          {
+            echo "release_ref=${RELEASE_REF}"
+            echo "deployment_mode=${DEPLOYMENT_MODE}"
+            echo "commit_sha=${GITHUB_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "validated_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > release-evidence/manifest.env
+          sha256sum Cargo.lock pnpm-lock.yaml package.json Cargo.toml > release-evidence/input-checksums.sha256
+
+      - name: upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: release-evidence/
+          retention-days: 90
+
+  approval-record:
+    name: approval record
+    needs: release-gates
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: record approval scope
+        run: |
+          echo "SPEC-013 / SPEC-010 MS-12 approval checkpoint reached."
+          echo "This workflow validates release readiness evidence; deployment remains a separate, explicit action."

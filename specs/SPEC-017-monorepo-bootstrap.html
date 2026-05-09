@@ -476,7 +476,7 @@
 <blockquote>
 <p>完整 CI 設計在 SPEC-013，本節僅定義 bootstrap 階段必須通過的最小 gate。</p>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-017-monorepo-bootstrap-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-<p><code>release.yml</code>（tag 觸發、build &amp; push image、產 SBOM、ArgoCD sync）之完整內容定義於 <a href="./SPEC-013-cicd-release.html">SPEC-013 § 3</a>；本 SPEC 不重複規範。Bootstrap 階段僅需在 <code>.github/workflows/release.yml</code> 放置一個 <code>on: push: tags: ['v*']</code> 的 placeholder workflow（內容為 <code>echo "release pipeline owned by SPEC-013"</code>），讓 tag push 不會 404。</p>
+<p><code>release.yml</code>（tag 觸發、build &amp; push image、產 SBOM、ArgoCD sync）之完整內容定義於 <a href="./SPEC-013-cicd-release.html">SPEC-013 § 3</a>；本 SPEC 不重複規範。Bootstrap 早期允許 stub workflow；2026-05-09 起已由 SPEC-013 release gate workflow 取代，tag push 必須跑 release evidence gate，而非只 echo。</p>
 </blockquote>
 <h3>8.2 Nightly mutation testing（R-4）</h3>
 <p><code>.github/workflows/nightly-mutants.yml</code>（cron <code>0 18 * * *</code> UTC = 02:00 台北）：</p>
@@ -675,7 +675,7 @@
 <h4>11.2.7 CI pipelines</h4>
 <ul>
 <li>[ ] <code>.github/workflows/ci.yml</code> 對齊 §8 全部 step（rust-toolchain 1.85、Swatinem/rust-cache、sccache、rdkafka 系統依賴、buf、sqlx prepare check、cargo deny、cargo geiger、sentinel-scan）</li>
-<li>[ ] <code>.github/workflows/release.yml</code> 為 §8 所述 placeholder（內容為 <code>echo "release pipeline owned by SPEC-013"</code>）</li>
+<li>[ ] <code>.github/workflows/release.yml</code> 為 SPEC-013 release gate workflow：tag / manual trigger、frontend + Rust gates、generated proto drift check、release evidence artifact、GitHub production environment approval checkpoint</li>
 <li>[ ] <code>.github/workflows/nightly-mutants.yml</code> 對齊 §8.2，限縮 ledger + 撮合三 crate</li>
 <li>[ ] <code>.github/workflows/macos-nightly.yml</code> 對齊 §12 OQ #5 解法（macos-latest 跑 unit test + <code>make doctor</code>，cron 排程）</li>
 <li>[ ] CI <strong>首次</strong>執行通過 §8.1 所有必過 gate</li>
