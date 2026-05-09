@@ -1,0 +1,22 @@
+[package]
+name = "kyc-service-binary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "kyc-service"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+kyc-service = { path = "../../kyc-service" }
+sdk = { path = "../../../crates/sdk" }
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

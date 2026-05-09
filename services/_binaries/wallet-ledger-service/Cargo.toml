@@ -1,0 +1,23 @@
+[package]
+name = "wallet-ledger-service-binary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "wallet-ledger-service"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+sdk = { path = "../../../crates/sdk" }
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+wallet-ledger-service = { path = "../../wallet-ledger-service" }
+
+[lints]
+workspace = true

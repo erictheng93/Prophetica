@@ -25,7 +25,8 @@
 <h1>SPEC-014 — 整體技術架構（Tech Architecture）</h1>
 <blockquote>
 <p>優先級：跨章節（被多份 SPEC 依賴）
-版本：v0.2.6 · 最後更新：2026-05-07</p>
+版本：v0.2.7 · 最後更新：2026-05-09</p>
+<p><strong>v0.2.7 變更</strong>：§4.1.1 由「目前採 12-binary」更新為「MVP 合併部署已落地」；記錄 <code>services/_binaries/*</code> deployable entrypoints、12 個 <code>services/*</code> crate 轉為 lib-only service 邊界，以及未來拆回 12-binary 之觸發條件。修正 §4.1 合併部署效益描述，避免把 wallet-ledger / matching-engine 等仍獨立的安全與 latency 邊界誤寫為 in-process。</p>
 <p><strong>v0.2.6 變更</strong>：§4.1 新增 §4.1.1「目前實作狀態」+ §4.1.1.1「轉 7-binary 之觸發條件」，紀錄 round 7 程式碼驗證結果（當前採 12-binary 拓撲）+ 後續轉換時機之 4 條觸發條件 + 簡述轉換流程；採 12-binary 之 acceptance 補強寫入。SDD 紀律：spec 反映現況。</p>
 <p><strong>v0.2.5 變更</strong>：(1) §3.1 v0.2.0 變更說明補 cross-ref 至 <a href="../docs/architecture/decisions/ADR-0005-backend-language-rust-over-go.md">ADR-0005</a>（後端 Go → Rust 之 retroactive ADR 落地）；(2) §3.2.1 補 cross-ref 至 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md §4</code></a>（Cloudflare Pages Edge runtime PoC 詳細 plan）。</p>
 <p><strong>v0.2.4 變更</strong>：(1) <strong>T-1 service 拓撲 advisory</strong>：§4 新增 §4.1「MVP 合併部署 advisory」，建議 MVP / 公開 Beta 階段將 12 個 service binary 合併為 7 個（保留 service crate 結構不變，僅合併 binary）；列拆分時機 + 合併好處（latency budget 寬鬆 / onboarding -40% / CI -30%）+ 代價（scaling 顆粒度）+ Codex PR #1 落地建議。本節為 advisory 不強制；(2) §4 service 表補 cross-ref 至 SPEC-003 §17.2 routing 與 §17.3 thread model 分流。
@@ -537,7 +538,7 @@
 </tbody>
 </table>
 <p><strong>合併部署的好處</strong>：
-- 下單熱路徑減少 4-5 個 gRPC hop → SPEC-007 §6.4 latency budget 更寬裕（風控 + wallet 從跨 service 變 in-process call）
+- 部署 hop 與 service discovery surface 減少；<code>core-api</code> 內 user / market / position / referral 可同 process 承載，wallet-ledger / matching-engine 仍保留獨立安全與 latency 邊界
 - 12 個 Helm chart → 7 個（onboarding 摩擦 -40%）
 - CI 編譯時間 -30%（fewer link units，shared dependencies）</p>
 <p><strong>合併部署的代價</strong>：
@@ -545,39 +546,36 @@
 - attack surface 略增（合併 binary 內部隔離靠 module + workspace lints，不靠 process boundary）</p>
 <p><strong>Codex PR #1 落地建議</strong>：採合併部署。<code>services/*/</code> crate 保留本表 12 個結構（lib crate）+ <code>services/_binaries/{core-api,realtime-gateway,...}/main.rs</code> 之 7 個 binary crate 引用對應 lib。SPEC-017 §11.2 acceptance check 應反映此拓撲選擇。</p>
 <blockquote>
-<p>本 §4.1 為 advisory，<strong>不強制</strong>Codex PR #1 採用；若 Codex 採本表 12-binary 形態實作，需在 PR description 引用 SPEC-007 §6.4 latency budget 並承諾跨 hop 壓測達標。</p>
+<p>本 §4.1 原為 advisory；截至 2026-05-09，MVP 合併部署已落地為目前實作形態。SDD 紀律：spec 應反映現況。</p>
 </blockquote>
-<h4>4.1.1 目前實作狀態（2026-05-07，round 7 程式碼驗證）</h4>
+<h4>4.1.1 目前實作狀態（2026-05-09，MVP 合併部署落地）</h4>
 <blockquote>
-<p><strong>現況：採 12-binary 拓撲</strong>（每個 <code>services/*/</code> 為獨立 binary crate）。本節記錄當前實作選擇 + 後續轉 7-binary 之觸發條件。SDD 紀律：spec 應反映現況。</p>
+<p><strong>現況：採 MVP 合併部署拓撲</strong>。12 個 <code>services/*/</code> crate 保留 service 邊界與測試面，但不再各自暴露 standalone <code>src/main.rs</code> service binary；deployable entrypoints 集中於 <code>services/_binaries/*</code>。</p>
 </blockquote>
 <p>當前實作選擇：</p>
 <ul>
-<li>12 個 service 各自獨立 main.rs binary（與 §4 表一致）</li>
-<li>不存在 <code>services/_binaries/</code> 目錄</li>
-<li>每個 service 透過 <code>crates/sdk</code> 之 <code>service_stub</code> 模組統一 §6 五要素（healthz / metrics / signal handling / JSON log）</li>
-<li>CI 在單一 <code>cargo build --workspace</code> 跑通 16 個 crates（12 services + 2 sdk/proto + 2 mocks）；未設定 GitHub larger runner 時使用 <code>ubuntu-latest</code>，若 org/repo 已配置 <code>ubuntu-latest-4-cores</code> 才可切換並預期 cold cache &lt; 15 min（SPEC-017 §11.2.10 T-8）</li>
+<li><code>services/*/</code> 保留為 lib crate，維持 domain / API / test 邊界；未來拆回 12-binary 時不需重建模組邊界</li>
+<li><code>services/_binaries/core-api</code> 承載 <code>api-gateway</code> + <code>user-service</code> + <code>market-service</code> + <code>position-service</code> + <code>referral-service</code></li>
+<li><code>services/_binaries/realtime-gateway</code> 承載 <code>ws-gateway</code>，因 WS 連線數 scaling 與 HTTP 不同而維持獨立 deployable</li>
+<li><code>services/_binaries/wallet-ledger-service</code>、<code>settlement-worker</code>、<code>kyc-service</code> 維持獨立 deployable，保留帳本安全邊界、active / standby 模式與 KYC webhook 邊界</li>
+<li><code>services/_binaries/matching-engine-hot</code> 使用 current-thread runtime + <code>LocalSet</code> + <code>core_affinity</code>；<code>matching-engine-cold</code> 使用 multi-thread runtime，對齊 SPEC-003 §17.3</li>
+<li><code>services/_binaries/notification-and-risk</code> 承載 <code>notification-service</code> + <code>risk-antifraud-service</code>，待 risk ML 化或第三方整合複雜化後再拆分</li>
+<li>新增 <code>crates/sdk/tests/service_topology.rs</code> 作為 topology regression test，防止 service crate 重新長出 standalone <code>src/main.rs</code></li>
 </ul>
-<p>採 12-binary 之 acceptance 補強：</p>
-<ul>
-<li>Codex PR #1 description 必須宣告「採 12-binary，下單熱路徑跨 5+ hop 將於 staging 完成 SPEC-007 §6.4 latency budget 壓測」</li>
-<li>壓測結果若超 budget → 觸發 §4.1.1.1 轉 7-binary 路徑</li>
-</ul>
-<h5>4.1.1.1 轉 7-binary 之觸發條件（將來）</h5>
-<p>下列任一成立時，啟動轉 7-binary 拓撲之 PR：</p>
+<h5>4.1.1.1 拆回 12-binary 之觸發條件（將來）</h5>
+<p>下列任一成立時，啟動拆回 12-binary 拓撲之 PR / ADR：</p>
 <ol>
-<li><strong>Latency budget 違反</strong>：staging 壓測下單熱路徑 P99 &gt; 30ms（SPEC-007 §6.4 端到端 SLO）持續 7 天以上</li>
-<li><strong>CI cold cache &gt; 25 min</strong>：4-cores runner 編譯時間超預期，需減少 link unit 數</li>
-<li><strong>DAU &lt; 5,000 且 service hop 占 P99 &gt; 50%</strong>：成本不效益，合併方為更佳 ROI</li>
-<li><strong>Compliance Officer / Tech Lead 評估</strong>：跨 service log / trace 對 Compliance 個案調查造成顯著摩擦</li>
+<li><strong>DAU &gt; 5,000 或單一 service scaling 明顯分歧</strong>：例如 user / market / referral 其中一者需要獨立 HPA 或資源上限</li>
+<li><strong>service 內部複雜度溢出</strong>：KYC SaaS、risk ML、referral B2B 或 notification provider 整合需要獨立 release cadence</li>
+<li><strong>安全或合規邊界升級</strong>：Compliance Officer / Tech Lead 要求特定 service 以 process / deployment boundary 隔離</li>
+<li><strong>observability 或 incident response 摩擦</strong>：合併 binary 造成 log / trace owner 判讀、rollback、on-call routing 成本高於拆分成本</li>
 </ol>
-<p>轉換流程（簡述，詳細待轉換時開新 ADR）：</p>
+<p>拆分流程（簡述，詳細待轉換時開新 ADR）：</p>
 <ul>
-<li>建立 <code>services/_binaries/{core-api, realtime-gateway, notification-and-risk}/main.rs</code> 對應本節合併方案</li>
-<li>12 個 service crate 之 <code>Cargo.toml</code> 改為 lib-only（<code>[lib]</code> 取代 <code>[[bin]]</code>）</li>
-<li>對應 7 個 binary crate 引用合併之 lib crates</li>
-<li>Helm chart / Argo CD application 由 12 個合併為 7 個</li>
-<li>CI ci.yml 之 deploy step 對齊新拓撲</li>
+<li>將目標 service 從 <code>services/_binaries/*</code> 抽回獨立 binary entrypoint</li>
+<li>保留現有 lib crate API，新增最小 <code>src/main.rs</code> 或對應 deployable package</li>
+<li>Helm chart / Argo CD application / CI deploy step 由 MVP 合併形態拆分為目標 service 形態</li>
+<li>更新 SPEC-014 §4.1.1 與 topology regression test，確保 spec / code / deployment 三者一致</li>
 </ul>
 <h2>5. Repository 結構（Monorepo）</h2>
 <p>採用 <strong>Turborepo + pnpm workspaces</strong> + <strong>Cargo workspace（root <code>Cargo.toml</code>）</strong></p>

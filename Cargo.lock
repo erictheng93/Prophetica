@@ -377,6 +377,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
+name = "core-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "api-gateway",
+ "axum 0.7.9",
+ "market-service",
+ "position-service",
+ "referral-service",
+ "sdk",
+ "tokio",
+ "tracing",
+ "user-service",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1124,6 +1140,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kyc-service-binary"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "kyc-service",
+ "sdk",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1241,6 +1269,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "matching-engine-cold"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "matching-engine",
+ "sdk",
+ "tokio",
+]
+
+[[package]]
+name = "matching-engine-hot"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "core_affinity",
+ "matching-engine",
+ "sdk",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1311,6 +1361,19 @@ name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
+
+[[package]]
+name = "notification-and-risk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "notification-service",
+ "risk-antifraud-service",
+ "sdk",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "notification-service"
@@ -2033,6 +2096,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "realtime-gateway"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sdk",
+ "tokio",
+ "ws-gateway",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2356,6 +2429,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "sdk",
+ "tokio",
+]
+
+[[package]]
+name = "settlement-worker-binary"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "sdk",
+ "settlement-worker",
  "tokio",
 ]
 
@@ -3297,6 +3380,19 @@ dependencies = [
  "tokio",
  "tower 0.5.3",
  "tracing",
+]
+
+[[package]]
+name = "wallet-ledger-service-binary"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "sdk",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "wallet-ledger-service",
 ]
 
 [[package]]

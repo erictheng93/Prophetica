@@ -1,0 +1,16 @@
+[package]
+name = "realtime-gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+sdk = { path = "../../../crates/sdk" }
+tokio.workspace = true
+ws-gateway = { path = "../../ws-gateway" }
+
+[lints]
+workspace = true

@@ -52,7 +52,7 @@
 API Gateway ──> auth | kyc | matching | ledger | payment | risk | settlement
 所有 service 共用 PostgreSQL event/command bus / Redis / Kafka</code></pre>
     <ul>
-      <li>12 service crate 保留抽象邊界；必要時可做 7-binary 合併部署 advisory。</li>
+      <li>12 service crate 保留抽象邊界；deployable entrypoints 由 <code>services/_binaries/*</code> 承載 MVP 合併部署。</li>
       <li>gRPC for internal RPC，HTTP for client-facing paths。</li>
     </ul>
   </section>
@@ -83,7 +83,7 @@ API Gateway ──> auth | kyc | matching | ledger | payment | risk | settlement
       <li>完成服務 container image 與 probe 設定。</li>
       <li>完成 service 接口驗證（ADR + integration tests）。</li>
       <li>完成可重現部署流程與 rollback runbook。</li>
-      <li>在 OQ 清單中記錄 7-binary 切換條件與回退條件。</li>
+      <li>在 OQ 清單中記錄 MVP 合併部署拆回 12-binary 的切換條件與回退條件。</li>
     </ol>
   </section>
 </body>

@@ -1,0 +1,22 @@
+[package]
+name = "core-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+api-gateway = { path = "../../api-gateway" }
+axum.workspace = true
+market-service = { path = "../../market-service" }
+position-service = { path = "../../position-service" }
+referral-service = { path = "../../referral-service" }
+sdk = { path = "../../../crates/sdk" }
+tokio.workspace = true
+tracing.workspace = true
+user-service = { path = "../../user-service" }
+
+[lints]
+workspace = true

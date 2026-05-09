@@ -7,13 +7,13 @@ fn main() -> anyhow::Result<()> {
     let pinned_core = core_ids.first().copied();
 
     std::thread::Builder::new()
-        .name("matching-engine-market-localset".to_string())
+        .name("matching-engine-hot-market-localset".to_string())
         .spawn(move || {
             if let Some(core_id) = pinned_core {
                 core_affinity::set_for_current(core_id);
-                tracing::info!(core = core_id.id, "matching-engine thread pinned");
+                tracing::info!(core = core_id.id, "matching-engine hot thread pinned");
             } else {
-                tracing::warn!("no CPU core id available for matching-engine pinning");
+                tracing::warn!("no CPU core id available for matching-engine hot pinning");
             }
 
             let runtime = Builder::new_current_thread()
@@ -25,5 +25,5 @@ fn main() -> anyhow::Result<()> {
             local.block_on(&runtime, async { matching_engine::api::run().await })
         })?
         .join()
-        .map_err(|_| anyhow::anyhow!("matching-engine runtime thread panicked"))?
+        .map_err(|_| anyhow::anyhow!("matching-engine hot runtime thread panicked"))?
 }
