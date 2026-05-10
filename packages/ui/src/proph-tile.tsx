@@ -1,7 +1,12 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "./cn";
 
-export type ProphTileSurface = "light" | "parchment" | "dark" | "dark-2" | "dark-3";
+export type ProphTileSurface =
+  | "light"
+  | "parchment"
+  | "dark"
+  | "dark-2"
+  | "dark-3";
 
 export interface ProphTileProps extends HTMLAttributes<HTMLElement> {
   surface?: ProphTileSurface;
@@ -34,9 +39,25 @@ const surfaceClasses: Record<ProphTileSurface, string> = {
 };
 
 export const ProphTile = forwardRef<HTMLElement, ProphTileProps>(
-  ({ surface = "light", kicker, headline, tagline, actions, media, mediaFirst = false, className, ...props }, ref) => {
-    const onDark = surface === "dark" || surface === "dark-2" || surface === "dark-3";
-    const taglineColor = onDark ? "text-proph-body-muted" : "text-proph-ink-muted-80";
+  (
+    {
+      surface = "light",
+      kicker,
+      headline,
+      tagline,
+      actions,
+      media,
+      mediaFirst = false,
+      className,
+      ...props
+    },
+    ref,
+  ) => {
+    const onDark =
+      surface === "dark" || surface === "dark-2" || surface === "dark-3";
+    const taglineColor = onDark
+      ? "text-proph-body-muted"
+      : "text-proph-ink-muted-80";
 
     const text = (
       <div className="flex flex-col items-center text-center">
@@ -45,18 +66,24 @@ export const ProphTile = forwardRef<HTMLElement, ProphTileProps>(
             {kicker}
           </p>
         ) : null}
-        <h2 className="font-display text-[40px] font-semibold leading-[1.1] tracking-[0]">{headline}</h2>
+        <h2 className="font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px] sm:text-[34px] sm:leading-[1.1] sm:tracking-[-0.374px] md:text-[40px] md:leading-[1.1] md:tracking-[0]">
+          {headline}
+        </h2>
         {tagline ? (
           <p
             className={cn(
-              "mt-4 font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px]",
+              "mt-4 max-w-4xl font-display text-[21px] font-normal leading-[1.28] tracking-[0.231px] sm:text-[24px] sm:leading-[1.2] md:text-[28px] md:leading-[1.14] md:tracking-[0.196px]",
               taglineColor,
             )}
           >
             {tagline}
           </p>
         ) : null}
-        {actions ? <div className="mt-7 flex flex-wrap items-center justify-center gap-4">{actions}</div> : null}
+        {actions ? (
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-4">
+            {actions}
+          </div>
+        ) : null}
       </div>
     );
 
@@ -69,7 +96,13 @@ export const ProphTile = forwardRef<HTMLElement, ProphTileProps>(
     return (
       <section
         ref={ref}
-        className={cn("w-full", "px-6 md:px-10", "py-[80px] md:py-[80px]", surfaceClasses[surface], className)}
+        className={cn(
+          "w-full",
+          "px-5 sm:px-6 md:px-10",
+          "py-16 md:py-[80px]",
+          surfaceClasses[surface],
+          className,
+        )}
         {...props}
       >
         <div className="mx-auto max-w-[1440px]">

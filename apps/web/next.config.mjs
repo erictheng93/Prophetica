@@ -3,7 +3,8 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
 if (process.env.NODE_ENV === "development") {
-  const { setupDevPlatform } = await import("@cloudflare/next-on-pages/next-dev");
+  const { setupDevPlatform } =
+    await import("@cloudflare/next-on-pages/next-dev");
   setupDevPlatform();
 }
 
@@ -22,6 +23,7 @@ if (process.env.NODE_ENV === "development") {
 const KYC_CSP_HEADER_VALUE = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' https://static.sumsub.com",
+  "style-src 'self' 'unsafe-inline'",
   "connect-src 'self' https://api.sumsub.com https://*.sumsub.com wss://*.sumsub.com",
   "frame-src 'self' https://*.sumsub.com",
   "img-src 'self' data: blob: https://*.sumsub.com",

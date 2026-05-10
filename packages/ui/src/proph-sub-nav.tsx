@@ -19,7 +19,12 @@ export interface ProphSubNavProps {
  *
  * Backdrop-filter is the depth signal. No drop-shadow.
  */
-export function ProphSubNav({ category, links, cta, className }: ProphSubNavProps) {
+export function ProphSubNav({
+  category,
+  links,
+  cta,
+  className,
+}: ProphSubNavProps) {
   return (
     <div
       className={cn(
@@ -30,21 +35,29 @@ export function ProphSubNav({ category, links, cta, className }: ProphSubNavProp
         "bg-[rgba(245,245,247,0.8)] text-proph-ink",
         "supports-[backdrop-filter]:bg-[rgba(245,245,247,0.72)]",
         "[backdrop-filter:saturate(180%)_blur(20px)]",
-        "h-[52px]",
         "border-b border-proph-divider-soft",
         className,
       )}
       aria-label="Section"
     >
-      <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between px-6 md:px-10">
-        <div className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+      <div className="mx-auto flex min-h-[52px] max-w-[1440px] items-center justify-between gap-3 px-5 sm:px-6 md:px-10">
+        <div className="min-w-0 truncate font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
           {category}
         </div>
 
         <div className="hidden items-center gap-6 md:flex">{links}</div>
 
-        <div className="flex items-center">{cta}</div>
+        <div className="flex shrink-0 items-center">{cta}</div>
       </div>
+      {links ? (
+        <div className="border-t border-proph-divider-soft md:hidden">
+          <div className="mx-auto max-w-[1440px] overflow-x-auto overscroll-x-contain px-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-6">
+            <div className="flex min-h-11 snap-x snap-mandatory items-center gap-5 whitespace-nowrap">
+              {links}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

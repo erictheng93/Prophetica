@@ -1,21 +1,23 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import "./globals.css";
 
 /*
- * SPEC-017 §6.3 LIFF — runs inside a LINE webview that already constrains
- * the viewport to a narrow column. We still ship an explicit viewport
- * declaration so the in-LINE renderer cannot fall back to its default
- * 980px desktop emulation when LINE versions diverge across iOS / Android.
- *
- * `userScalable: false` is intentional for LIFF: LINE itself owns the
- * gesture stack (swipe-to-dismiss the mini-window). Letting users pinch
- * inside the embed creates layout glitches against LINE's parent chrome.
+ * LIFF runs inside a LINE webview that already constrains the viewport.
+ * The explicit viewport prevents older LINE renderers from falling back to
+ * desktop-width emulation.
  */
 
 export const metadata: Metadata = {
-  title: "prophetica · LIFF",
-  description: "prophetica LINE mini app — quick access from inside LINE.",
+  title: "Prophetica LIFF",
+  description: "Prophetica LINE mini app with an installable browser fallback.",
+  applicationName: "Prophetica LIFF",
+  appleWebApp: {
+    capable: true,
+    title: "Prophetica LIFF",
+    statusBarStyle: "default",
+  },
   robots: { index: false, follow: false },
   formatDetection: { telephone: false },
 };
@@ -32,7 +34,10 @@ export const viewport: Viewport = {
 export default function LiffLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-Hant">
-      <body>{children}</body>
+      <body>
+        {children}
+        <ServiceWorkerRegistration />
+      </body>
     </html>
   );
 }

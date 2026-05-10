@@ -20,10 +20,26 @@ function getSecret(): string {
  *   /login, /api/auth/*, /api/health, /_next, /favicon, /robots.txt
  */
 
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/health", "/_next", "/favicon", "/robots.txt"];
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/api/auth",
+  "/api/health",
+  "/_next",
+  "/favicon",
+  "/favicon.ico",
+  "/robots.txt",
+  "/manifest.webmanifest",
+  "/icon0",
+  "/icon1",
+  "/apple-icon",
+  "/sw.js",
+  "/offline",
+];
 
 function isPublic(pathname: string): boolean {
-  return PUBLIC_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  return PUBLIC_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
 }
 
 export async function middleware(req: NextRequest) {
@@ -35,7 +51,10 @@ export async function middleware(req: NextRequest) {
 
   // Phase 3 — replace with real Cf-Mtls-Verified header check. Today this
   // only fail-closes in production when the placeholder header is missing.
-  if (process.env.NODE_ENV === "production" && !req.headers.get("x-internal-mtls")) {
+  if (
+    process.env.NODE_ENV === "production" &&
+    !req.headers.get("x-internal-mtls")
+  ) {
     return new NextResponse("Forbidden", {
       status: 403,
       headers: { "content-type": "text/plain; charset=utf-8" },
@@ -60,9 +79,13 @@ export async function middleware(req: NextRequest) {
     // Send affiliates landing on internal routes back to their portal so they
     // never see the bare 403; everyone else gets the explicit 403 page.
     // (Use a path-segment check, not startsWith — /members starts with /me.)
-    const isAffiliateOwnPath = pathname === "/me/affiliate" || pathname.startsWith("/me/affiliate/");
+    const isAffiliateOwnPath =
+      pathname === "/me/affiliate" || pathname.startsWith("/me/affiliate/");
     const target = req.nextUrl.clone();
-    target.pathname = session.role === "affiliate" && !isAffiliateOwnPath ? defaultLandingFor("affiliate") : "/403";
+    target.pathname =
+      session.role === "affiliate" && !isAffiliateOwnPath
+        ? defaultLandingFor("affiliate")
+        : "/403";
     target.search = "";
     return NextResponse.redirect(target);
   }

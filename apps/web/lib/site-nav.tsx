@@ -113,7 +113,9 @@ export const siteFooterColumnIds: FooterColumnId[] = [
 
 // -------------------- Async data helpers --------------------
 
-export async function getFooterColumn(id: FooterColumnId): Promise<SiteFooterColumn> {
+export async function getFooterColumn(
+  id: FooterColumnId,
+): Promise<SiteFooterColumn> {
   const t = await getTranslations(`common.footer.columns.${id}`);
   return {
     heading: t("heading"),
@@ -124,7 +126,9 @@ export async function getFooterColumn(id: FooterColumnId): Promise<SiteFooterCol
   };
 }
 
-export async function getFooterColumns(ids: FooterColumnId[]): Promise<SiteFooterColumn[]> {
+export async function getFooterColumns(
+  ids: FooterColumnId[],
+): Promise<SiteFooterColumn[]> {
   return Promise.all(ids.map(getFooterColumn));
 }
 
@@ -162,10 +166,10 @@ export async function MainNavLinks() {
 export async function AuthCta() {
   const t = await getTranslations("common.auth");
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-center gap-3 sm:gap-4">
       <a
         href="/auth/sign-in"
-        className="font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink"
+        className="hidden font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink sm:inline"
       >
         {t("signIn")}
       </a>
