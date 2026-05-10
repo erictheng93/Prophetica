@@ -28,13 +28,13 @@ function RGSectionNav({ links, ariaLabel }: { links: SiteNavLink[]; ariaLabel: s
       aria-label={ariaLabel}
       className="border-b border-proph-divider-soft bg-proph-canvas-parchment"
     >
-      <div className="mx-auto max-w-proph overflow-x-auto px-6 md:px-10">
-        <ul className="flex items-center gap-2 py-3">
+      <div className="mx-auto max-w-proph overflow-x-auto overscroll-x-contain px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:px-10">
+        <ul className="flex snap-x snap-mandatory items-center gap-2 py-3">
           {links.map((l) => (
-            <li key={l.href}>
+            <li key={l.href} className="snap-start">
               <a
                 href={l.href}
-                className="inline-flex items-center rounded-proph-pill border border-proph-hairline bg-proph-canvas px-4 py-1.5 font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink-muted-80 transition-colors hover:border-proph-primary hover:text-proph-ink"
+                className="inline-flex min-h-11 items-center rounded-proph-pill border border-proph-hairline bg-proph-canvas px-4 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink-muted-80 transition-colors hover:border-proph-primary hover:text-proph-ink active:border-proph-primary active:text-proph-ink"
               >
                 {l.label}
               </a>
