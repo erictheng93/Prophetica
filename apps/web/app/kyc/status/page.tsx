@@ -62,7 +62,7 @@ function Timeline({
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-8 font-display text-[40px] font-semibold leading-[1.1]">
+        <h2 className="mb-8 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
           {t("timeline.heading")}
         </h2>
 
@@ -113,7 +113,7 @@ function NextSteps({ t }: { t: StatusCopy }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-6 font-display text-[40px] font-semibold leading-[1.1]">
+        <h2 className="mb-6 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
           {t("next.heading")}
         </h2>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

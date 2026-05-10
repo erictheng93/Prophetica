@@ -54,7 +54,7 @@ function PrivacyMatrix({ t }: { t: PrivacyNoticeCopy }) {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-8 font-display text-[40px] font-semibold leading-[1.1]">
+        <h2 className="mb-8 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
           {t("matrix.heading")}
         </h2>
 
@@ -123,7 +123,7 @@ function YourRights({ t }: { t: PrivacyNoticeCopy }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-6 font-display text-[40px] font-semibold leading-[1.1]">
+        <h2 className="mb-6 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
           {t("rights.heading")}
         </h2>
         <p className="max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">

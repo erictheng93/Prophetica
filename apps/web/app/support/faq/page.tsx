@@ -101,7 +101,7 @@ function SectionBlock({ section, t }: { section: Section; t: FAQCopy }) {
     <section id={section.id} className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
         <header className="mb-6">
-          <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t(`sections.${section.id}.title`)}
           </h2>
         </header>
@@ -168,7 +168,7 @@ export default async function FAQPage() {
 
       <section className="bg-proph-canvas-parchment">
         <div className="mx-auto max-w-proph px-6 py-16 text-center md:px-10">
-          <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("notFound.heading")}
           </h2>
           <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">

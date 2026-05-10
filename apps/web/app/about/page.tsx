@@ -56,7 +56,7 @@ export default async function AboutPage() {
       <section className="bg-proph-canvas-parchment">
         <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
           <header className="mb-8">
-            <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+            <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
               {t("principles.heading")}
             </h2>
             <p className="mt-3 max-w-3xl font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
@@ -89,7 +89,7 @@ export default async function AboutPage() {
           <span className="font-text text-[14px] font-semibold uppercase leading-[1.29] tracking-[-0.224px] text-proph-body-muted">
             {t("neutrality.kicker")}
           </span>
-          <h2 className="mt-2 font-display text-[40px] font-semibold leading-[1.1]">
+          <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("neutrality.headline")}
           </h2>
           <p className="mt-4 max-w-3xl font-display text-[24px] font-light leading-[1.5] text-proph-body-muted">
@@ -121,7 +121,7 @@ export default async function AboutPage() {
       <section className="bg-proph-canvas">
         <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
           <header className="mb-8">
-            <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+            <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
               {t("structure.heading")}
             </h2>
             <p className="mt-3 max-w-3xl font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
@@ -167,7 +167,7 @@ export default async function AboutPage() {
 
       <section className="bg-proph-canvas-parchment">
         <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-          <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("productScope.heading")}
           </h2>
           <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">

@@ -68,7 +68,7 @@ function CurrentStatusBlock({
           <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] uppercase text-proph-ink-muted-48">
             {t("current.kicker")}
           </span>
-          <h2 className="mt-1 font-display text-[40px] font-semibold leading-[1.1]">
+          <h2 className="mt-1 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("current.heading")}
           </h2>
         </header>
@@ -110,7 +110,7 @@ function TierCards({
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-8 font-display text-[40px] font-semibold leading-[1.1]">
+        <h2 className="mb-8 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
           {t("tiers.heading")}
         </h2>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">

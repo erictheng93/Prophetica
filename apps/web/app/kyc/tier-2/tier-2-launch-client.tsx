@@ -154,7 +154,7 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
       <section className="bg-proph-canvas">
         <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
           <header className="mb-8">
-            <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+            <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
               {t("sumsub.heading")}
             </h2>
             <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
@@ -201,7 +201,7 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
             <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] uppercase text-proph-ink-muted-48">
               {t("income.kicker")}
             </span>
-            <h2 className="mt-1 font-display text-[40px] font-semibold leading-[1.1]">
+            <h2 className="mt-1 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
               {t("income.heading")}
             </h2>
             <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">

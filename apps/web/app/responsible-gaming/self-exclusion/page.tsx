@@ -38,7 +38,7 @@ function ScopeBlock({ t }: { t: SECopy }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-8 font-display text-[40px] font-semibold leading-[1.1]">{t("scope.heading")}</h2>
+        <h2 className="mb-8 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">{t("scope.heading")}</h2>
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {SCOPE_ITEM_IDS.map((id) => (
             <li key={id} className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
@@ -64,7 +64,7 @@ function TimeoutChoice({ t }: { t: SECopy }) {
           <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] uppercase text-proph-ink-muted-48">
             {t("timeout.kicker")}
           </span>
-          <h2 className="mt-1 font-display text-[40px] font-semibold leading-[1.1]">
+          <h2 className="mt-1 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("timeout.heading")}
           </h2>
           <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">

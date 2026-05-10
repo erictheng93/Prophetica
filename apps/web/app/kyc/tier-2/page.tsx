@@ -21,7 +21,7 @@ function RequirementsBlock({ t }: { t: Tier2Copy }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-8 font-display text-[40px] font-semibold leading-[1.1]">
+        <h2 className="mb-8 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
           {t("requirements.heading")}
         </h2>
         <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">

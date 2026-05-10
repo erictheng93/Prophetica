@@ -30,7 +30,7 @@ export default async function MarketsAllPage() {
       <section className="bg-proph-canvas">
         <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
           <header className="mb-8 flex items-baseline justify-between">
-            <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+            <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
               {t("countLabel", { count: markets.length })}
             </h2>
             <span className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">

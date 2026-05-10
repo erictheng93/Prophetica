@@ -235,7 +235,7 @@ function AmountSection({
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
         <header className="mb-8">
-          <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("amount.heading")}
           </h2>
           <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
@@ -299,7 +299,7 @@ function ChannelSection({ t }: { t: TopupCopy }) {
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
         <header className="mb-8">
-          <h2 className="font-display text-[40px] font-semibold leading-[1.1]">
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("channels.heading")}
           </h2>
           <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">

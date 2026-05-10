@@ -240,7 +240,7 @@ async function MarketInfoBlock({ market }: { market: Market }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-8 font-display text-[40px] font-semibold leading-[1.1]">{t("heading")}</h2>
+        <h2 className="mb-8 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">{t("heading")}</h2>
         <dl className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
           <Field label={t("fields.oracleSource")} value={market.oracleSource} />
           <Field label={t("fields.openedAt")} value={formatCloseAt(market.openedAt)} />
