@@ -101,5 +101,3 @@ production deploy or backend coordination.
   placeholder "P" glyph against Action Blue. Brand will supply a final
   mark; swap into the same ImageResponse generators (or precomputed
   PNGs) without changing the manifest URLs.
-- Web app `<noscript>` fallback explaining why the app needs JavaScript;
-  currently only the LIFF shell carries one.
