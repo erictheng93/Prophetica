@@ -29,6 +29,7 @@ const routeRules: readonly RouteRule[] = [
   { path: "/members", allow: ["admin", "manager"] },
   { path: "/points", allow: ["admin", "manager"] },
   { path: "/affiliate", isPrefix: true, allow: ["admin", "manager"] },
+  { path: "/analytics", isPrefix: true, allow: ["admin", "manager"] },
   { path: "/kyc-risk", allow: ["admin", "manager"] },
   { path: "/compensation", allow: ["admin", "manager"] },
   { path: "/approvals", allow: ["admin", "manager"] },
