@@ -42,7 +42,7 @@ export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailVi
     <div className="space-y-8">
       <Link
         href="/affiliate"
-        className="inline-flex items-center text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-primary"
+        className="-mx-2 inline-flex min-h-11 items-center rounded-proph-sm px-2 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-primary transition-colors hover:bg-proph-canvas-parchment active:bg-proph-divider-soft"
       >
         ← {adminCopy.affiliateAdmin.detailBackToList}
       </Link>

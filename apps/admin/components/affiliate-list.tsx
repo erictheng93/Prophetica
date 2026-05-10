@@ -25,7 +25,7 @@ export function AffiliateList({ affiliates }: AffiliateListProps) {
       aria-labelledby="affiliate-list-title"
       className="rounded-proph-lg border border-proph-hairline bg-proph-canvas"
     >
-      <header className="px-6 pt-6">
+      <header className="px-5 pt-5 md:px-6 md:pt-6">
         <h2 id="affiliate-list-title" className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
           {adminCopy.affiliateAdmin.listHeading}
         </h2>
@@ -38,7 +38,7 @@ export function AffiliateList({ affiliates }: AffiliateListProps) {
           <li key={row.id}>
             <Link
               href={`/affiliate/${row.id}`}
-              className="grid gap-3 px-6 py-5 transition-colors hover:bg-proph-surface-pearl md:grid-cols-[160px_1fr_auto_auto]"
+              className="grid min-h-[88px] gap-3 px-5 py-5 transition-colors hover:bg-proph-surface-pearl active:bg-proph-canvas-parchment md:px-6 md:grid-cols-[160px_1fr_auto_auto]"
             >
               <div className="flex flex-col gap-1">
                 <span className="font-mono text-[13px] tracking-[-0.224px] text-proph-ink-muted-80">{row.id}</span>
@@ -80,7 +80,7 @@ export function AffiliateList({ affiliates }: AffiliateListProps) {
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-end justify-end gap-1">
+              <div className="flex flex-wrap items-start gap-1 md:items-end md:justify-end">
                 {row.riskFlags.length === 0 ? (
                   <span className="text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-48">
                     {adminCopy.affiliateAdmin.riskNone}

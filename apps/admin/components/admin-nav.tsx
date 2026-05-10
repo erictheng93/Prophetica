@@ -32,7 +32,7 @@ export function AdminNav({ ariaLabel, links, signOutLabel, roleLabel }: AdminNav
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="hidden flex-wrap items-center justify-between gap-3 md:flex">
       <nav aria-label={ariaLabel} className="flex flex-wrap gap-2">
         {links.map((link) => {
           const isActive =
@@ -43,8 +43,10 @@ export function AdminNav({ ariaLabel, links, signOutLabel, roleLabel }: AdminNav
               key={link.key}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "rounded-proph-sm px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors",
-                isActive ? "bg-white/15 text-white" : "text-proph-primary-on-dark hover:bg-white/10",
+                "inline-flex min-h-11 items-center rounded-proph-sm px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors",
+                isActive
+                  ? "bg-white/15 text-white"
+                  : "text-proph-primary-on-dark hover:bg-white/10 active:bg-white/15",
               )}
               href={link.href}
             >
@@ -56,7 +58,7 @@ export function AdminNav({ ariaLabel, links, signOutLabel, roleLabel }: AdminNav
       <div className="flex items-center gap-3">
         <span
           aria-label="目前登入身份"
-          className="rounded-proph-pill border border-white/20 px-3 py-1 text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-primary-on-dark"
+          className="rounded-proph-pill border border-white/20 px-3 py-1.5 text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-primary-on-dark"
         >
           {roleLabel}
         </span>
@@ -64,7 +66,7 @@ export function AdminNav({ ariaLabel, links, signOutLabel, roleLabel }: AdminNav
           type="button"
           onClick={handleSignOut}
           disabled={pending}
-          className="rounded-proph-sm bg-white/10 px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-on-dark transition-colors hover:bg-white/20 disabled:opacity-60"
+          className="inline-flex min-h-11 items-center rounded-proph-sm bg-white/10 px-4 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-on-dark transition-colors hover:bg-white/20 active:bg-white/25 disabled:opacity-60"
         >
           {signOutLabel}
         </button>

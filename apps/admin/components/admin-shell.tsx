@@ -3,6 +3,7 @@ import { adminCopy } from "@/lib/admin-copy";
 import { getAdminOperationsSnapshot } from "@/lib/ops-facade";
 import { canAccess, filterRoutes, type Role } from "@/lib/rbac";
 import { AdminNav } from "./admin-nav";
+import { AdminNavDrawer } from "./admin-nav-drawer";
 
 interface AdminShellProps {
   children: ReactNode;
@@ -45,18 +46,20 @@ export function AdminShell({
   return (
     <main className="min-h-screen bg-proph-canvas text-proph-ink">
       <header className="border-b border-proph-hairline bg-proph-surface-black text-proph-on-dark">
-        <div className="mx-auto flex max-w-proph flex-col gap-6 px-6 py-8 md:px-10 md:py-10">
+        <div className="mx-auto flex max-w-proph flex-col gap-5 px-5 py-6 md:gap-6 md:px-10 md:py-10">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-primary-on-dark">
                 {eyebrow}
               </p>
-              <h1 className="mt-3 max-w-4xl text-[34px] font-semibold leading-[1.1] tracking-[-0.374px] md:text-[44px] md:leading-[1.07] md:tracking-[-0.28px]">
+              <h1 className="mt-3 max-w-4xl text-[28px] font-semibold leading-[1.14] tracking-[-0.28px] sm:text-[34px] sm:leading-[1.1] sm:tracking-[-0.374px] md:text-[44px] md:leading-[1.07]">
                 {title}
               </h1>
-              <p className="mt-4 max-w-3xl text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-body-on-dark">{description}</p>
+              <p className="mt-3 max-w-3xl text-[15px] leading-[1.47] tracking-[-0.224px] text-proph-body-on-dark sm:text-[17px] sm:tracking-[-0.374px]">
+                {description}
+              </p>
             </div>
-            <div className="text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-body-on-dark">
+            <div className="hidden text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-body-on-dark md:block">
               {adminCopy.shell.readOnlyFacade}
               <br />
               {adminCopy.shell.noDirectLedgerWrites}
@@ -68,9 +71,15 @@ export function AdminShell({
             signOutLabel={adminCopy.shell.signOut}
             roleLabel={roleLabel[role]}
           />
+          <AdminNavDrawer
+            ariaLabel={adminCopy.shell.navAria}
+            links={navLinks}
+            signOutLabel={adminCopy.shell.signOut}
+            roleLabel={roleLabel[role]}
+          />
         </div>
       </header>
-      <div className="mx-auto max-w-proph px-6 py-10 md:px-10 md:py-12">{children}</div>
+      <div className="mx-auto max-w-proph px-5 py-8 md:px-10 md:py-12">{children}</div>
     </main>
   );
 }
