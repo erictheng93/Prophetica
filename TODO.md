@@ -58,3 +58,26 @@ losing the remaining launch work.
 - Complete legal memo coverage for the initial market list.
 - Confirm jurisdiction allow / deny rules for the beta launch scope.
 - Publish any required market-specific restrictions before launch.
+
+### LG-7: admin RBAC Phase 3 — production auth
+
+Tracked here because Phase 2 (2026-05-10) ships only a mock auth surface
+inside `apps/admin/`. None of the items below can ride to production as-is.
+
+- Stand up real auth endpoints in `services/user-service` (`/v1/auth/login`,
+  `/v1/auth/logout`, `/v1/auth/me`); deprecate `apps/admin/app/api/auth/*`
+  mock and `apps/admin/lib/mock-users.ts`.
+- Sign sessions with Ed25519 (private key in Vault per SPEC-010 §3.3); admin
+  middleware verifies via JWKS endpoint instead of HMAC. Update
+  `apps/admin/lib/session.ts` accordingly.
+- Hash affiliate passwords with Argon2id (memory ≥ 19 MiB, t=2, p=1 minimum).
+- Add hardware MFA across all roles per SPEC-010 §9.3.3 (TOTP + WebAuthn).
+  Session JWT must carry `mfa_at` claim; high-sensitivity actions (MS-3 /
+  MS-9 / MS-12) require `mfa_at` within the last 30 minutes.
+- Configure Cloudflare Access with bypass policies for `/login` and
+  `/me/affiliate/*` so external affiliates can reach the app surface, while
+  `/`, `/dashboard`, and the six internal domain routes still require SSO.
+- Replace `ADMIN_SESSION_SECRET` dev fallback in `lib/session.ts` with
+  fail-closed behavior (no default secret in production).
+- Remove the dev-credential hint block from `app/login/page.tsx` once real
+  user-service is in place.

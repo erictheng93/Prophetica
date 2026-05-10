@@ -128,3 +128,7 @@ tools/load-test/results/
 *.csv.gz
 .playwright-mcp/
 audit-*.png
+# Playwright + visual-verification screenshots dropped at the repo root
+admin-*.png
+role-*.png
+login.png

@@ -1,59 +1,76 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { adminCopy } from "@/lib/admin-copy";
 import { getAdminOperationsSnapshot } from "@/lib/ops-facade";
+import { canAccess, filterRoutes, type Role } from "@/lib/rbac";
+import { AdminNav } from "./admin-nav";
 
 interface AdminShellProps {
   children: ReactNode;
   eyebrow?: string;
   title: string;
   description: string;
+  role: Role;
 }
 
-export function AdminShell({ children, eyebrow = adminCopy.shell.defaultEyebrow, title, description }: AdminShellProps) {
+const roleLabel: Record<Role, string> = {
+  admin: adminCopy.shell.roleAdmin,
+  manager: adminCopy.shell.roleManager,
+  affiliate: adminCopy.shell.roleAffiliate,
+};
+
+export function AdminShell({
+  children,
+  eyebrow = adminCopy.shell.defaultEyebrow,
+  title,
+  description,
+  role,
+}: AdminShellProps) {
   const { routes } = getAdminOperationsSnapshot();
+  const visibleRoutes = filterRoutes(routes, role);
+  const baseLinks: { key: string; href: string; label: string }[] = [];
+  if (canAccess("/", role)) {
+    baseLinks.push({ key: "overview", href: "/", label: adminCopy.shell.overview });
+  }
+  if (canAccess("/dashboard", role)) {
+    baseLinks.push({ key: "dashboard", href: "/dashboard", label: adminCopy.shell.dashboard });
+  }
+  if (canAccess("/me/affiliate", role)) {
+    baseLinks.push({ key: "me-affiliate", href: "/me/affiliate", label: adminCopy.affiliatePortal.title });
+  }
+  const navLinks = [
+    ...baseLinks,
+    ...visibleRoutes.map((route) => ({ key: route.domain, href: route.href, label: route.label })),
+  ];
 
   return (
     <main className="min-h-screen bg-proph-canvas text-proph-ink">
       <header className="border-b border-proph-hairline bg-proph-surface-black text-proph-on-dark">
-        <div className="mx-auto flex max-w-proph flex-col gap-6 px-6 py-6 md:px-10">
+        <div className="mx-auto flex max-w-proph flex-col gap-6 px-6 py-8 md:px-10 md:py-10">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-primary-on-dark">
                 {eyebrow}
               </p>
-              <h1 className="mt-2 max-w-4xl text-[32px] font-semibold leading-[1.1] md:text-[44px]">{title}</h1>
-              <p className="mt-3 max-w-3xl text-[15px] leading-6 text-proph-body-on-dark">{description}</p>
+              <h1 className="mt-3 max-w-4xl text-[34px] font-semibold leading-[1.1] tracking-[-0.374px] md:text-[44px] md:leading-[1.07] md:tracking-[-0.28px]">
+                {title}
+              </h1>
+              <p className="mt-4 max-w-3xl text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-body-on-dark">{description}</p>
             </div>
-            <div className="text-[13px] leading-5 text-proph-body-on-dark">
+            <div className="text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-body-on-dark">
               {adminCopy.shell.readOnlyFacade}
               <br />
               {adminCopy.shell.noDirectLedgerWrites}
             </div>
           </div>
-          <nav aria-label={adminCopy.shell.navAria} className="flex flex-wrap gap-2">
-            <Link className="rounded-proph-sm px-3 py-2 text-[14px] text-proph-primary-on-dark hover:bg-white/10" href="/">
-              {adminCopy.shell.overview}
-            </Link>
-            <Link
-              className="rounded-proph-sm px-3 py-2 text-[14px] text-proph-primary-on-dark hover:bg-white/10"
-              href="/dashboard"
-            >
-              {adminCopy.shell.dashboard}
-            </Link>
-            {routes.map((route) => (
-              <Link
-                className="rounded-proph-sm px-3 py-2 text-[14px] text-proph-primary-on-dark hover:bg-white/10"
-                href={route.href}
-                key={route.domain}
-              >
-                {route.label}
-              </Link>
-            ))}
-          </nav>
+          <AdminNav
+            ariaLabel={adminCopy.shell.navAria}
+            links={navLinks}
+            signOutLabel={adminCopy.shell.signOut}
+            roleLabel={roleLabel[role]}
+          />
         </div>
       </header>
-      <div className="mx-auto max-w-proph px-6 py-8 md:px-10">{children}</div>
+      <div className="mx-auto max-w-proph px-6 py-10 md:px-10 md:py-12">{children}</div>
     </main>
   );
 }

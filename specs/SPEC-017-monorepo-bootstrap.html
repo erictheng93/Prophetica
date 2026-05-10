@@ -438,7 +438,8 @@
 <li><code>app/api/health/route.ts</code>：回 <code>{status: "ok"}</code></li>
 <li><code>next.config.mjs</code>：含 <code>@cloudflare/next-on-pages</code> 設定（呼應 ADR-0004）</li>
 </ul>
-<h3>6.3 admin / liff app stub 條件</h3>
+<h3>6.3 admin / liff app 認證與角色（amended 2026-05-10）</h3>
+<p><strong>變更摘要：</strong>原條文要求 <code>apps/admin/</code> 顯示「登入佔位」，本次修訂改為實際 login UI 與應用層 session，並引入 RBAC 三角色（<code>admin</code> / <code>manager</code> / <code>affiliate</code>）。Cloudflare Access 仍維持為 ingress 殼，但僅針對內部角色路徑生效；affiliate 路徑（<code>/me/affiliate/*</code>）與 <code>/login</code> 走 Access bypass，由應用層 session cookie 自驗。</p>
 <table>
 <thead>
 <tr>
@@ -449,7 +450,19 @@
 <tbody>
 <tr>
 <td><code>apps/admin/</code></td>
-<td><code>app/page.tsx</code> 顯示登入佔位；<code>app/api/health/route.ts</code>；middleware 設置「僅內網 / mTLS placeholder」註記；不部署至公開 Cloudflare Pages</td>
+<td>
+  <ul>
+    <li><code>app/login/page.tsx</code> — email + password 登入表單（首版 password-only；MFA 留 Phase 3）</li>
+    <li><code>app/page.tsx</code> — 角色 redirect：<code>admin</code> / <code>manager</code> 進入操作入口，<code>affiliate</code> redirect 至 <code>/me/affiliate</code></li>
+    <li><code>app/me/affiliate/{page,payouts,sub-tree}.tsx</code> — affiliate 自助門戶，僅顯示 viewer 自己的代理資料（脫敏）</li>
+    <li><code>app/403/page.tsx</code>、<code>app/api/health/route.ts</code></li>
+    <li><code>app/api/auth/{login,logout,me}/route.ts</code> — Phase 2 mock 實作；Phase 3 改 proxy 到 <code>user-service</code></li>
+    <li><code>middleware.ts</code> 雙層：(1) Cloudflare Access 僅對 admin/manager 路徑強制 SSO；(2) 應用層解 session cookie，role 不符即 redirect 至 <code>/403</code>，未登入即 redirect 至 <code>/login</code>。免驗清單：<code>/login</code>、<code>/api/auth/*</code>、<code>/api/health</code>、<code>/_next</code>、<code>/favicon</code></li>
+    <li><code>lib/rbac.ts</code> — 角色 × 路由矩陣（<code>canAccess</code> / <code>canApprove</code> / <code>filterRoutes</code>）；<strong>RBAC 是唯一真實來源</strong>，UI、middleware、API route 三層皆引用同一份矩陣</li>
+    <li><code>lib/session.ts</code> — HttpOnly + Secure + SameSite=Strict cookie；payload 至少含 <code>{ sub, role, iat, exp }</code>。Phase 2 採 HMAC-SHA256 簽章；Phase 3 換 user-service 簽的 Ed25519 JWT</li>
+    <li>不部署至公開 Cloudflare Pages（與原條文一致）</li>
+  </ul>
+</td>
 </tr>
 <tr>
 <td><code>apps/liff/</code></td>
@@ -457,6 +470,29 @@
 </tr>
 </tbody>
 </table>
+<h4>6.3.1 RBAC 角色矩陣</h4>
+<table>
+<thead><tr><th>路由</th><th><code>admin</code></th><th><code>manager</code></th><th><code>affiliate</code></th></tr></thead>
+<tbody>
+<tr><td><code>/login</code></td><td>公開</td><td>公開</td><td>公開</td></tr>
+<tr><td><code>/</code> 操作入口總覽</td><td>✅</td><td>✅</td><td>403</td></tr>
+<tr><td><code>/dashboard</code> 決策支援</td><td>✅ 全部</td><td>✅ 不含財務 hash</td><td>403</td></tr>
+<tr><td><code>/members</code> 會員管理</td><td>✅</td><td>✅ 唯讀</td><td>403</td></tr>
+<tr><td><code>/points</code> 帳戶點數例外</td><td>✅</td><td>✅ 提案</td><td>403</td></tr>
+<tr><td><code>/affiliate</code> 代理抽佣審查</td><td>✅</td><td>✅ 唯讀</td><td>403</td></tr>
+<tr><td><code>/kyc-risk</code></td><td>✅</td><td>✅</td><td>403</td></tr>
+<tr><td><code>/compensation</code> 補償審批</td><td>✅ 終審</td><td>✅ 提案</td><td>403</td></tr>
+<tr><td><code>/approvals</code> 人工審批</td><td>✅ 終審</td><td>✅ 一審</td><td>403</td></tr>
+<tr><td><code>/me/affiliate*</code></td><td>403</td><td>403</td><td>✅ 僅自己</td></tr>
+</tbody>
+</table>
+<p>「✅ 唯讀」「✅ 提案」與 admin 共用同一頁面 component，差異由 RBAC 在 server-side 過濾 CTA 與 server fetch 範圍實現，<strong>不</strong>另開分支路由。</p>
+<h4>6.3.2 與 SPEC-010 §9.3.3 銜接</h4>
+<ul>
+<li>本節僅規範「進入 UI 之前」的 authn / authz；multi-sig 簽核與 hardware MFA step-up 仍依 SPEC-010 §9.3.3 集中 component。</li>
+<li>Phase 3 引入真 user-service 後，session JWT 必須含 <code>mfa_at</code> claim 以支援 MS-3 / MS-9 / MS-12 等 30 分鐘有效期 step-up；首版（Phase 2 mock）僅有 <code>iat</code> / <code>exp</code>，故僅供 read-only 操作測試。</li>
+<li>Phase 3 之 affiliate password hashing 採 Argon2id；session 簽章採 Ed25519，公鑰由 user-service 透過 JWKS endpoint 暴露給 admin app middleware 驗章。</li>
+</ul>
 <p>三個 Next.js app（web / admin / liff）共用 <code>packages/ts-sdk</code> 與 Kumo 元件，由 Turborepo <code>^build</code> 依賴拓撲連動。</p>
 <hr />
 <h2>7. 環境變數與配置</h2>

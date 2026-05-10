@@ -9,5 +9,6 @@
     "incremental": false,
     "types": ["node"]
   },
-  "include": ["tests/**/*.ts", "lib/**/*.ts"]
+  "include": ["tests/**/*.ts", "lib/**/*.ts"],
+  "exclude": ["lib/session.ts", "lib/mock-users.ts"]
 }
