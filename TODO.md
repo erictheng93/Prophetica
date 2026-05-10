@@ -101,9 +101,5 @@ production deploy or backend coordination.
   placeholder "P" glyph against Action Blue. Brand will supply a final
   mark; swap into the same ImageResponse generators (or precomputed
   PNGs) without changing the manifest URLs.
-- Mobile-first sweep for legacy /web pages (`how-it-works`, `about`,
-  `legal/*`) — they still rely on default `md:` breakpoints without `sm:`
-  intermediate steps. Apply the same ladder pattern that the admin shell
-  and login page now use.
 - Web app `<noscript>` fallback explaining why the app needs JavaScript;
   currently only the LIFF shell carries one.
