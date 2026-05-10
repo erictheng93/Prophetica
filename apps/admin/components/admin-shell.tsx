@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { adminCopy } from "@/lib/admin-copy";
 import { getAdminOperationsSnapshot } from "@/lib/ops-facade";
 
 interface AdminShellProps {
@@ -9,7 +10,7 @@ interface AdminShellProps {
   description: string;
 }
 
-export function AdminShell({ children, eyebrow = "Internal operations", title, description }: AdminShellProps) {
+export function AdminShell({ children, eyebrow = adminCopy.shell.defaultEyebrow, title, description }: AdminShellProps) {
   const { routes } = getAdminOperationsSnapshot();
 
   return (
@@ -25,20 +26,20 @@ export function AdminShell({ children, eyebrow = "Internal operations", title, d
               <p className="mt-3 max-w-3xl text-[15px] leading-6 text-proph-body-on-dark">{description}</p>
             </div>
             <div className="text-[13px] leading-5 text-proph-body-on-dark">
-              Read-only facade
+              {adminCopy.shell.readOnlyFacade}
               <br />
-              No direct ledger writes
+              {adminCopy.shell.noDirectLedgerWrites}
             </div>
           </div>
-          <nav aria-label="Admin operations" className="flex flex-wrap gap-2">
+          <nav aria-label={adminCopy.shell.navAria} className="flex flex-wrap gap-2">
             <Link className="rounded-proph-sm px-3 py-2 text-[14px] text-proph-primary-on-dark hover:bg-white/10" href="/">
-              Overview
+              {adminCopy.shell.overview}
             </Link>
             <Link
               className="rounded-proph-sm px-3 py-2 text-[14px] text-proph-primary-on-dark hover:bg-white/10"
               href="/dashboard"
             >
-              Dashboard
+              {adminCopy.shell.dashboard}
             </Link>
             {routes.map((route) => (
               <Link

@@ -66,3 +66,18 @@ test("decision support dashboard stays read-only and covers required insight are
   assert.match(dashboardSource, /audit-trail/);
   assert.doesNotMatch(dashboardSource, /<form\b/);
 });
+
+test("admin copy defaults to Traditional Chinese with an i18n-ready copy module", () => {
+  const copySource = readAdminFile("lib/admin-copy.ts");
+  const overviewSource = readAdminFile("app/page.tsx");
+  const dashboardSource = readAdminFile("app/dashboard/page.tsx");
+  const shellSource = readAdminFile("components/admin-shell.tsx");
+
+  assert.match(copySource, /adminLocale\s*=\s*"zh-Hant"/);
+  assert.match(copySource, /adminCopy/);
+  assert.match(copySource, /營運操作入口/);
+  assert.match(copySource, /決策輔助儀表板/);
+  assert.match(overviewSource, /adminCopy\.overview/);
+  assert.match(dashboardSource, /adminCopy\.dashboard/);
+  assert.match(shellSource, /adminCopy\.shell/);
+});

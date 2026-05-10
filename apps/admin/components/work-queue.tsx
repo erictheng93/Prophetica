@@ -1,4 +1,5 @@
 import type { OpsQueueItem, OpsRoute, OpsTone } from "@/lib/ops-facade";
+import { adminCopy } from "@/lib/admin-copy";
 import { StatusPill } from "./status-pill";
 
 const statusTone: Record<OpsQueueItem["status"], OpsTone> = {
@@ -20,9 +21,11 @@ export function WorkQueue({ items, routes }: WorkQueueProps) {
     <section aria-labelledby="work-queue-title">
       <div className="mb-3">
         <h2 id="work-queue-title" className="text-[22px] font-semibold leading-7">
-          Work queue
+          {adminCopy.components.workQueueHeading}
         </h2>
-        <p className="mt-1 text-[14px] leading-5 text-proph-ink-muted-80">Prioritized operational review items.</p>
+        <p className="mt-1 text-[14px] leading-5 text-proph-ink-muted-80">
+          {adminCopy.components.workQueueDescription}
+        </p>
       </div>
       <div className="overflow-hidden rounded-proph-sm border border-proph-hairline">
         {items.map((item) => (
@@ -33,7 +36,7 @@ export function WorkQueue({ items, routes }: WorkQueueProps) {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[12px] font-semibold text-proph-ink-muted-80">{item.id}</span>
-                <StatusPill tone={statusTone[item.status]}>{item.status}</StatusPill>
+                <StatusPill tone={statusTone[item.status]}>{adminCopy.components.status[item.status]}</StatusPill>
                 <span className="text-[12px] text-proph-ink-muted-80">{labels.get(item.domain)}</span>
               </div>
               <h3 className="mt-2 text-[17px] font-semibold leading-6">{item.title}</h3>

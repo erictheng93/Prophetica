@@ -1,5 +1,6 @@
 import { AdminShell } from "@/components/admin-shell";
 import { StatusPill } from "@/components/status-pill";
+import { adminCopy } from "@/lib/admin-copy";
 import { getDecisionSupportSnapshot } from "@/lib/ops-facade";
 
 export default function DecisionSupportDashboardPage() {
@@ -7,18 +8,18 @@ export default function DecisionSupportDashboardPage() {
 
   return (
     <AdminShell
-      eyebrow="decision-support"
-      title="Decision support dashboard"
-      description="Read-only KPI, alerts, versioned reports, and audit-trail lookup for operators after the operations entry surface has routed work."
+      eyebrow={adminCopy.dashboard.eyebrow}
+      title={adminCopy.dashboard.title}
+      description={adminCopy.dashboard.description}
     >
       <div className="space-y-8">
-        <section aria-labelledby="dashboard-kpi-title">
+        <section aria-labelledby="dashboard-kpi-title" data-insight="decision-support kpi alerts">
           <div className="mb-3">
             <h2 id="dashboard-kpi-title" className="text-[22px] font-semibold leading-7">
-              kpi and alerts
+              {adminCopy.dashboard.kpiHeading}
             </h2>
             <p className="mt-1 text-[14px] leading-5 text-proph-ink-muted-80">
-              Observation only. Operational changes remain in the dedicated workspaces.
+              {adminCopy.dashboard.kpiDescription}
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-4">
@@ -29,7 +30,7 @@ export default function DecisionSupportDashboardPage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-[14px] font-semibold leading-5">{metric.label}</h3>
-                  <StatusPill tone={metric.tone}>{metric.id}</StatusPill>
+                  <StatusPill tone={metric.tone}>決策輔助</StatusPill>
                 </div>
                 <p className="mt-4 text-[30px] font-semibold leading-none">{metric.value}</p>
                 <p className="mt-2 text-[13px] leading-5 text-proph-ink-muted-80">{metric.detail}</p>
@@ -38,13 +39,13 @@ export default function DecisionSupportDashboardPage() {
           </div>
         </section>
 
-        <section aria-labelledby="versioned-reports-title">
+        <section aria-labelledby="versioned-reports-title" data-insight="versioned-reports">
           <div className="mb-3">
             <h2 id="versioned-reports-title" className="text-[22px] font-semibold leading-7">
-              versioned-reports
+              {adminCopy.dashboard.reportsHeading}
             </h2>
             <p className="mt-1 text-[14px] leading-5 text-proph-ink-muted-80">
-              Report snapshots are versioned, hash-addressed, and owned by an accountable role.
+              {adminCopy.dashboard.reportsDescription}
             </p>
           </div>
           <div className="overflow-hidden rounded-proph-sm border border-proph-hairline">
@@ -70,13 +71,13 @@ export default function DecisionSupportDashboardPage() {
           </div>
         </section>
 
-        <section aria-labelledby="audit-trail-title">
+        <section aria-labelledby="audit-trail-title" data-insight="audit-trail">
           <div className="mb-3">
             <h2 id="audit-trail-title" className="text-[22px] font-semibold leading-7">
-              audit-trail
+              {adminCopy.dashboard.auditHeading}
             </h2>
             <p className="mt-1 text-[14px] leading-5 text-proph-ink-muted-80">
-              Saved query families for evidence lookup. This page does not create approvals or ledger writes.
+              {adminCopy.dashboard.auditDescription}
             </p>
           </div>
           <ul className="grid gap-3 md:grid-cols-2">
