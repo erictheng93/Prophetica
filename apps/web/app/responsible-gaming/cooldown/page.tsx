@@ -99,7 +99,7 @@ function ChooseDuration({ t }: { t: CooldownCopy }) {
             </div>
 
             <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
-              <label className="flex items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
+              <label className="flex min-h-11 items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
                 <input type="checkbox" required className="h-4 w-4 accent-proph-primary" />
                 {t("choose.consent")}
               </label>

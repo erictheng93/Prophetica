@@ -148,7 +148,7 @@ function SigninForm({ t }: { t: AuthCopy }) {
             />
           </label>
 
-          <label className="flex items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
+          <label className="flex min-h-11 items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
             <input type="checkbox" name="remember" className="h-4 w-4 accent-proph-primary" />
             {t("signin.remember")}
           </label>
