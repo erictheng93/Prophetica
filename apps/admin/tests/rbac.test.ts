@@ -26,6 +26,14 @@ test("only affiliate can reach /me/affiliate and its descendants", () => {
   }
 });
 
+test("admin and manager can reach /affiliate/[id] detail; affiliate cannot", () => {
+  for (const path of ["/affiliate/AFF-001", "/affiliate/AFF-022"]) {
+    assert.equal(canAccess(path, "admin"), true, `admin -> ${path}`);
+    assert.equal(canAccess(path, "manager"), true, `manager -> ${path}`);
+    assert.equal(canAccess(path, "affiliate"), false, `affiliate -> ${path}`);
+  }
+});
+
 test("/me prefix does not bleed into /members or /me-anything", () => {
   // Regression: an earlier middleware build used pathname.startsWith("/me")
   // which returned true for /members. canAccess must still 403 those paths
