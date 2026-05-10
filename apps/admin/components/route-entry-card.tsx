@@ -1,4 +1,4 @@
-import { ProphLinkButton } from "@prophetica/ui";
+﻿import { ProphLinkButton } from "@prophetica/ui";
 import { adminCopy } from "@/lib/admin-copy";
 import type { OpsRoute } from "@/lib/ops-facade";
 import { StatusPill } from "./status-pill";
@@ -14,7 +14,9 @@ export function RouteEntryCard({ route }: RouteEntryCardProps) {
         <StatusPill tone={route.tone}>
           {route.openItems} {adminCopy.components.openItems}
         </StatusPill>
-        <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48">工作區</span>
+        <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48">
+          {adminCopy.components.entryLabel}
+        </span>
       </div>
       <h2 className="mt-4 text-[21px] font-semibold leading-7">{route.label}</h2>
       <p className="mt-2 text-[14px] leading-5 text-proph-ink-muted-80">{route.summary}</p>

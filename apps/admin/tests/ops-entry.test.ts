@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -75,8 +75,8 @@ test("admin copy defaults to Traditional Chinese with an i18n-ready copy module"
 
   assert.match(copySource, /adminLocale\s*=\s*"zh-Hant"/);
   assert.match(copySource, /adminCopy/);
-  assert.match(copySource, /營運操作入口/);
-  assert.match(copySource, /決策輔助儀表板/);
+  assert.match(copySource, /管理操作入口/);
+  assert.match(copySource, /決策支援儀表板/);
   assert.match(overviewSource, /adminCopy\.overview/);
   assert.match(dashboardSource, /adminCopy\.dashboard/);
   assert.match(shellSource, /adminCopy\.shell/);

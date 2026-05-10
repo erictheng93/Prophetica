@@ -1,4 +1,4 @@
-import { AdminShell } from "@/components/admin-shell";
+﻿import { AdminShell } from "@/components/admin-shell";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
 import { getDecisionSupportSnapshot } from "@/lib/ops-facade";
@@ -30,7 +30,7 @@ export default function DecisionSupportDashboardPage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-[14px] font-semibold leading-5">{metric.label}</h3>
-                  <StatusPill tone={metric.tone}>決策輔助</StatusPill>
+                  <StatusPill tone={metric.tone}>{adminCopy.components.previewSnapshot}</StatusPill>
                 </div>
                 <p className="mt-4 text-[30px] font-semibold leading-none">{metric.value}</p>
                 <p className="mt-2 text-[13px] leading-5 text-proph-ink-muted-80">{metric.detail}</p>
