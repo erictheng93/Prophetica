@@ -131,4 +131,5 @@ audit-*.png
 # Playwright + visual-verification screenshots dropped at the repo root
 admin-*.png
 role-*.png
+rwd-*.png
 login.png

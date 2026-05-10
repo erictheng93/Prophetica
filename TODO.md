@@ -81,3 +81,29 @@ inside `apps/admin/`. None of the items below can ride to production as-is.
   fail-closed behavior (no default secret in production).
 - Remove the dev-credential hint block from `app/login/page.tsx` once real
   user-service is in place.
+
+### LG-8: PWA / RWD followups
+
+Phase A-C of the responsive + PWA pass landed 2026-05-10; the remaining
+items below are deliberately deferred because they require either a
+production deploy or backend coordination.
+
+- Background sync for mutating requests. The web service worker
+  (`apps/web/public/sw.js`) deliberately passes POST/PUT/DELETE through to
+  the network — SPEC-002 funds-safety forbids silent retries of ledger
+  writes. A real offline queue must (a) co-design idempotency keys with
+  api-gateway, (b) surface pending mutations in the UI, and (c) reconcile
+  failures without double-posting.
+- Lighthouse PWA score validation. Local `next dev` cannot reach 100/100
+  because Lighthouse insists on HTTPS for installability. Validate after
+  the staging deploy and capture the run as evidence under SPEC-007.
+- Real maskable icon artwork. `app/icon{0,1}.tsx` currently render a
+  placeholder "P" glyph against Action Blue. Brand will supply a final
+  mark; swap into the same ImageResponse generators (or precomputed
+  PNGs) without changing the manifest URLs.
+- Mobile-first sweep for legacy /web pages (`how-it-works`, `about`,
+  `legal/*`) — they still rely on default `md:` breakpoints without `sm:`
+  intermediate steps. Apply the same ladder pattern that the admin shell
+  and login page now use.
+- Web app `<noscript>` fallback explaining why the app needs JavaScript;
+  currently only the LIFF shell carries one.
