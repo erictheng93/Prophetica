@@ -283,7 +283,7 @@ function AmountSection({
                 min={1}
                 max={remainingPoints || undefined}
                 placeholder={t("amount.customPlaceholder", { max: remainingPoints.toLocaleString() })}
-                className="ml-7 w-full max-w-xs rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+                className="ml-7 w-full min-h-11 max-w-xs rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
                 aria-label={t("amount.customAriaLabel")}
               />
             </label>

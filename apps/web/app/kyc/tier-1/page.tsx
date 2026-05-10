@@ -155,7 +155,7 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
                   type="text"
                   name="legalName"
                   placeholder={t("form.fields.legalNamePlaceholder")}
-                  className="rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+                  className="min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
                 />
               </label>
 
@@ -166,7 +166,7 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
                 <input
                   type="date"
                   name="birthday"
-                  className="rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
+                  className="min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
                 />
               </label>
 
@@ -176,7 +176,7 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
                 </span>
                 <select
                   name="country"
-                  className="rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
+                  className="min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
                 >
                   <option value="">
                     {t("form.fields.countryPlaceholder")}
@@ -203,7 +203,7 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
                   autoComplete="off"
                   spellCheck={false}
                   placeholder={t("form.fields.documentIdPlaceholder")}
-                  className="rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+                  className="min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
                 />
               </label>
             </div>
