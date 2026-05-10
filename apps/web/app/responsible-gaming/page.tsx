@@ -87,7 +87,7 @@ function MonthlySnapshot({
             <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
               {t("depositCard.kicker")}
             </div>
-            <div className="mt-2 font-display text-[34px] font-semibold leading-none tracking-[-0.374px]">
+            <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px]">
               {formatPoints(mockSnapshot.depositPoints)}
             </div>
             <div className="mt-1 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
@@ -106,7 +106,7 @@ function MonthlySnapshot({
             <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
               {t("tradeCard.kicker")}
             </div>
-            <div className="mt-2 font-display text-[34px] font-semibold leading-none tracking-[-0.374px]">
+            <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px]">
               {mockSnapshot.tradeCount}
             </div>
             <div className="mt-1 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
@@ -118,7 +118,7 @@ function MonthlySnapshot({
             <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
               {t("settlementCard.kicker")}
             </div>
-            <div className="mt-2 font-display text-[34px] font-semibold leading-none tracking-[-0.374px]">
+            <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px]">
               {formatPoints(mockSnapshot.netSettlementPoints)}
             </div>
             <div className="mt-1 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">

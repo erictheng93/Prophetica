@@ -79,7 +79,7 @@ function CurrentStatusBlock({
           <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
             {t("current.depositLabel")}
           </div>
-          <div className="mt-2 font-display text-[34px] font-semibold leading-none tracking-[-0.374px]">
+          <div className="mt-2 font-display text-[28px] font-semibold leading-[1.1] tracking-[-0.374px] sm:text-[34px] sm:leading-none">
             {formatPoints(thisMonthDeposit)} /{" "}
             {overview.monthlyLimitPoints === null
               ? t("current.individualLimit")

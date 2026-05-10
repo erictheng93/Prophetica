@@ -26,7 +26,7 @@ export default function DecisionSupportDashboardPage() {
               {adminCopy.dashboard.kpiDescription}
             </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {snapshot.metrics.map((metric) => (
               <article
                 className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
@@ -36,7 +36,7 @@ export default function DecisionSupportDashboardPage() {
                   <h3 className="text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]">{metric.label}</h3>
                   <StatusPill tone={metric.tone}>{adminCopy.components.previewSnapshot}</StatusPill>
                 </div>
-                <p className="mt-4 text-[34px] font-semibold leading-[1.07] tracking-[-0.374px]">{metric.value}</p>
+                <p className="mt-4 text-[28px] font-semibold leading-[1.07] tracking-[-0.374px] sm:text-[34px]">{metric.value}</p>
                 <p className="mt-2 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">{metric.detail}</p>
               </article>
             ))}

@@ -8,14 +8,14 @@ interface QueueSummaryProps {
 
 export function QueueSummary({ summaries }: QueueSummaryProps) {
   return (
-    <section aria-label="Queue summary" className="grid gap-3 md:grid-cols-4">
+    <section aria-label="Queue summary" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {summaries.map((summary) => (
         <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6" key={summary.label}>
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]">{summary.label}</h2>
             <StatusPill tone={summary.tone}>{adminCopy.components.previewSnapshot}</StatusPill>
           </div>
-          <p className="mt-4 text-[34px] font-semibold leading-[1.07] tracking-[-0.374px]">{summary.value}</p>
+          <p className="mt-4 text-[28px] font-semibold leading-[1.07] tracking-[-0.374px] sm:text-[34px]">{summary.value}</p>
           <p className="mt-2 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">{summary.detail}</p>
         </article>
       ))}

@@ -9,6 +9,7 @@ AGENT.md
 agent.md
 .claude/
 .codex/
+.codex-rwd-logs/
 docs/superpowers/
 .cursorrules
 .aider*

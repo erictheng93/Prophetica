@@ -117,7 +117,7 @@ function SummaryCards({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
         <header className="mb-8">
-          <h2 className="font-display text-[34px] font-semibold leading-[1.1]">
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px]">
             {t("summary.heading")}
           </h2>
           <p className="mt-2 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
@@ -134,7 +134,7 @@ function SummaryCards({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard
               <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
                 {card.kicker}
               </div>
-              <div className="mt-2 font-display text-[34px] font-semibold leading-none tracking-[-0.374px] text-proph-ink">
+              <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-ink sm:text-[34px]">
                 {card.value}
               </div>
               <div className="mt-2 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
@@ -159,7 +159,7 @@ function ShareSection({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
         <header className="mb-6">
-          <h2 className="font-display text-[34px] font-semibold leading-[1.1]">
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px]">
             {t("share.heading")}
           </h2>
           <p className="mt-2 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
@@ -225,7 +225,7 @@ function ReferralListSection({
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
         <header className="mb-6 flex items-baseline justify-between gap-4">
           <div>
-            <h2 className="font-display text-[34px] font-semibold leading-[1.1]">
+            <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px]">
               {t("referrals.heading")}
             </h2>
             <p className="mt-2 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">

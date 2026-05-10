@@ -158,7 +158,7 @@ function SummaryCards({
               </div>
               <div
                 className={
-                  "mt-2 font-display text-[34px] font-semibold leading-none tracking-[-0.374px] " +
+                  "mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px] " +
                   toneClass(card.tone)
                 }
               >
@@ -187,7 +187,7 @@ function LedgerActivitySection({
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
         <header className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="font-display text-[34px] font-semibold leading-[1.1]">
+            <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px]">
               {t("ledger.heading")}
             </h2>
             <p className="mt-2 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">

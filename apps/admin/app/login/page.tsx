@@ -23,7 +23,7 @@ export default async function LoginPage() {
         <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-primary">
           {adminCopy.login.eyebrow}
         </p>
-        <h1 className="mt-3 text-[34px] font-semibold leading-[1.1] tracking-[-0.374px] text-proph-ink md:text-[40px] md:leading-[1.07]">
+        <h1 className="mt-3 text-[28px] font-semibold leading-[1.14] tracking-[-0.28px] text-proph-ink sm:text-[34px] sm:leading-[1.1] sm:tracking-[-0.374px] md:text-[40px] md:leading-[1.07]">
           {adminCopy.login.title}
         </h1>
         <p className="mt-4 text-[15px] leading-[1.47] tracking-[-0.224px] text-proph-ink-muted-80">

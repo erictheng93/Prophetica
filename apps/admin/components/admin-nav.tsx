@@ -32,8 +32,8 @@ export function AdminNav({ ariaLabel, links, signOutLabel, roleLabel }: AdminNav
   }
 
   return (
-    <div className="hidden flex-wrap items-center justify-between gap-3 md:flex">
-      <nav aria-label={ariaLabel} className="flex flex-wrap gap-2">
+    <div className="hidden flex-col gap-3 md:flex lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+      <nav aria-label={ariaLabel} className="flex flex-wrap gap-2 lg:order-1">
         {links.map((link) => {
           const isActive =
             link.href === "/" ? pathname === "/" : pathname === link.href || pathname?.startsWith(`${link.href}/`);
@@ -55,7 +55,7 @@ export function AdminNav({ ariaLabel, links, signOutLabel, roleLabel }: AdminNav
           );
         })}
       </nav>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 lg:order-2">
         <span
           aria-label="目前登入身份"
           className="rounded-proph-pill border border-white/20 px-3 py-1.5 text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-primary-on-dark"
