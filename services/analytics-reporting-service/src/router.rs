@@ -70,10 +70,7 @@ async fn list_templates<S>(
 where
     S: ReportingStore,
 {
-    let role = role_from_headers(&headers)?;
-    if !role.allows_admin_reporting() {
-        return Err(ReportingError::Forbidden);
-    }
+    let role = admin_reporting_role_from_headers(&headers)?;
     Ok(Json(state.store.templates_for_role(role).await?))
 }
 
@@ -85,7 +82,7 @@ async fn create_report_job<S>(
 where
     S: ReportingStore,
 {
-    let role = role_from_headers(&headers)?;
+    let role = admin_reporting_role_from_headers(&headers)?;
     let actor_id = actor_from_headers(&headers).or_else(|| request.actor_id.clone());
     request.role = Some(role);
     request.actor_id.clone_from(&actor_id);
@@ -168,11 +165,13 @@ struct JobsQuery {
 
 async fn list_jobs<S>(
     State(state): State<Arc<AppState<S>>>,
+    headers: HeaderMap,
     Query(query): Query<JobsQuery>,
 ) -> Result<Json<Vec<ReportJob>>, ReportingError>
 where
     S: ReportingStore,
 {
+    let _role = admin_reporting_role_from_headers(&headers)?;
     Ok(Json(
         state
             .store
@@ -183,11 +182,13 @@ where
 
 async fn get_job<S>(
     State(state): State<Arc<AppState<S>>>,
+    headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ReportingError>
 where
     S: ReportingStore,
 {
+    let _role = admin_reporting_role_from_headers(&headers)?;
     let job = state
         .store
         .find_job(&id)
@@ -199,11 +200,13 @@ where
 
 async fn export_job<S>(
     State(state): State<Arc<AppState<S>>>,
+    headers: HeaderMap,
     Path((id, format)): Path<(String, String)>,
 ) -> Result<Response, ReportingError>
 where
     S: ReportingStore,
 {
+    let _role = admin_reporting_role_from_headers(&headers)?;
     let job = state
         .store
         .find_job(&id)
@@ -233,6 +236,7 @@ async fn record_export_deletion<S>(
 where
     S: ReportingStore,
 {
+    let _role = admin_reporting_role_from_headers(&headers)?;
     let job = state
         .store
         .find_job(&id)
@@ -265,7 +269,7 @@ async fn list_schedules<S>(
 where
     S: ReportingStore,
 {
-    let role = role_from_headers(&headers)?;
+    let role = admin_reporting_role_from_headers(&headers)?;
     let templates = state.store.templates_for_role(role).await?;
     Ok(Json(
         templates
@@ -285,10 +289,12 @@ where
 
 async fn get_dashboard_metrics<S>(
     State(state): State<Arc<AppState<S>>>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<crate::types::AnalyticsReportingMetric>>, ReportingError>
 where
     S: ReportingStore,
 {
+    let _role = admin_reporting_role_from_headers(&headers)?;
     let jobs = state.store.latest_per_template().await?;
     let mut audit = Vec::new();
     for job in &jobs {
@@ -299,18 +305,28 @@ where
 
 async fn latest_per_template<S>(
     State(state): State<Arc<AppState<S>>>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<ReportJob>>, ReportingError>
 where
     S: ReportingStore,
 {
+    let _role = admin_reporting_role_from_headers(&headers)?;
     Ok(Json(state.store.latest_per_template().await?))
+}
+
+fn admin_reporting_role_from_headers(headers: &HeaderMap) -> Result<ReportRole, ReportingError> {
+    let role = role_from_headers(headers)?;
+    if !role.allows_admin_reporting() {
+        return Err(ReportingError::Forbidden);
+    }
+    Ok(role)
 }
 
 fn role_from_headers(headers: &HeaderMap) -> Result<ReportRole, ReportingError> {
     match headers
         .get("x-operator-role")
         .and_then(|value| value.to_str().ok())
-        .unwrap_or("admin")
+        .ok_or(ReportingError::Forbidden)?
     {
         "admin" => Ok(ReportRole::Admin),
         "manager" => Ok(ReportRole::Manager),
