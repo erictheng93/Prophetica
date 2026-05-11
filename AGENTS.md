@@ -17,6 +17,28 @@ Use `rtk` before external CLI commands when invoking developer tools from Codex.
 - `rtk make dev` / `rtk make down`: start or stop local Docker dependencies.
 - `rtk make proto`: regenerate protobuf outputs with Buf.
 
+## Development Compute Policy
+
+See `docs/runbooks/development-compute-policy.md` for the full policy. On
+resource-constrained macOS machines, prefer targeted Rust checks such as
+
+- `rtk cargo check -p <crate> --locked`
+- `rtk cargo clippy -p <crate> --all-targets --locked -- -D warnings`
+- `rtk cargo test -p <crate> --locked`
+
+Do not routinely run heavy workspace commands on weak macOS hardware unless the
+user explicitly asks or the machine is the intended validation host. Heavy
+commands include:
+
+- `rtk cargo clippy --workspace --all-targets --locked -- -D warnings`
+- `rtk cargo nextest run --workspace --locked`
+- `rtk cargo build --workspace --release`
+
+For shared crates, `Cargo.toml`/`Cargo.lock`, generated Rust/protobuf/SQLx
+artifacts, or cross-service behavior, push the branch and run heavy workspace
+verification on a stronger build host or in GitHub Actions. Document which
+machine or CI run performed heavy verification.
+
 ## Coding Style & Naming Conventions
 
 Follow `.editorconfig`: UTF-8, LF endings, final newline, two-space indentation by default, and four spaces for Rust/TOML. Rust uses edition 2024, forbids `unsafe_code`, and warns on broad Clippy lint groups; avoid `unwrap()` and `expect()` in production paths. Use Prettier for `ts`, `tsx`, `js`, `jsx`, `json`, `md`, and `css`; Tailwind class ordering is handled by `prettier-plugin-tailwindcss`.
