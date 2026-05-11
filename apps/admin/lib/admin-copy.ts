@@ -12,6 +12,7 @@ export const adminCopy = {
     dashboard: "決策支援",
     analytics: "分析報表",
     signOut: "登出",
+    brandLabel: "管理後台",
     roleAdmin: "管理員",
     roleManager: "主管",
     roleAffiliate: "代理",
@@ -29,7 +30,7 @@ export const adminCopy = {
     unknownError: "登入失敗，請稍後再試。",
     devHintTitle: "開發環境憑證",
     devHintBody:
-      "本地端 mock 帳號（Phase 2，密碼皆為 dev）：admin@prophetica.local / manager@prophetica.local / affiliate@prophetica.local",
+      "本地端 mock 帳號（Phase 2）：admin@prophetica.local/admin、manager@prophetica.local/manager、manager2@prophetica.local/manager2、affiliate@prophetica.local/dev、affiliate2@prophetica.local/dev",
     mfaPlaceholder: "MFA 將於 Phase 3 上線（SPEC-010 §9.3.3）。",
   },
   forbidden: {
