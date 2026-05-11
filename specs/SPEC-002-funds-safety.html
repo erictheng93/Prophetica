@@ -37,7 +37,7 @@
   <h2>變更紀錄</h2>
   <article class="changelog-item">
     <h3>v0.1.9</h3>
-    <p>MVP 階段尚未啟用真實儲值時，新增 <code>manual_points_adjustment</code> 帳本交易作為授權後台 / 合作方入點路徑。admin / manager 可對會員點數執行查詢、增加與扣除；affiliate 僅可增加會員點數，且不得查詢任意會員餘額或扣除點數。所有操作均為 delta-only（增加 Y 點 / 扣除 Y 點），禁止直接設定絕對餘額、禁止 UPDATE / DELETE 舊分錄，並必須寫入 <code>audit_logs</code>。§4.2 補 <code>Expense.ManualPointsGrant</code>，§4.4.5 補手動調點分錄，§5 INV-6 加入僅限 admin / manager 扣點之 contra-expense carve-out。</p>
+    <p>MVP 階段尚未啟用真實儲值時，新增 <code>manual_points_adjustment</code> 帳本交易作為授權後台 / 合作方入點路徑。admin / manager 可對會員點數執行查詢、增加與扣除；affiliate 僅可增加會員點數，且不得查詢任意會員餘額或扣除點數。所有操作均為 delta-only（增加 Y 點 / 扣除 Y 點），禁止直接設定絕對餘額、禁止 UPDATE / DELETE 舊分錄，並必須寫入 <code>audit_logs</code>。§4.2 補 <code>Expense.ManualPointsGrant</code>，§4.4.5 補手動調點分錄，§5 INV-6 加入僅限 admin / manager 扣點之 contra-expense carve-out；ADR-0006 v1.0.2 已同步追認此 carve-out。</p>
   </article>
   <article class="changelog-item">
     <h3>v0.1.8</h3>
@@ -489,7 +489,7 @@ metadata: {
 <blockquote>
 <p><strong>Player.Locked.X ≥ 0</strong>：邏輯上隱含於 INV-1（鎖倉釋出與鎖入必為對沖），由 application 層在下單 / 成交路徑強制檢查。不再單獨列為頂層 INV，避免與 ADR-0003 編號衝突。</p>
 <p><strong>Manual adjustment guardrail</strong>：<code>manual_points_adjustment</code> 僅能改變 <code>Player.Wallet.*</code> 與 <code>Expense.ManualPointsGrant</code>，且必須符合 §4.4.5 角色矩陣。任何 affiliate 扣點、絕對值設定、未帶 <code>audit_log_id</code>、或缺少 reason / idempotency key 的請求都必須拒絕。</p>
-<p><strong>INV 集合 ADR governance</strong>：INV-1 ~ INV-5 由 <a href="../docs/architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §5</a> v1.0 拍板；INV-2 / INV-4 公式擴展含 <code>Player.Frozen.*</code>（v0.1.1）+ INV-6 outflow 白名單（v0.1.5）由 <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006 §4.1</a> 正式 governance 追認與新增。v0.1.9 之 <code>manual_points_adjustment</code> carve-out 屬 MVP 產品範圍變更；實作 DB trigger / SDK invariant 前需同步補 ADR，將 ADR-0006 §4.1 標記為 partial superseded 或新增後續 ADR。任何進一步擴展（例如未來新增「合作戒癮機構捐贈」白名單目的地）須先寫新 ADR，附業主 + Compliance + Legal 三方簽核，<strong>不可</strong>直接改 trigger function。</p>
+<p><strong>INV 集合 ADR governance</strong>：INV-1 ~ INV-5 由 <a href="../docs/architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §5</a> v1.0 拍板；INV-2 / INV-4 公式擴展含 <code>Player.Frozen.*</code>（v0.1.1）+ INV-6 outflow 白名單（v0.1.5）由 <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006 §4.1</a> 正式 governance 追認與新增。v0.1.9 之 <code>manual_points_adjustment</code> carve-out 屬 MVP 產品範圍變更，已由 ADR-0006 v1.0.2 追認並同步至 DB trigger / SDK invariant。任何進一步擴展（例如未來新增「合作戒癮機構捐贈」白名單目的地）須先寫新 ADR，附業主 + Compliance + Legal 三方簽核，<strong>不可</strong>直接改 trigger function。</p>
 </blockquote>
 <h2>6. Idempotency 與重試</h2>
 <h3>6.1 強制要求</h3>

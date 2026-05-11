@@ -34,7 +34,7 @@
 <h1>Master Index — 規格總索引</h1>
 <blockquote>
 <p><strong>prophetica</strong> — 趣味預測娛樂遊戲平台
-文件版本：v0.3.4 · 最後更新：2026-05-09 · 維護人：Tech Lead</p>
+文件版本：v0.3.5 · 最後更新：2026-05-11 · 維護人：Tech Lead</p>
 <p>Legacy file path：<code>specs/SPEC-000-index.html</code>；本文件不作為單一功能 SPEC 實作輸入。</p>
 </blockquote>
 <hr>
@@ -101,8 +101,8 @@
 <tbody><tr>
 <td><a href="./SPEC-002-funds-safety.html">SPEC-002</a></td>
 <td>資金安全與虛擬點數帳本</td>
-<td>雙簿記、隔離帳戶、對帳機制、Frozen 子科目、<strong>INV-6 點數出口白名單（R-1，ADR-0006 落地，含 chargeback carve-out v0.1.8）</strong>、§9.3 最終一致性窗口（T-5）、Phase 1 monthly partition（T-3）</td>
-<td>🟢 v0.1.8</td>
+<td>雙簿記、隔離帳戶、對帳機制、Frozen 子科目、<strong>INV-6 點數出口白名單（R-1，ADR-0006 落地，含 chargeback carve-out v0.1.8、manual adjustment carve-out v0.1.9）</strong>、MVP 手動點數調整、§9.3 最終一致性窗口（T-5）、Phase 1 monthly partition（T-3）</td>
+<td>🟢 v0.1.9</td>
 </tr>
 <tr>
 <td><a href="./SPEC-003-matching-engine.html">SPEC-003</a></td>
@@ -375,6 +375,10 @@
 <h2>4. 變更紀錄</h2>
 <section class="changelog">
 <div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>2026-05-11 · v0.3.5 · Tech Lead</h3>
+    <p><strong>SPEC-002 MVP manual points implementation alignment</strong>：SPEC-002 v0.1.9 新增 <code>manual_points_adjustment</code> 作為尚未啟用真實儲值前的授權調點路徑，admin / manager 可查詢、增加、扣除會員點數，affiliate 僅能增加點數；所有操作必須 delta-only 並寫入 <code>audit_logs</code>。本檔同步更新 P0 表摘要與版本；ADR-0006 v1.0.2 追認 INV-6 <code>Expense.ManualPointsGrant</code> carve-out。</p>
+  </article>
   <article class="changelog-entry">
     <h3>2026-05-09 · v0.3.4 · Tech Lead</h3>
     <p><strong>Post-PR #2 status realignment</strong>：PR #1（SPEC-008 DR + governance kill switch，merged 2026-05-08）/ PR #2（SPEC-005a SumSub 前端骨架，stacked on PR #1，merged 2026-05-09）皆 merged 後，本檔 P1 表對 SPEC-005 / SPEC-005a 之狀態與版本與實際 SPEC 文件 drift。本輪閉環如下：</p>
