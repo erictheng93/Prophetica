@@ -10,6 +10,7 @@
 --   - Revenue.TradingFee          交易手續費
 --   - Revenue.SettlementFee       結算手續費
 --   - Player.Wallet.{other_user_id}  限 trade settlement（呼應 SPEC-002 §4.4.4）
+--   - Expense.ManualPointsGrant   限 manual_points_adjustment deduct 且 actor_role=admin/manager
 --
 -- 任何違反 → DB CONSTRAINT TRIGGER 拋例外 + transaction rollback；連動 SPEC-007 §7.2 P0 告警。
 
@@ -56,6 +57,17 @@ BEGIN
                   SELECT 1 FROM ledger_transactions t
                   WHERE t.id = NEW.txn_id
                     AND t.txn_type = 'chargeback'
+              ))
+          -- Player.Wallet → Expense.ManualPointsGrant 限 MVP 手動扣點沖回（SPEC-002 v0.1.9）
+          -- 僅 admin / manager 可扣點；affiliate 只能 grant，不能 deduct。
+          OR (a2.code = 'Expense.ManualPointsGrant'
+              AND EXISTS (
+                  SELECT 1 FROM ledger_transactions t
+                  WHERE t.id = NEW.txn_id
+                    AND t.txn_type = 'manual_points_adjustment'
+                    AND t.metadata->>'adjustment_direction' = 'deduct'
+                    AND t.metadata->>'actor_role' IN ('admin', 'manager')
+                    AND COALESCE(t.metadata->>'audit_log_id', '') <> ''
               ))
       )
     LIMIT 1;

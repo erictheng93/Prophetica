@@ -29,6 +29,7 @@ CREATE INDEX idx_txn_corr ON ledger_transactions(correlation_id);
 CREATE TABLE idempotency_records (
     key VARCHAR(128) PRIMARY KEY,
     txn_id BIGINT REFERENCES ledger_transactions(id),
+    request_hash VARCHAR(64) NOT NULL,
     response JSONB NOT NULL,
     status_code INT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -37,8 +38,23 @@ CREATE TABLE idempotency_records (
 
 CREATE INDEX idx_idempo_expires ON idempotency_records(expires_at);
 
+CREATE TABLE audit_logs (
+    id VARCHAR(160) PRIMARY KEY,
+    action VARCHAR(64) NOT NULL,
+    actor_user_id VARCHAR(128) NOT NULL,
+    actor_role VARCHAR(32) NOT NULL,
+    target_user_id VARCHAR(128) NOT NULL,
+    correlation_id VARCHAR(128),
+    metadata JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_logs_actor ON audit_logs(actor_user_id, created_at);
+CREATE INDEX idx_audit_logs_target ON audit_logs(target_user_id, created_at);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action, created_at);
+
 CREATE TABLE ledger_entries (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL NOT NULL,
     txn_id BIGINT NOT NULL REFERENCES ledger_transactions(id),
     account_id BIGINT NOT NULL REFERENCES ledger_accounts(id),
     direction SMALLINT NOT NULL CHECK (direction IN (1, -1)),
@@ -46,7 +62,14 @@ CREATE TABLE ledger_entries (
     currency VARCHAR(8) NOT NULL CHECK (currency = 'PTS'),
     balance_after BIGINT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+) PARTITION BY RANGE (created_at);
+
+CREATE TABLE ledger_entries_2026_05
+    PARTITION OF ledger_entries
+    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+
+CREATE TABLE ledger_entries_default
+    PARTITION OF ledger_entries DEFAULT;
 
 CREATE INDEX idx_entries_txn ON ledger_entries(txn_id);
 CREATE INDEX idx_entries_account ON ledger_entries(account_id, created_at);

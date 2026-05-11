@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sdk::ledger::{LedgerEntryDraft, LedgerTransactionDraft, LedgerValidationError};
-use serde_json::json;
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
 use thiserror::Error;
 
@@ -12,7 +13,20 @@ pub struct PostTransactionDraft {
     pub idempotency_key: String,
     pub correlation_id: Option<String>,
     pub description: Option<String>,
+    pub metadata: Value,
+    pub audit_log: Option<AuditLogDraft>,
     pub entries: Vec<LedgerEntryDraft>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditLogDraft {
+    pub id: String,
+    pub action: String,
+    pub actor_user_id: String,
+    pub actor_role: String,
+    pub target_user_id: String,
+    pub correlation_id: Option<String>,
+    pub metadata: Value,
 }
 
 impl PostTransactionDraft {
@@ -27,6 +41,8 @@ impl PostTransactionDraft {
             idempotency_key: idempotency_key.into(),
             correlation_id: None,
             description: Some("freeze player funds".to_owned()),
+            metadata: json!({}),
+            audit_log: None,
             entries: vec![
                 LedgerEntryDraft::new(
                     format!("Player.Wallet.{user_id}"),
@@ -51,6 +67,8 @@ impl PostTransactionDraft {
             idempotency_key: idempotency_key.into(),
             correlation_id: None,
             description: Some("unfreeze player funds".to_owned()),
+            metadata: json!({}),
+            audit_log: None,
             entries: vec![
                 LedgerEntryDraft::new(
                     format!("Player.Frozen.{user_id}"),
@@ -69,6 +87,7 @@ impl PostTransactionDraft {
 pub struct CommittedLedgerTransaction {
     pub id: i64,
     pub idempotency_key: String,
+    pub request_hash: String,
     pub replayed: bool,
 }
 
@@ -108,6 +127,10 @@ pub enum PostTransactionError {
         account_code: String,
         balance_after_minor_units: i64,
     },
+    #[error("idempotency key {idempotency_key} was already used with a different request")]
+    IdempotencyConflict { idempotency_key: String },
+    #[error("manual points adjustment invalid: {message}")]
+    ManualAdjustmentInvalid { message: String },
     #[error(transparent)]
     Store(#[from] LedgerStoreError),
 }
@@ -161,6 +184,11 @@ pub trait LedgerStore {
         limit: i64,
     ) -> Result<Vec<LedgerEntryView>, LedgerStoreError>;
 
+    async fn record_audit_log(
+        &self,
+        audit_log: &AuditLogDraft,
+    ) -> Result<(), LedgerStoreError>;
+
     async fn delete_expired_idempotency_records(
         &self,
     ) -> Result<Vec<ExpiredIdempotencyRecord>, LedgerStoreError>;
@@ -192,6 +220,7 @@ where
         &self,
         draft: PostTransactionDraft,
     ) -> Result<CommittedLedgerTransaction, PostTransactionError> {
+        validate_manual_points_adjustment(&draft)?;
         // Map txn_type 字串 → 典型 LedgerTxnKind enum，讓 INV-6 知道是否
         // 允許 Player.Wallet → Player.Wallet（限 trade / settle）。
         // 未知 txn_type 落入 LedgerTxnKind::Other（最嚴格 INV-6 模式）。
@@ -200,12 +229,18 @@ where
         // validate() 包含 INV-1（借貸代數和）+ INV-6（Player.Wallet outflow whitelist）
         transaction.validate()?;
         self.validate_player_liability_bounds(&draft).await?;
+        let request_hash = request_hash_for_draft(&draft);
 
         if let Some(existing) = self
             .store
             .find_by_idempotency_key(&draft.idempotency_key)
             .await?
         {
+            if existing.request_hash != request_hash {
+                return Err(PostTransactionError::IdempotencyConflict {
+                    idempotency_key: draft.idempotency_key,
+                });
+            }
             return Ok(CommittedLedgerTransaction {
                 replayed: true,
                 ..existing
@@ -274,6 +309,18 @@ where
         self.store.list_entries(account_code, limit).await
     }
 
+    /// Records an operation audit log that is not tied to a new ledger transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LedgerStoreError`] when the backing store cannot persist the audit log.
+    pub async fn record_audit_log(
+        &self,
+        audit_log: AuditLogDraft,
+    ) -> Result<(), LedgerStoreError> {
+        self.store.record_audit_log(&audit_log).await
+    }
+
     /// Deletes expired idempotency records for the daily retention cleanup.
     ///
     /// # Errors
@@ -284,6 +331,132 @@ where
     ) -> Result<Vec<ExpiredIdempotencyRecord>, LedgerStoreError> {
         self.store.delete_expired_idempotency_records().await
     }
+}
+
+pub(crate) fn request_hash_for_draft(draft: &PostTransactionDraft) -> String {
+    let entries = draft
+        .entries
+        .iter()
+        .map(|entry| {
+            json!({
+                "account_code": entry.account_code(),
+                "minor_units": entry.amount().minor_units(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let payload = json!({
+        "txn_type": &draft.txn_type,
+        "correlation_id": &draft.correlation_id,
+        "description": &draft.description,
+        "metadata": &draft.metadata,
+        "entries": entries,
+    });
+    let encoded = serde_json::to_vec(&payload).unwrap_or_default();
+    hex::encode(Sha256::digest(encoded))
+}
+
+fn validate_manual_points_adjustment(
+    draft: &PostTransactionDraft,
+) -> Result<(), PostTransactionError> {
+    if draft.txn_type != "manual_points_adjustment" {
+        return Ok(());
+    }
+
+    let role = metadata_str(&draft.metadata, "actor_role")?;
+    let direction = metadata_str(&draft.metadata, "adjustment_direction")?;
+    let target_user_id = metadata_str(&draft.metadata, "target_user_id")?;
+    require_metadata(&draft.metadata, "reason_code")?;
+    require_metadata(&draft.metadata, "reason_text")?;
+    require_metadata(&draft.metadata, "audit_log_id")?;
+
+    if role == "affiliate" && draft.metadata.get("affiliate_id").and_then(Value::as_str).is_none()
+    {
+        return manual_adjustment_error("affiliate_id is required for affiliate grants");
+    }
+
+    match direction {
+        "grant" => {
+            if !matches!(role, "admin" | "manager" | "affiliate") {
+                return manual_adjustment_error("actor_role is not allowed to grant points");
+            }
+            require_manual_entries(draft, target_user_id, false)?;
+        }
+        "deduct" => {
+            if !matches!(role, "admin" | "manager") {
+                return manual_adjustment_error("only admin or manager can deduct points");
+            }
+            require_manual_entries(draft, target_user_id, true)?;
+        }
+        _ => return manual_adjustment_error("adjustment_direction must be grant or deduct"),
+    }
+
+    if draft.audit_log.is_none() {
+        return manual_adjustment_error("audit_log is required");
+    }
+
+    Ok(())
+}
+
+fn metadata_str<'a>(metadata: &'a Value, key: &str) -> Result<&'a str, PostTransactionError> {
+    metadata
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| PostTransactionError::ManualAdjustmentInvalid {
+            message: format!("{key} is required"),
+        })
+}
+
+fn require_metadata(metadata: &Value, key: &str) -> Result<(), PostTransactionError> {
+    metadata_str(metadata, key).map(|_| ())
+}
+
+fn manual_adjustment_error<T>(message: &str) -> Result<T, PostTransactionError> {
+    Err(PostTransactionError::ManualAdjustmentInvalid {
+        message: message.to_owned(),
+    })
+}
+
+fn require_manual_entries(
+    draft: &PostTransactionDraft,
+    target_user_id: &str,
+    deduct: bool,
+) -> Result<(), PostTransactionError> {
+    if draft.entries.len() != 2 {
+        return manual_adjustment_error("manual adjustment must contain exactly two entries");
+    }
+    let wallet_code = format!("Player.Wallet.{target_user_id}");
+    let wallet_amount = if deduct {
+        draft
+            .entries
+            .iter()
+            .find(|entry| entry.account_code() == wallet_code && entry.amount().minor_units() > 0)
+    } else {
+        draft
+            .entries
+            .iter()
+            .find(|entry| entry.account_code() == wallet_code && entry.amount().minor_units() < 0)
+    };
+    let expense_amount = if deduct {
+        draft.entries.iter().find(|entry| {
+            entry.account_code() == "Expense.ManualPointsGrant" && entry.amount().minor_units() < 0
+        })
+    } else {
+        draft.entries.iter().find(|entry| {
+            entry.account_code() == "Expense.ManualPointsGrant" && entry.amount().minor_units() > 0
+        })
+    };
+
+    let Some(wallet_entry) = wallet_amount else {
+        return manual_adjustment_error("manual adjustment wallet entry has invalid direction");
+    };
+    let Some(expense_entry) = expense_amount else {
+        return manual_adjustment_error("manual adjustment expense entry has invalid direction");
+    };
+    if wallet_entry.amount().minor_units().abs() != expense_entry.amount().minor_units().abs() {
+        return manual_adjustment_error("manual adjustment entries must use the same amount");
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -304,8 +477,8 @@ impl LedgerStore for PostgresLedgerStore {
         &self,
         idempotency_key: &str,
     ) -> Result<Option<CommittedLedgerTransaction>, LedgerStoreError> {
-        let row = sqlx::query_as::<_, (i64, String)>(
-            "SELECT txn.id, txn.idempotency_key \
+        let row = sqlx::query_as::<_, (i64, String, String)>(
+            "SELECT txn.id, txn.idempotency_key, COALESCE(idem.request_hash, '') \
              FROM ledger_transactions txn \
              LEFT JOIN idempotency_records idem ON idem.txn_id = txn.id \
              WHERE idem.key = $1 OR txn.idempotency_key = $1",
@@ -314,9 +487,10 @@ impl LedgerStore for PostgresLedgerStore {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(id, idempotency_key)| CommittedLedgerTransaction {
+        Ok(row.map(|(id, idempotency_key, request_hash)| CommittedLedgerTransaction {
             id,
             idempotency_key,
+            request_hash,
             replayed: false,
         }))
     }
@@ -371,12 +545,22 @@ impl LedgerStore for PostgresLedgerStore {
             .await?;
         }
 
-        persist_idempotency_record(&mut tx, txn_id, &idempotency_key).await?;
+        if let Some(audit_log) = &draft.audit_log {
+            persist_audit_log(&mut tx, audit_log).await?;
+        }
+        persist_idempotency_record(
+            &mut tx,
+            txn_id,
+            &idempotency_key,
+            &request_hash_for_draft(draft),
+        )
+        .await?;
         tx.commit().await?;
 
         Ok(CommittedLedgerTransaction {
             id: txn_id,
             idempotency_key,
+            request_hash: request_hash_for_draft(draft),
             replayed: false,
         })
     }
@@ -441,6 +625,29 @@ impl LedgerStore for PostgresLedgerStore {
             .collect())
     }
 
+    async fn record_audit_log(
+        &self,
+        audit_log: &AuditLogDraft,
+    ) -> Result<(), LedgerStoreError> {
+        sqlx::query(
+            "INSERT INTO audit_logs \
+             (id, action, actor_user_id, actor_role, target_user_id, correlation_id, metadata) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(&audit_log.id)
+        .bind(&audit_log.action)
+        .bind(&audit_log.actor_user_id)
+        .bind(&audit_log.actor_role)
+        .bind(&audit_log.target_user_id)
+        .bind(audit_log.correlation_id.as_deref())
+        .bind(&audit_log.metadata)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     async fn delete_expired_idempotency_records(
         &self,
     ) -> Result<Vec<ExpiredIdempotencyRecord>, LedgerStoreError> {
@@ -465,8 +672,8 @@ async fn insert_ledger_transaction(
 ) -> Result<Option<(i64, String)>, sqlx::Error> {
     sqlx::query_as::<_, (i64, String)>(
         "INSERT INTO ledger_transactions \
-         (txn_type, idempotency_key, correlation_id, description) \
-         VALUES ($1, $2, $3, $4) \
+         (txn_type, idempotency_key, correlation_id, description, metadata) \
+         VALUES ($1, $2, $3, $4, $5) \
          ON CONFLICT (idempotency_key) DO NOTHING \
          RETURNING id, idempotency_key",
     )
@@ -474,14 +681,39 @@ async fn insert_ledger_transaction(
     .bind(&draft.idempotency_key)
     .bind(draft.correlation_id.as_deref())
     .bind(draft.description.as_deref())
+    .bind(&draft.metadata)
     .fetch_optional(&mut **tx)
     .await
+}
+
+async fn persist_audit_log(
+    tx: &mut Transaction<'_, Postgres>,
+    audit_log: &AuditLogDraft,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO audit_logs \
+         (id, action, actor_user_id, actor_role, target_user_id, correlation_id, metadata) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         ON CONFLICT (id) DO NOTHING",
+    )
+    .bind(&audit_log.id)
+    .bind(&audit_log.action)
+    .bind(&audit_log.actor_user_id)
+    .bind(&audit_log.actor_role)
+    .bind(&audit_log.target_user_id)
+    .bind(audit_log.correlation_id.as_deref())
+    .bind(&audit_log.metadata)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
 }
 
 async fn persist_idempotency_record(
     tx: &mut Transaction<'_, Postgres>,
     txn_id: i64,
     idempotency_key: &str,
+    request_hash: &str,
 ) -> Result<(), sqlx::Error> {
     let response = json!({
         "txn_id": txn_id,
@@ -490,12 +722,13 @@ async fn persist_idempotency_record(
     });
 
     sqlx::query(
-        "INSERT INTO idempotency_records (key, txn_id, response, status_code, expires_at) \
-         VALUES ($1, $2, $3, 200, NOW() + INTERVAL '7 days') \
+        "INSERT INTO idempotency_records (key, txn_id, request_hash, response, status_code, expires_at) \
+         VALUES ($1, $2, $3, $4, 200, NOW() + INTERVAL '7 days') \
          ON CONFLICT (key) DO NOTHING",
     )
     .bind(idempotency_key)
     .bind(txn_id)
+    .bind(request_hash)
     .bind(response)
     .execute(&mut **tx)
     .await?;
@@ -646,11 +879,12 @@ mod tests {
 
     use proptest::prelude::*;
     use sdk::ledger::{LedgerAmount, LedgerEntryDraft};
+    use serde_json::json;
     use tokio::task::JoinSet;
 
     use super::{
         AccountBalance, CommittedLedgerTransaction, ExpiredIdempotencyRecord, LedgerEntryView,
-        LedgerService, LedgerStore, LedgerStoreError, PostTransactionDraft,
+        LedgerService, LedgerStore, LedgerStoreError, PostTransactionDraft, PostTransactionError,
         webhook_idempotency_key,
     };
 
@@ -672,6 +906,27 @@ mod tests {
         assert!(!first.replayed);
         assert!(second.replayed);
         assert_eq!(first.id, second.id);
+        assert_eq!(store.commit_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn rejects_idempotency_key_reuse_with_different_payload() {
+        let store = InMemoryLedgerStore::default();
+        let service = LedgerService::new(store.clone());
+        let first = balanced_draft_for_user("user_01", "deposit:conflict-001", 10_000);
+        let second = balanced_draft_for_user("user_01", "deposit:conflict-001", 20_000);
+
+        match service.post_transaction(first).await {
+            Ok(_) => {}
+            Err(error) => panic!("first post should commit: {error}"),
+        }
+
+        let error = match service.post_transaction(second).await {
+            Ok(_) => panic!("different payload with same idempotency key must fail"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(error, PostTransactionError::IdempotencyConflict { .. }));
         assert_eq!(store.commit_count(), 1);
     }
 
@@ -745,6 +1000,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn ledger_entries_schema_is_monthly_partition_ready() {
+        let migration = include_str!("../../migrations/202605050001_create_ledger.sql");
+
+        assert!(
+            migration.contains("PARTITION BY RANGE (created_at)"),
+            "SPEC-002 requires ledger_entries to be partitioned by created_at from day 1"
+        );
+    }
+
+    #[test]
+    fn inv6_migration_allows_manual_adjustment_contra_expense_only() {
+        let migration = include_str!("../../migrations/202605070004_inv6_outflow_whitelist.sql");
+
+        assert!(migration.contains("Expense.ManualPointsGrant"));
+        assert!(migration.contains("manual_points_adjustment"));
+        assert!(migration.contains("adjustment_direction"));
+        assert!(migration.contains("actor_role"));
+    }
+
     #[tokio::test]
     async fn returns_account_balance_from_store() {
         let store = InMemoryLedgerStore::default();
@@ -793,6 +1068,8 @@ mod tests {
             idempotency_key: "order:insufficient".to_owned(),
             correlation_id: None,
             description: None,
+            metadata: json!({}),
+            audit_log: None,
             entries: vec![
                 LedgerEntryDraft::new("Player.Wallet.user_01", LedgerAmount::from_minor_units(1)),
                 LedgerEntryDraft::new("Player.Locked.user_01", LedgerAmount::from_minor_units(-1)),
@@ -820,6 +1097,8 @@ mod tests {
             idempotency_key: "chargeback:exception".to_owned(),
             correlation_id: None,
             description: None,
+            metadata: json!({}),
+            audit_log: None,
             entries: vec![
                 LedgerEntryDraft::new("Player.Wallet.user_01", LedgerAmount::from_minor_units(1)),
                 LedgerEntryDraft::new("Bank.TrustAccount.TWD", LedgerAmount::from_minor_units(-1)),
@@ -865,6 +1144,8 @@ mod tests {
             idempotency_key: "deposit:bad".to_owned(),
             correlation_id: None,
             description: None,
+            metadata: json!({}),
+            audit_log: None,
             entries: vec![
                 LedgerEntryDraft::new(
                     "Bank.TrustAccount.TWD",
@@ -1097,6 +1378,8 @@ mod tests {
                     idempotency_key,
                     correlation_id: None,
                     description: Some("concurrent deposit test".to_owned()),
+                    metadata: json!({}),
+                    audit_log: None,
                     entries: vec![
                         LedgerEntryDraft::new(
                             bank_code,
@@ -1157,6 +1440,8 @@ mod tests {
             idempotency_key: idempotency_key.to_owned(),
             correlation_id: Some("trace-001".to_owned()),
             description: Some("test deposit".to_owned()),
+            metadata: json!({}),
+            audit_log: None,
             entries: vec![
                 LedgerEntryDraft::new(
                     "Bank.TrustAccount.TWD",
@@ -1326,6 +1611,7 @@ mod tests {
             let transaction = CommittedLedgerTransaction {
                 id: self.next_id.fetch_add(1, Ordering::SeqCst) + 1,
                 idempotency_key: draft.idempotency_key.clone(),
+                request_hash: super::request_hash_for_draft(draft),
                 replayed: false,
             };
             match self.transactions.lock() {
@@ -1393,6 +1679,13 @@ mod tests {
                 .take(limit)
                 .cloned()
                 .collect())
+        }
+
+        async fn record_audit_log(
+            &self,
+            _audit_log: &super::AuditLogDraft,
+        ) -> Result<(), LedgerStoreError> {
+            Ok(())
         }
 
         async fn delete_expired_idempotency_records(
