@@ -101,6 +101,48 @@ async fn manager_cannot_spoof_admin_role_to_create_utc_report_job() {
 }
 
 #[tokio::test]
+async fn reveal_request_returns_not_implemented_error_code() {
+    let store = InMemoryStore::with_seed_templates();
+    let app = router(store.clone());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/report-jobs")
+                .header("content-type", "application/json")
+                .header("x-actor-id", "U-ADMIN-001")
+                .header("x-operator-role", "admin")
+                .body(Body::from(
+                    json!({
+                        "templateCode": "risk-alert-summary",
+                        "revealSensitiveFields": true,
+                        "secondAuthorizationId": "MFA-STEP-UP-001",
+                        "params": {
+                            "startAt": "2026-05-10T00:00:00+08:00",
+                            "endAt": "2026-05-10T23:59:59+08:00",
+                            "timezone": "Asia/Taipei",
+                            "sortBy": "member_id",
+                            "sortDirection": "asc",
+                            "columns": ["member_id", "member_email"]
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("request builds"),
+        )
+        .await
+        .expect("handled");
+
+    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(
+        response_json(response).await["error"],
+        "ERROR_CODE_REVEAL_NOT_AVAILABLE"
+    );
+    assert_eq!(store.job_count(), 0);
+    assert_eq!(store.audit_count(), 0);
+}
+
+#[tokio::test]
 async fn reporting_routes_reject_missing_operator_role() {
     let store = InMemoryStore::with_seed_templates();
     let app = router(store.clone());

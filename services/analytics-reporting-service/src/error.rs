@@ -14,6 +14,8 @@ pub enum ReportingError {
     InvalidRequest(String),
     #[error("not found")]
     NotFound,
+    #[error("reveal not available")]
+    RevealNotAvailable,
     #[error("upstream unavailable: {0}")]
     Upstream(String),
     #[error("store error: {0}")]
@@ -34,6 +36,10 @@ impl IntoResponse for ReportingError {
                 (StatusCode::BAD_REQUEST, "ERROR_CODE_REPORT_INVALID_REQUEST")
             }
             Self::NotFound => (StatusCode::NOT_FOUND, "ERROR_CODE_REPORT_NOT_FOUND"),
+            Self::RevealNotAvailable => (
+                StatusCode::NOT_IMPLEMENTED,
+                "ERROR_CODE_REVEAL_NOT_AVAILABLE",
+            ),
             Self::Upstream(_) => (
                 StatusCode::BAD_GATEWAY,
                 "ERROR_CODE_REPORT_SOURCE_UNAVAILABLE",

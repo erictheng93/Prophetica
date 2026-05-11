@@ -95,9 +95,7 @@ where
     validate(&template, &request)?;
 
     if request.reveal_sensitive_fields.unwrap_or(false) {
-        return Err(ReportingError::InvalidRequest(
-            "plaintext PII reveal is not available in v1".to_owned(),
-        ));
+        return Err(ReportingError::RevealNotAvailable);
     }
 
     let request_id = request_id_from_headers(&headers);
