@@ -31,10 +31,14 @@
 <body>
 <h1>SPEC-002 — 資金安全與虛擬點數帳本</h1>
 <blockquote>
-<p>優先級：<strong>P0</strong><br>版本：v0.1.8 · 最後更新：2026-05-07<br>依賴：無<br>被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011</p>
+<p>優先級：<strong>P0</strong><br>版本：v0.1.9 · 最後更新：2026-05-11<br>依賴：無<br>被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011</p>
 </blockquote>
 <section class="changelog">
   <h2>變更紀錄</h2>
+  <article class="changelog-item">
+    <h3>v0.1.9</h3>
+    <p>MVP 階段尚未啟用真實儲值時，新增 <code>manual_points_adjustment</code> 帳本交易作為授權後台 / 合作方入點路徑。admin / manager 可對會員點數執行查詢、增加與扣除；affiliate 僅可增加會員點數，且不得查詢任意會員餘額或扣除點數。所有操作均為 delta-only（增加 Y 點 / 扣除 Y 點），禁止直接設定絕對餘額、禁止 UPDATE / DELETE 舊分錄，並必須寫入 <code>audit_logs</code>。§4.2 補 <code>Expense.ManualPointsGrant</code>，§4.4.5 補手動調點分錄，§5 INV-6 加入僅限 admin / manager 扣點之 contra-expense carve-out。</p>
+  </article>
   <article class="changelog-item">
     <h3>v0.1.8</h3>
     <p>§5 INV-6 白名單補充 chargeback carve-out — <code>Player.Wallet.*</code> outflow 允許目的地新增 (e) <code>Bank.TrustAccount.*</code>（<strong>僅限</strong> <code>txn_type = chargeback</code>，呼應 §8.1 deposit 反向沖正）。Carve-out 動機：chargeback 為「玩家信用卡爭議 → 銀行抽走原儲值 → 平台對玩家負債歸零 + 託管帳餘額減少退回卡組織」之合法 reversal，<strong>非</strong>「點數變現」（玩家不取得現金）。發現過程：實作 ledger CONSTRAINT TRIGGER 時跑 chargeback test 觸發 INV-6 偽陽性。同步落地：<a href="../crates/sdk/src/ledger/mod.rs"><code>crates/sdk/src/ledger/mod.rs</code></a> <code>is_inv6_whitelisted_target()</code> + <a href="../services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql"><code>migrations/202605070004_inv6_outflow_whitelist.sql</code></a> plpgsql trigger + <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006 §4.1 / §4.2.1</a> 同步擴展。</p>
@@ -85,6 +89,9 @@
 <hr>
 <h2>1. Objective</h2>
 <p>確保玩家資金（法幣儲值）與站內虛擬點數的金流，達到金融級的精確、可稽核、雙簿記、零誤差。任何時刻系統都能回答：「現在玩家總計擁有多少點數？平台託管帳戶有多少資金？兩者是否相符？」</p>
+<blockquote>
+<p><strong>MVP 補充：</strong>在真實儲值尚未啟用前，會員點數可由授權後台角色與合作方透過 <code>manual_points_adjustment</code> 交易增加或扣除。此路徑仍屬帳本交易，必須維持雙簿記、idempotency、不可竄改分錄與 <code>audit_logs</code> 證據；不得以直接 UPDATE wallet balance 取代帳本。</p>
+</blockquote>
 <h2>2. 資金分層架構</h2>
 <pre><code class="language-text">┌────────────────────────────────────────────────────────────────────┐
 │ Player                                                              │
@@ -100,6 +107,9 @@
 │ Order Book / Position / Settlement                                  │
 └────────────────────────────────────────────────────────────────────┘
 </code></pre>
+<blockquote>
+<p><strong>MVP 手動點數入口：</strong><code>Admin / Manager Console</code> 與受控 <code>Affiliate Partner API</code> 可呼叫 ledger service 建立 <code>manual_points_adjustment</code>。這不是法幣儲值，也不是點數回兌；它是營運調點 / 合作方贈點的非現金帳本事件，必須與後續 payment gateway deposit 路徑分開標記與對帳。</p>
+</blockquote>
 <h2>3. 點數計價設計</h2>
 <h3>3.1 計價單位選定</h3>
 <blockquote>
@@ -216,6 +226,7 @@
 費用（Expenses）
   └─ Expense.PaymentGatewayFee   支付通路手續費
   └─ Expense.AffiliateCommission 玩家介紹獎勵 / 交易佣金（發放至 Player.Wallet 點數，呼應 SPEC-011 §4.1 / §4.2）
+  └─ Expense.ManualPointsGrant   MVP / 營運 / 合作方手動發點成本；扣點時作為 contra-expense 沖回
   └─ Expense.AffiliatePartnerFee B2B 業務合約現金酬勞（對手方為 Liability.AccountsPayable.*，呼應 SPEC-011 §6.4）
   └─ Expense.LiquiditySubsidy    DMM 流動性補貼
 
@@ -346,6 +357,84 @@ A 與 B 各自從掛單階段（§4.4.2 等同邏輯）已鎖入各自的 max lo
 <li><code>settlement_logs</code> 額外記錄每筆 settle 的對應 <code>trade_id</code> / <code>position_id</code> / <code>oracle_submission_id</code> 來源，供爭議裁決回溯（呼應 SPEC-004 §6.3）。</li>
 <li>§4.4.3 已對齊本節對稱 escrow 模型（A 鎖 6,500 / B 鎖 3,500），不再為簡化版本。完整 trade 撮合與鎖倉公式詳見 SPEC-003 §14.2 與 SPEC-015 §10 之銜接點。</li>
 </ol>
+<h4>4.4.5 MVP 手動點數調整（admin / manager / affiliate）</h4>
+<blockquote>
+<p>本節定義尚未啟用真實儲值前的會員點數編輯路徑。所有操作均為 <strong>delta-only</strong>：只能增加 Y 點或扣除 Y 點；「刪除點數」在本 SPEC 中僅表示扣除 Y 點，不代表刪除帳戶或歷史紀錄。禁止「設定為 X 點」、禁止刪除 wallet account、禁止 UPDATE / DELETE 既有 <code>ledger_entries</code>。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>會員點數查詢</th>
+<th>增加點數</th>
+<th>扣除點數</th>
+<th>禁止事項</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>admin</code></td>
+<td>允許</td>
+<td>允許</td>
+<td>允許</td>
+<td>不得設定絕對餘額；不得改舊分錄；不得繞過 audit_logs</td>
+</tr>
+<tr>
+<td><code>manager</code></td>
+<td>允許</td>
+<td>允許</td>
+<td>允許</td>
+<td>同 admin；若後續有部門 / 市場 scope，由 RBAC 另行收斂</td>
+</tr>
+<tr>
+<td><code>affiliate</code></td>
+<td>不得查詢任意會員餘額；僅可查看自身調點請求狀態</td>
+<td>允許</td>
+<td>禁止</td>
+<td>不得扣點、不得查詢任意會員餘額、不得代表 admin / manager 操作</td>
+</tr>
+</tbody></table>
+<p>所有 admin / manager / affiliate 在點數範圍內的操作都必須寫入 <code>audit_logs</code>。查詢類操作以 <code>action = 'wallet_balance_read'</code> 留痕；調整類操作以 <code>action = 'manual_points_adjustment'</code> 留痕並連到對應 ledger transaction。</p>
+<p>增加點數（admin / manager / affiliate 均可，affiliate 僅限此方向）：</p>
+<pre><code class="language-text">Txn: manual_points_adjustment, idempotency_key='manual-points:grant:uuid-v7'
+metadata: {
+  actor_user_id,
+  actor_role: 'admin' | 'manager' | 'affiliate',
+  affiliate_id?,              // actor_role = affiliate 時必填
+  target_user_id,
+  adjustment_direction: 'grant',
+  reason_code,
+  reason_text,
+  audit_log_id
+}
+
+  Entry 1: Expense.ManualPointsGrant       +Y   (非現金營運發點成本)
+  Entry 2: Player.Wallet.{target_user_id}  -Y   (會員點數增加；平台負債增加)
+
+  借貸代數和：Y + (-Y) = 0 ✓
+</code></pre>
+<p>扣除點數（僅 admin / manager）：</p>
+<pre><code class="language-text">Txn: manual_points_adjustment, idempotency_key='manual-points:deduct:uuid-v7'
+metadata: {
+  actor_user_id,
+  actor_role: 'admin' | 'manager',
+  target_user_id,
+  adjustment_direction: 'deduct',
+  reason_code,
+  reason_text,
+  audit_log_id
+}
+
+  Entry 1: Player.Wallet.{target_user_id}  +Y   (會員點數扣除；平台負債減少)
+  Entry 2: Expense.ManualPointsGrant       -Y   (沖回手動發點成本 / contra-expense)
+
+  借貸代數和：Y + (-Y) = 0 ✓
+</code></pre>
+<ul>
+<li>扣除不得使會員可用點數小於 0；以 ledger sign convention 表示，扣除後 <code>Player.Wallet.{target_user_id}.balance_after</code> 不得 &gt; 0（沿用 INV-4；chargeback 例外不適用本 txn_type）。</li>
+<li><code>manual_points_adjustment</code> 不得連到 <code>Bank.TrustAccount.*</code>、<code>Bank.OperatingAccount.*</code>、<code>Liability.AccountsPayable.*</code>、<code>Expense.AffiliatePartnerFee</code> 或任何外部錢包 / 支付通路科目。</li>
+<li>每筆操作必須先寫或同 transaction 寫入 <code>audit_logs</code>，並將 <code>audit_log_id</code> 放入 ledger transaction metadata；audit log metadata 至少包含 actor、role、target、delta、direction、reason、idempotency_key、correlation_id、來源 IP / User-Agent。</li>
+<li>affiliate 增加點數屬「合作方手動贈點」，不可與 SPEC-011 之 B2B 現金酬勞混同；該點數仍不可回兌現金。</li>
+</ul>
 <h2>5. 不變式（Invariants）</h2>
 <blockquote>
 <p><strong>單一真相來源</strong>：以下不變式<strong>編號與內容</strong>對齊 <a href="../docs/architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §5</a>。任何修改 INV 編號或語意必須先寫一份新 ADR，並標記 ADR-0003 為 Superseded。</p>
@@ -392,14 +481,15 @@ A 與 B 各自從掛單階段（§4.4.2 等同邏輯）已鎖入各自的 max lo
 </tr>
 <tr>
 <td>INV-6</td>
-<td><code>Player.Wallet.{user_id}</code> 之 outflow 目的地白名單，僅限：(a) <code>Player.Locked.{user_id}</code>、(b) <code>Player.Frozen.{user_id}</code>、(c) <code>Revenue.TradingFee</code> / <code>Revenue.SettlementFee</code>、(d) <code>Player.Wallet.{other_user_id}</code>（<strong>僅限</strong> <code>txn_type ∈ {trade, settle}</code>）、(e) <code>Bank.TrustAccount.*</code>（<strong>僅限</strong> <code>txn_type = chargeback</code>，呼應 §8.1 deposit 反向沖正；非「點數變現」路徑，玩家不取得現金）。<strong>禁止</strong>流向 <code>Liability.AccountsPayable.*</code> / <code>Bank.OperatingAccount.*</code> / <code>Expense.AffiliatePartnerFee</code> / 任何其他銀行 / 支付通路 / 外部錢包科目</td>
+<td><code>Player.Wallet.{user_id}</code> 之 outflow 目的地白名單，僅限：(a) <code>Player.Locked.{user_id}</code>、(b) <code>Player.Frozen.{user_id}</code>、(c) <code>Revenue.TradingFee</code> / <code>Revenue.SettlementFee</code>、(d) <code>Player.Wallet.{other_user_id}</code>（<strong>僅限</strong> <code>txn_type ∈ {trade, settle}</code>）、(e) <code>Bank.TrustAccount.*</code>（<strong>僅限</strong> <code>txn_type = chargeback</code>，呼應 §8.1 deposit 反向沖正；非「點數變現」路徑，玩家不取得現金）、(f) <code>Expense.ManualPointsGrant</code>（<strong>僅限</strong> <code>txn_type = manual_points_adjustment</code> 且 <code>metadata.adjustment_direction = 'deduct'</code> 且 <code>metadata.actor_role ∈ {'admin','manager'}</code>；此為手動發點成本沖回，非對外付款）。<strong>禁止</strong>流向 <code>Liability.AccountsPayable.*</code> / <code>Bank.OperatingAccount.*</code> / <code>Expense.AffiliatePartnerFee</code> / 任何其他銀行 / 支付通路 / 外部錢包科目</td>
 <td>每筆 commit</td>
 <td>該筆交易拒絕提交，需符合 governance 流程才可加入例外</td>
 </tr>
 </tbody></table>
 <blockquote>
 <p><strong>Player.Locked.X ≥ 0</strong>：邏輯上隱含於 INV-1（鎖倉釋出與鎖入必為對沖），由 application 層在下單 / 成交路徑強制檢查。不再單獨列為頂層 INV，避免與 ADR-0003 編號衝突。</p>
-<p><strong>INV 集合 ADR governance</strong>：INV-1 ~ INV-5 由 <a href="../docs/architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §5</a> v1.0 拍板；INV-2 / INV-4 公式擴展含 <code>Player.Frozen.*</code>（v0.1.1）+ INV-6 outflow 白名單（v0.1.5）由 <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006 §4.1</a> 正式 governance 追認與新增。INV-6 trigger 之 plpgsql function 範本見 ADR-0006 §4.2.1，wallet-ledger-service migration 可依此實作。任何進一步擴展（例如未來新增「合作戒癮機構捐贈」白名單目的地）須先寫新 ADR 標記 ADR-0006 §4.1 之 INV-6 為 partial superseded，附業主 + Compliance + Legal 三方簽核，<strong>不可</strong>直接改 trigger function。</p>
+<p><strong>Manual adjustment guardrail</strong>：<code>manual_points_adjustment</code> 僅能改變 <code>Player.Wallet.*</code> 與 <code>Expense.ManualPointsGrant</code>，且必須符合 §4.4.5 角色矩陣。任何 affiliate 扣點、絕對值設定、未帶 <code>audit_log_id</code>、或缺少 reason / idempotency key 的請求都必須拒絕。</p>
+<p><strong>INV 集合 ADR governance</strong>：INV-1 ~ INV-5 由 <a href="../docs/architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §5</a> v1.0 拍板；INV-2 / INV-4 公式擴展含 <code>Player.Frozen.*</code>（v0.1.1）+ INV-6 outflow 白名單（v0.1.5）由 <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006 §4.1</a> 正式 governance 追認與新增。v0.1.9 之 <code>manual_points_adjustment</code> carve-out 屬 MVP 產品範圍變更；實作 DB trigger / SDK invariant 前需同步補 ADR，將 ADR-0006 §4.1 標記為 partial superseded 或新增後續 ADR。任何進一步擴展（例如未來新增「合作戒癮機構捐贈」白名單目的地）須先寫新 ADR，附業主 + Compliance + Legal 三方簽核，<strong>不可</strong>直接改 trigger function。</p>
 </blockquote>
 <h2>6. Idempotency 與重試</h2>
 <h3>6.1 強制要求</h3>
@@ -411,6 +501,7 @@ A 與 B 各自從掛單階段（§4.4.2 等同邏輯）已鎖入各自的 max lo
 <li>若不存在：執行交易、寫入結果、返回</li>
 </ol>
 <p>保存期：<strong>7 天</strong>（避免重複請求穿越時間）。實作（含 idempotency 儲存表/清理策略）請見 <a href="../docs/implementation-plans/SPEC-002-funds-safety-implementation-plan.html">implementation plan</a>。</p>
+<p><code>manual_points_adjustment</code> 同樣必須帶 <code>Idempotency-Key</code>。重送相同 key 與相同 payload 時回傳既有 ledger transaction 與 audit log；相同 key 搭配不同 payload（target、delta、direction、reason、actor 任一不同）必須回 <code>idempotency_conflict</code>，不得產生第二筆調點。</p>
 <h3>6.2 Webhook 處理</h3>
 <p>支付 Gateway webhook 必須：</p>
 <ol>
@@ -565,6 +656,9 @@ Layer 5 (月度)：第三方審計事務所抽樣對帳
 <li><input disabled="" type="checkbox"> DB trigger 強制 INV-1 通過驗證測試（嘗試插入不平衡 transaction 必須 fail）</li>
 <li><input disabled="" type="checkbox"> 模擬 1000 並發儲值，最終 wallet 餘額與 transaction count 完全相符</li>
 <li><input disabled="" type="checkbox"> Idempotency 測試：相同 key 提交 100 次，僅一筆 transaction</li>
+<li><input disabled="" type="checkbox"> 手動點數調整：admin / manager 可增加與扣除點數；affiliate 只能增加點數；任一角色嘗試設定絕對餘額必須 fail</li>
+<li><input disabled="" type="checkbox"> 手動點數調整皆寫入 <code>audit_logs</code>，且 ledger transaction metadata 可回查 <code>audit_log_id</code></li>
+<li><input disabled="" type="checkbox"> INV-6 測試：<code>manual_points_adjustment</code> 扣點僅允許 admin / manager 對 <code>Expense.ManualPointsGrant</code> 沖回；affiliate 扣點或任何流向現金 / 應付帳款 / 營運帳戶的交易必須 fail</li>
 <li><input disabled="" type="checkbox"> 對帳腳本可在 5 分鐘內處理 1M 筆 entries</li>
 <li><input disabled="" type="checkbox"> hash chain 驗證腳本可在 30 分鐘內驗證 30 天歷史</li>
 </ul>

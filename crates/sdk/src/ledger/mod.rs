@@ -146,6 +146,7 @@ impl LedgerTransactionDraft {
     /// - `Revenue.TradingFee` / `Revenue.SettlementFee`
     /// - `Player.Wallet.*` (only when [`Self::txn_kind`] is [`LedgerTxnKind::Trade`]
     ///   or [`LedgerTxnKind::Settle`])
+    /// - `Expense.ManualPointsGrant` (only for [`LedgerTxnKind::ManualPointsAdjustment`])
     ///
     /// Any other counterpart account (e.g. `Liability.AccountsPayable.*`,
     /// `Bank.OperatingAccount.*`, `Expense.AffiliatePartnerFee`, any banking /
@@ -232,6 +233,9 @@ impl LedgerTransactionDraft {
         if code.starts_with("Bank.TrustAccount.") {
             return matches!(self.txn_kind, LedgerTxnKind::Chargeback);
         }
+        if code == "Expense.ManualPointsGrant" {
+            return matches!(self.txn_kind, LedgerTxnKind::ManualPointsAdjustment);
+        }
         false
     }
 }
@@ -259,6 +263,8 @@ pub enum LedgerTxnKind {
     Compensation,
     /// Chargeback reversal.
     Chargeback,
+    /// MVP/admin/manager/affiliate manual points adjustment.
+    ManualPointsAdjustment,
     /// Catch-all for non-classified drafts (defaults to most restrictive INV-6 mode).
     #[default]
     Other,
@@ -622,6 +628,25 @@ mod tests {
         assert!(
             transaction.validate().is_ok(),
             "chargeback Player.Wallet → Bank.TrustAccount should be allowed (SPEC-002 §8.1)"
+        );
+    }
+
+    #[test]
+    fn inv6_manual_points_deduct_to_manual_grant_passes_for_manual_adjustment() {
+        // SPEC-002 v0.1.9: admin / manager 扣點時，Player.Wallet outflow 可對到
+        // Expense.ManualPointsGrant 作為手動發點成本沖回；此非現金出款。
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new("Player.Wallet.user_42", LedgerAmount::from_minor_units(500)),
+            LedgerEntryDraft::new(
+                "Expense.ManualPointsGrant",
+                LedgerAmount::from_minor_units(-500),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::ManualPointsAdjustment);
+
+        assert!(
+            transaction.validate().is_ok(),
+            "manual_points_adjustment deduct should allow Player.Wallet -> Expense.ManualPointsGrant"
         );
     }
 
