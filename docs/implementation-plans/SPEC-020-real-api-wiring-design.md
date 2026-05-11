@@ -79,6 +79,7 @@ These properties must hold across all changes. Each is a test target.
 6. **Every job records source provenance.** `report_jobs.source_snapshot` is non-null and contains at minimum `source_service`, `source_version`, `cutoff_at`, `source_generated_at`, `correlation_id`. The `latest-per-template` endpoint surfaces this on each returned `ReportJob`; the four dashboard-metrics cards (KPI / alerts / versioned-reports / audit-coverage) carry their own freshness timestamp but do not duplicate per-template source_snapshot.
 7. **Dashboard never creates jobs.** `GET /v1/dashboard-metrics` and `GET /v1/report-jobs/latest-per-template` are pure reads. Job creation requires explicit user action on `/analytics/run/[code]`.
 8. **Schedules are template-derived in v1.** No `report_schedules` table. `GET /v1/report-schedules` synthesizes from `report_templates.definition.schedule`. Cron strings parse at service startup (fail-fast).
+9. **Report params reject unsupported timezones (fail-closed).** Only `Asia/Taipei` (platform default, all roles) and `UTC` (admin only, for reconciliation per SPEC-020 §3) are accepted. Any other timezone string returns 400 `ERROR_CODE_REPORT_INVALID_REQUEST`; non-admin requesting UTC returns 403 `ERROR_CODE_REPORT_FORBIDDEN`. The validator does not coerce or silently default — the request is rejected at the boundary so jobs only land in PG with a timezone we trust.
 
 ## 6. Component breakdown
 
