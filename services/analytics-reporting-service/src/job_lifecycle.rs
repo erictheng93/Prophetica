@@ -23,7 +23,9 @@ pub fn validate(
     template: &ReportTemplate,
     request: &CreateReportJobRequest,
 ) -> Result<(), ReportingError> {
-    let role = request.role.unwrap_or(ReportRole::Manager);
+    let Some(role) = request.role else {
+        return Err(ReportingError::Forbidden);
+    };
     if !template.viewer_roles.contains(&role) || !role.allows_admin_reporting() {
         return Err(ReportingError::Forbidden);
     }

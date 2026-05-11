@@ -78,6 +78,18 @@ fn manager_can_request_platform_report_timezone() {
     assert!(validate(&template, &request).is_ok());
 }
 
+#[test]
+fn missing_role_is_rejected_by_validator() {
+    let template = ops_template();
+    let mut request = create_request(ReportRole::Manager, "Asia/Taipei");
+    request.role = None;
+
+    assert!(matches!(
+        validate(&template, &request),
+        Err(ReportingError::Forbidden)
+    ));
+}
+
 fn ops_params() -> ReportParams {
     ReportParams {
         start_at: "2026-05-10T00:00:00+08:00".to_owned(),
