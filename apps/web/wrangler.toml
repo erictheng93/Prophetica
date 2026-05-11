@@ -1,11 +1,19 @@
 name = "prophetica-web-poc"
-pages_build_output_dir = ".vercel/output/static"
+main = ".open-next/worker.js"
 compatibility_date = "2026-05-08"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+[[services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "prophetica-web-poc"
 
 [vars]
 KYC_SERVICE_BASE_URL = "http://127.0.0.1:8085"
 PROPHETICA_DEV_USER_ID = "user_01"
 
 # Secrets must be configured outside git:
-#   wrangler pages secret put SUMSUB_WEBHOOK_SECRET --project-name prophetica-web-poc
+#   rtk pnpm --filter @prophetica/web exec wrangler secret put SUMSUB_WEBHOOK_SECRET

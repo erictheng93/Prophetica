@@ -2,12 +2,6 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
-if (process.env.NODE_ENV === "development") {
-  const { setupDevPlatform } =
-    await import("@cloudflare/next-on-pages/next-dev");
-  setupDevPlatform();
-}
-
 // SPEC-005a §8 — CSP for KYC routes only. SumSub Web SDK loads its bundle
 // from static.sumsub.com, opens an iframe to *.sumsub.com, talks to
 // api.sumsub.com over HTTPS + WSS, and uses blob: workers for image
