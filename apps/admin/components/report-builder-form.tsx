@@ -3,7 +3,12 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminCopy } from "@/lib/admin-copy";
-import { createJob, type ReportTemplate } from "@/lib/analytics-reporting";
+import {
+  createJob,
+  timezonesForRole,
+  type ReportTemplate,
+  type ReportTimezone,
+} from "@/lib/analytics-reporting";
 import type { Role } from "@/lib/rbac";
 
 interface ReportBuilderFormProps {
@@ -22,11 +27,19 @@ interface ReportBuilderFormProps {
  * SPEC-020 §3 reveal toggle: shown only to admin. Manager sees a note
  * but no checkbox, matching the "敏感欄位需二次授權" requirement.
  */
-export function ReportBuilderForm({ template, viewerRole }: ReportBuilderFormProps) {
+export function ReportBuilderForm({
+  template,
+  viewerRole,
+}: ReportBuilderFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   const isAdmin = viewerRole === "admin";
+  const timezoneOptions = timezonesForRole(viewerRole);
+  const timezoneLabels: Record<ReportTimezone, string> = {
+    "Asia/Taipei": adminCopy.analytics.fieldTimezoneTaipei,
+    UTC: adminCopy.analytics.fieldTimezoneUtc,
+  };
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,9 +60,13 @@ export function ReportBuilderForm({ template, viewerRole }: ReportBuilderFormPro
       params: {
         startAt,
         endAt,
-        timezone: String(data.get("timezone") ?? "Asia/Taipei") as "Asia/Taipei" | "UTC",
+        timezone: String(data.get("timezone") ?? "Asia/Taipei") as
+          | "Asia/Taipei"
+          | "UTC",
         sortBy: String(data.get("sortBy") ?? template.fields[0]?.key ?? ""),
-        sortDirection: String(data.get("sortDirection") ?? "asc") as "asc" | "desc",
+        sortDirection: String(data.get("sortDirection") ?? "asc") as
+          | "asc"
+          | "desc",
         columns,
       },
       revealSensitiveFields: data.get("revealSensitiveFields") === "on",
@@ -63,7 +80,10 @@ export function ReportBuilderForm({ template, viewerRole }: ReportBuilderFormPro
       className="space-y-6 rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
     >
       <div className="grid gap-4 md:grid-cols-2">
-        <Field id={`${template.code}-startAt`} label={adminCopy.analytics.fieldStartAt}>
+        <Field
+          id={`${template.code}-startAt`}
+          label={adminCopy.analytics.fieldStartAt}
+        >
           <input
             id={`${template.code}-startAt`}
             name="startAt"
@@ -72,7 +92,10 @@ export function ReportBuilderForm({ template, viewerRole }: ReportBuilderFormPro
             className="min-h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[15px] tabular-nums tracking-[-0.224px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
           />
         </Field>
-        <Field id={`${template.code}-endAt`} label={adminCopy.analytics.fieldEndAt}>
+        <Field
+          id={`${template.code}-endAt`}
+          label={adminCopy.analytics.fieldEndAt}
+        >
           <input
             id={`${template.code}-endAt`}
             name="endAt"
@@ -83,15 +106,21 @@ export function ReportBuilderForm({ template, viewerRole }: ReportBuilderFormPro
         </Field>
       </div>
 
-      <Field id={`${template.code}-timezone`} label={adminCopy.analytics.fieldTimezone}>
+      <Field
+        id={`${template.code}-timezone`}
+        label={adminCopy.analytics.fieldTimezone}
+      >
         <select
           id={`${template.code}-timezone`}
           name="timezone"
           defaultValue="Asia/Taipei"
           className="min-h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 text-[15px] tracking-[-0.224px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
         >
-          <option value="Asia/Taipei">{adminCopy.analytics.fieldTimezoneTaipei}</option>
-          <option value="UTC">{adminCopy.analytics.fieldTimezoneUtc}</option>
+          {timezoneOptions.map((timezone) => (
+            <option key={timezone} value={timezone}>
+              {timezoneLabels[timezone]}
+            </option>
+          ))}
         </select>
       </Field>
 
@@ -124,7 +153,10 @@ export function ReportBuilderForm({ template, viewerRole }: ReportBuilderFormPro
       </fieldset>
 
       <div className="grid gap-4 md:grid-cols-[1fr_auto]">
-        <Field id={`${template.code}-sortBy`} label={adminCopy.analytics.fieldSortBy}>
+        <Field
+          id={`${template.code}-sortBy`}
+          label={adminCopy.analytics.fieldSortBy}
+        >
           <select
             id={`${template.code}-sortBy`}
             name="sortBy"
@@ -155,11 +187,19 @@ export function ReportBuilderForm({ template, viewerRole }: ReportBuilderFormPro
         <div className="rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-4">
           {isAdmin ? (
             <label className="flex min-h-11 items-start gap-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink">
-              <input type="checkbox" name="revealSensitiveFields" className="mt-1 h-4 w-4 accent-proph-primary" />
+              <input
+                type="checkbox"
+                name="revealSensitiveFields"
+                className="mt-1 h-4 w-4 accent-proph-primary"
+              />
               <span>
-                <span className="font-semibold">{adminCopy.analytics.fieldReveal}</span>
+                <span className="font-semibold">
+                  {adminCopy.analytics.fieldReveal}
+                </span>
                 <br />
-                <span className="text-proph-ink-muted-80">{adminCopy.analytics.fieldRevealHelp}</span>
+                <span className="text-proph-ink-muted-80">
+                  {adminCopy.analytics.fieldRevealHelp}
+                </span>
               </span>
             </label>
           ) : (
@@ -186,7 +226,15 @@ function normalizeDateTime(value: string): string {
   return value.length === 16 ? `${value}:00+08:00` : value;
 }
 
-function Field({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
+function Field({
+  id,
+  label,
+  children,
+}: {
+  id: string;
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <label htmlFor={id} className="block space-y-2">
       <span className="block text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">

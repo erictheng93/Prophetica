@@ -1,9 +1,10 @@
 #![allow(clippy::expect_used)]
 
 use analytics_reporting_service::{
-    job_lifecycle::{project_rows, row_hash},
+    error::ReportingError,
+    job_lifecycle::{project_rows, row_hash, validate},
     templates::default_templates,
-    types::{ReportParams, SourceSnapshot},
+    types::{CreateReportJobRequest, ReportParams, ReportRole, SourceSnapshot},
 };
 use serde_json::json;
 
@@ -50,6 +51,33 @@ fn sensitive_email_fields_are_masked_by_shared_helper() {
     assert_eq!(projected[0]["member_email"], "m***@example.com");
 }
 
+#[test]
+fn manager_cannot_request_utc_report_timezone() {
+    let template = ops_template();
+    let request = create_request(ReportRole::Manager, "UTC");
+
+    assert!(matches!(
+        validate(&template, &request),
+        Err(ReportingError::Forbidden)
+    ));
+}
+
+#[test]
+fn admin_can_request_utc_report_timezone() {
+    let template = ops_template();
+    let request = create_request(ReportRole::Admin, "UTC");
+
+    assert!(validate(&template, &request).is_ok());
+}
+
+#[test]
+fn manager_can_request_platform_report_timezone() {
+    let template = ops_template();
+    let request = create_request(ReportRole::Manager, "Asia/Taipei");
+
+    assert!(validate(&template, &request).is_ok());
+}
+
 fn ops_params() -> ReportParams {
     ReportParams {
         start_at: "2026-05-10T00:00:00+08:00".to_owned(),
@@ -58,5 +86,27 @@ fn ops_params() -> ReportParams {
         sort_by: "report_date".to_owned(),
         sort_direction: "asc".to_owned(),
         columns: vec!["report_date".to_owned(), "approvals_count".to_owned()],
+    }
+}
+
+fn ops_template() -> analytics_reporting_service::types::ReportTemplate {
+    default_templates()
+        .into_iter()
+        .find(|template| template.code == "ops-kpi-daily")
+        .expect("ops template")
+}
+
+fn create_request(role: ReportRole, timezone: &str) -> CreateReportJobRequest {
+    let mut params = ops_params();
+    timezone.clone_into(&mut params.timezone);
+
+    CreateReportJobRequest {
+        actor_id: Some("U-TEST-001".to_owned()),
+        role: Some(role),
+        template_code: "ops-kpi-daily".to_owned(),
+        params,
+        reveal_sensitive_fields: None,
+        second_authorization_id: None,
+        rerun_of_job_id: None,
     }
 }

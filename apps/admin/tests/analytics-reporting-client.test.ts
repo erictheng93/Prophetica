@@ -5,6 +5,7 @@ import {
   exportJob,
   fetchSchedules,
   fetchTemplates,
+  timezonesForRole,
 } from "../lib/analytics-reporting.js";
 
 const originalFetch = globalThis.fetch;
@@ -47,7 +48,10 @@ test("createJob posts JSON to the analytics jobs BFF route", async () => {
 
   assert.equal(String(calls[0]?.[0]), "/api/analytics/jobs");
   assert.equal(calls[0]?.[1]?.method, "POST");
-  assert.equal((calls[0]?.[1]?.headers as Record<string, string>)["content-type"], "application/json");
+  assert.equal(
+    (calls[0]?.[1]?.headers as Record<string, string>)["content-type"],
+    "application/json",
+  );
   assert.match(String(calls[0]?.[1]?.body), /ops-kpi-daily/);
 });
 
@@ -69,6 +73,12 @@ test("fetchSchedules calls the analytics schedules BFF route", async () => {
   await fetchSchedules();
 
   assert.equal(String(calls[0]?.[0]), "/api/analytics/schedules");
+});
+
+test("only admin can select UTC report timezone", () => {
+  assert.deepEqual(timezonesForRole("admin"), ["Asia/Taipei", "UTC"]);
+  assert.deepEqual(timezonesForRole("manager"), ["Asia/Taipei"]);
+  assert.deepEqual(timezonesForRole("affiliate"), ["Asia/Taipei"]);
 });
 
 function jsonResponse(body: unknown): Response {

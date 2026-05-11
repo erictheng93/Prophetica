@@ -10,6 +10,9 @@ use crate::{
     },
 };
 
+const PLATFORM_REPORT_TIMEZONE: &str = "Asia/Taipei";
+const UTC_REPORT_TIMEZONE: &str = "UTC";
+
 /// Validates whether a report request is permitted for a template.
 ///
 /// # Errors
@@ -23,6 +26,16 @@ pub fn validate(
     let role = request.role.unwrap_or(ReportRole::Manager);
     if !template.viewer_roles.contains(&role) || !role.allows_admin_reporting() {
         return Err(ReportingError::Forbidden);
+    }
+    match request.params.timezone.as_str() {
+        PLATFORM_REPORT_TIMEZONE => {}
+        UTC_REPORT_TIMEZONE if role == ReportRole::Admin => {}
+        UTC_REPORT_TIMEZONE => return Err(ReportingError::Forbidden),
+        _ => {
+            return Err(ReportingError::InvalidRequest(
+                "unsupported report timezone".to_owned(),
+            ));
+        }
     }
     if request.reveal_sensitive_fields.unwrap_or(false)
         && (role != ReportRole::Admin

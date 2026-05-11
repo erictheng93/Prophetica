@@ -38,7 +38,10 @@ export interface ReportTemplate {
   generatedAt: string;
   retention: ReportRetentionPolicy;
   rows: readonly ReportRow[];
-  schedule?: Omit<ReportScheduleHint, "templateCode" | "templateName" | "retention" | "status">;
+  schedule?: Omit<
+    ReportScheduleHint,
+    "templateCode" | "templateName" | "retention" | "status"
+  >;
 }
 
 export interface ReportParams {
@@ -48,6 +51,10 @@ export interface ReportParams {
   sortBy: string;
   sortDirection: ReportSortDirection;
   columns: readonly string[];
+}
+
+export function timezonesForRole(role: Role): readonly ReportTimezone[] {
+  return role === "admin" ? ["Asia/Taipei", "UTC"] : ["Asia/Taipei"];
 }
 
 export interface CreateReportJobRequest {
@@ -149,43 +156,70 @@ export async function fetchTemplates(): Promise<ReportTemplate[]> {
   return (await jsonOrThrow(response)) as ReportTemplate[];
 }
 
-export async function createJob(req: CreateReportJobRequest): Promise<ReportJob> {
+export async function createJob(
+  req: CreateReportJobRequest,
+): Promise<ReportJob> {
   const response = await fetch(`${BFF_BASE}/jobs`, {
     method: "POST",
     cache: "no-store",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(req),
   });
-  const payload = (await jsonOrThrow(response)) as ReportJob | { job: ReportJob };
+  const payload = (await jsonOrThrow(response)) as
+    | ReportJob
+    | { job: ReportJob };
   return "job" in payload ? payload.job : payload;
 }
 
-export async function fetchJobs(filter?: { templateCode?: string }): Promise<ReportJob[]> {
+export async function fetchJobs(filter?: {
+  templateCode?: string;
+}): Promise<ReportJob[]> {
   const query = new URLSearchParams();
   if (filter?.templateCode) query.set("template_code", filter.templateCode);
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  const response = await fetch(`${BFF_BASE}/jobs${suffix}`, { cache: "no-store" });
+  const response = await fetch(`${BFF_BASE}/jobs${suffix}`, {
+    cache: "no-store",
+  });
   return (await jsonOrThrow(response)) as ReportJob[];
 }
 
-export async function fetchJobDetail(id: string): Promise<{ job: ReportJob; audit: ReportAuditRecord[] }> {
-  const response = await fetch(`${BFF_BASE}/jobs/${encodeURIComponent(id)}`, { cache: "no-store" });
-  return (await jsonOrThrow(response)) as { job: ReportJob; audit: ReportAuditRecord[] };
-}
-
-export async function exportJob(id: string, format: ReportFormat): Promise<Response> {
-  return fetch(`${BFF_BASE}/jobs/${encodeURIComponent(id)}/export?format=${encodeURIComponent(format)}`, {
+export async function fetchJobDetail(
+  id: string,
+): Promise<{ job: ReportJob; audit: ReportAuditRecord[] }> {
+  const response = await fetch(`${BFF_BASE}/jobs/${encodeURIComponent(id)}`, {
     cache: "no-store",
   });
+  return (await jsonOrThrow(response)) as {
+    job: ReportJob;
+    audit: ReportAuditRecord[];
+  };
 }
 
-export async function recordExportDeletion(id: string, req: RecordExportDeletionRequest): Promise<void> {
-  const response = await fetch(`${BFF_BASE}/jobs/${encodeURIComponent(id)}/deletions`, {
-    method: "POST",
-    cache: "no-store",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(req),
-  });
+export async function exportJob(
+  id: string,
+  format: ReportFormat,
+): Promise<Response> {
+  return fetch(
+    `${BFF_BASE}/jobs/${encodeURIComponent(id)}/export?format=${encodeURIComponent(format)}`,
+    {
+      cache: "no-store",
+    },
+  );
+}
+
+export async function recordExportDeletion(
+  id: string,
+  req: RecordExportDeletionRequest,
+): Promise<void> {
+  const response = await fetch(
+    `${BFF_BASE}/jobs/${encodeURIComponent(id)}/deletions`,
+    {
+      method: "POST",
+      cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(req),
+    },
+  );
   await jsonOrThrow(response);
 }
 
@@ -194,12 +228,18 @@ export async function fetchSchedules(): Promise<ReportScheduleHint[]> {
   return (await jsonOrThrow(response)) as ReportScheduleHint[];
 }
 
-export async function fetchDashboardMetrics(): Promise<AnalyticsReportingMetric[]> {
-  const response = await fetch(`${BFF_BASE}/dashboard-metrics`, { cache: "no-store" });
+export async function fetchDashboardMetrics(): Promise<
+  AnalyticsReportingMetric[]
+> {
+  const response = await fetch(`${BFF_BASE}/dashboard-metrics`, {
+    cache: "no-store",
+  });
   return (await jsonOrThrow(response)) as AnalyticsReportingMetric[];
 }
 
 export async function fetchLatestJobsPerTemplate(): Promise<ReportJob[]> {
-  const response = await fetch(`${BFF_BASE}/jobs/latest-per-template`, { cache: "no-store" });
+  const response = await fetch(`${BFF_BASE}/jobs/latest-per-template`, {
+    cache: "no-store",
+  });
   return (await jsonOrThrow(response)) as ReportJob[];
 }
