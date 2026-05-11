@@ -88,12 +88,16 @@ Phase A-C of the responsive + PWA pass landed 2026-05-10; the remaining
 items below are deliberately deferred because they require either a
 production deploy or backend coordination.
 
-- Background sync for mutating requests. The web service worker
-  (`apps/web/public/sw.js`) deliberately passes POST/PUT/DELETE through to
-  the network — SPEC-002 funds-safety forbids silent retries of ledger
-  writes. A real offline queue must (a) co-design idempotency keys with
-  api-gateway, (b) surface pending mutations in the UI, and (c) reconcile
-  failures without double-posting.
+- Generalized background sync allowlist framework. Phase 1 now limits offline
+  queuing to trading order placement / cancellation with api-gateway
+  `Idempotency-Key` replay protection. A later phase should promote this into
+  a generic api-gateway mutation allowlist with per-route reconciliation
+  policies before any ledger, payment, admin, KYC, or support mutation is
+  allowed into silent background replay.
+- Pending mutation UI for trading. The Phase 1 queue returns a `202 queued`
+  response and drains through Background Sync, but the trading surface still
+  needs explicit pending / replayed / failed order state once the order form is
+  wired to the real api-gateway mutation client.
 - Lighthouse PWA score validation. Local `next dev` cannot reach 100/100
   because Lighthouse insists on HTTPS for installability. Validate after
   the staging deploy and capture the run as evidence under SPEC-007.
