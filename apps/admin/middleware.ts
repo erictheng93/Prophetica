@@ -29,9 +29,10 @@ const PUBLIC_PREFIXES = [
   "/favicon.ico",
   "/robots.txt",
   "/manifest.webmanifest",
-  "/icon0",
-  "/icon1",
-  "/apple-icon",
+  "/favicon-32.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png",
   "/sw.js",
   "/offline",
 ];

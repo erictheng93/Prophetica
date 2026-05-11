@@ -12,10 +12,9 @@ import type { MetadataRoute } from "next";
  * footer / sub-nav so the splash screen does not flash a different shade
  * before the first paint.
  *
- * Icons resolve to app/icon0.tsx (192) and app/icon1.tsx (512). The
- * 512-square is also marked maskable so Android can crop it into adaptive
- * icon shapes (Pixel Launcher rounded-square, Samsung squircle, etc.)
- * without leaving white edges.
+ * Icons are static PNGs in public/ so the Cloudflare OpenNext adapter does
+ * not need unsupported Edge runtime icon routes. The 512-square is also
+ * marked maskable so Android can crop it into adaptive icon shapes.
  */
 
 export default function manifest(): MetadataRoute.Manifest {
@@ -31,9 +30,24 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#0066cc",
     lang: "zh-Hant",
     icons: [
-      { src: "/icon0", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icon1", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icon1", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      {
+        src: "/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      },
     ],
   };
 }
