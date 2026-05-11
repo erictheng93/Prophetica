@@ -36,8 +36,9 @@ self.addEventListener("activate", (event) => {
 function isStaticAsset(url) {
   return (
     url.pathname.startsWith("/_next/static/") ||
-    url.pathname.startsWith("/icon") ||
-    url.pathname === "/apple-icon" ||
+    url.pathname.startsWith("/icon-") ||
+    url.pathname === "/favicon-32.png" ||
+    url.pathname === "/apple-touch-icon.png" ||
     url.pathname.endsWith(".woff2") ||
     url.pathname.endsWith(".woff") ||
     url.pathname.endsWith(".ttf")

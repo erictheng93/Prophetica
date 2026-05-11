@@ -12,6 +12,12 @@ export const metadata: Metadata = {
     title: "Prophetica Admin",
     statusBarStyle: "black-translucent",
   },
+  icons: {
+    icon: [{ url: "/favicon-32.png", sizes: "32x32", type: "image/png" }],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
   formatDetection: { telephone: false },
   robots: { index: false, follow: false },
 };

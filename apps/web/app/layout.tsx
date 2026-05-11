@@ -17,6 +17,12 @@ export const metadata: Metadata = {
     title: "Prophetica",
     statusBarStyle: "default",
   },
+  icons: {
+    icon: [{ url: "/favicon-32.png", sizes: "32x32", type: "image/png" }],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
   formatDetection: { telephone: false },
 };
 
@@ -28,7 +34,11 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default async function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const locale = await getLocale();
   const messages = await getMessages();
   return (
@@ -62,7 +72,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 請啟用 JavaScript 以使用 Prophetica
               </h1>
               <p className="mt-4 text-[15px] leading-[1.47] tracking-[-0.224px] text-proph-ink-muted-80 sm:text-[17px] sm:tracking-[-0.374px]">
-                即時下單、KYC 驗證、行情與點數結算都需要 JavaScript。請在瀏覽器設定中開啟 JavaScript，或改用支援 JavaScript 的瀏覽器。
+                即時下單、KYC 驗證、行情與點數結算都需要
+                JavaScript。請在瀏覽器設定中開啟 JavaScript，或改用支援
+                JavaScript 的瀏覽器。
               </p>
               <a
                 href="/support/contact"
