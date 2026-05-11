@@ -5,7 +5,7 @@ import { ReportBuilderForm } from "@/components/report-builder-form";
 import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
-import { listReportTemplates } from "@/lib/analytics-reporting";
+import { fetchTemplates } from "@/lib/analytics-reporting";
 
 interface RunPageProps {
   params: Promise<{ code: string }>;
@@ -16,8 +16,8 @@ export default async function AnalyticsRunPage({ params }: RunPageProps) {
 
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {(viewer) => {
-        const template = listReportTemplates(viewer.role).find((row) => row.code === code);
+      {async (viewer) => {
+        const template = (await fetchTemplates()).find((row) => row.code === code);
         if (!template) {
           notFound();
         }

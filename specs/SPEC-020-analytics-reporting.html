@@ -92,12 +92,18 @@
 <section>
   <h2>8. 可驗收（產品）</h2>
   <ul>
-    <li>[ ] 全部報表支援固定版本與匯出時間戳。</li>
-    <li>[ ] CSV/XLSX/JSON 三種格式可用。</li>
-    <li>[ ] 權限控制下，未授權角色無法查看敏感欄位。</li>
-    <li>[ ] 報表重跑可復現原始結果，差異必須有版本解釋。</li>
-    <li>[ ] 7 年留存的稽核匯出可正常追溯。</li>
+    <li>[x] 全部報表支援固定版本與匯出時間戳。</li>
+    <li>[x] CSV/XLSX/JSON 三種格式可用。</li>
+    <li>[x] 權限控制下，未授權角色無法查看敏感欄位。</li>
+    <li>[x] 報表重跑可復現原始結果，差異必須有版本解釋。</li>
+    <li>[x] 7 年留存的稽核匯出可正常追溯。</li>
   </ul>
+</section>
+<section>
+  <h2>9. 實作狀態（2026-05-11）</h2>
+  <p>SPEC-020 v0.1.0 已落地於 <code>apps/admin/lib/analytics-reporting.ts</code>、<code>apps/admin/app/dashboard/page.tsx</code> 與 <code>services/api-gateway/src/analytics_reporting.rs</code>。管理員與主管可進入 analytics reporting dashboard；代理角色不可查看。報表 job 具備 <code>schema_version</code>、<code>generated_at</code>、版本號、<code>row_hash</code>、CSV/JSON/XLSX 匯出、敏感欄位遮罩、admin 二次授權明文檢視、重跑 hash 比對、刪除稽核鏈與 12 個月/7 年留存策略。</p>
+  <p>後端資料模型已補於 <code>services/api-gateway/migrations/202605110001_create_analytics_reporting.sql</code>，包含 <code>report_templates</code>、<code>report_jobs</code>、<code>report_shares</code>、<code>report_audit</code>。</p>
+  <p>驗證命令：<code>rtk pnpm --filter @prophetica/admin test</code>、<code>rtk pnpm --filter @prophetica/admin lint</code>、<code>rtk cargo check -p api-gateway --tests</code>、<code>rtk cargo clippy -p api-gateway --all-targets -- -D warnings</code>。</p>
 </section>
 </body>
 </html>

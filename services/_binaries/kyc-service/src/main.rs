@@ -22,13 +22,15 @@ async fn main() -> anyhow::Result<()> {
             kyc_service::kyc::PostgresKycStore::new(pool, secrets.document_hash_salt.clone());
         let app = Router::new()
             .merge(service_stub::router(&config))
-            .merge(kyc_service::api::router(store, secrets));
+            .merge(kyc_service::api::router(store, secrets))
+            .merge(kyc_service::internal_reports::internal_reports_router());
         serve(config, app).await?;
     } else {
         let store = kyc_service::kyc::InMemoryKycStore::new(secrets.document_hash_salt.clone());
         let app = Router::new()
             .merge(service_stub::router(&config))
-            .merge(kyc_service::api::router(store, secrets));
+            .merge(kyc_service::api::router(store, secrets))
+            .merge(kyc_service::internal_reports::internal_reports_router());
         serve(config, app).await?;
     }
 

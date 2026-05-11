@@ -13,6 +13,7 @@ members = [
     "services/risk-antifraud-service",
     "services/referral-service",
     "services/notification-service",
+    "services/analytics-reporting-service",
     "services/_binaries/core-api",
     "services/_binaries/realtime-gateway",
     "services/_binaries/wallet-ledger-service",

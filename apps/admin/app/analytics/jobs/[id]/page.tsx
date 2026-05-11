@@ -5,7 +5,7 @@ import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
 import {
-  getAnalyticsReportingSnapshot,
+  fetchJobDetail,
   type ReportFormat,
   type ReportJob,
 } from "@/lib/analytics-reporting";
@@ -27,13 +27,13 @@ export default async function AnalyticsJobDetailPage({ params }: JobPageProps) {
   return (
     <RoleGate allow={["admin", "manager"]}>
       {async (viewer) => {
-        const snapshot = await getAnalyticsReportingSnapshot(viewer.role);
-        const job = snapshot.reports.find((row) => row.id === id);
+        const detail = await fetchJobDetail(id);
+        const job = detail.job;
         if (!job) {
           notFound();
         }
 
-        const audit = snapshot.auditRecords.filter((record) => record.jobId === job.id);
+        const audit = detail.audit;
 
         return (
           <AdminShell

@@ -3,13 +3,13 @@ import { AdminShell } from "@/components/admin-shell";
 import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
-import { getAnalyticsReportingSnapshot } from "@/lib/analytics-reporting";
+import { fetchJobs } from "@/lib/analytics-reporting";
 
 export default function AnalyticsJobsPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
       {async (viewer) => {
-        const snapshot = await getAnalyticsReportingSnapshot(viewer.role);
+        const reports = await fetchJobs();
         return (
           <AdminShell
             eyebrow={adminCopy.analytics.eyebrow}
@@ -33,7 +33,7 @@ export default function AnalyticsJobsPage() {
                 </p>
               </header>
               <ul className="mt-4 divide-y divide-proph-hairline">
-                {snapshot.reports.map((job) => {
+                {reports.map((job) => {
                   const retentionTone = job.retention.category === "legal_audit" ? "warning" : "neutral";
                   return (
                     <li key={job.id}>

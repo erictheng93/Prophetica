@@ -20,9 +20,11 @@ async fn main() -> anyhow::Result<()> {
         .connect(&database_url)
         .await?;
 
-    let app = service_stub::router(&config).merge(wallet_ledger_service::api::router(
-        PostgresLedgerStore::new(pool),
-    ));
+    let app = service_stub::router(&config)
+        .merge(wallet_ledger_service::api::router(
+            PostgresLedgerStore::new(pool),
+        ))
+        .merge(wallet_ledger_service::internal_reports::internal_reports_router());
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "wallet ledger service listening");
 
