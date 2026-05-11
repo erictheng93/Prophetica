@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust (axum 0.7, sqlx 0.8, reqwest 0.12, tokio, sha2, hmac), Postgres, Next.js 14 (App Router server components, Node `node:test` runner), wiremock for proxy tests.
 
-**Plan size note:** This plan spans 5 services + sdk crate + admin frontend. It is one cohesive feature with strong sequential dependencies (later phases need earlier ones). If you prefer to split across PRs, each Phase below corresponds naturally to one PR. The feature flag `ANALYTICS_REPORTING_PROXY_ENABLED` lets Phases 1–5 land on `main` without flipping admin into the new path until Phase 6.
+**Plan size note:** This plan spans 5 services + sdk crate + admin frontend. It is one cohesive feature with strong sequential dependencies (later phases need earlier ones). If you prefer to split across PRs, each Phase below corresponds naturally to one PR. Phases 1-5 can land before staging activation; Phase 6 activates the new path by configuring the proxy/admin service URLs and shared HMAC secrets.
 
 ---
 
@@ -647,7 +647,7 @@ SPEC-020-real-api-wiring-design §6.3."
 
 ## Phase 3: `analytics-reporting-service` (new crate)
 
-Owns the 4 PG tables and the job lifecycle. Built behind `ANALYTICS_REPORTING_PROXY_ENABLED` (flipped in Phase 6); nothing calls this service yet, so it ships independently. Tasks 3.1–3.8 are pure-Rust + wiremock, no Postgres required.
+Owns the 4 PG tables and the job lifecycle. Nothing calls this service until api-gateway and admin env are configured in Phase 6, so it ships independently. Tasks 3.1-3.8 are pure-Rust + wiremock, no Postgres required.
 
 ### Task 3.1: Scaffold the crate
 
@@ -1836,7 +1836,7 @@ git commit -m "feat(analytics-reporting-service): wire router, main, end-to-end 
 
 ## Phase 4: api-gateway proxy + HMAC verification
 
-Replaces the 717-line in-memory module with a ~120-line reverse proxy. Behind `ANALYTICS_REPORTING_PROXY_ENABLED` so the old behavior keeps shipping until Phase 6 flips the flag.
+Replaces the 717-line in-memory module with a ~120-line reverse proxy. The proxy is env-gated: with the analytics-reporting-service URL and HMAC secret configured, requests forward upstream; otherwise analytics admin endpoints fail closed with 503 until Phase 6 configures staging.
 
 ### Task 4.1: HMAC verification helper
 
@@ -1977,7 +1977,7 @@ git commit -m "feat(api-gateway): add HMAC-SHA256 internal-call verification"
 
 **Files:**
 - Modify: `services/api-gateway/src/analytics_reporting.rs` (REWRITE to proxy)
-- Modify: `services/api-gateway/src/lib.rs` (read `ANALYTICS_REPORTING_PROXY_ENABLED` + `INTERNAL_CALL_HMAC_SECRET` + `ANALYTICS_REPORTING_SERVICE_URL`)
+- Modify: `services/api-gateway/src/lib.rs` (mount the proxy when `INTERNAL_CALL_HMAC_SECRET` + `ANALYTICS_REPORTING_SERVICE_URL` are configured; otherwise mount the unconfigured 503 router)
 - Modify: `services/api-gateway/tests/analytics_reporting.rs` (rewrite as proxy + RBAC + HMAC tests using wiremock)
 
 - [ ] **Step 1:** Rewrite `src/analytics_reporting.rs` to ~120 lines exposing:
@@ -2012,12 +2012,11 @@ The handler:
 - [ ] **Step 3:** Add to `src/lib.rs` ServiceConfig:
 
 ```rust
-analytics_reporting_proxy_enabled: bool,           // env ANALYTICS_REPORTING_PROXY_ENABLED, default false
 analytics_reporting_service_url: Option<String>,   // env ANALYTICS_REPORTING_SERVICE_URL
 internal_call_hmac_secret: Option<String>,         // env INTERNAL_CALL_HMAC_SECRET (fail-closed in prod)
 ```
 
-In the router builder, conditionally mount: if flag is true and both URL + secret present, mount `proxy_router`. Otherwise, mount the legacy `internal_reporting_router` from the existing code.
+In the router builder, mount `proxy_router` when both URL + secret are present. Otherwise, mount `unconfigured_router()` so the analytics admin surface returns 503 instead of falling back to the old in-memory implementation.
 
 - [ ] **Step 4:** Run:
 
@@ -2031,12 +2030,11 @@ Expected: all tests pass — both the new proxy tests and any other api-gateway 
 
 ```bash
 git add services/api-gateway/src/analytics_reporting.rs services/api-gateway/src/lib.rs services/api-gateway/tests/analytics_reporting.rs
-git commit -m "refactor(api-gateway): rewrite analytics_reporting as proxy behind feature flag
+git commit -m "refactor(api-gateway): rewrite analytics_reporting as env-gated proxy
 
-The legacy InMemoryAnalyticsReportingStore stays mounted when
-ANALYTICS_REPORTING_PROXY_ENABLED is false, so this commit changes
-nothing for existing callers. Phase 6 flips the flag in staging and
-deletes the legacy code path."
+The proxy forwards only when ANALYTICS_REPORTING_SERVICE_URL and
+INTERNAL_CALL_HMAC_SECRET are configured. Otherwise the analytics admin
+surface fails closed with 503 until Phase 6 configures staging."
 ```
 
 ### Task 4.3: api-gateway down-migration
@@ -2069,7 +2067,7 @@ before the tables moved to analytics-reporting-service."
 
 ## Phase 5: Admin BFF and API client
 
-5 BFF route handlers, an HMAC signer, an API client rewrite, and 6 page edits. Behind the same feature flag — when off, admin keeps importing the local store.
+5 BFF route handlers, an HMAC signer, an API client rewrite, and 6 page edits. Admin uses the real api-gateway path; there is no local-store branch once this phase lands.
 
 ### Task 5.1: HMAC signer in admin
 
@@ -2346,13 +2344,13 @@ git commit -m "refactor(admin): five SPEC-020 pages now fetch from BFF instead o
 
 ---
 
-## Phase 6: Flag flip + legacy cleanup
+## Phase 6: Env activation + legacy cleanup
 
-After Phases 1–5 land and staging is green, flip the flag and remove the legacy code path.
+After Phases 1-5 land and staging is ready, configure the proxy/admin env and remove any remaining legacy code path.
 
-### Task 6.1: Flip `ANALYTICS_REPORTING_PROXY_ENABLED` in staging, smoke test all 5 pages
+### Task 6.1: Configure analytics reporting proxy env in staging, smoke test all 5 pages
 
-- [ ] **Step 1:** In the staging environment, set both `ANALYTICS_REPORTING_PROXY_ENABLED=true` and `ADMIN_INTERNAL_CALL_SECRET`, `INTERNAL_CALL_HMAC_SECRET`, `API_GATEWAY_URL`, `ANALYTICS_REPORTING_SERVICE_URL`, `KYC_SERVICE_URL`, `LEDGER_SERVICE_URL`, `RISK_SERVICE_URL`, `USER_SERVICE_URL`.
+- [ ] **Step 1:** In the staging environment, set `ADMIN_INTERNAL_CALL_SECRET`, `INTERNAL_CALL_HMAC_SECRET`, `API_GATEWAY_URL`, `ANALYTICS_REPORTING_SERVICE_URL`, `KYC_SERVICE_URL`, `LEDGER_SERVICE_URL`, `RISK_SERVICE_URL`, `USER_SERVICE_URL`.
 - [ ] **Step 2:** Deploy `analytics-reporting-service` and api-gateway with the new env. Run `sqlx migrate run` on the new service's DB.
 - [ ] **Step 3:** In staging admin, log in as admin and visit each of the 5 pages. Verify network shows requests to `/api/analytics/*` returning data and admin renders normally. Click "Run report" on `/analytics/run/ops-kpi-daily`; confirm it redirects to `/analytics/jobs/<id>` and the job appears in `/analytics/jobs`.
 - [ ] **Step 4:** Apply api-gateway down-migration in staging: `sqlx migrate run` (the new down-migration drops the orphan tables).
@@ -2363,11 +2361,11 @@ After Phases 1–5 land and staging is green, flip the flag and remove the legac
 **Files:**
 - Delete: `services/api-gateway/migrations/202605110001_create_analytics_reporting.sql`
 - Delete: `services/api-gateway/migrations/202605120001_drop_analytics_reporting.sql` (once dev/staging are clean)
-- Modify: `services/api-gateway/src/analytics_reporting.rs` — drop the legacy `internal_reporting_router` and `InMemoryAnalyticsReportingStore`; keep only the proxy code.
-- Modify: `services/api-gateway/src/lib.rs` — drop the feature-flag branch; always mount proxy when env is configured, else 503.
+- Modify: `services/api-gateway/src/analytics_reporting.rs` — keep only the proxy code plus unconfigured 503 router.
+- Modify: `services/api-gateway/src/lib.rs` — mount proxy when env is configured, else 503.
 - Modify: `apps/admin/lib/analytics-reporting.ts` — there is no flag branch to remove on the admin side after Task 5.2; verify the file has no remaining references to local data.
 
-- [ ] **Step 1:** Run `grep -r ANALYTICS_REPORTING_PROXY_ENABLED services/ apps/`. Remove every match.
+- [ ] **Step 1:** Run `rg "InMemoryAnalyticsReportingStore|internal_reporting_router" services/ apps/`. Remove every remaining legacy match.
 - [ ] **Step 2:** Run full test suite:
 
 ```bash
@@ -2382,7 +2380,7 @@ Expected: all green.
 
 ```bash
 git add -u
-git commit -m "chore: remove ANALYTICS_REPORTING_PROXY_ENABLED flag and legacy api-gateway analytics code"
+git commit -m "chore: remove legacy api-gateway analytics code"
 ```
 
 ### Task 6.3: Update SPEC-020 status

@@ -294,16 +294,16 @@ The existing 6 admin TS tests in `apps/admin/tests/analytics-reporting.test.ts` 
 
 ## 10. Migration / rollout sequence
 
-Feature flag mechanism: env var `ANALYTICS_REPORTING_PROXY_ENABLED` (read at api-gateway startup and at admin Next.js build). When `false`, api-gateway keeps the old in-memory router and admin keeps the old `lib/analytics-reporting.ts` data path; when `true`, both flip to proxy/BFF. The flag exists only during the rollout window — step 8 deletes it along with the old code paths.
+Proxy rollout mechanism: api-gateway always mounts the analytics admin surface. When both `ANALYTICS_REPORTING_SERVICE_URL` and `INTERNAL_CALL_HMAC_SECRET` are configured, it forwards through the proxy to analytics-reporting-service; when either env var is missing, the same surface fails closed with 503. Admin uses the BFF/API-client chain, so rollout is controlled by configuring the service URL and shared HMAC secret, not by a separate build-time switch.
 
 1. Add `sdk::masking` (one PR; trivially safe).
 2. Add source endpoints in kyc / ledger / risk / user services (one PR per service). These are additive and have no flag.
-3. Build `analytics-reporting-service` with PG migration; do NOT yet wire api-gateway.
-4. Add api-gateway proxy module behind `ANALYTICS_REPORTING_PROXY_ENABLED`. With flag off, the existing in-memory router stays mounted; with flag on, the proxy module is mounted instead. Both code paths compile; both have tests.
-5. Add admin BFF routes + API client behind the same flag (admin reads the env var at build time and branches the data source).
-6. Flip flag in staging; verify all 5 pages render with real data.
+3. Build `analytics-reporting-service` with PG migration; do not configure api-gateway to forward yet.
+4. Add api-gateway proxy module with env-gated config. With URL + secret present, the proxy module is active; otherwise the unconfigured router returns 503. Both active and unconfigured paths have tests.
+5. Add admin BFF routes + API client for the real api-gateway path.
+6. Configure proxy/admin env in staging; verify all 5 pages render with real data.
 7. Run api-gateway down-migration (`drop_analytics_reporting.sql`) in dev/staging.
-8. Delete: api-gateway's in-memory implementation; the old api-gateway migration file; the `ANALYTICS_REPORTING_PROXY_ENABLED` flag and both branches; admin's hardcoded data path.
+8. Delete any remaining api-gateway in-memory implementation, old api-gateway migration file, and admin hardcoded data path.
 9. Update `specs/SPEC-020-analytics-reporting.html` §9.
 
 ## 11. Open items for the implementation plan
