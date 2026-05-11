@@ -5,8 +5,6 @@
 export const adminCopy = {
   shell: {
     defaultEyebrow: "內部操作",
-    readOnlyFacade: "唯讀操作入口",
-    noDirectLedgerWrites: "不直接寫入帳本",
     navAria: "管理後台導覽",
     overview: "總覽",
     dashboard: "決策支援",
