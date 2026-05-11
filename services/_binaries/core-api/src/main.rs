@@ -21,7 +21,14 @@ async fn run_stub_http(service_name: &'static str, default_port: u16) -> anyhow:
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(service.name = service_name, addr = %config.bind_addr, "core-api member service listening");
 
-    axum::serve(listener, service_stub::router(&config))
+    let app = if service_name == user_service::SERVICE_NAME {
+        service_stub::router(&config)
+            .merge(user_service::internal_contacts::internal_contacts_router())
+    } else {
+        service_stub::router(&config)
+    };
+
+    axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(service_name))
         .await?;
 

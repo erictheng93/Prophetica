@@ -59,11 +59,15 @@ test("admin test script typechecks then runs compiled node tests", () => {
 test("decision support dashboard stays read-only and covers required insight areas", () => {
   const dashboardSource = readAdminFile("app/dashboard/page.tsx");
 
+  assert.match(dashboardSource, /@\/lib\/analytics-reporting/);
   assert.match(dashboardSource, /decision-support/);
   assert.match(dashboardSource, /kpi/);
   assert.match(dashboardSource, /alerts/);
   assert.match(dashboardSource, /versioned-reports/);
   assert.match(dashboardSource, /audit-trail/);
+  assert.match(dashboardSource, /availableFormats/);
+  assert.match(dashboardSource, /retention/);
+  assert.match(dashboardSource, /rowHash/);
   assert.doesNotMatch(dashboardSource, /<form\b/);
 });
 

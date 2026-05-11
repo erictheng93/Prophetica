@@ -31,7 +31,14 @@ async fn run_stub_http(service_name: &'static str, default_port: u16) -> anyhow:
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(service.name = service_name, addr = %config.bind_addr, "notification-and-risk member service listening");
 
-    axum::serve(listener, service_stub::router(&config))
+    let app = if service_name == risk_antifraud_service::SERVICE_NAME {
+        service_stub::router(&config)
+            .merge(risk_antifraud_service::internal_reports::internal_reports_router())
+    } else {
+        service_stub::router(&config)
+    };
+
+    axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(service_name))
         .await?;
 

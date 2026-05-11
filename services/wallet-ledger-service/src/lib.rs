@@ -4,6 +4,7 @@ pub const DEFAULT_PORT: u16 = 8086;
 pub mod api;
 pub mod archive;
 pub mod gateway;
+pub mod internal_reports;
 pub mod ledger;
 pub mod reconciliation;
 
@@ -25,6 +26,7 @@ pub fn map_txn_type_to_kind(txn_type: &str) -> LedgerTxnKind {
         "unfreeze" => LedgerTxnKind::Unfreeze,
         "cs_compensation" => LedgerTxnKind::Compensation,
         "chargeback" => LedgerTxnKind::Chargeback,
+        "manual_points_adjustment" => LedgerTxnKind::ManualPointsAdjustment,
         _ => LedgerTxnKind::Other,
     }
 }
@@ -110,6 +112,10 @@ mod tests {
         assert_eq!(map_txn_type_to_kind("trade"), LedgerTxnKind::Trade);
         assert_eq!(map_txn_type_to_kind("settle"), LedgerTxnKind::Settle);
         assert_eq!(map_txn_type_to_kind("freeze"), LedgerTxnKind::Freeze);
+        assert_eq!(
+            map_txn_type_to_kind("manual_points_adjustment"),
+            LedgerTxnKind::ManualPointsAdjustment
+        );
         assert_eq!(map_txn_type_to_kind("unknown_type"), LedgerTxnKind::Other);
     }
 }

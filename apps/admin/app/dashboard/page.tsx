@@ -2,11 +2,9 @@
 import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
-import { getDecisionSupportSnapshot } from "@/lib/ops-facade";
+import { fetchDashboardMetrics, fetchLatestJobsPerTemplate } from "@/lib/analytics-reporting";
 
 export default function DecisionSupportDashboardPage() {
-  const snapshot = getDecisionSupportSnapshot();
-
   return (
     <RoleGate allow={["admin", "manager"]}>
       {(viewer) => (
@@ -16,6 +14,17 @@ export default function DecisionSupportDashboardPage() {
           description={adminCopy.dashboard.description}
           role={viewer.role}
         >
+          <AnalyticsReportingContent />
+        </AdminShell>
+      )}
+    </RoleGate>
+  );
+}
+
+async function AnalyticsReportingContent() {
+  const [metrics, reports] = await Promise.all([fetchDashboardMetrics(), fetchLatestJobsPerTemplate()]);
+
+  return (
       <div className="space-y-8">
         <section aria-labelledby="dashboard-kpi-title" data-insight="decision-support kpi alerts">
           <div className="mb-4">
@@ -27,7 +36,7 @@ export default function DecisionSupportDashboardPage() {
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {snapshot.metrics.map((metric) => (
+            {metrics.map((metric) => (
               <article
                 className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
                 key={metric.id}
@@ -53,22 +62,26 @@ export default function DecisionSupportDashboardPage() {
             </p>
           </div>
           <div className="overflow-hidden rounded-proph-lg border border-proph-hairline">
-            {snapshot.reports.map((report) => (
+            {reports.map((report) => (
               <article
                 className="grid gap-3 border-b border-proph-hairline bg-proph-canvas p-5 last:border-b-0 md:grid-cols-[1fr_auto]"
-                key={report.reportId}
+                key={report.id}
               >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80">{report.reportId}</span>
+                    <span className="text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80">{report.id}</span>
                     <StatusPill>{report.version}</StatusPill>
                   </div>
-                  <h3 className="mt-2 text-[17px] font-semibold leading-[1.24] tracking-[-0.374px]">{report.title}</h3>
-                  <p className="mt-1 font-mono text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">{report.hash}</p>
+                  <h3 className="mt-2 text-[17px] font-semibold leading-[1.24] tracking-[-0.374px]">{report.templateName}</h3>
+                  <p className="mt-1 font-mono text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">{report.rowHash}</p>
+                  <p className="mt-2 text-[13px] leading-[1.38] tracking-[-0.12px] text-proph-ink-muted-80">
+                    {report.availableFormats.join(" / ")} · {report.outputRows} rows
+                  </p>
                 </div>
                 <div className="text-left text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80 md:text-right">
-                  <p>{report.owner}</p>
+                  <p>{report.retention.category}</p>
                   <p>{report.generatedAt}</p>
+                  <p>{report.retention.expiresAt}</p>
                 </div>
               </article>
             ))}
@@ -85,16 +98,20 @@ export default function DecisionSupportDashboardPage() {
             </p>
           </div>
           <ul className="grid gap-4 md:grid-cols-2">
-            {snapshot.auditQueries.map((query) => (
-              <li className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5" key={query}>
-                <span className="font-mono text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">{query}</span>
+            {reports.length === 0 ? (
+              <li className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+                No report jobs have been generated yet.
+              </li>
+            ) : reports.map((report) => (
+              <li className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5" key={report.id}>
+                <span className="font-mono text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">{report.sourceSnapshot.sourceVersion}</span>
+                <p className="mt-2 text-[13px] leading-[1.38] tracking-[-0.12px] text-proph-ink-muted-80">
+                  {report.sourceSnapshot.sourceService} · {report.id} · {report.sourceSnapshot.sourceGeneratedAt}
+                </p>
               </li>
             ))}
           </ul>
         </section>
       </div>
-        </AdminShell>
-      )}
-    </RoleGate>
   );
 }

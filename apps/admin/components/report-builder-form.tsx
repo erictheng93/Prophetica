@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminCopy } from "@/lib/admin-copy";
-import type { ReportTemplate } from "@/lib/analytics-reporting";
+import { createJob, type ReportTemplate } from "@/lib/analytics-reporting";
 import type { Role } from "@/lib/rbac";
 
 interface ReportBuilderFormProps {
@@ -30,9 +30,31 @@ export function ReportBuilderForm({ template, viewerRole }: ReportBuilderFormPro
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     startTransition(() => {
-      router.push("/analytics/jobs");
+      void submitReport(form);
     });
+  }
+
+  async function submitReport(form: HTMLFormElement) {
+    const data = new FormData(form);
+    const columns = data.getAll("columns").map(String);
+    const startAt = normalizeDateTime(String(data.get("startAt") ?? ""));
+    const endAt = normalizeDateTime(String(data.get("endAt") ?? ""));
+    const job = await createJob({
+      role: viewerRole,
+      templateCode: template.code,
+      params: {
+        startAt,
+        endAt,
+        timezone: String(data.get("timezone") ?? "Asia/Taipei") as "Asia/Taipei" | "UTC",
+        sortBy: String(data.get("sortBy") ?? template.fields[0]?.key ?? ""),
+        sortDirection: String(data.get("sortDirection") ?? "asc") as "asc" | "desc",
+        columns,
+      },
+      revealSensitiveFields: data.get("revealSensitiveFields") === "on",
+    });
+    router.push(`/analytics/jobs/${job.id}`);
   }
 
   return (
@@ -157,6 +179,11 @@ export function ReportBuilderForm({ template, viewerRole }: ReportBuilderFormPro
       </button>
     </form>
   );
+}
+
+function normalizeDateTime(value: string): string {
+  if (!value) return "2026-05-10T00:00:00+08:00";
+  return value.length === 16 ? `${value}:00+08:00` : value;
 }
 
 function Field({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {

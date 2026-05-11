@@ -1,10 +1,15 @@
-use std::{env, sync::Arc};
+use std::{
+    collections::HashMap,
+    env,
+    hash::{Hash, Hasher},
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{FromRequestParts, Path, Query, State},
-    http::{StatusCode, header::HeaderName, request::Parts},
+    http::{HeaderMap, StatusCode, header::HeaderName, request::Parts},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
 };
@@ -17,10 +22,12 @@ pub const SERVICE_NAME: &str = "api-gateway";
 pub const DEFAULT_PORT: u16 = 8080;
 
 pub mod admin_ops;
+pub mod analytics_reporting;
 pub mod drill_logs;
 pub mod kill_switch;
 
 const USER_ID_HEADER: HeaderName = HeaderName::from_static("x-user-id");
+const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-key");
 
 #[derive(Clone)]
 pub struct AppState<C> {
@@ -38,14 +45,16 @@ impl<C> AppState<C> {
 pub struct AppStateWithEngine<W, E> {
     wallet_ledger: W,
     engine: E,
+    idempotency: IdempotencyStore,
 }
 
 impl<W, E> AppStateWithEngine<W, E> {
     #[must_use]
-    pub const fn new(wallet_ledger: W, engine: E) -> Self {
+    pub fn new(wallet_ledger: W, engine: E) -> Self {
         Self {
             wallet_ledger,
             engine,
+            idempotency: IdempotencyStore::default(),
         }
     }
 }
@@ -55,17 +64,38 @@ pub struct AppStateWithServices<W, E, R> {
     wallet_ledger: W,
     engine: E,
     referral: R,
+    idempotency: IdempotencyStore,
 }
 
 impl<W, E, R> AppStateWithServices<W, E, R> {
     #[must_use]
-    pub const fn new(wallet_ledger: W, engine: E, referral: R) -> Self {
+    pub fn new(wallet_ledger: W, engine: E, referral: R) -> Self {
         Self {
             wallet_ledger,
             engine,
             referral,
+            idempotency: IdempotencyStore::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+struct IdempotencyStore {
+    records: Arc<Mutex<HashMap<IdempotencyScope, IdempotencyRecord>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct IdempotencyScope {
+    user_id: String,
+    method: &'static str,
+    route: &'static str,
+    key: String,
+}
+
+#[derive(Debug, Clone)]
+struct IdempotencyRecord {
+    request_hash: u64,
+    response: OrderActionResponse,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,6 +154,30 @@ impl ApiError {
         Self {
             status: StatusCode::BAD_GATEWAY,
             error: "wallet_ledger_unavailable",
+            message: message.into(),
+        }
+    }
+
+    fn bad_request(error: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            error,
+            message: message.into(),
+        }
+    }
+
+    fn conflict(error: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            error,
+            message: message.into(),
+        }
+    }
+
+    fn internal(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
             message: message.into(),
         }
     }
@@ -623,6 +677,83 @@ where
         .map_err(|error| ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string()))
 }
 
+impl IdempotencyStore {
+    fn find(&self, scope: &IdempotencyScope) -> Result<Option<IdempotencyRecord>, ApiError> {
+        self.records
+            .lock()
+            .map_err(|_| ApiError::internal("idempotency store lock poisoned"))
+            .map(|records| records.get(scope).cloned())
+    }
+
+    fn insert(&self, scope: IdempotencyScope, record: IdempotencyRecord) -> Result<(), ApiError> {
+        self.records
+            .lock()
+            .map_err(|_| ApiError::internal("idempotency store lock poisoned"))?
+            .insert(scope, record);
+        Ok(())
+    }
+}
+
+fn idempotency_scope(
+    headers: &HeaderMap,
+    user_id: &str,
+    method: &'static str,
+    route: &'static str,
+) -> Result<IdempotencyScope, ApiError> {
+    let Some(value) = headers.get(&IDEMPOTENCY_KEY_HEADER) else {
+        return Err(ApiError::bad_request(
+            "idempotency_key_required",
+            "Idempotency-Key header is required for mutating trading requests",
+        ));
+    };
+    let key = value
+        .to_str()
+        .map_err(|_| {
+            ApiError::bad_request(
+                "idempotency_key_required",
+                "Idempotency-Key header must be valid ASCII",
+            )
+        })?
+        .trim();
+    if key.is_empty() {
+        return Err(ApiError::bad_request(
+            "idempotency_key_required",
+            "Idempotency-Key header must not be empty",
+        ));
+    }
+
+    Ok(IdempotencyScope {
+        user_id: user_id.to_owned(),
+        method,
+        route,
+        key: key.to_owned(),
+    })
+}
+
+fn order_request_hash(user_id: &str, market_id: &str, request: &PlaceOrderRequest) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    "POST".hash(&mut hasher);
+    "/v1/markets/:market_id/orders".hash(&mut hasher);
+    user_id.hash(&mut hasher);
+    market_id.hash(&mut hasher);
+    request.side.hash(&mut hasher);
+    request.outcome.hash(&mut hasher);
+    request.order_type.hash(&mut hasher);
+    request.price_pts.hash(&mut hasher);
+    request.quantity.hash(&mut hasher);
+    request.time_in_force.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn cancel_request_hash(user_id: &str, order_id: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    "DELETE".hash(&mut hasher);
+    "/v1/orders/:order_id".hash(&mut hasher);
+    user_id.hash(&mut hasher);
+    order_id.hash(&mut hasher);
+    hasher.finish()
+}
+
 pub fn router<C>(wallet_ledger: C) -> Router
 where
     C: WalletLedgerClient + Clone + Send + Sync + 'static,
@@ -771,16 +902,41 @@ async fn place_order<W, E>(
     State(state): State<Arc<AppStateWithEngine<W, E>>>,
     auth: AuthContext,
     Path(market_id): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<PlaceOrderRequest>,
 ) -> Result<Json<OrderActionResponse>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
 {
+    let scope = idempotency_scope(
+        &headers,
+        &auth.user_id,
+        "POST",
+        "/v1/markets/:market_id/orders",
+    )?;
+    let request_hash = order_request_hash(&auth.user_id, &market_id, &request);
+    if let Some(record) = state.idempotency.find(&scope)? {
+        if record.request_hash == request_hash {
+            return Ok(Json(record.response));
+        }
+        return Err(ApiError::conflict(
+            "idempotency_conflict",
+            "Idempotency-Key was already used with a different request",
+        ));
+    }
+
     let response = state
         .engine
         .place_order(&auth.user_id, &market_id, &request)
         .await?;
+    state.idempotency.insert(
+        scope,
+        IdempotencyRecord {
+            request_hash,
+            response: response.clone(),
+        },
+    )?;
     Ok(Json(response))
 }
 
@@ -789,12 +945,32 @@ async fn cancel_order<W, E>(
     State(state): State<Arc<AppStateWithEngine<W, E>>>,
     auth: AuthContext,
     Path(order_id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Json<OrderActionResponse>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
 {
+    let scope = idempotency_scope(&headers, &auth.user_id, "DELETE", "/v1/orders/:order_id")?;
+    let request_hash = cancel_request_hash(&auth.user_id, &order_id);
+    if let Some(record) = state.idempotency.find(&scope)? {
+        if record.request_hash == request_hash {
+            return Ok(Json(record.response));
+        }
+        return Err(ApiError::conflict(
+            "idempotency_conflict",
+            "Idempotency-Key was already used with a different request",
+        ));
+    }
+
     let response = state.engine.cancel_order(&auth.user_id, &order_id).await?;
+    state.idempotency.insert(
+        scope,
+        IdempotencyRecord {
+            request_hash,
+            response: response.clone(),
+        },
+    )?;
     Ok(Json(response))
 }
 
@@ -851,6 +1027,7 @@ async fn place_order_with_services<W, E, R>(
     State(state): State<Arc<AppStateWithServices<W, E, R>>>,
     auth: AuthContext,
     Path(market_id): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<PlaceOrderRequest>,
 ) -> Result<Json<OrderActionResponse>, ApiError>
 where
@@ -858,10 +1035,34 @@ where
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
 {
+    let scope = idempotency_scope(
+        &headers,
+        &auth.user_id,
+        "POST",
+        "/v1/markets/:market_id/orders",
+    )?;
+    let request_hash = order_request_hash(&auth.user_id, &market_id, &request);
+    if let Some(record) = state.idempotency.find(&scope)? {
+        if record.request_hash == request_hash {
+            return Ok(Json(record.response));
+        }
+        return Err(ApiError::conflict(
+            "idempotency_conflict",
+            "Idempotency-Key was already used with a different request",
+        ));
+    }
+
     let response = state
         .engine
         .place_order(&auth.user_id, &market_id, &request)
         .await?;
+    state.idempotency.insert(
+        scope,
+        IdempotencyRecord {
+            request_hash,
+            response: response.clone(),
+        },
+    )?;
     Ok(Json(response))
 }
 
@@ -869,13 +1070,33 @@ async fn cancel_order_with_services<W, E, R>(
     State(state): State<Arc<AppStateWithServices<W, E, R>>>,
     auth: AuthContext,
     Path(order_id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Json<OrderActionResponse>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
 {
+    let scope = idempotency_scope(&headers, &auth.user_id, "DELETE", "/v1/orders/:order_id")?;
+    let request_hash = cancel_request_hash(&auth.user_id, &order_id);
+    if let Some(record) = state.idempotency.find(&scope)? {
+        if record.request_hash == request_hash {
+            return Ok(Json(record.response));
+        }
+        return Err(ApiError::conflict(
+            "idempotency_conflict",
+            "Idempotency-Key was already used with a different request",
+        ));
+    }
+
     let response = state.engine.cancel_order(&auth.user_id, &order_id).await?;
+    state.idempotency.insert(
+        scope,
+        IdempotencyRecord {
+            request_hash,
+            response: response.clone(),
+        },
+    )?;
     Ok(Json(response))
 }
 
@@ -955,11 +1176,18 @@ where
 pub async fn run_http() -> anyhow::Result<()> {
     observability::init_json_tracing(SERVICE_NAME);
     let config = ServiceConfig::from_env(SERVICE_NAME, DEFAULT_PORT)?;
-    let app = service_stub::router(&config).merge(router_with_services(
-        HttpWalletLedgerClient::from_env()?,
-        HttpMatchingEngineClient::from_env()?,
-        HttpReferralClient::from_env()?,
-    ));
+    let app = service_stub::router(&config)
+        .merge(router_with_services(
+            HttpWalletLedgerClient::from_env()?,
+            HttpMatchingEngineClient::from_env()?,
+            HttpReferralClient::from_env()?,
+        ))
+        .merge(
+            analytics_reporting::AnalyticsProxyConfig::from_env().map_or_else(
+                |_| analytics_reporting::unconfigured_router(),
+                analytics_reporting::proxy_router,
+            ),
+        );
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "api gateway listening");
 
@@ -1057,6 +1285,124 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn place_order_requires_idempotency_key() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/markets/mkt-election/orders")
+                    .header("x-user-id", "10")
+                    .header("content-type", "application/json")
+                    .body(Body::from(order_request_body(3).to_string()))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("idempotency_key_required"));
+        assert_eq!(engine.place_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn place_order_replays_same_idempotency_key_without_second_engine_call() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone());
+        let request_body = order_request_body(3);
+
+        let first = app
+            .clone()
+            .oneshot(order_post("idem-order-001", &request_body))
+            .await
+            .expect("first request should be handled");
+        let second = app
+            .oneshot(order_post("idem-order-001", &request_body))
+            .await
+            .expect("second request should be handled");
+
+        assert_eq!(first.status(), StatusCode::OK);
+        assert_eq!(second.status(), StatusCode::OK);
+        let body = response_json(second).await;
+        assert_eq!(body["order_id"], json!("ord_01HZ0000000000000000000000"));
+        assert_eq!(engine.place_requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn place_order_rejects_idempotency_key_reuse_with_different_payload() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone());
+
+        let first = app
+            .clone()
+            .oneshot(order_post("idem-order-002", &order_request_body(3)))
+            .await
+            .expect("first request should be handled");
+        let second = app
+            .oneshot(order_post("idem-order-002", &order_request_body(4)))
+            .await
+            .expect("second request should be handled");
+
+        assert_eq!(first.status(), StatusCode::OK);
+        assert_eq!(second.status(), StatusCode::CONFLICT);
+        let body = response_json(second).await;
+        assert_eq!(body["error"], json!("idempotency_conflict"));
+        assert_eq!(engine.place_requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn cancel_order_requires_idempotency_key() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/orders/ord_01HZ0000000000000000000000")
+                    .header("x-user-id", "10")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("idempotency_key_required"));
+        assert_eq!(engine.cancel_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn cancel_order_replays_same_idempotency_key_without_second_engine_call() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone());
+
+        let first = app
+            .clone()
+            .oneshot(cancel_delete(
+                "idem-cancel-001",
+                "ord_01HZ0000000000000000000000",
+            ))
+            .await
+            .expect("first request should be handled");
+        let second = app
+            .oneshot(cancel_delete(
+                "idem-cancel-001",
+                "ord_01HZ0000000000000000000000",
+            ))
+            .await
+            .expect("second request should be handled");
+
+        assert_eq!(first.status(), StatusCode::OK);
+        assert_eq!(second.status(), StatusCode::OK);
+        let body = response_json(second).await;
+        assert_eq!(body["status"], json!("CANCELLED"));
+        assert_eq!(engine.cancel_requests().len(), 1);
+    }
+
+    #[tokio::test]
     async fn place_order_forwards_authenticated_user_to_matching_engine() {
         let engine = InMemoryMatchingEngineClient::default();
         let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone());
@@ -1066,6 +1412,7 @@ mod tests {
                     .method("POST")
                     .uri("/v1/markets/mkt-election/orders")
                     .header("x-user-id", "10")
+                    .header("idempotency-key", "idem-order-forward")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         json!({
@@ -1113,6 +1460,7 @@ mod tests {
                     .method("DELETE")
                     .uri("/v1/orders/ord_01HZ0000000000000000000000")
                     .header("x-user-id", "10")
+                    .header("idempotency-key", "idem-cancel-forward")
                     .body(Body::empty())
                     .unwrap_or_else(|error| panic!("request should build: {error}")),
             )
@@ -1238,6 +1586,38 @@ mod tests {
         Request::builder()
             .method("GET")
             .uri(uri)
+            .body(Body::empty())
+            .unwrap_or_else(|error| panic!("request should build: {error}"))
+    }
+
+    fn order_request_body(quantity: i64) -> Value {
+        json!({
+            "side": "sell",
+            "outcome": "YES",
+            "type": "LIMIT",
+            "price_pts": 55,
+            "quantity": quantity,
+            "time_in_force": "GTC"
+        })
+    }
+
+    fn order_post(idempotency_key: &str, body: &Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/v1/markets/mkt-election/orders")
+            .header("x-user-id", "10")
+            .header("idempotency-key", idempotency_key)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap_or_else(|error| panic!("request should build: {error}"))
+    }
+
+    fn cancel_delete(idempotency_key: &str, order_id: &str) -> Request<Body> {
+        Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/orders/{order_id}"))
+            .header("x-user-id", "10")
+            .header("idempotency-key", idempotency_key)
             .body(Body::empty())
             .unwrap_or_else(|error| panic!("request should build: {error}"))
     }

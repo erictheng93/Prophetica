@@ -3,7 +3,7 @@ import { AdminShell } from "@/components/admin-shell";
 import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
-import { listReportTemplates, type ReportTemplate } from "@/lib/analytics-reporting";
+import { fetchTemplates, type ReportTemplate } from "@/lib/analytics-reporting";
 
 const categoryLabel: Record<ReportTemplate["category"], string> = {
   read_only_operations: adminCopy.analytics.categoryOps,
@@ -14,8 +14,8 @@ const categoryLabel: Record<ReportTemplate["category"], string> = {
 export default function AnalyticsTemplatesPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {(viewer) => {
-        const templates = listReportTemplates(viewer.role);
+      {async (viewer) => {
+        const templates = await fetchTemplates();
         return (
           <AdminShell
             eyebrow={adminCopy.analytics.eyebrow}
