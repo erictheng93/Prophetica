@@ -39,6 +39,8 @@ target/
 /dist/
 # sccache local cache（CI 走 mozilla-actions/sccache-action）
 .sccache/
+# native cargo build target used during SPEC-020 local poc
+target-spec020-native/
 # 注意：.sqlx/ 目錄為 sqlx 離線編譯快取，**必須 commit 進 git**（SPEC-017 §3.3 R-6），
 # 此處不排除；CI 跑 `cargo sqlx prepare --check` 確保與 schema 同步。
 
@@ -47,6 +49,7 @@ target/
 # ---------------------------------------------------------------
 node_modules/
 .next/
+.open-next/
 out/
 .cache/
 .turbo/
