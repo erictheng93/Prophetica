@@ -90,7 +90,7 @@ ADR-0006 範圍嚴格限定為「ADR-0003 §5 INV 集合擴展」：
 | **INV-3** | `Bank.TrustAccount + Σ(Revenue.*) − Σ(Expense.*) = 平台對玩家負債總額` | 每日 T+1 對帳 | ADR-0003 v1.0 §5 |
 | **INV-4** | `Player.Wallet.X` 與 `Player.Frozen.X` 任意時刻 ≥ 0（chargeback 反沖外）| application + DB CHECK | ADR-0003 v1.0 §5（範圍由 ADR-0006 擴展含 Frozen） |
 | **INV-5** | 每個 ledger_entry 一旦寫入不可 UPDATE / DELETE | DB role 權限分離 + audit | ADR-0003 v1.0 §5 |
-| **INV-6** | `Player.Wallet.{user_id}` 之 outflow（direction = +1，債務減少）目的地白名單，僅限：(a) `Player.Locked.{user_id}`、(b) `Player.Frozen.{user_id}`、(c) `Revenue.TradingFee` / `Revenue.SettlementFee`、(d) `Player.Wallet.{other_user_id}`（**僅限** `txn_type ∈ {trade, settle}`）、(e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 SPEC-002 §8.1 deposit 反向沖正；非「點數變現」路徑，玩家不取得現金）；**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何其他銀行 / 支付通路 / 外部錢包科目 | DB CONSTRAINT TRIGGER（拒絕 commit）+ CI sentinel-scan grep gate | **ADR-0006 新增**（呼應 SPEC-011 §6.3 R-1 紅線；chargeback carve-out 對齊 SPEC-002 §8.1）|
+| **INV-6** | `Player.Wallet.{user_id}` 之 outflow（direction = +1，債務減少）目的地白名單，僅限：(a) `Player.Locked.{user_id}`、(b) `Player.Frozen.{user_id}`、(c) `Revenue.TradingFee` / `Revenue.SettlementFee`、(d) `Player.Wallet.{other_user_id}`（**僅限** `txn_type ∈ {trade, settle}`）、(e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 SPEC-002 §8.1 deposit 反向沖正；非「點數變現」路徑，玩家不取得現金）、(f) `Expense.ManualPointsGrant`（**僅限** `txn_type = manual_points_adjustment` 且 `metadata.adjustment_direction = 'deduct'` 且 `metadata.actor_role ∈ {'admin','manager'}`，此為 MVP 手動發點成本沖回，非對外付款）；**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何其他銀行 / 支付通路 / 外部錢包科目 | DB CONSTRAINT TRIGGER（拒絕 commit）+ CI sentinel-scan grep gate | **ADR-0006 新增**（呼應 SPEC-011 §6.3 R-1 紅線；chargeback carve-out 對齊 SPEC-002 §8.1；manual adjustment carve-out 對齊 SPEC-002 v0.1.9）|
 
 ### 4.2 INV-6 的 mechanical check 落地策略
 
@@ -135,6 +135,17 @@ BEGIN
           -- (e) Bank.TrustAccount.* 限 chargeback reversal（SPEC-002 §8.1）
           OR (a2.code LIKE 'Bank.TrustAccount.%'
               AND (SELECT txn_type FROM ledger_transactions WHERE id = NEW.txn_id) = 'chargeback')
+          -- (f) Expense.ManualPointsGrant 限 manual_points_adjustment deduct（SPEC-002 v0.1.9）
+          OR (a2.code = 'Expense.ManualPointsGrant'
+              AND EXISTS (
+                  SELECT 1
+                  FROM ledger_transactions t
+                  WHERE t.id = NEW.txn_id
+                    AND t.txn_type = 'manual_points_adjustment'
+                    AND t.metadata->>'adjustment_direction' = 'deduct'
+                    AND t.metadata->>'actor_role' IN ('admin', 'manager')
+                    AND COALESCE(t.metadata->>'audit_log_id', '') <> ''
+              ))
       );
 
     IF FOUND THEN
@@ -237,6 +248,7 @@ ADR-0003 v1.0 §5 之 INV-2 公式「`Σ(Wallet) + Σ(Locked)`」與 INV-4 範�
 - [ ] CI sentinel-scan grep gate 落地，PR #1 通過所有預設 happy path 測試（無誤報）
 - [ ] 對帳腳本（每 5 分鐘 INV-2 check）在 staging 環境驗證 1M 筆 entries 含 Frozen 子科目仍可在 5 分鐘內完成
 - [ ] SPEC-002 v0.1.5 既有 INV-6 條目維持「pending ADR」標註於 ADR-0006 落地後移除
+- [ ] SPEC-002 v0.1.9 manual_points_adjustment carve-out 已同步到 SDK invariant 與 DB trigger；affiliate 扣點與未帶 audit_log_id 的扣點必須 fail
 - [ ] ADR-0003 v1.0.2 Revision History 加 cross-ref 至本 ADR
 - [ ] SPEC-007 §6.4 wallet-ledger latency budget 壓測驗證 INV-6 trigger overhead 不破 2ms P99
 
@@ -274,3 +286,4 @@ ADR-0003 v1.0 §5 之 INV-2 公式「`Σ(Wallet) + Σ(Locked)`」與 INV-4 範�
 |------|------|------|------|
 | 2026-05-07 | v1.0 | Tech Lead | 首版 Accepted；ADR-0003 §5 INV 集合擴展為 INV-1 ~ INV-6；INV-2 / INV-4 公式對齊含 Frozen 子科目（事後 governance 追認）；新增 INV-6 outflow whitelist（連動 R-1 紅線清除）|
 | 2026-05-07 | v1.0.1 | Tech Lead | INV-6 白名單補 chargeback carve-out（v1.0 落地過程中發現遺漏）：(a)-(d) 之外新增 (e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 SPEC-002 §8.1 deposit 反向沖正）。理由：chargeback 為「玩家信用卡爭議 → 銀行抽走原儲值 → 平台對玩家負債歸零 + 託管帳餘額減少退回卡組織」之合法 reversal，玩家**不**取得現金；§4.1 INV-6 行 + §4.2.1 plpgsql trigger 同步更新。發現過程：跑 wallet-ledger-service `chargeback_can_project_wallet_above_zero` test 時觸發 INV-6 偽陽性。屬於 v1.0 落地補正（typo / erratum 級），主決策方向未變動。 |
+| 2026-05-11 | v1.0.2 | Tech Lead | INV-6 白名單補 SPEC-002 v0.1.9 MVP `manual_points_adjustment` carve-out：(f) `Expense.ManualPointsGrant` 僅允許 `manual_points_adjustment` 扣點、`metadata.adjustment_direction = 'deduct'`、`metadata.actor_role ∈ {'admin','manager'}` 且帶 `audit_log_id`。此為手動發點成本沖回，不是點數回兌或對外付款；affiliate 扣點仍為 forbidden。 |

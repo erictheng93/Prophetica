@@ -126,7 +126,10 @@ where
     let idempotency_key = idempotency_key_from_headers(&headers)?;
     tracing::Span::current().record("idempotency.key", idempotency_key.as_str());
     let draft = request.try_into_draft(idempotency_key)?;
-    let audit_log_id = draft.audit_log.as_ref().map(|audit_log| audit_log.id.clone());
+    let audit_log_id = draft
+        .audit_log
+        .as_ref()
+        .map(|audit_log| audit_log.id.clone());
     let transaction = service.post_transaction(draft).await.map_err(api_error)?;
 
     Ok(Json(PostTransactionResponse {
@@ -149,7 +152,10 @@ where
     let idempotency_key = idempotency_key_from_headers(&headers)?;
     tracing::Span::current().record("idempotency.key", idempotency_key.as_str());
     let draft = request.try_into_draft(idempotency_key, &headers)?;
-    let audit_log_id = draft.audit_log.as_ref().map(|audit_log| audit_log.id.clone());
+    let audit_log_id = draft
+        .audit_log
+        .as_ref()
+        .map(|audit_log| audit_log.id.clone());
     let transaction = service.post_transaction(draft).await.map_err(api_error)?;
 
     Ok(Json(PostTransactionResponse {
@@ -251,6 +257,38 @@ impl ManualPointsAdjustmentRequest {
         idempotency_key: String,
         headers: &HeaderMap,
     ) -> Result<PostTransactionDraft, (StatusCode, Json<ApiErrorResponse>)> {
+        let parts = self.try_into_parts(headers)?;
+        let audit_log_id = format!("audit:{idempotency_key}");
+        let metadata = parts.ledger_metadata(&audit_log_id);
+        let audit_metadata = parts.audit_metadata(&audit_log_id, &idempotency_key, headers);
+        let entries = parts.entries()?;
+
+        Ok(PostTransactionDraft {
+            txn_type: "manual_points_adjustment".to_owned(),
+            idempotency_key,
+            correlation_id: parts.correlation_id.clone(),
+            description: Some(format!(
+                "manual points adjustment {} {} minor units for {}",
+                parts.direction, parts.delta_minor_units, parts.target_user_id
+            )),
+            metadata,
+            audit_log: Some(AuditLogDraft {
+                id: audit_log_id,
+                action: "manual_points_adjustment".to_owned(),
+                actor_user_id: parts.actor_user_id,
+                actor_role: parts.actor_role,
+                target_user_id: parts.target_user_id,
+                correlation_id: parts.correlation_id,
+                metadata: audit_metadata,
+            }),
+            entries,
+        })
+    }
+
+    fn try_into_parts(
+        self,
+        headers: &HeaderMap,
+    ) -> Result<ManualPointsAdjustmentDraftParts, (StatusCode, Json<ApiErrorResponse>)> {
         let actor_user_id = self.actor_user_id.trim().to_owned();
         let actor_role = self.actor_role.trim().to_ascii_lowercase();
         let affiliate_id = self.affiliate_id.map(|value| value.trim().to_owned());
@@ -283,48 +321,86 @@ impl ManualPointsAdjustmentRequest {
             ));
         }
 
-        let audit_log_id = format!("audit:{idempotency_key}");
-        let metadata = json!({
-            "actor_user_id": actor_user_id,
-            "actor_role": actor_role,
-            "affiliate_id": affiliate_id,
-            "target_user_id": target_user_id,
-            "adjustment_direction": direction,
+        Ok(ManualPointsAdjustmentDraftParts {
+            actor_user_id,
+            actor_role,
+            affiliate_id,
+            target_user_id,
+            direction,
+            delta_minor_units: self.delta_minor_units,
+            reason_code,
+            reason_text,
+            correlation_id,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ManualPointsAdjustmentDraftParts {
+    actor_user_id: String,
+    actor_role: String,
+    affiliate_id: Option<String>,
+    target_user_id: String,
+    direction: String,
+    delta_minor_units: i64,
+    reason_code: String,
+    reason_text: String,
+    correlation_id: Option<String>,
+}
+
+impl ManualPointsAdjustmentDraftParts {
+    fn ledger_metadata(&self, audit_log_id: &str) -> Value {
+        json!({
+            "actor_user_id": self.actor_user_id,
+            "actor_role": self.actor_role,
+            "affiliate_id": self.affiliate_id,
+            "target_user_id": self.target_user_id,
+            "adjustment_direction": self.direction,
             "delta_minor_units": self.delta_minor_units,
-            "reason_code": reason_code,
-            "reason_text": reason_text,
+            "reason_code": self.reason_code,
+            "reason_text": self.reason_text,
             "audit_log_id": audit_log_id,
-        });
-        let audit_metadata = json!({
-            "actor_user_id": actor_user_id,
-            "actor_role": actor_role,
-            "affiliate_id": affiliate_id,
-            "target_user_id": target_user_id,
-            "adjustment_direction": direction,
+        })
+    }
+
+    fn audit_metadata(
+        &self,
+        audit_log_id: &str,
+        idempotency_key: &str,
+        headers: &HeaderMap,
+    ) -> Value {
+        json!({
+            "actor_user_id": self.actor_user_id,
+            "actor_role": self.actor_role,
+            "affiliate_id": self.affiliate_id,
+            "target_user_id": self.target_user_id,
+            "adjustment_direction": self.direction,
             "delta_minor_units": self.delta_minor_units,
-            "reason_code": reason_code,
-            "reason_text": reason_text,
+            "reason_code": self.reason_code,
+            "reason_text": self.reason_text,
             "idempotency_key": idempotency_key,
-            "correlation_id": correlation_id,
+            "correlation_id": self.correlation_id,
             "audit_log_id": audit_log_id,
             "source_ip": header_value(headers, "x-forwarded-for"),
             "user_agent": header_value(headers, "user-agent"),
-        });
+        })
+    }
 
-        let entries = match direction.as_str() {
+    fn entries(&self) -> Result<Vec<LedgerEntryDraft>, (StatusCode, Json<ApiErrorResponse>)> {
+        let entries = match self.direction.as_str() {
             "grant" => vec![
                 LedgerEntryDraft::new(
                     "Expense.ManualPointsGrant",
                     LedgerAmount::from_minor_units(self.delta_minor_units),
                 ),
                 LedgerEntryDraft::new(
-                    format!("Player.Wallet.{target_user_id}"),
+                    format!("Player.Wallet.{}", self.target_user_id),
                     LedgerAmount::from_minor_units(-self.delta_minor_units),
                 ),
             ],
             "deduct" => vec![
                 LedgerEntryDraft::new(
-                    format!("Player.Wallet.{target_user_id}"),
+                    format!("Player.Wallet.{}", self.target_user_id),
                     LedgerAmount::from_minor_units(self.delta_minor_units),
                 ),
                 LedgerEntryDraft::new(
@@ -339,26 +415,7 @@ impl ManualPointsAdjustmentRequest {
             }
         };
 
-        Ok(PostTransactionDraft {
-            txn_type: "manual_points_adjustment".to_owned(),
-            idempotency_key,
-            correlation_id: correlation_id.clone(),
-            description: Some(format!(
-                "manual points adjustment {} {} minor units for {}",
-                direction, self.delta_minor_units, target_user_id
-            )),
-            metadata: metadata.clone(),
-            audit_log: Some(AuditLogDraft {
-                id: audit_log_id,
-                action: "manual_points_adjustment".to_owned(),
-                actor_user_id,
-                actor_role,
-                target_user_id,
-                correlation_id,
-                metadata: audit_metadata,
-            }),
-            entries,
-        })
+        Ok(entries)
     }
 }
 
@@ -468,7 +525,10 @@ fn wallet_balance_read_audit_id(target_user_id: &str, context: &AuditActorContex
         "timestamp": timestamp,
     });
     let encoded = serde_json::to_vec(&payload).unwrap_or_default();
-    format!("audit:wallet_balance_read:{}", hex::encode(Sha256::digest(encoded)))
+    format!(
+        "audit:wallet_balance_read:{}",
+        hex::encode(Sha256::digest(encoded))
+    )
 }
 
 impl PostEntryRequest {
@@ -497,7 +557,10 @@ impl PostEntryRequest {
 fn api_error(error: PostTransactionError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
         PostTransactionError::Validation(error) => validation_error(error.to_string()),
-        PostTransactionError::InsufficientFunds { .. } => validation_error(error.to_string()),
+        PostTransactionError::InsufficientFunds { .. }
+        | PostTransactionError::ManualAdjustmentInvalid { .. } => {
+            validation_error(error.to_string())
+        }
         PostTransactionError::IdempotencyConflict { .. } => (
             StatusCode::CONFLICT,
             Json(ApiErrorResponse {
@@ -505,7 +568,6 @@ fn api_error(error: PostTransactionError) -> (StatusCode, Json<ApiErrorResponse>
                 message: error.to_string(),
             }),
         ),
-        PostTransactionError::ManualAdjustmentInvalid { .. } => validation_error(error.to_string()),
         PostTransactionError::Store(error) => store_error(error),
     }
 }
@@ -810,10 +872,7 @@ mod tests {
         let body = response_json(response).await;
         assert_eq!(body["txn_id"], json!(1));
         assert_eq!(body["idempotency_key"], json!("manual-points:grant:001"));
-        assert_eq!(
-            body["audit_log_id"],
-            json!("audit:manual-points:grant:001")
-        );
+        assert_eq!(body["audit_log_id"], json!("audit:manual-points:grant:001"));
         assert_eq!(store.commit_count(), 1);
         assert_eq!(store.audit_count(), 1);
     }

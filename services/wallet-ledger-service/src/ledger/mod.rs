@@ -184,10 +184,7 @@ pub trait LedgerStore {
         limit: i64,
     ) -> Result<Vec<LedgerEntryView>, LedgerStoreError>;
 
-    async fn record_audit_log(
-        &self,
-        audit_log: &AuditLogDraft,
-    ) -> Result<(), LedgerStoreError>;
+    async fn record_audit_log(&self, audit_log: &AuditLogDraft) -> Result<(), LedgerStoreError>;
 
     async fn delete_expired_idempotency_records(
         &self,
@@ -314,10 +311,7 @@ where
     /// # Errors
     ///
     /// Returns [`LedgerStoreError`] when the backing store cannot persist the audit log.
-    pub async fn record_audit_log(
-        &self,
-        audit_log: AuditLogDraft,
-    ) -> Result<(), LedgerStoreError> {
+    pub async fn record_audit_log(&self, audit_log: AuditLogDraft) -> Result<(), LedgerStoreError> {
         self.store.record_audit_log(&audit_log).await
     }
 
@@ -369,7 +363,12 @@ fn validate_manual_points_adjustment(
     require_metadata(&draft.metadata, "reason_text")?;
     require_metadata(&draft.metadata, "audit_log_id")?;
 
-    if role == "affiliate" && draft.metadata.get("affiliate_id").and_then(Value::as_str).is_none()
+    if role == "affiliate"
+        && draft
+            .metadata
+            .get("affiliate_id")
+            .and_then(Value::as_str)
+            .is_none()
     {
         return manual_adjustment_error("affiliate_id is required for affiliate grants");
     }
@@ -426,17 +425,16 @@ fn require_manual_entries(
         return manual_adjustment_error("manual adjustment must contain exactly two entries");
     }
     let wallet_code = format!("Player.Wallet.{target_user_id}");
-    let wallet_amount = if deduct {
-        draft
-            .entries
-            .iter()
-            .find(|entry| entry.account_code() == wallet_code && entry.amount().minor_units() > 0)
-    } else {
-        draft
-            .entries
-            .iter()
-            .find(|entry| entry.account_code() == wallet_code && entry.amount().minor_units() < 0)
-    };
+    let wallet_amount =
+        if deduct {
+            draft.entries.iter().find(|entry| {
+                entry.account_code() == wallet_code && entry.amount().minor_units() > 0
+            })
+        } else {
+            draft.entries.iter().find(|entry| {
+                entry.account_code() == wallet_code && entry.amount().minor_units() < 0
+            })
+        };
     let expense_amount = if deduct {
         draft.entries.iter().find(|entry| {
             entry.account_code() == "Expense.ManualPointsGrant" && entry.amount().minor_units() < 0
@@ -487,12 +485,14 @@ impl LedgerStore for PostgresLedgerStore {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(id, idempotency_key, request_hash)| CommittedLedgerTransaction {
-            id,
-            idempotency_key,
-            request_hash,
-            replayed: false,
-        }))
+        Ok(row.map(
+            |(id, idempotency_key, request_hash)| CommittedLedgerTransaction {
+                id,
+                idempotency_key,
+                request_hash,
+                replayed: false,
+            },
+        ))
     }
 
     async fn commit_new_transaction(
@@ -625,10 +625,7 @@ impl LedgerStore for PostgresLedgerStore {
             .collect())
     }
 
-    async fn record_audit_log(
-        &self,
-        audit_log: &AuditLogDraft,
-    ) -> Result<(), LedgerStoreError> {
+    async fn record_audit_log(&self, audit_log: &AuditLogDraft) -> Result<(), LedgerStoreError> {
         sqlx::query(
             "INSERT INTO audit_logs \
              (id, action, actor_user_id, actor_role, target_user_id, correlation_id, metadata) \
@@ -926,7 +923,10 @@ mod tests {
             Err(error) => error,
         };
 
-        assert!(matches!(error, PostTransactionError::IdempotencyConflict { .. }));
+        assert!(matches!(
+            error,
+            PostTransactionError::IdempotencyConflict { .. }
+        ));
         assert_eq!(store.commit_count(), 1);
     }
 

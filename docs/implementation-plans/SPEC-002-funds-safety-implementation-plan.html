@@ -40,7 +40,7 @@
   <h1>SPEC-002-funds-safety Implementation Plan</h1>
   <div class="meta">
     <strong>對應規格：</strong> <a href="../../specs/SPEC-002-funds-safety.html">specs/SPEC-002-funds-safety.html</a><br>
-    <strong>版本：</strong> v0.1.8（依規格同日更新）<br>
+    <strong>版本：</strong> v0.1.9（依規格同日更新）<br>
     <strong>產出目標：</strong> 將 SPEC-002 中的帳本資料模型、約束、效能、監控與治理實作化，供 wallet-ledger-service、matching-engine 與 ops 落地參考。
   </div>
 
@@ -140,6 +140,7 @@ FOR EACH ROW EXECUTE FUNCTION fn_ledger_balance_check();
 <pre><code class="language-sql">CREATE TABLE idempotency_records (
     key         VARCHAR(128) PRIMARY KEY,
     txn_id      BIGINT REFERENCES ledger_transactions(id),
+    request_hash VARCHAR(64) NOT NULL,
     response    JSONB NOT NULL,
     status_code INT   NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -151,6 +152,16 @@ CREATE INDEX idx_idempo_expires ON idempotency_records(expires_at);
       <li>保存期：7 天</li>
       <li>清理：每日 cron 清理過期 key（可用 job queue / cleanup worker）</li>
       <li>Webhook 重放採同一 key（例如 gateway transaction_id）去重邏輯</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4.1 MVP 手動點數調整與 audit_logs</h2>
+    <ul>
+      <li><code>POST /internal/ledger/manual-points-adjustments</code> 建立 <code>manual_points_adjustment</code>，只接受 delta-only：增加 Y 點或扣除 Y 點，不提供設定絕對餘額。</li>
+      <li>admin / manager 可查詢、增加與扣除會員點數；affiliate 僅可增加會員點數，affiliate 查詢任意會員餘額或扣點必須拒絕。</li>
+      <li>查詢操作寫 <code>audit_logs.action = 'wallet_balance_read'</code>；調整操作寫 <code>audit_logs.action = 'manual_points_adjustment'</code> 並將 <code>audit_log_id</code> 放入 ledger transaction metadata。</li>
+      <li>INV-6 對 <code>Expense.ManualPointsGrant</code> 的例外僅限 <code>manual_points_adjustment</code> 扣點、actor_role 為 admin / manager 且帶 <code>audit_log_id</code>；ADR-0006 v1.0.2 已同步。</li>
     </ul>
   </section>
 
