@@ -28,7 +28,7 @@ const SECRET: &str = "shared-secret-32-bytes-1234567890";
 #[tokio::test]
 async fn valid_signature_forwards_to_reporting_service() {
     let upstream = TestUpstream::start().await;
-    let app = proxy_router(config(upstream.url()));
+    let app = proxy_router(config(&upstream.url()));
 
     let response = app
         .oneshot(signed_request(
@@ -49,7 +49,7 @@ async fn valid_signature_forwards_to_reporting_service() {
 #[tokio::test]
 async fn affiliate_role_returns_403_without_hitting_upstream() {
     let upstream = TestUpstream::start().await;
-    let app = proxy_router(config(upstream.url()));
+    let app = proxy_router(config(&upstream.url()));
 
     let response = app
         .oneshot(signed_request(
@@ -70,7 +70,7 @@ async fn affiliate_role_returns_403_without_hitting_upstream() {
 #[tokio::test]
 async fn missing_signature_returns_401() {
     let upstream = TestUpstream::start().await;
-    let app = proxy_router(config(upstream.url()));
+    let app = proxy_router(config(&upstream.url()));
     let response = app
         .oneshot(
             Request::builder()
@@ -91,7 +91,7 @@ async fn missing_signature_returns_401() {
 #[tokio::test]
 async fn tampered_signature_returns_401() {
     let upstream = TestUpstream::start().await;
-    let app = proxy_router(config(upstream.url()));
+    let app = proxy_router(config(&upstream.url()));
     let mut request = signed_request(
         "GET",
         "/api/internal/admin/report-templates",
@@ -112,7 +112,7 @@ async fn tampered_signature_returns_401() {
 #[tokio::test]
 async fn timestamp_drift_returns_401() {
     let upstream = TestUpstream::start().await;
-    let app = proxy_router(config(upstream.url()));
+    let app = proxy_router(config(&upstream.url()));
 
     let response = app
         .oneshot(signed_request(
@@ -177,7 +177,7 @@ async fn upstream_templates(
     axum::Json(json!([{ "code": "ops-kpi-daily" }]))
 }
 
-fn config(upstream: String) -> AnalyticsProxyConfig {
+fn config(upstream: &str) -> AnalyticsProxyConfig {
     AnalyticsProxyConfig::new(upstream, SECRET.to_owned(), Some(1_780_000_000))
         .expect("config builds")
 }

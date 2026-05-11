@@ -28,6 +28,12 @@ impl SourceClients {
         }
     }
 
+    /// Creates source clients from service URL environment variables.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when any required URL environment variable is missing or
+    /// cannot be parsed as a URL.
     pub fn from_env() -> Result<Self, ReportingError> {
         Ok(Self {
             http: reqwest::Client::new(),
@@ -38,6 +44,12 @@ impl SourceClients {
         })
     }
 
+    /// Resolves source rows and provenance for a report template.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a configured upstream source URL is invalid, an
+    /// upstream request fails, or the upstream response cannot be decoded.
     pub async fn resolve_rows(
         &self,
         template: &ReportTemplate,

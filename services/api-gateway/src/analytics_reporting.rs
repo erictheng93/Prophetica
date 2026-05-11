@@ -23,24 +23,28 @@ pub struct AnalyticsProxyConfig {
 }
 
 impl AnalyticsProxyConfig {
-    pub fn new(
-        upstream: String,
-        secret: String,
-        now_override: Option<i64>,
-    ) -> anyhow::Result<Self> {
+    /// Creates analytics reporting proxy configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `upstream` is not a valid URL.
+    pub fn new(upstream: &str, secret: String, now_override: Option<i64>) -> anyhow::Result<Self> {
         Ok(Self {
-            upstream: Url::parse(&upstream)?,
+            upstream: Url::parse(upstream)?,
             secret,
             now_override,
         })
     }
 
+    /// Creates analytics reporting proxy configuration from environment variables.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when required environment variables are missing or when
+    /// `ANALYTICS_REPORTING_SERVICE_URL` is not a valid URL.
     pub fn from_env() -> anyhow::Result<Self> {
-        Self::new(
-            std::env::var("ANALYTICS_REPORTING_SERVICE_URL")?,
-            std::env::var("INTERNAL_CALL_HMAC_SECRET")?,
-            None,
-        )
+        let upstream = std::env::var("ANALYTICS_REPORTING_SERVICE_URL")?;
+        Self::new(&upstream, std::env::var("INTERNAL_CALL_HMAC_SECRET")?, None)
     }
 
     fn now(&self) -> i64 {
@@ -52,12 +56,10 @@ impl AnalyticsProxyConfig {
     }
 }
 
-#[must_use]
 pub fn proxy_router(config: AnalyticsProxyConfig) -> Router {
     analytics_routes().with_state(Some(config))
 }
 
-#[must_use]
 pub fn unconfigured_router() -> Router {
     analytics_routes().with_state(None::<AnalyticsProxyConfig>)
 }
@@ -129,23 +131,19 @@ async fn proxy(
         return error(StatusCode::FORBIDDEN, "analytics_reporting_forbidden");
     }
 
-    let upstream_path = match upstream_path(&uri) {
-        Some(path) => path,
-        None => return error(StatusCode::BAD_REQUEST, "invalid_analytics_reporting_path"),
+    let Some(upstream_path) = upstream_path(&uri) else {
+        return error(StatusCode::BAD_REQUEST, "invalid_analytics_reporting_path");
     };
-    let upstream = match config.upstream.join(&upstream_path) {
-        Ok(url) => url,
-        Err(_) => {
-            return error(
-                StatusCode::BAD_GATEWAY,
-                "analytics_reporting_upstream_invalid",
-            );
-        }
+    let Ok(upstream_url) = config.upstream.join(&upstream_path) else {
+        return error(
+            StatusCode::BAD_GATEWAY,
+            "analytics_reporting_upstream_invalid",
+        );
     };
 
     let client = reqwest::Client::new();
     let mut request = client
-        .request(method.clone(), upstream)
+        .request(method.clone(), upstream_url)
         .body(body.to_vec())
         .header("x-actor-id", actor_id)
         .header("x-operator-role", role);

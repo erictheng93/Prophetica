@@ -10,6 +10,12 @@ use crate::{
     },
 };
 
+/// Validates whether a report request is permitted for a template.
+///
+/// # Errors
+///
+/// Returns an error when the caller role is not allowed, sensitive-field reveal
+/// lacks required authorization, or requested sort/column fields are invalid.
 pub fn validate(
     template: &ReportTemplate,
     request: &CreateReportJobRequest,

@@ -10,7 +10,6 @@ use sdk::masking::mask_email;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::json;
 
-#[must_use]
 pub fn internal_contacts_router() -> Router {
     Router::new().route(
         "/v1/internal/users/*operation",
@@ -49,7 +48,7 @@ async fn dispatch_contact_operation(Path(operation): Path<String>, body: Bytes) 
             Err(response) => response,
         },
         "contacts:reveal" => match parse_json::<RevealRequest>(&body) {
-            Ok(request) => reveal(request),
+            Ok(request) => reveal(&request),
             Err(response) => response,
         },
         _ => (
@@ -91,7 +90,7 @@ fn lookup_masked(request: LookupRequest) -> Response {
     Json(LookupResponse { contacts }).into_response()
 }
 
-fn reveal(request: RevealRequest) -> Response {
+fn reveal(request: &RevealRequest) -> Response {
     tracing::warn!(
         actor_id = %request.actor_id,
         job_id = %request.job_id,

@@ -187,11 +187,17 @@ impl PgStore {
         Self { pool }
     }
 
+    /// Inserts or updates the built-in reporting templates.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when template serialization fails or the database write
+    /// does not complete successfully.
     pub async fn seed_templates(&self) -> Result<(), ReportingError> {
         for template in default_templates() {
             let definition = TemplateDefinition::from_template(&template);
             sqlx::query(
-                r#"
+                r"
                 INSERT INTO report_templates (code, name, category, schema_version, definition, created_by)
                 VALUES ($1, $2, $3, $4, $5, 'system')
                 ON CONFLICT (code) DO UPDATE
@@ -201,7 +207,7 @@ impl PgStore {
                     definition = EXCLUDED.definition,
                     updated_at = NOW(),
                     is_active = TRUE
-                "#,
+                ",
             )
             .bind(&template.code)
             .bind(&template.name)
@@ -229,7 +235,7 @@ impl ReportingStore for PgStore {
         .await
         .map_err(|error| ReportingError::Store(error.to_string()))?;
 
-        rows.into_iter()
+        rows.iter()
             .map(template_from_row)
             .filter(|result| {
                 result
@@ -248,7 +254,7 @@ impl ReportingStore for PgStore {
         .await
         .map_err(|error| ReportingError::Store(error.to_string()))?;
 
-        row.map(template_from_row).transpose()
+        row.as_ref().map(template_from_row).transpose()
     }
 
     async fn insert_job(
@@ -257,7 +263,7 @@ impl ReportingStore for PgStore {
         audit: ReportAuditRecord,
     ) -> Result<(), ReportingError> {
         let row = sqlx::query(
-            r#"
+            r"
             INSERT INTO report_jobs (
                 public_id, template_id, requested_by, params, source_snapshot, rows, state,
                 schema_version, report_version, generated_at, output_rows, row_hash,
@@ -266,7 +272,7 @@ impl ReportingStore for PgStore {
             SELECT $1, id, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10, $11, $12, $13::timestamptz
             FROM report_templates WHERE code = $14
             RETURNING id
-            "#,
+            ",
         )
         .bind(&job.id)
         .bind(&job.requested_by)
@@ -305,7 +311,7 @@ impl ReportingStore for PgStore {
         }
         .map_err(|error| ReportingError::Store(error.to_string()))?;
 
-        rows.into_iter().map(job_from_row).collect()
+        rows.iter().map(job_from_row).collect()
     }
 
     async fn find_job(&self, id: &str) -> Result<Option<ReportJob>, ReportingError> {
@@ -314,6 +320,7 @@ impl ReportingStore for PgStore {
             .fetch_optional(&self.pool)
             .await
             .map_err(|error| ReportingError::Store(error.to_string()))?
+            .as_ref()
             .map(job_from_row)
             .transpose()
     }
@@ -323,7 +330,7 @@ impl ReportingStore for PgStore {
             .fetch_all(&self.pool)
             .await
             .map_err(|error| ReportingError::Store(error.to_string()))?;
-        rows.into_iter().map(job_from_row).collect()
+        rows.iter().map(job_from_row).collect()
     }
 
     async fn insert_audit(&self, audit: ReportAuditRecord) -> Result<(), ReportingError> {
@@ -343,20 +350,20 @@ impl ReportingStore for PgStore {
         job_id: &str,
     ) -> Result<Vec<ReportAuditRecord>, ReportingError> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT a.actor_id, a.action, j.public_id AS job_id, a.action_at::text AS action_at, a.details
             FROM report_audit a
             JOIN report_jobs j ON j.id = a.report_job_id
             WHERE j.public_id = $1
             ORDER BY a.action_at ASC
-            "#,
+            ",
         )
         .bind(job_id)
         .fetch_all(&self.pool)
         .await
         .map_err(|error| ReportingError::Store(error.to_string()))?;
 
-        rows.into_iter().map(audit_from_row).collect()
+        rows.iter().map(audit_from_row).collect()
     }
 }
 
@@ -384,7 +391,7 @@ impl TemplateDefinition {
     }
 }
 
-fn template_from_row(row: sqlx::postgres::PgRow) -> Result<ReportTemplate, ReportingError> {
+fn template_from_row(row: &sqlx::postgres::PgRow) -> Result<ReportTemplate, ReportingError> {
     let definition: Value = row
         .try_get("definition")
         .map_err(|error| ReportingError::Store(error.to_string()))?;
@@ -412,7 +419,7 @@ fn template_from_row(row: sqlx::postgres::PgRow) -> Result<ReportTemplate, Repor
     })
 }
 
-fn job_from_row(row: sqlx::postgres::PgRow) -> Result<ReportJob, ReportingError> {
+fn job_from_row(row: &sqlx::postgres::PgRow) -> Result<ReportJob, ReportingError> {
     let params: Value = row
         .try_get("params")
         .map_err(|error| ReportingError::Store(error.to_string()))?;
@@ -482,7 +489,7 @@ fn job_from_row(row: sqlx::postgres::PgRow) -> Result<ReportJob, ReportingError>
     })
 }
 
-fn audit_from_row(row: sqlx::postgres::PgRow) -> Result<ReportAuditRecord, ReportingError> {
+fn audit_from_row(row: &sqlx::postgres::PgRow) -> Result<ReportAuditRecord, ReportingError> {
     let details: Value = row
         .try_get("details")
         .map_err(|error| ReportingError::Store(error.to_string()))?;
@@ -510,10 +517,10 @@ async fn insert_audit_row(
     audit: &ReportAuditRecord,
 ) -> Result<(), ReportingError> {
     sqlx::query(
-        r#"
+        r"
         INSERT INTO report_audit (report_job_id, actor_id, action, action_at, details)
         VALUES ($1, $2, $3, $4::timestamptz, $5)
-        "#,
+        ",
     )
     .bind(report_job_id)
     .bind(&audit.actor_id)
@@ -529,7 +536,7 @@ async fn insert_audit_row(
     Ok(())
 }
 
-const JOB_SELECT: &str = r#"
+const JOB_SELECT: &str = r"
 SELECT j.public_id, t.code AS template_code, t.name AS template_name, j.requested_by,
        j.schema_version, j.report_version, j.state, j.generated_at::text AS generated_at,
        j.params, j.source_snapshot, j.rows, j.output_rows, j.row_hash,
@@ -537,9 +544,9 @@ SELECT j.public_id, t.code AS template_code, t.name AS template_name, j.requeste
 FROM report_jobs j
 JOIN report_templates t ON t.id = j.template_id
 ORDER BY j.generated_at DESC
-"#;
+";
 
-const JOB_SELECT_WITH_FILTER: &str = r#"
+const JOB_SELECT_WITH_FILTER: &str = r"
 SELECT j.public_id, t.code AS template_code, t.name AS template_name, j.requested_by,
        j.schema_version, j.report_version, j.state, j.generated_at::text AS generated_at,
        j.params, j.source_snapshot, j.rows, j.output_rows, j.row_hash,
@@ -548,9 +555,9 @@ FROM report_jobs j
 JOIN report_templates t ON t.id = j.template_id
 WHERE t.code = $1
 ORDER BY j.generated_at DESC
-"#;
+";
 
-const JOB_SELECT_BY_ID: &str = r#"
+const JOB_SELECT_BY_ID: &str = r"
 SELECT j.public_id, t.code AS template_code, t.name AS template_name, j.requested_by,
        j.schema_version, j.report_version, j.state, j.generated_at::text AS generated_at,
        j.params, j.source_snapshot, j.rows, j.output_rows, j.row_hash,
@@ -558,9 +565,9 @@ SELECT j.public_id, t.code AS template_code, t.name AS template_name, j.requeste
 FROM report_jobs j
 JOIN report_templates t ON t.id = j.template_id
 WHERE j.public_id = $1
-"#;
+";
 
-const JOB_SELECT_LATEST_PER_TEMPLATE: &str = r#"
+const JOB_SELECT_LATEST_PER_TEMPLATE: &str = r"
 SELECT DISTINCT ON (j.template_id) j.public_id, t.code AS template_code, t.name AS template_name,
        j.requested_by, j.schema_version, j.report_version, j.state, j.generated_at::text AS generated_at,
        j.params, j.source_snapshot, j.rows, j.output_rows, j.row_hash,
@@ -568,4 +575,4 @@ SELECT DISTINCT ON (j.template_id) j.public_id, t.code AS template_code, t.name 
 FROM report_jobs j
 JOIN report_templates t ON t.id = j.template_id
 ORDER BY j.template_id, j.generated_at DESC
-"#;
+";

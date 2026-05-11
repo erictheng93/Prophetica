@@ -29,7 +29,6 @@ pub struct AppState<S> {
     sources: SourceClients,
 }
 
-#[must_use]
 pub fn router<S>(store: S) -> Router
 where
     S: ReportingStore,
@@ -37,7 +36,6 @@ where
     router_with_sources(store, SourceClients::fixtures())
 }
 
-#[must_use]
 pub fn router_with_sources<S>(store: S, sources: SourceClients) -> Router
 where
     S: ReportingStore,
@@ -90,7 +88,7 @@ where
     let role = role_from_headers(&headers)?;
     let actor_id = actor_from_headers(&headers).or_else(|| request.actor_id.clone());
     request.role = Some(role);
-    request.actor_id = actor_id.clone();
+    request.actor_id.clone_from(&actor_id);
 
     let template = state
         .store

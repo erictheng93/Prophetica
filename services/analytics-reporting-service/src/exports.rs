@@ -11,6 +11,11 @@ pub struct ExportPayload {
     pub body: Vec<u8>,
 }
 
+/// Serializes a report job into the requested export format.
+///
+/// # Errors
+///
+/// Returns an error when JSON export serialization fails.
 pub fn export_report_job(
     job: &ReportJob,
     format: ReportFormat,

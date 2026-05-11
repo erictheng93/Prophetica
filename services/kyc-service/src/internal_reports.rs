@@ -8,7 +8,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-#[must_use]
 pub fn internal_reports_router() -> Router {
     Router::new().route("/v1/internal/reports/kyc-pass-rate", get(kyc_pass_rate))
 }
