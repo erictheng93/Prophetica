@@ -19,18 +19,17 @@ interface AdminNavDrawerProps {
 }
 
 /*
- * Mobile-only navigation drawer (< md). The desktop nav row is hidden
- * via Tailwind responsive utilities in <AdminNav>; this drawer takes
- * over below the breakpoint with a hamburger trigger that opens an
- * overlay covering the dark header surface.
+ * Mobile-only navigation drawer (< md). Matches the new light AdminSidebar:
+ * parchment surface, ink text, Action Blue for the active route. The
+ * dark sidebar / drawer combo was replaced 2026-05-11 so the admin
+ * surface reads as a single coherent palette rather than a dark nav
+ * appended to a light dashboard.
  *
- * Affordances:
- *   - Trigger button is 44x44 (Apple touch-target guideline)
- *   - Esc closes; click outside the panel closes; route change closes
- *   - aria-controls / aria-expanded on trigger; role="dialog" + aria-modal
- *     on panel; focus is moved into the panel on open
- *   - Body scroll is locked while open so the underlying page does not
- *     bounce on iOS Safari rubber-band
+ * Affordances kept from the previous dark drawer:
+ *   - Trigger 44x44 (Apple touch-target guideline)
+ *   - Esc closes; route change closes; click outside the panel closes
+ *   - role="dialog" + aria-modal on panel
+ *   - Body scroll locked while open (iOS Safari rubber-band guard)
  */
 
 export function AdminNavDrawer({ ariaLabel, links, signOutLabel, roleLabel }: AdminNavDrawerProps) {
@@ -69,7 +68,7 @@ export function AdminNavDrawer({ ariaLabel, links, signOutLabel, roleLabel }: Ad
       <div className="flex items-center justify-between gap-3 md:hidden">
         <span
           aria-label="目前登入身份"
-          className="rounded-proph-pill border border-white/20 px-3 py-1.5 text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-primary-on-dark"
+          className="inline-flex rounded-proph-pill border border-proph-hairline bg-proph-canvas px-3 py-1.5 text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80"
         >
           {roleLabel}
         </span>
@@ -79,7 +78,7 @@ export function AdminNavDrawer({ ariaLabel, links, signOutLabel, roleLabel }: Ad
           aria-controls={panelId}
           aria-expanded={open}
           aria-label="開啟導覽選單"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-proph-sm bg-white/10 text-proph-on-dark transition-colors hover:bg-white/20 active:bg-white/25"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-proph-sm border border-proph-hairline bg-proph-canvas text-proph-ink transition-colors hover:bg-proph-divider-soft active:bg-proph-canvas-parchment"
         >
           <svg
             aria-hidden="true"
@@ -104,17 +103,17 @@ export function AdminNavDrawer({ ariaLabel, links, signOutLabel, roleLabel }: Ad
           role="dialog"
           aria-modal="true"
           aria-label={ariaLabel}
-          className="fixed inset-0 z-50 flex flex-col bg-proph-surface-black/95 backdrop-blur-md md:hidden"
+          className="fixed inset-0 z-50 flex flex-col bg-proph-canvas-parchment text-proph-ink md:hidden"
         >
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-            <span className="text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-primary-on-dark">
+          <div className="flex items-center justify-between border-b border-proph-hairline px-5 py-4">
+            <span className="text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
               導覽
             </span>
             <button
               type="button"
               onClick={() => setOpen(false)}
               aria-label="關閉導覽選單"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-proph-sm bg-white/10 text-proph-on-dark transition-colors hover:bg-white/20 active:bg-white/25"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-proph-sm border border-proph-hairline bg-proph-canvas text-proph-ink transition-colors hover:bg-proph-divider-soft active:bg-proph-canvas-parchment"
             >
               <svg
                 aria-hidden="true"
@@ -145,8 +144,8 @@ export function AdminNavDrawer({ ariaLabel, links, signOutLabel, roleLabel }: Ad
                       className={cn(
                         "flex min-h-12 items-center rounded-proph-sm px-4 py-3 text-[17px] leading-[1.24] tracking-[-0.374px]",
                         isActive
-                          ? "bg-white/15 text-white"
-                          : "text-proph-primary-on-dark hover:bg-white/10 active:bg-white/15",
+                          ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
+                          : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
                       )}
                     >
                       {link.label}
@@ -156,11 +155,11 @@ export function AdminNavDrawer({ ariaLabel, links, signOutLabel, roleLabel }: Ad
               })}
             </ul>
           </nav>
-          <div className="border-t border-white/10 px-5 py-4">
+          <div className="border-t border-proph-hairline px-5 py-4">
             <button
               type="button"
               onClick={handleSignOut}
-              className="flex h-12 w-full items-center justify-center rounded-proph-pill bg-white/10 text-[15px] leading-[1.29] tracking-[-0.224px] text-proph-on-dark transition-colors hover:bg-white/20 active:bg-white/25"
+              className="flex h-12 w-full items-center justify-center rounded-proph-sm bg-proph-ink text-[15px] leading-[1.29] tracking-[-0.224px] text-proph-on-dark transition-opacity hover:opacity-90 active:opacity-80"
             >
               {signOutLabel}
             </button>
