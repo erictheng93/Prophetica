@@ -11,10 +11,10 @@ jobs:
     env:
       SQLX_OFFLINE: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
-      - uses: mozilla-actions/sccache-action@v0.0.6
+      - uses: mozilla-actions/sccache-action@v0.0.10
       - name: install native rdkafka deps
         run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
       - name: rust syntax and type check

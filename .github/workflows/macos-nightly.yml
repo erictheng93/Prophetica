@@ -7,12 +7,12 @@ jobs:
   macos-smoke:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.85
       # pnpm version is sourced from `packageManager` in root package.json.
       # Specifying `version:` here too triggers ERR_PNPM_BAD_PM_VERSION.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - name: doctor
