@@ -2,17 +2,17 @@
 
 > Owner: SRE / Tech Lead  
 > Status: Pending  
-> Blocked by SumSub credentials only for real iframe / webhook / mobile E2E checks. Linux CI can verify Pages adapter output and non-SumSub runtime behavior first.
+> Blocked by SumSub credentials only for real iframe / webhook / mobile E2E checks. Linux CI can verify OpenNext Workers adapter output and non-SumSub runtime behavior first.
 
 ## Goal
 
-Run PoC-B on Linux or CI to separate Windows `@cloudflare/next-on-pages` tooling failure from real Cloudflare Pages Edge runtime incompatibility.
+Run PoC-B on Linux or CI to verify the OpenNext Cloudflare Workers adapter output separately from local Windows tooling behavior.
 
 ## Preconditions
 
 - Linux runner with Node / pnpm matching repo toolchain.
-- Cloudflare Pages preview project available: `prophetica-web-poc`.
-- Non-secret Pages vars may be configured in `apps/web/wrangler.toml`.
+- Cloudflare Workers preview project available: `prophetica-web-poc`.
+- Non-secret Workers vars may be configured in `apps/web/wrangler.toml`.
 - Real SumSub scenarios remain blocked until SPEC-000 Q-9 credentials exist.
 
 ## TODO
@@ -20,19 +20,20 @@ Run PoC-B on Linux or CI to separate Windows `@cloudflare/next-on-pages` tooling
 - [ ] Run workspace install on Linux.
   - Command: `rtk pnpm install --frozen-lockfile`
   - Evidence to capture: pnpm version, lockfile status, install exit code.
+  - Use a native Linux install; do not reuse a Windows `node_modules` tree because OpenNext dependencies include platform-specific native packages.
 
 - [ ] Run `apps/web` production build.
   - Command: `rtk pnpm --filter @prophetica/web build`
   - Evidence to capture: build exit code and any Edge runtime / Server Action warnings.
 
-- [ ] Run Cloudflare Pages adapter generation on Linux.
-  - Command: `rtk pnpm --filter @prophetica/web exec next-on-pages`
-  - Evidence to capture: whether `apps/web/.vercel/output/static` exists after the command.
+- [ ] Run OpenNext Cloudflare adapter generation on Linux.
+  - Command: `rtk pnpm --filter @prophetica/web exec opennextjs-cloudflare build`
+  - Evidence to capture: whether `apps/web/.open-next/worker.js` and `apps/web/.open-next/assets` exist after the command.
   - If this fails on Linux, treat as real adapter/toolchain blocker and open fallback ADR.
 
-- [ ] Deploy or preview the generated Pages output.
-  - Command: `rtk pnpm --filter @prophetica/web exec wrangler pages deploy .vercel/output/static --project-name prophetica-web-poc`
-  - Evidence to capture: preview URL, deploy ID, runtime logs.
+- [ ] Preview the generated Workers output.
+  - Command: `rtk pnpm --filter @prophetica/web preview`
+  - Evidence to capture: local Workers preview URL and runtime logs.
 
 - [ ] Scenario B: verify WebSocket fan-out path against preview or configured gateway.
   - Evidence to capture: HTTP 101 upgrade, monotonic sequence, reconnect + gap behavior.
