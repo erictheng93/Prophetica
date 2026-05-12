@@ -57,6 +57,8 @@ Recent history uses Conventional Commits with scopes, for example `docs(spec): .
 
 PRs should describe the change, list validation commands run, link relevant issues/specs, and include screenshots for UI changes. Call out migrations, generated files, environment changes, and any follow-up work.
 
+Do not create a new branch or open a pull request unless the user explicitly asks for that action. When the user says `提交`, `提交並推送`, or `commit and push`, make an atomic commit containing only the intended related changes and push the current branch to its existing upstream. If the current branch has no upstream, ask before creating or setting one.
+
 ## Security & Configuration Tips
 
 Copy `.env.example` for local configuration and do not commit secrets. Prefer checked-in scripts in `tools/scripts/` for bootstrap, migrations, and seeding. Regenerate protobuf and SQLx artifacts intentionally, and include generated outputs only when required by the workflow.
