@@ -1,0 +1,179 @@
+{
+  "common": {
+    "metadata": {
+      "description": "Pengalaman hiburan prediksi peristiwa dengan desain bergaya Apple."
+    },
+    "auth": {
+      "signIn": "Masuk",
+      "getStarted": "Mulai"
+    },
+    "localeSwitcher": {
+      "label": "Ganti bahasa"
+    },
+    "theme": {
+      "light": "Mode terang",
+      "dark": "Mode gelap",
+      "switchToLight": "Beralih ke mode terang",
+      "switchToDark": "Beralih ke mode gelap"
+    },
+    "nav": {
+      "markets": "Pasar",
+      "howItWorks": "Cara kerja",
+      "responsibleGaming": "Batas bermain",
+      "support": "Bantuan"
+    },
+    "footer": {
+      "legal": {
+        "copyright": "© {year} prophetica. Platform hiburan prediksi · 18+."
+      },
+      "columns": {
+        "about": {
+          "heading": "Tentang prophetica",
+          "items": {
+            "platform": "Tentang platform",
+            "matching": "Mekanisme pencocokan",
+            "settlement": "Penyelesaian dan sengketa",
+            "affiliate": "Program afiliasi"
+          }
+        },
+        "player": {
+          "heading": "Pusat pemain",
+          "items": {
+            "topup": "Cara isi poin",
+            "kyc": "Verifikasi KYC",
+            "markets": "Daftar pasar",
+            "portfolio": "Portofolio"
+          }
+        },
+        "markets": {
+          "heading": "Pasar",
+          "items": {
+            "all": "Semua pasar",
+            "trending": "Populer",
+            "new": "Baru",
+            "settled": "Selesai",
+            "portfolio": "Portofolio"
+          }
+        },
+        "responsibleGaming": {
+          "heading": "Batas bermain",
+          "items": {
+            "overview": "Ringkasan",
+            "limits": "Pengaturan batas",
+            "cooldown": "Jeda",
+            "selfExclusion": "Tutup akun",
+            "resources": "Sumber bantuan"
+          }
+        },
+        "kyc": {
+          "heading": "Verifikasi identitas",
+          "items": {
+            "overview": "Ringkasan KYC",
+            "tier1": "Tier 1 dasar",
+            "tier2": "Tier 2 standar",
+            "tier3": "Tier 3 lanjutan",
+            "privacyNotice": "Pemberitahuan privasi",
+            "status": "Status peninjauan"
+          }
+        },
+        "legal": {
+          "heading": "Hukum dan kepatuhan",
+          "items": {
+            "terms": "Ketentuan layanan",
+            "privacy": "Kebijakan privasi"
+          }
+        },
+        "support": {
+          "heading": "Bantuan",
+          "items": {
+            "center": "Pusat bantuan",
+            "faq": "FAQ",
+            "disputes": "Proses sengketa",
+            "contact": "Hubungi kami"
+          }
+        }
+      }
+    },
+    "format": {
+      "points": "{n} poin"
+    },
+    "noScript": {
+      "kicker": "JavaScript diperlukan",
+      "headline": "Aktifkan JavaScript untuk menggunakan Prophetica",
+      "body": "Order langsung, verifikasi KYC, data pasar, dan penyelesaian poin memerlukan JavaScript. Aktifkan di pengaturan browser atau gunakan browser yang mendukung JavaScript.",
+      "cta": "Hubungi bantuan"
+    }
+  },
+  "sectionNav": {
+    "markets": {
+      "ariaLabel": "Navigasi bagian pasar",
+      "all": "Semua",
+      "trending": "Populer",
+      "new": "Baru",
+      "settled": "Selesai"
+    },
+    "responsibleGaming": {
+      "ariaLabel": "Navigasi bagian batas bermain"
+    },
+    "support": {
+      "ariaLabel": "Navigasi bagian bantuan",
+      "overview": "Ringkasan",
+      "faq": "FAQ",
+      "disputes": "Sengketa",
+      "contact": "Kontak"
+    }
+  },
+  "stubPage": {
+    "tagline": "Halaman ini sedang disiapkan dan akan hadir pada rilis berikutnya. Terima kasih atas kesabaran Anda.",
+    "backLabel": "Kembali ke beranda"
+  },
+  "landing": {
+    "hero": {
+      "kicker": "Hiburan prediksi",
+      "headline": "Prediksi adalah adu sudut pandang.",
+      "tagline": "Gunakan poin dalam aplikasi untuk memprediksi hasil peristiwa yang belum diumumkan dan bandingkan penilaian Anda dengan pemain di seluruh dunia.",
+      "ctaPrimary": "Mulai",
+      "ctaSecondary": "Pelajari cara kerja",
+      "media": "Hero visual"
+    },
+    "neutral": {
+      "kicker": "Platform netral",
+      "headline": "Pencocokan adil. Penyelesaian jelas.",
+      "tagline": "prophetica hanya menyediakan pencocokan dan penyelesaian. Platform tidak memegang posisi kontrak dan bukan market maker. Setiap pasar adalah adu penilaian antarpemain.",
+      "cta": "Lihat model pencocokan",
+      "media": "Order book illustration"
+    },
+    "points": {
+      "kicker": "Poin adalah permainan",
+      "headline": "Poin dalam aplikasi, hanya hiburan.",
+      "tagline": "Poin yang ditambahkan ke akun ditampilkan sebagai saldo, dana terkunci, dan catatan penyelesaian di dalam aplikasi.",
+      "ctaPrimary": "Panduan poin",
+      "ctaSecondary": "Ketentuan layanan",
+      "media": "Points wallet"
+    },
+    "responsibleGaming": {
+      "kicker": "Batas lebih dulu",
+      "headline": "Tetapkan batas sebelum bermain.",
+      "tagline": "Setiap akun wajib menyelesaikan pengaturan batas. Kami menyediakan jeda, penutupan akun, dan sumber bantuan, serta tidak menoleransi partisipasi di bawah umur.",
+      "ctaPrimary": "Tetapkan batas saya",
+      "ctaSecondary": "Sumber bantuan",
+      "media": "Responsible gaming dashboard"
+    },
+    "start": {
+      "kicker": "Mulai dalam tiga langkah",
+      "headline": "Verifikasi, tetapkan batas, jelajahi pasar.",
+      "tagline": "Verifikasi identitas menjaga permainan tetap adil dan patuh, batas melindungi ritme hiburan Anda, dan daftar pasar adalah arena Anda.",
+      "ctaPrimary": "Daftar sekarang",
+      "ctaSecondary": "Lihat pasar"
+    }
+  },
+  "offline": {
+    "metadata": {
+      "title": "Offline"
+    },
+    "kicker": "Offline",
+    "headline": "Tidak dapat terhubung ke Prophetica",
+    "body": "Periksa Wi-Fi atau data seluler, lalu coba lagi di bawah. Untuk menghindari data usang, kami tidak menyimpan cache saldo atau layar order saat offline.",
+    "retry": "Coba lagi"
+  }
+}

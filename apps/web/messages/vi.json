@@ -1,0 +1,179 @@
+{
+  "common": {
+    "metadata": {
+      "description": "Trải nghiệm giải trí dự đoán sự kiện với thiết kế phong cách Apple."
+    },
+    "auth": {
+      "signIn": "Đăng nhập",
+      "getStarted": "Bắt đầu"
+    },
+    "localeSwitcher": {
+      "label": "Đổi ngôn ngữ"
+    },
+    "theme": {
+      "light": "Chế độ sáng",
+      "dark": "Chế độ tối",
+      "switchToLight": "Chuyển sang chế độ sáng",
+      "switchToDark": "Chuyển sang chế độ tối"
+    },
+    "nav": {
+      "markets": "Thị trường",
+      "howItWorks": "Cách hoạt động",
+      "responsibleGaming": "Giới hạn",
+      "support": "Hỗ trợ"
+    },
+    "footer": {
+      "legal": {
+        "copyright": "© {year} prophetica. Nền tảng giải trí dự đoán · 18+."
+      },
+      "columns": {
+        "about": {
+          "heading": "Về prophetica",
+          "items": {
+            "platform": "Về nền tảng",
+            "matching": "Cơ chế khớp lệnh",
+            "settlement": "Thanh toán và khiếu nại",
+            "affiliate": "Chương trình đại lý"
+          }
+        },
+        "player": {
+          "heading": "Trung tâm người chơi",
+          "items": {
+            "topup": "Cách nạp điểm",
+            "kyc": "Xác minh KYC",
+            "markets": "Danh sách thị trường",
+            "portfolio": "Danh mục"
+          }
+        },
+        "markets": {
+          "heading": "Thị trường",
+          "items": {
+            "all": "Tất cả thị trường",
+            "trending": "Thịnh hành",
+            "new": "Mới",
+            "settled": "Đã thanh toán",
+            "portfolio": "Danh mục"
+          }
+        },
+        "responsibleGaming": {
+          "heading": "Giới hạn",
+          "items": {
+            "overview": "Tổng quan",
+            "limits": "Cài đặt giới hạn",
+            "cooldown": "Tạm nghỉ",
+            "selfExclusion": "Đóng tài khoản",
+            "resources": "Nguồn trợ giúp"
+          }
+        },
+        "kyc": {
+          "heading": "Xác minh danh tính",
+          "items": {
+            "overview": "Tổng quan KYC",
+            "tier1": "Tier 1 cơ bản",
+            "tier2": "Tier 2 tiêu chuẩn",
+            "tier3": "Tier 3 nâng cao",
+            "privacyNotice": "Thông báo quyền riêng tư",
+            "status": "Trạng thái xét duyệt"
+          }
+        },
+        "legal": {
+          "heading": "Pháp lý và tuân thủ",
+          "items": {
+            "terms": "Điều khoản dịch vụ",
+            "privacy": "Chính sách quyền riêng tư"
+          }
+        },
+        "support": {
+          "heading": "Hỗ trợ",
+          "items": {
+            "center": "Trung tâm hỗ trợ",
+            "faq": "Câu hỏi thường gặp",
+            "disputes": "Quy trình khiếu nại",
+            "contact": "Liên hệ"
+          }
+        }
+      }
+    },
+    "format": {
+      "points": "{n} điểm"
+    },
+    "noScript": {
+      "kicker": "Cần JavaScript",
+      "headline": "Bật JavaScript để dùng Prophetica",
+      "body": "Đặt lệnh trực tiếp, xác minh KYC, dữ liệu thị trường và thanh toán điểm đều cần JavaScript. Hãy bật trong cài đặt trình duyệt hoặc dùng trình duyệt hỗ trợ JavaScript.",
+      "cta": "Liên hệ hỗ trợ"
+    }
+  },
+  "sectionNav": {
+    "markets": {
+      "ariaLabel": "Điều hướng khu vực thị trường",
+      "all": "Tất cả",
+      "trending": "Thịnh hành",
+      "new": "Mới",
+      "settled": "Đã thanh toán"
+    },
+    "responsibleGaming": {
+      "ariaLabel": "Điều hướng khu vực giới hạn"
+    },
+    "support": {
+      "ariaLabel": "Điều hướng khu vực hỗ trợ",
+      "overview": "Tổng quan",
+      "faq": "FAQ",
+      "disputes": "Khiếu nại",
+      "contact": "Liên hệ"
+    }
+  },
+  "stubPage": {
+    "tagline": "Trang này đang được chuẩn bị và sẽ ra mắt trong bản phát hành sau. Cảm ơn bạn đã kiên nhẫn.",
+    "backLabel": "Về trang chủ"
+  },
+  "landing": {
+    "hero": {
+      "kicker": "Giải trí dự đoán",
+      "headline": "Dự đoán là cuộc so tài về góc nhìn.",
+      "tagline": "Dùng điểm trong ứng dụng để dự đoán kết quả các sự kiện chưa công bố và so sánh nhận định của bạn với người chơi toàn cầu.",
+      "ctaPrimary": "Bắt đầu",
+      "ctaSecondary": "Tìm hiểu cách chơi",
+      "media": "Hero visual"
+    },
+    "neutral": {
+      "kicker": "Nền tảng trung lập",
+      "headline": "Khớp lệnh công bằng. Thanh toán rõ ràng.",
+      "tagline": "prophetica chỉ cung cấp dịch vụ khớp lệnh và thanh toán. Nền tảng không nắm giữ vị thế hợp đồng và không làm market maker. Mỗi thị trường là cuộc so tài nhận định giữa người chơi.",
+      "cta": "Xem cơ chế khớp lệnh",
+      "media": "Order book illustration"
+    },
+    "points": {
+      "kicker": "Điểm là trò chơi",
+      "headline": "Điểm trong ứng dụng, chỉ để giải trí.",
+      "tagline": "Điểm nạp vào tài khoản được hiển thị dưới dạng số dư, khoản khóa và hồ sơ thanh toán trong ứng dụng.",
+      "ctaPrimary": "Hướng dẫn điểm",
+      "ctaSecondary": "Điều khoản dịch vụ",
+      "media": "Points wallet"
+    },
+    "responsibleGaming": {
+      "kicker": "Giới hạn trước tiên",
+      "headline": "Đặt giới hạn trước khi chơi.",
+      "tagline": "Mỗi tài khoản phải hoàn tất cài đặt giới hạn. Chúng tôi cung cấp tạm nghỉ, đóng tài khoản và nguồn trợ giúp, đồng thời không dung thứ việc người chưa đủ tuổi tham gia.",
+      "ctaPrimary": "Đặt giới hạn của tôi",
+      "ctaSecondary": "Nguồn trợ giúp",
+      "media": "Responsible gaming dashboard"
+    },
+    "start": {
+      "kicker": "Bắt đầu trong ba bước",
+      "headline": "Xác minh, đặt giới hạn, xem thị trường.",
+      "tagline": "Xác minh danh tính giúp trải nghiệm công bằng và tuân thủ, giới hạn bảo vệ nhịp giải trí của bạn, còn danh sách thị trường là đấu trường của bạn.",
+      "ctaPrimary": "Đăng ký ngay",
+      "ctaSecondary": "Xem thị trường"
+    }
+  },
+  "offline": {
+    "metadata": {
+      "title": "Ngoại tuyến"
+    },
+    "kicker": "Ngoại tuyến",
+    "headline": "Không thể kết nối với Prophetica",
+    "body": "Kiểm tra Wi-Fi hoặc dữ liệu di động, rồi thử lại bên dưới. Để tránh dữ liệu cũ, chúng tôi không lưu cache số dư hoặc màn hình đặt lệnh khi ngoại tuyến.",
+    "retry": "Thử lại"
+  }
+}

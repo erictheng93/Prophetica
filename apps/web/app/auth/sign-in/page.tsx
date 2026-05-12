@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import {
   Brand,
   FooterLegalRow,
@@ -43,12 +44,15 @@ export default async function AuthPage({ searchParams }: PageProps) {
         category={<Brand />}
         links={<MainNavLinks />}
         cta={
-          <a
-            href="/support"
-            className="font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink"
-          >
-            {t("nav.supportCta")}
-          </a>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <LanguageSwitcher />
+            <a
+              href="/support"
+              className="font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink"
+            >
+              {t("nav.supportCta")}
+            </a>
+          </div>
         }
       />
 

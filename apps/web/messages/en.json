@@ -1,0 +1,179 @@
+{
+  "common": {
+    "metadata": {
+      "description": "An event-prediction entertainment experience built with Apple-style design."
+    },
+    "auth": {
+      "signIn": "Sign in",
+      "getStarted": "Get started"
+    },
+    "localeSwitcher": {
+      "label": "Change language"
+    },
+    "theme": {
+      "light": "Light mode",
+      "dark": "Dark mode",
+      "switchToLight": "Switch to light mode",
+      "switchToDark": "Switch to dark mode"
+    },
+    "nav": {
+      "markets": "Markets",
+      "howItWorks": "How it works",
+      "responsibleGaming": "Limits",
+      "support": "Support"
+    },
+    "footer": {
+      "legal": {
+        "copyright": "© {year} prophetica. Prediction entertainment platform · 18+."
+      },
+      "columns": {
+        "about": {
+          "heading": "About prophetica",
+          "items": {
+            "platform": "About the platform",
+            "matching": "Matching engine",
+            "settlement": "Settlement and disputes",
+            "affiliate": "Affiliate program"
+          }
+        },
+        "player": {
+          "heading": "Player center",
+          "items": {
+            "topup": "How to add points",
+            "kyc": "KYC verification",
+            "markets": "Market list",
+            "portfolio": "Portfolio"
+          }
+        },
+        "markets": {
+          "heading": "Markets",
+          "items": {
+            "all": "All markets",
+            "trending": "Trending",
+            "new": "New",
+            "settled": "Settled",
+            "portfolio": "Portfolio"
+          }
+        },
+        "responsibleGaming": {
+          "heading": "Limits",
+          "items": {
+            "overview": "Overview",
+            "limits": "Limit settings",
+            "cooldown": "Cooldown",
+            "selfExclusion": "Close account",
+            "resources": "Help resources"
+          }
+        },
+        "kyc": {
+          "heading": "Identity verification",
+          "items": {
+            "overview": "KYC overview",
+            "tier1": "Tier 1 basic",
+            "tier2": "Tier 2 standard",
+            "tier3": "Tier 3 enhanced",
+            "privacyNotice": "Privacy notice",
+            "status": "Review status"
+          }
+        },
+        "legal": {
+          "heading": "Legal and compliance",
+          "items": {
+            "terms": "Terms of service",
+            "privacy": "Privacy policy"
+          }
+        },
+        "support": {
+          "heading": "Support",
+          "items": {
+            "center": "Support center",
+            "faq": "FAQ",
+            "disputes": "Dispute process",
+            "contact": "Contact us"
+          }
+        }
+      }
+    },
+    "format": {
+      "points": "{n} points"
+    },
+    "noScript": {
+      "kicker": "JavaScript required",
+      "headline": "Enable JavaScript to use Prophetica",
+      "body": "Live orders, KYC verification, market data, and point settlement require JavaScript. Turn it on in your browser settings or use a browser that supports JavaScript.",
+      "cta": "Contact support"
+    }
+  },
+  "sectionNav": {
+    "markets": {
+      "ariaLabel": "Markets section navigation",
+      "all": "All",
+      "trending": "Trending",
+      "new": "New",
+      "settled": "Settled"
+    },
+    "responsibleGaming": {
+      "ariaLabel": "Limits section navigation"
+    },
+    "support": {
+      "ariaLabel": "Support section navigation",
+      "overview": "Overview",
+      "faq": "FAQ",
+      "disputes": "Disputes",
+      "contact": "Contact"
+    }
+  },
+  "stubPage": {
+    "tagline": "This page is being prepared and will launch in a future release. Thank you for your patience.",
+    "backLabel": "Back to home"
+  },
+  "landing": {
+    "hero": {
+      "kicker": "Prediction entertainment",
+      "headline": "Prediction is a contest of perspective.",
+      "tagline": "Use in-app points to forecast unrevealed event outcomes and compare your judgment with players around the world.",
+      "ctaPrimary": "Get started",
+      "ctaSecondary": "Learn how it works",
+      "media": "Hero visual"
+    },
+    "neutral": {
+      "kicker": "Neutral platform",
+      "headline": "Fair matching. Clear settlement.",
+      "tagline": "prophetica only provides matching and settlement. It does not hold contract positions or act as a market maker. Every market is a player-versus-player contest of judgment.",
+      "cta": "See the matching model",
+      "media": "Order book illustration"
+    },
+    "points": {
+      "kicker": "Points are the game",
+      "headline": "In-app points, entertainment only.",
+      "tagline": "Points added to your account are shown as balance, locked amount, and settlement records inside the app.",
+      "ctaPrimary": "Points guide",
+      "ctaSecondary": "Terms of service",
+      "media": "Points wallet"
+    },
+    "responsibleGaming": {
+      "kicker": "Limits first",
+      "headline": "Set your limit before you play.",
+      "tagline": "Every account must complete limit settings. We provide cooldowns, account closure, and help resources, with zero tolerance for underage participation.",
+      "ctaPrimary": "Set my limit",
+      "ctaSecondary": "Help resources",
+      "media": "Responsible gaming dashboard"
+    },
+    "start": {
+      "kicker": "Start in three steps",
+      "headline": "Verify, set limits, browse markets.",
+      "tagline": "Identity verification keeps play fair and compliant, limits protect your entertainment rhythm, and the market list is your arena.",
+      "ctaPrimary": "Sign up now",
+      "ctaSecondary": "View markets"
+    }
+  },
+  "offline": {
+    "metadata": {
+      "title": "Offline"
+    },
+    "kicker": "Offline",
+    "headline": "Cannot connect to Prophetica",
+    "body": "Check Wi-Fi or mobile data, then retry below. To avoid showing stale data, we do not cache balances or order screens while offline.",
+    "retry": "Retry"
+  }
+}

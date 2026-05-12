@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { ProphLinkButton } from "@prophetica/ui";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 // Shared site navigation — i18n-aware version (S commit).
 //
@@ -166,7 +167,8 @@ export async function MainNavLinks() {
 export async function AuthCta() {
   const t = await getTranslations("common.auth");
   return (
-    <div className="flex items-center gap-3 sm:gap-4">
+    <div className="flex items-center gap-2 sm:gap-3">
+      <LanguageSwitcher />
       <a
         href="/auth/sign-in"
         className="hidden font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink sm:inline"

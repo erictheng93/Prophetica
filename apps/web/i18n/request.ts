@@ -1,18 +1,47 @@
 import { getRequestConfig } from "next-intl/server";
+import { cookies } from "next/headers";
+import {
+  DEFAULT_LOCALE,
+  LOCALE_COOKIE_NAME,
+  resolveSupportedLocale,
+} from "./locales";
 
-// Single-locale bootstrap: zh-Hant only. SPEC-012 §8.3 lists 繁中 / 簡中 /
-// 英文 / 日文 as first-launch targets — adding them is "drop a JSON file
-// next to messages/zh-Hant.json + flip the locale resolver here."
-//
-// We deliberately skip a `[locale]` route segment for now to keep the URL
-// space stable while the translation catalogue stabilises. Routing-level
-// locale negotiation is a separate Tech Lead task once en/ja/ko stub
-// catalogues are seeded.
-export const SUPPORTED_LOCALES = ["zh-Hant"] as const;
-export const DEFAULT_LOCALE: (typeof SUPPORTED_LOCALES)[number] = "zh-Hant";
+type Messages = Record<string, unknown>;
+
+function isRecord(value: unknown): value is Messages {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergeMessages(base: Messages, override: Messages): Messages {
+  const merged: Messages = { ...base };
+
+  for (const [key, value] of Object.entries(override)) {
+    const baseValue = merged[key];
+    merged[key] =
+      isRecord(baseValue) && isRecord(value)
+        ? mergeMessages(baseValue, value)
+        : value;
+  }
+
+  return merged;
+}
+
+async function loadMessages(locale: string): Promise<Messages> {
+  const defaultMessages = (await import(`../messages/${DEFAULT_LOCALE}.json`))
+    .default as Messages;
+  if (locale === DEFAULT_LOCALE) return defaultMessages;
+
+  const localeMessages = (await import(`../messages/${locale}.json`))
+    .default as Messages;
+  return mergeMessages(defaultMessages, localeMessages);
+}
 
 export default getRequestConfig(async () => {
-  const locale = DEFAULT_LOCALE;
-  const messages = (await import(`../messages/${locale}.json`)).default;
+  const cookieStore = await cookies();
+  const locale =
+    resolveSupportedLocale(cookieStore.get(LOCALE_COOKIE_NAME)?.value) ??
+    DEFAULT_LOCALE;
+  const messages = await loadMessages(locale);
+
   return { locale, messages };
 });

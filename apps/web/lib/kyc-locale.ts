@@ -1,8 +1,8 @@
 // SPEC-005a §2 — KycSessionStartParams.locale must be one of the SumSub-
-// recognised BCP-47 codes (zh-TW / ja-JP / ko-KR / vi-VN / ms-MY / en).
-// next-intl exposes the app's i18n locale, which today is `zh-Hant` (script
-// subtag) and would otherwise reach SumSub as an unknown code. This module
-// is the only place that knows how to translate.
+// recognised BCP-47 codes (zh-TW / zh-CN / ja-JP / ko-KR / vi-VN / ms-MY /
+// en). next-intl exposes app locales like `zh-Hant` and `zh-Hans` (script
+// subtags) that would otherwise reach SumSub as unknown codes. This module is
+// the only place that knows how to translate.
 //
 // Keep this list in lockstep with messages/<locale>.json files: when a new
 // locale is added in i18n/request.ts, add the corresponding mapping here.
@@ -38,6 +38,11 @@ export function mapLocaleToSumsub(locale: string): SumsubLocale {
     case "ms":
     case "ms-MY":
       return "ms-MY";
+    case "id":
+    case "id-ID":
+    case "tl":
+    case "fil":
+      return "en";
     case "en":
     case "en-US":
     case "en-GB":

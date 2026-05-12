@@ -1,0 +1,179 @@
+{
+  "common": {
+    "metadata": {
+      "description": "以 Apple 风格设计打造的事件预测娱乐体验。"
+    },
+    "auth": {
+      "signIn": "登录",
+      "getStarted": "开始体验"
+    },
+    "localeSwitcher": {
+      "label": "切换语言"
+    },
+    "theme": {
+      "light": "浅色模式",
+      "dark": "深色模式",
+      "switchToLight": "切换为浅色模式",
+      "switchToDark": "切换为深色模式"
+    },
+    "nav": {
+      "markets": "市场",
+      "howItWorks": "玩法",
+      "responsibleGaming": "自我设限",
+      "support": "客服"
+    },
+    "footer": {
+      "legal": {
+        "copyright": "© {year} prophetica. 趣味预测平台 · 18+。"
+      },
+      "columns": {
+        "about": {
+          "heading": "认识 prophetica",
+          "items": {
+            "platform": "关于平台",
+            "matching": "撮合机制",
+            "settlement": "结算与争议",
+            "affiliate": "代理计划"
+          }
+        },
+        "player": {
+          "heading": "玩家中心",
+          "items": {
+            "topup": "如何充值点数",
+            "kyc": "身份验证 KYC",
+            "markets": "市场列表",
+            "portfolio": "个人持仓"
+          }
+        },
+        "markets": {
+          "heading": "市场",
+          "items": {
+            "all": "全部市场",
+            "trending": "热门",
+            "new": "新上架",
+            "settled": "已结算",
+            "portfolio": "个人持仓"
+          }
+        },
+        "responsibleGaming": {
+          "heading": "自我设限",
+          "items": {
+            "overview": "概览",
+            "limits": "限额设置",
+            "cooldown": "冷静期",
+            "selfExclusion": "解除账号",
+            "resources": "求助资源"
+          }
+        },
+        "kyc": {
+          "heading": "身份验证",
+          "items": {
+            "overview": "KYC 概览",
+            "tier1": "Tier 1 基础",
+            "tier2": "Tier 2 标准",
+            "tier3": "Tier 3 强化",
+            "privacyNotice": "隐私说明",
+            "status": "审核状态"
+          }
+        },
+        "legal": {
+          "heading": "法律与合规",
+          "items": {
+            "terms": "服务条款",
+            "privacy": "隐私政策"
+          }
+        },
+        "support": {
+          "heading": "支持",
+          "items": {
+            "center": "客服中心",
+            "faq": "常见问题",
+            "disputes": "申诉流程",
+            "contact": "联系我们"
+          }
+        }
+      }
+    },
+    "format": {
+      "points": "{n} 点"
+    },
+    "noScript": {
+      "kicker": "需要 JavaScript",
+      "headline": "请启用 JavaScript 以使用 Prophetica",
+      "body": "即时下单、KYC 验证、行情与点数结算都需要 JavaScript。请在浏览器设置中开启 JavaScript，或改用支持 JavaScript 的浏览器。",
+      "cta": "联系客服"
+    }
+  },
+  "sectionNav": {
+    "markets": {
+      "ariaLabel": "市场 区段导航",
+      "all": "全部",
+      "trending": "热门",
+      "new": "新上架",
+      "settled": "已结算"
+    },
+    "responsibleGaming": {
+      "ariaLabel": "自我设限 区段导航"
+    },
+    "support": {
+      "ariaLabel": "客服 区段导航",
+      "overview": "概览",
+      "faq": "常见问题",
+      "disputes": "申诉流程",
+      "contact": "联系我们"
+    }
+  },
+  "stubPage": {
+    "tagline": "这个页面正在准备中，将在后续版本上线。感谢你的耐心。",
+    "backLabel": "回首页"
+  },
+  "landing": {
+    "hero": {
+      "kicker": "趣味预测娱乐",
+      "headline": "预测，是一种眼光的竞技。",
+      "tagline": "用站内点数对未公开事件结果进行预测，与全球玩家比眼光。",
+      "ctaPrimary": "开始体验",
+      "ctaSecondary": "了解玩法",
+      "media": "Hero visual"
+    },
+    "neutral": {
+      "kicker": "平台中立",
+      "headline": "公平撮合，清楚结算。",
+      "tagline": "prophetica 仅提供撮合与结算服务，不持有合约仓位、不做做市商。所有对局都是玩家与玩家之间的眼光对决。",
+      "cta": "看撮合机制",
+      "media": "Order book illustration"
+    },
+    "points": {
+      "kicker": "点数即游戏",
+      "headline": "站内点数，纯娱乐。",
+      "tagline": "充值取得的点数会以站内余额、锁仓与结算纪录呈现。",
+      "ctaPrimary": "点数说明",
+      "ctaSecondary": "服务条款",
+      "media": "Points wallet"
+    },
+    "responsibleGaming": {
+      "kicker": "自我设限优先",
+      "headline": "先设限额，再开始游戏。",
+      "tagline": "每个账号都必须完成限额设置。我们提供冷静期、解除账号与求助资源，并对未成年参与采零容忍。",
+      "ctaPrimary": "设置我的限额",
+      "ctaSecondary": "求助资源",
+      "media": "Responsible gaming dashboard"
+    },
+    "start": {
+      "kicker": "开始游戏三步",
+      "headline": "完成验证、设置限额、浏览市场。",
+      "tagline": "身份验证确保公平与合规，限额设置保护自己的娱乐节奏，市场列表是你的竞技场。",
+      "ctaPrimary": "立即注册",
+      "ctaSecondary": "查看市场"
+    }
+  },
+  "offline": {
+    "metadata": {
+      "title": "离线中"
+    },
+    "kicker": "离线状态",
+    "headline": "无法连接到 Prophetica",
+    "body": "检查 Wi-Fi 或移动网络，然后点击下方按钮重试。为避免显示过期资料，我们不在离线状态缓存余额或下单画面。",
+    "retry": "重试"
+  }
+}

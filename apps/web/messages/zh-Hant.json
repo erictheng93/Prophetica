@@ -1,9 +1,21 @@
 {
   "common": {
     "brand": "prophetica",
+    "metadata": {
+      "description": "以 Apple 風格設計打造的事件預測娛樂體驗。"
+    },
     "auth": {
       "signIn": "登入",
       "getStarted": "開始體驗"
+    },
+    "localeSwitcher": {
+      "label": "切換語言"
+    },
+    "theme": {
+      "light": "淺色模式",
+      "dark": "深色模式",
+      "switchToLight": "切換為淺色模式",
+      "switchToDark": "切換為深色模式"
     },
     "nav": {
       "markets": "市場",
@@ -85,6 +97,12 @@
     },
     "format": {
       "points": "{n} 點"
+    },
+    "noScript": {
+      "kicker": "需要 JavaScript",
+      "headline": "請啟用 JavaScript 以使用 Prophetica",
+      "body": "即時下單、KYC 驗證、行情與點數結算都需要 JavaScript。請在瀏覽器設定中開啟 JavaScript，或改用支援 JavaScript 的瀏覽器。",
+      "cta": "聯絡客服"
     }
   },
   "sectionNav": {
@@ -2188,5 +2206,14 @@
       "ctaPrimary": "立即註冊",
       "ctaSecondary": "查看市場"
     }
+  },
+  "offline": {
+    "metadata": {
+      "title": "離線中"
+    },
+    "kicker": "離線狀態",
+    "headline": "無法連線到 Prophetica",
+    "body": "檢查 Wi-Fi 或行動網路，然後點擊下方按鈕重試。為避免顯示過期資料，我們不在離線狀態快取餘額或下單畫面。",
+    "retry": "重試"
   }
 }

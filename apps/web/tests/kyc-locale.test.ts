@@ -31,6 +31,13 @@ test("English variants normalise to bare 'en' (SumSub uses no en-US/en-GB split)
   assert.equal(mapLocaleToSumsub("en-GB"), "en");
 });
 
+test("supported app locales without SumSub support fall back to English", () => {
+  assert.equal(mapLocaleToSumsub("id"), "en");
+  assert.equal(mapLocaleToSumsub("id-ID"), "en");
+  assert.equal(mapLocaleToSumsub("tl"), "en");
+  assert.equal(mapLocaleToSumsub("fil"), "en");
+});
+
 test("simplified Chinese script tag maps to zh-CN", () => {
   assert.equal(mapLocaleToSumsub("zh-Hans"), "zh-CN");
 });

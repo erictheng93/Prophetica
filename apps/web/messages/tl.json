@@ -1,0 +1,179 @@
+{
+  "common": {
+    "metadata": {
+      "description": "Isang event-prediction entertainment experience na may Apple-style na disenyo."
+    },
+    "auth": {
+      "signIn": "Mag-sign in",
+      "getStarted": "Magsimula"
+    },
+    "localeSwitcher": {
+      "label": "Palitan ang wika"
+    },
+    "theme": {
+      "light": "Light mode",
+      "dark": "Dark mode",
+      "switchToLight": "Lumipat sa light mode",
+      "switchToDark": "Lumipat sa dark mode"
+    },
+    "nav": {
+      "markets": "Mga market",
+      "howItWorks": "Paano gumagana",
+      "responsibleGaming": "Mga limitasyon",
+      "support": "Suporta"
+    },
+    "footer": {
+      "legal": {
+        "copyright": "© {year} prophetica. Prediction entertainment platform · 18+."
+      },
+      "columns": {
+        "about": {
+          "heading": "Tungkol sa prophetica",
+          "items": {
+            "platform": "Tungkol sa platform",
+            "matching": "Matching mechanism",
+            "settlement": "Settlement at disputes",
+            "affiliate": "Affiliate program"
+          }
+        },
+        "player": {
+          "heading": "Player center",
+          "items": {
+            "topup": "Paano magdagdag ng points",
+            "kyc": "KYC verification",
+            "markets": "Listahan ng markets",
+            "portfolio": "Portfolio"
+          }
+        },
+        "markets": {
+          "heading": "Mga market",
+          "items": {
+            "all": "Lahat ng markets",
+            "trending": "Trending",
+            "new": "Bago",
+            "settled": "Settled",
+            "portfolio": "Portfolio"
+          }
+        },
+        "responsibleGaming": {
+          "heading": "Mga limitasyon",
+          "items": {
+            "overview": "Overview",
+            "limits": "Limit settings",
+            "cooldown": "Cooldown",
+            "selfExclusion": "Isara ang account",
+            "resources": "Help resources"
+          }
+        },
+        "kyc": {
+          "heading": "Identity verification",
+          "items": {
+            "overview": "KYC overview",
+            "tier1": "Tier 1 basic",
+            "tier2": "Tier 2 standard",
+            "tier3": "Tier 3 enhanced",
+            "privacyNotice": "Privacy notice",
+            "status": "Review status"
+          }
+        },
+        "legal": {
+          "heading": "Legal at compliance",
+          "items": {
+            "terms": "Terms of service",
+            "privacy": "Privacy policy"
+          }
+        },
+        "support": {
+          "heading": "Suporta",
+          "items": {
+            "center": "Support center",
+            "faq": "FAQ",
+            "disputes": "Dispute process",
+            "contact": "Makipag-ugnayan"
+          }
+        }
+      }
+    },
+    "format": {
+      "points": "{n} points"
+    },
+    "noScript": {
+      "kicker": "Kailangan ang JavaScript",
+      "headline": "I-enable ang JavaScript para magamit ang Prophetica",
+      "body": "Kailangan ng JavaScript para sa live orders, KYC verification, market data, at point settlement. I-on ito sa browser settings o gumamit ng browser na sumusuporta sa JavaScript.",
+      "cta": "Makipag-ugnayan sa suporta"
+    }
+  },
+  "sectionNav": {
+    "markets": {
+      "ariaLabel": "Market section navigation",
+      "all": "Lahat",
+      "trending": "Trending",
+      "new": "Bago",
+      "settled": "Settled"
+    },
+    "responsibleGaming": {
+      "ariaLabel": "Limits section navigation"
+    },
+    "support": {
+      "ariaLabel": "Support section navigation",
+      "overview": "Overview",
+      "faq": "FAQ",
+      "disputes": "Disputes",
+      "contact": "Contact"
+    }
+  },
+  "stubPage": {
+    "tagline": "Inihahanda pa ang page na ito at ilulunsad sa susunod na release. Salamat sa iyong pasensya.",
+    "backLabel": "Bumalik sa home"
+  },
+  "landing": {
+    "hero": {
+      "kicker": "Prediction entertainment",
+      "headline": "Ang prediksyon ay labanan ng pananaw.",
+      "tagline": "Gumamit ng in-app points para hulaan ang mga event outcome na hindi pa inilalabas at ikumpara ang iyong pananaw sa mga player sa buong mundo.",
+      "ctaPrimary": "Magsimula",
+      "ctaSecondary": "Alamin kung paano",
+      "media": "Hero visual"
+    },
+    "neutral": {
+      "kicker": "Neutral na platform",
+      "headline": "Patas na matching. Malinaw na settlement.",
+      "tagline": "Nagbibigay lang ang prophetica ng matching at settlement. Hindi ito humahawak ng contract positions at hindi ito market maker. Bawat market ay player-versus-player na labanan ng pananaw.",
+      "cta": "Tingnan ang matching model",
+      "media": "Order book illustration"
+    },
+    "points": {
+      "kicker": "Points ang laro",
+      "headline": "In-app points, pang-entertainment lang.",
+      "tagline": "Ang points na idinagdag sa account ay ipinapakita bilang balance, locked amount, at settlement records sa loob ng app.",
+      "ctaPrimary": "Points guide",
+      "ctaSecondary": "Terms of service",
+      "media": "Points wallet"
+    },
+    "responsibleGaming": {
+      "kicker": "Limitasyon muna",
+      "headline": "Magtakda ng limitasyon bago maglaro.",
+      "tagline": "Kailangang kumpletuhin ng bawat account ang limit settings. Mayroon kaming cooldown, account closure, at help resources, at zero tolerance sa underage participation.",
+      "ctaPrimary": "Itakda ang limitasyon ko",
+      "ctaSecondary": "Help resources",
+      "media": "Responsible gaming dashboard"
+    },
+    "start": {
+      "kicker": "Magsimula sa tatlong hakbang",
+      "headline": "Mag-verify, magtakda ng limitasyon, mag-browse ng markets.",
+      "tagline": "Pinapanatili ng identity verification na patas at compliant ang laro, pinoprotektahan ng limits ang iyong entertainment rhythm, at ang market list ang iyong arena.",
+      "ctaPrimary": "Mag-sign up ngayon",
+      "ctaSecondary": "Tingnan ang markets"
+    }
+  },
+  "offline": {
+    "metadata": {
+      "title": "Offline"
+    },
+    "kicker": "Offline",
+    "headline": "Hindi makakonekta sa Prophetica",
+    "body": "Suriin ang Wi-Fi o mobile data, pagkatapos ay subukang muli sa ibaba. Para maiwasan ang lumang data, hindi namin kino-cache ang balances o order screens habang offline.",
+    "retry": "Subukan muli"
+  }
+}
