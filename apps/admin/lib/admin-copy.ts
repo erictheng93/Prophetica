@@ -66,7 +66,8 @@ export const adminCopy = {
     fieldRevealHelp: "啟用後系統將要求二次授權；操作會寫入稽核紀錄。",
     submitCta: "送出報表工單",
     jobsTitle: "報表工單",
-    jobsDescription: "已產生的 report_jobs。每列附帶版本、generated_at 與 row hash 供稽核。",
+    jobsDescription:
+      "已產生的 report_jobs。每列附帶版本、generated_at 與 row hash 供稽核。",
     jobIdColumn: "工單 ID",
     jobTemplateColumn: "模板",
     jobVersionColumn: "版本",
@@ -86,7 +87,8 @@ export const adminCopy = {
     detailRevealLocked: "目前顯示為遮罩。需 admin 角色與二次授權才能還原明文。",
     detailRevealUnlocked: "敏感欄位明文已啟用，此 job 將標記在稽核紀錄。",
     detailRerunHeading: "重跑",
-    detailRerunBody: "相同參數重跑後會產生新版本（v 序號 +1），原 row hash 必須一致。",
+    detailRerunBody:
+      "相同參數重跑後會產生新版本（v 序號 +1），原 row hash 必須一致。",
     detailRerunCta: "以相同參數重跑（Phase 3 啟用）",
     detailAuditHeading: "稽核紀錄",
     detailAuditEmpty: "尚無稽核事件。",
@@ -99,13 +101,15 @@ export const adminCopy = {
     schedulesStatus: "狀態",
     schedulesStatusEnabled: "啟用",
     schedulesStatusPaused: "暫停",
-    schedulesActionDisabled: "Phase 3 串接 analytics-service 後啟用；目前僅顯示排程殼。",
+    schedulesActionDisabled:
+      "Phase 3 串接 analytics-service 後啟用；目前僅顯示排程殼。",
     backToList: "返回模板清單",
     backToJobs: "返回工單清單",
   },
   affiliateAdmin: {
     listHeading: "代理清單",
-    listDescription: "全平台已啟用的代理夥伴。點擊一列以查看推薦鏈、佣金歷史與管理動作。",
+    listDescription:
+      "全平台已啟用的代理夥伴。點擊一列以查看推薦鏈、佣金歷史與管理動作。",
     detailEyebrow: "代理檔案",
     detailBackToList: "返回代理清單",
     statusActive: "啟用",
@@ -131,15 +135,29 @@ export const adminCopy = {
     detailPayoutsHeading: "近期撥款",
     detailRateHistoryHeading: "佣金率變更紀錄",
     detailRateHistoryEmpty: "尚未調整過佣金率。",
+    detailCreditHeading: "信用評級與信用帳戶",
+    detailCreditAccountsHeading: "信用帳戶狀態",
+    creditRating: "信用評級",
+    creditStatus: "信用狀態",
+    creditActiveAccounts: "Active 帳戶",
+    creditTotalLimit: "總授信限額",
+    creditPerAccountLimit: "單戶限額",
+    creditReviewExpiry: "覆核到期",
+    creditLastChanged: "最近調整",
+    creditAccountsEmpty: "尚無信用帳戶。",
     detailAuditHeading: "稽核相關 ID",
     detailAuditEmpty: "尚未產生稽核紀錄。",
     detailActionsHeading: "管理動作",
     actionFreezeLabel: "凍結代理",
     actionUnfreezeLabel: "解除凍結",
     actionAdjustRateLabel: "調整佣金率",
+    actionAdjustCreditLabel: "調整信用評級",
+    actionRestrictCreditLabel: "限制信用帳戶",
     actionRequestAuditLabel: "建立 Audit 工單",
-    actionDisabledTooltip: "Phase 3 串接 referral-service 後啟用；目前僅顯示控制面殼。",
-    actionsManagerNote: "你的角色為 manager，僅限唯讀檢視。佣金率變更需 admin 雙簽。",
+    actionDisabledTooltip:
+      "Phase 3 串接 referral-service 後啟用；目前僅顯示控制面殼。",
+    actionsManagerNote:
+      "你的角色為 manager，僅限唯讀檢視。佣金率變更需 admin 雙簽。",
   },
   affiliatePortal: {
     eyebrow: "代理門戶",
@@ -149,7 +167,8 @@ export const adminCopy = {
     payoutsHeading: "撥款進度",
     payoutsDescription: "目前待撥款金額與下一次結算日；歷史撥款保留 24 個月。",
     subTreeHeading: "推薦鏈",
-    subTreeDescription: "三層推薦鏈下的會員彙總（人數、活躍度、本月貢獻佣金）。不含 PII。",
+    subTreeDescription:
+      "三層推薦鏈下的會員彙總（人數、活躍度、本月貢獻佣金）。不含 PII。",
     placeholder: "Phase 4 將串接 referral-service。目前顯示為佔位資料。",
     affiliateIdLabel: "你的代理 ID",
   },
@@ -158,7 +177,8 @@ export const adminCopy = {
     description:
       "集中處理會員、帳戶點數、代理抽佣、KYC / 風控事件、補償與人工審批。此頁只提供操作入口與審批脈絡，實際寫入仍由核准後的系統紀錄完成。",
     domainsHeading: "操作領域",
-    domainsDescription: "會員、點數例外、代理審查、KYC / 風控、補償與人工核准工作區。",
+    domainsDescription:
+      "會員、點數例外、代理審查、KYC / 風控、補償與人工核准工作區。",
   },
   dashboard: {
     eyebrow: "決策支援",
@@ -166,11 +186,14 @@ export const adminCopy = {
     description:
       "提供管理層檢視營運 KPI、風控警示、版本化報表與稽核查詢入口。此頁維持唯讀，不提供直接人工調帳或風控處分。",
     kpiHeading: "KPI 與警示",
-    kpiDescription: "彙整當前營運健康度、風險警示與審批 SLA，協助判斷是否需要升級處理。",
+    kpiDescription:
+      "彙整當前營運健康度、風險警示與審批 SLA，協助判斷是否需要升級處理。",
     reportsHeading: "版本化報表",
-    reportsDescription: "列出已產生的管理報表版本、雜湊與負責團隊，方便稽核與回溯。",
+    reportsDescription:
+      "列出已產生的管理報表版本、雜湊與負責團隊，方便稽核與回溯。",
     auditHeading: "稽核查詢",
-    auditDescription: "提供 evidence lookup 的固定查詢名稱，讓審批、補償、代理與 KYC 事件能被追蹤。",
+    auditDescription:
+      "提供 evidence lookup 的固定查詢名稱，讓審批、補償、代理與 KYC 事件能被追蹤。",
   },
   components: {
     previewSnapshot: "快照",

@@ -34,12 +34,20 @@
 <h1>SPEC-011 — 代理分潤體系</h1>
 <blockquote>
 <p>優先級：<strong>P2</strong>
-版本：v0.2.3 · 最後更新：2026-05-09
+版本：v0.2.4 · 最後更新：2026-05-12
 依賴：SPEC-002, SPEC-005, SPEC-010, SPEC-016
 被依賴：—</p>
 </blockquote>
 <section class="changelog">
 <div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>v0.2.4 變更（代理信用評級與信用帳戶管控）</h3>
+    <ul>
+      <li>新增 §4.7：平台官方管理員可調整簽約代理的信用評級，並可增加、限制、暫停或撤銷代理可提供的信用帳戶額度與數量。</li>
+      <li>明確邊界：信用帳戶為 B2B 授信 / 營運風控能力，不是玩家錢包銅幣、不可轉為玩家應付帳款或外部資產，也不得繞過 SPEC-002 INV-6。</li>
+      <li>所有信用評級、信用帳戶、狀態與限額變更都必須寫入操作留痕，包含前後值、授權人、依據、scope、有效時間與 correlation id。</li>
+    </ul>
+  </article>
   <article class="changelog-entry">
     <h3>v0.2.3 變更（佣金% 調整權補強）</h3>
     <ul>
@@ -250,6 +258,42 @@ taker_fee × 佣金百分比 → referrer</code></pre>
 <p>上限值為 v0.2.1 之初始 default，可由業主於 Beta 後依實際 CAC / LTV 曲線調整；變更須 SPEC-011 patch 並走 <a href="./SPEC-010-security-antifraud.html">SPEC-010 §9.3 MS-N</a> 簽核（影響行銷預算 P&amp;L）。
 上限觸發後<strong>不</strong>追回已發放獎勵；僅暫停<strong>新增</strong>獎勵入帳，避免破 INV-6。</p>
 </blockquote>
+<h3>4.7 代理信用評級與信用帳戶管控</h3>
+<p>針對已簽約且完成對應 EDD / KYB 的代理，平台官方管理員可維護其信用評級與可提供信用帳戶的營運權限。此能力用於 B2B 授信、活動名額與風控配額管理，不屬於玩家錢包銅幣系統。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>規格</th>
+<th>限制</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>信用評級</td>
+<td><code>A</code> / <code>B</code> / <code>C</code> / <code>restricted</code> / <code>suspended</code>；可由官方管理員調整，manager 僅可提出變更建議</td>
+<td>降級、限制或暫停必須保留原因、風控依據與授權鏈</td>
+</tr>
+<tr>
+<td>信用帳戶數量</td>
+<td>官方管理員可設定代理可提供的 active credit account 上限；可增加、降低、暫停新增或全部停用</td>
+<td>不得超過該代理信用評級對應的系統上限；超限需 SPEC-010 §9.3 MS-N 4-eye review</td>
+</tr>
+<tr>
+<td>信用帳戶限額</td>
+<td>可設定單一帳戶限額、代理總授信限額、日/月使用限額與到期日</td>
+<td>限額變更不得自動產生玩家銅幣，也不得寫入 <code>Player.Wallet.*</code></td>
+</tr>
+<tr>
+<td>帳戶狀態</td>
+<td><code>pending_review</code> / <code>active</code> / <code>limited</code> / <code>frozen</code> / <code>closed</code></td>
+<td>狀態變更以新增事件紀錄表示，不得覆寫歷史狀態</td>
+</tr>
+</tbody></table>
+<ul>
+<li><strong>紅線：</strong>信用帳戶不得作為「玩家銅幣 → 外部資產 / 應付帳款」的繞道；不得與 <code>Player.Wallet.*</code> 餘額互相抵銷、沖銷或兌換。</li>
+<li><strong>審批：</strong>提升評級、提高總授信、解除 <code>restricted</code> / <code>suspended</code> 需至少 admin + Compliance 4-eye；降級、限制、凍結可由 admin 先行執行，事後進入覆核佇列。</li>
+<li><strong>留痕：</strong>信用評級與信用帳戶的新增、限制、凍結、解凍、關閉、限額調整與審核回覆都必須寫入操作留痕，包含前後值、actor、role、target affiliate、credit account id、reason、authorization basis、effective_at、expires_at、correlation id、IP 與 User-Agent。</li>
+</ul>
 <h2>5. 推薦人後台</h2>
 <h3>5.1 自助介面</h3>
 <p>每位玩家都可在個人頁查看：</p>
@@ -265,6 +309,7 @@ taker_fee × 佣金百分比 → referrer</code></pre>
 <li>細項 dashboard：每位被推薦人的活動、儲值、交易量、佣金</li>
 <li>月度報表 PDF 下載</li>
 <li>B2B 酬勞月結（業務 invoice + Operating Co. 應付帳款流程，<strong>外部資產</strong>支付至業務指定銀行帳戶；<strong>完全與玩家錢包銅幣無關</strong> — 詳見 §6）</li>
+<li>信用評級、信用帳戶限額與帳戶狀態檢視；可提交資源 / 額度申請，但不得自行提高評級或授信上限</li>
 <li>稅務文件：發票上傳、扣繳憑單下載</li>
 </ul>
 <blockquote>
@@ -277,6 +322,7 @@ taker_fee × 佣金百分比 → referrer</code></pre>
 <li><strong>管理員留痕：</strong>平台營運、客服、風控、合規、技術、法務的資料變更、權限調整、批准/否決、配額變更、提現授權等，皆需保留可稽核操作紀錄。</li>
 <li><strong>代理留痕：</strong>代理端發起的推薦名單維護、資源申請、活動名額、額度申請與調整、審核回覆，都需一併紀錄；同一動作可由後續管理層覆核，但不得刪除或覆寫先前紀錄。</li>
 <li><strong>抽佣率調整留痕：</strong>官方管理員調整代理抽佣 % 數，需留存前後值、調整人、調整時點、適用範圍與授權依據，且可回溯。</li>
+<li><strong>信用管控留痕：</strong>官方管理員調整代理信用評級、信用帳戶上限、單戶/總額限額、狀態或到期日，需留存前後值、調整人、授權人、原因、風控依據、適用範圍與 correlation id。</li>
 <li><strong>紀錄原則：</strong>任何歷史記錄不得刪除，需更正者以新增紀錄補記，並保留前後狀態與授權鏈。</li>
 <li><strong>合規衔接：</strong>與管理權限簽核有關之留痕，應可直接對應本規格或既有治理規格中的審核流程（例如 multi-sig 與 4-eye 類需求）。</li>
 </ul>
@@ -397,6 +443,7 @@ Operating Co. 從**營運帳戶**（非託管帳戶）以**外部資產**支付�
 <li><input disabled="" type="checkbox"> 介紹 code / 狀態轉換與親屬複核不影響被推薦人註冊有效性</li>
 <li><input disabled="" type="checkbox"> 任何「玩家銅幣 -> 外部資產 / 應付帳款」路徑在產品行為上不得發生</li>
 <li><input disabled="" type="checkbox"> 達標上限與異常回溯提示可被用戶與客服查證</li>
+<li><input disabled="" type="checkbox"> 代理信用評級與信用帳戶變更可由官方管理員管控，且所有變更都可從 audit trail 回溯前後值與授權鏈</li>
 <li><input disabled="" type="checkbox"> 本節工程實作細節已落到對應 implementation plan 與執行書</li>
 </ul>
 <ol>
@@ -410,7 +457,6 @@ Operating Co. 從**營運帳戶**（非託管帳戶）以**外部資產**支付�
 
 </body>
 </html>
-
 
 
 

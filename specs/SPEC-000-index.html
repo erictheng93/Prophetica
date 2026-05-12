@@ -225,8 +225,8 @@
 <tbody><tr>
 <td><a href="./SPEC-011-affiliate-commission.html">SPEC-011</a></td>
 <td>代理分潤體系</td>
-<td>單層介紹費 + 交易佣金、業務 B2B 路徑（<strong>獨立法律關係，不從玩家錢包出口；R-1</strong>）、稅務扣繳、§4.1.2 延遲 30 天發放 + §4.6 月度 / 終身 / 群組上限（G-3 / G-8）</td>
-<td>🟢 v0.2.3</td>
+<td>單層介紹費 + 交易佣金、業務 B2B 路徑（<strong>獨立法律關係，不從玩家錢包出口；R-1</strong>）、稅務扣繳、§4.1.2 延遲 30 天發放 + §4.6 月度 / 終身 / 群組上限（G-3 / G-8）、§4.7 代理信用評級與信用帳戶管控</td>
+<td>🟢 v0.2.4</td>
 </tr>
 <tr>
   <td><a href="./SPEC-020-analytics-reporting.html">SPEC-020</a></td>
@@ -390,6 +390,10 @@
 <h2>4. 變更紀錄</h2>
 <section class="changelog">
 <div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>2026-05-12 · v0.3.6 · Tech Lead</h3>
+    <p><strong>SPEC-011 affiliate credit governance alignment</strong>：SPEC-011 v0.2.4 新增 §4.7，明確平台官方管理員可調整簽約代理信用評級，並可增加、限制、暫停或撤銷代理可提供的信用帳戶數量、狀態與限額；所有信用管控變更必須寫入操作留痕。同步更新 P2 表摘要與版本。</p>
+  </article>
   <article class="changelog-entry">
     <h3>2026-05-11 · v0.3.5 · Tech Lead</h3>
     <p><strong>SPEC-002 MVP manual points implementation alignment</strong>：SPEC-002 v0.1.9 新增 <code>manual_points_adjustment</code> 作為尚未啟用真實儲值前的授權調點路徑，admin / manager 可查詢、增加、扣除會員銅幣，affiliate 僅能增加銅幣；所有操作必須 delta-only 並寫入 <code>audit_logs</code>。本檔同步更新 P0 表摘要與版本；ADR-0006 v1.0.2 追認 INV-6 <code>Expense.ManualPointsGrant</code> carve-out。</p>
@@ -765,4 +769,3 @@
 
 </body>
 </html>
-

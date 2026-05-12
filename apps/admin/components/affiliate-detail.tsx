@@ -3,6 +3,9 @@ import { adminCopy } from "@/lib/admin-copy";
 import {
   formatBps,
   formatMinor,
+  formatTwdMinor,
+  type AffiliateCreditAccountStatus,
+  type AffiliateCreditRating,
   type AffiliateDetail,
   type AffiliatePayoutRow,
   type AffiliateRiskFlag,
@@ -18,7 +21,10 @@ const riskLabel: Record<AffiliateRiskFlag, string> = {
   "kyc-tier1-only": adminCopy.affiliateAdmin.riskKycTier1Only,
 };
 
-const payoutTone: Record<AffiliatePayoutRow["status"], "neutral" | "warning" | "success" | "critical"> = {
+const payoutTone: Record<
+  AffiliatePayoutRow["status"],
+  "neutral" | "warning" | "success" | "critical"
+> = {
   settled: "success",
   pending: "warning",
   blocked: "critical",
@@ -30,12 +36,42 @@ const payoutLabel: Record<AffiliatePayoutRow["status"], string> = {
   blocked: "受阻",
 };
 
+const creditRatingLabel: Record<AffiliateCreditRating, string> = {
+  A: "A",
+  B: "B",
+  C: "C",
+  restricted: "受限",
+  suspended: "暫停",
+};
+
+const creditStatusLabel: Record<AffiliateCreditAccountStatus, string> = {
+  pending_review: "待審",
+  active: "啟用",
+  limited: "受限",
+  frozen: "凍結",
+  closed: "關閉",
+};
+
+const creditStatusTone: Record<
+  AffiliateCreditAccountStatus,
+  "neutral" | "warning" | "success" | "critical"
+> = {
+  pending_review: "warning",
+  active: "success",
+  limited: "warning",
+  frozen: "critical",
+  closed: "neutral",
+};
+
 interface AffiliateDetailViewProps {
   affiliate: AffiliateDetail;
   viewerRole: Role;
 }
 
-export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailViewProps) {
+export function AffiliateDetailView({
+  affiliate,
+  viewerRole,
+}: AffiliateDetailViewProps) {
   const isAdmin = viewerRole === "admin";
 
   return (
@@ -53,7 +89,9 @@ export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailVi
             <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48">
               {adminCopy.affiliateAdmin.detailEyebrow}
             </p>
-            <h2 className="mt-2 text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">{affiliate.displayName}</h2>
+            <h2 className="mt-2 text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">
+              {affiliate.displayName}
+            </h2>
             <p className="mt-1 font-mono text-[13px] tracking-[-0.224px] text-proph-ink-muted-80">
               {affiliate.id} · {affiliate.emailMasked}
             </p>
@@ -69,15 +107,24 @@ export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailVi
         </div>
 
         <dl className="mt-6 grid gap-4 md:grid-cols-4">
-          <KeyValue label={adminCopy.affiliateAdmin.columnTier} value={`Tier ${affiliate.tier}`} />
-          <KeyValue label={adminCopy.affiliateAdmin.columnRate} value={formatBps(affiliate.commissionRateBps)} />
+          <KeyValue
+            label={adminCopy.affiliateAdmin.columnTier}
+            value={`Tier ${affiliate.tier}`}
+          />
+          <KeyValue
+            label={adminCopy.affiliateAdmin.columnRate}
+            value={formatBps(affiliate.commissionRateBps)}
+          />
           <KeyValue
             label={adminCopy.affiliateAdmin.columnSubTree}
             value={`${affiliate.subTreeSize} 人 / 活躍 ${affiliate.activeSubCount}`}
           />
           <KeyValue
             label={adminCopy.affiliateAdmin.columnPendingPayout}
-            value={formatMinor(affiliate.pendingPayoutMinor, affiliate.pendingPayoutCurrency)}
+            value={formatMinor(
+              affiliate.pendingPayoutMinor,
+              affiliate.pendingPayoutCurrency,
+            )}
           />
           <KeyValue
             label="上層 Sponsor"
@@ -101,10 +148,15 @@ export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailVi
               key={tier.tier}
               className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5"
             >
-              <p className="text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]">Tier {tier.tier}</p>
-              <p className="mt-3 text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">{tier.count}</p>
+              <p className="text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]">
+                Tier {tier.tier}
+              </p>
+              <p className="mt-3 text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">
+                {tier.count}
+              </p>
               <p className="mt-2 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-                活躍 {tier.activeCount} · 本月貢獻 {formatMinor(tier.mtdContributionMinor, "USDT")}
+                活躍 {tier.activeCount} · 本月貢獻{" "}
+                {formatMinor(tier.mtdContributionMinor, "USDT")}
               </p>
             </li>
           ))}
@@ -116,7 +168,9 @@ export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailVi
           {adminCopy.affiliateAdmin.detailPayoutsHeading}
         </h3>
         {affiliate.recentPayouts.length === 0 ? (
-          <p className="mt-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">尚無撥款紀錄。</p>
+          <p className="mt-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+            尚無撥款紀錄。
+          </p>
         ) : (
           <ul className="mt-4 divide-y divide-proph-hairline">
             {affiliate.recentPayouts.map((payout) => (
@@ -124,13 +178,90 @@ export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailVi
                 key={payout.id}
                 className="grid gap-2 py-3 md:grid-cols-[2fr_auto_auto_auto]"
               >
-                <span className="font-mono text-[13px] tracking-[-0.224px] text-proph-ink-muted-80">{payout.id}</span>
+                <span className="font-mono text-[13px] tracking-[-0.224px] text-proph-ink-muted-80">
+                  {payout.id}
+                </span>
                 <span className="text-[17px] font-semibold tracking-[-0.374px]">
                   {formatMinor(payout.amountMinor, payout.currency)}
                 </span>
-                <StatusPill tone={payoutTone[payout.status]}>{payoutLabel[payout.status]}</StatusPill>
+                <StatusPill tone={payoutTone[payout.status]}>
+                  {payoutLabel[payout.status]}
+                </StatusPill>
                 <span className="text-[14px] tracking-[-0.224px] text-proph-ink-muted-80 md:text-right">
                   {payout.settledAt}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h3 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+            {adminCopy.affiliateAdmin.detailCreditHeading}
+          </h3>
+          <StatusPill tone={creditStatusTone[affiliate.creditProfile.status]}>
+            {creditStatusLabel[affiliate.creditProfile.status]}
+          </StatusPill>
+        </div>
+        <dl className="mt-5 grid gap-4 md:grid-cols-3">
+          <KeyValue
+            label={adminCopy.affiliateAdmin.creditRating}
+            value={creditRatingLabel[affiliate.creditProfile.rating]}
+          />
+          <KeyValue
+            label={adminCopy.affiliateAdmin.creditActiveAccounts}
+            value={`${affiliate.creditProfile.activeCreditAccounts} / ${affiliate.creditProfile.maxActiveCreditAccounts}`}
+          />
+          <KeyValue
+            label={adminCopy.affiliateAdmin.creditTotalLimit}
+            value={formatTwdMinor(
+              affiliate.creditProfile.totalCreditLimitMinorUnits,
+            )}
+          />
+          <KeyValue
+            label={adminCopy.affiliateAdmin.creditPerAccountLimit}
+            value={formatTwdMinor(
+              affiliate.creditProfile.perAccountLimitMinorUnits,
+            )}
+          />
+          <KeyValue
+            label={adminCopy.affiliateAdmin.creditReviewExpiry}
+            value={affiliate.creditProfile.reviewExpiresAt ?? "—"}
+          />
+          <KeyValue
+            label={adminCopy.affiliateAdmin.creditLastChanged}
+            value={`${affiliate.creditProfile.lastChangedAt} · ${affiliate.creditProfile.lastChangedBy}`}
+          />
+        </dl>
+
+        <h4 className="mt-6 text-[17px] font-semibold leading-[1.24] tracking-[-0.374px]">
+          {adminCopy.affiliateAdmin.detailCreditAccountsHeading}
+        </h4>
+        {affiliate.creditProfile.accounts.length === 0 ? (
+          <p className="mt-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+            {adminCopy.affiliateAdmin.creditAccountsEmpty}
+          </p>
+        ) : (
+          <ul className="mt-3 divide-y divide-proph-hairline">
+            {affiliate.creditProfile.accounts.map((account) => (
+              <li
+                key={account.id}
+                className="grid gap-2 py-3 md:grid-cols-[1.4fr_auto_auto_auto]"
+              >
+                <span className="font-mono text-[13px] tracking-[-0.224px] text-proph-ink-muted-80">
+                  {account.id}
+                </span>
+                <StatusPill tone={creditStatusTone[account.status]}>
+                  {creditStatusLabel[account.status]}
+                </StatusPill>
+                <span className="text-[14px] tracking-[-0.224px]">
+                  {formatTwdMinor(account.usedMinorUnits)} /{" "}
+                  {formatTwdMinor(account.creditLimitMinorUnits)}
+                </span>
+                <span className="text-[14px] tracking-[-0.224px] text-proph-ink-muted-80 md:text-right">
+                  {account.expiresAt ?? "—"}
                 </span>
               </li>
             ))}
@@ -154,7 +285,10 @@ export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailVi
                 className="grid gap-2 py-3 md:grid-cols-[1fr_auto_auto]"
               >
                 <span className="text-[14px] tracking-[-0.224px]">
-                  <span className="text-proph-ink-muted-80">{change.effectiveAt}</span> · {change.reason}
+                  <span className="text-proph-ink-muted-80">
+                    {change.effectiveAt}
+                  </span>{" "}
+                  · {change.reason}
                 </span>
                 <span className="font-mono text-[13px] tracking-[-0.224px]">
                   {formatBps(change.previousBps)} → {formatBps(change.nextBps)}
@@ -209,8 +343,26 @@ export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailVi
             disabled
             tone={affiliate.status === "frozen" ? "primary" : "warning"}
           />
-          <ActionButton label={adminCopy.affiliateAdmin.actionAdjustRateLabel} disabled tone="primary" />
-          <ActionButton label={adminCopy.affiliateAdmin.actionRequestAuditLabel} disabled tone="neutral" />
+          <ActionButton
+            label={adminCopy.affiliateAdmin.actionAdjustRateLabel}
+            disabled
+            tone="primary"
+          />
+          <ActionButton
+            label={adminCopy.affiliateAdmin.actionAdjustCreditLabel}
+            disabled
+            tone="primary"
+          />
+          <ActionButton
+            label={adminCopy.affiliateAdmin.actionRestrictCreditLabel}
+            disabled
+            tone="warning"
+          />
+          <ActionButton
+            label={adminCopy.affiliateAdmin.actionRequestAuditLabel}
+            disabled
+            tone="neutral"
+          />
         </div>
         <p className="mt-4 text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-48">
           {adminCopy.affiliateAdmin.actionDisabledTooltip}
@@ -220,10 +372,20 @@ export function AffiliateDetailView({ affiliate, viewerRole }: AffiliateDetailVi
   );
 }
 
-function KeyValue({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function KeyValue({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="text-[11px] uppercase tracking-[0.08em] text-proph-ink-muted-48">{label}</dt>
+      <dt className="text-[11px] uppercase tracking-[0.08em] text-proph-ink-muted-48">
+        {label}
+      </dt>
       <dd
         className={
           mono
@@ -256,7 +418,9 @@ function ActionButton({
     <button
       type="button"
       disabled={disabled}
-      title={disabled ? adminCopy.affiliateAdmin.actionDisabledTooltip : undefined}
+      title={
+        disabled ? adminCopy.affiliateAdmin.actionDisabledTooltip : undefined
+      }
       className={`inline-flex h-11 items-center justify-center rounded-proph-pill px-5 text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${toneClass}`}
     >
       {label}
