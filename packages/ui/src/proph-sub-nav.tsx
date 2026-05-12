@@ -31,9 +31,10 @@ export function ProphSubNav({
         // Now the primary nav across the site (not stacked under a black
         // global-nav). Sticks to viewport top with the highest z-index.
         "sticky top-0 z-50 w-full",
-        // canvas-parchment at 80% opacity — fallback to opaque if backdrop-filter unsupported
-        "bg-[rgba(245,245,247,0.8)] text-proph-ink",
-        "supports-[backdrop-filter]:bg-[rgba(245,245,247,0.72)]",
+        // canvas-parchment at 80% opacity — fallback to opaque if color-mix unsupported
+        "bg-proph-canvas-parchment text-proph-ink",
+        "bg-[color-mix(in_srgb,var(--proph-color-canvas-parchment)_80%,transparent)]",
+        "supports-[backdrop-filter]:bg-[color-mix(in_srgb,var(--proph-color-canvas-parchment)_72%,transparent)]",
         "[backdrop-filter:saturate(180%)_blur(20px)]",
         "border-b border-proph-divider-soft",
         className,

@@ -8,6 +8,7 @@ import {
   FooterLegalRow,
   getFooterColumns,
   MainNavLinks,
+  SiteThemeToggle,
 } from "@/lib/site-nav";
 
 interface PageProps {
@@ -52,6 +53,7 @@ export default async function AuthPage({ searchParams }: PageProps) {
             >
               {t("nav.supportCta")}
             </a>
+            <SiteThemeToggle />
           </div>
         }
       />

@@ -4,6 +4,8 @@
  * verbatim — keep in sync; mismatches between TS and CSS sides indicate drift.
  */
 :root {
+  color-scheme: light;
+
   /* Colors — brand & accent */
   --proph-color-primary: #0066cc;
   --proph-color-primary-focus: #0071e3;
@@ -82,4 +84,44 @@
   --kumo-color-text: var(--proph-color-ink);
   --kumo-color-background: var(--proph-color-canvas);
   --kumo-radius-pill: var(--proph-radius-pill);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Colors — brand & accent */
+  --proph-color-primary: #2997ff;
+  --proph-color-primary-focus: #64d2ff;
+  --proph-color-primary-on-dark: #64d2ff;
+
+  /* Colors — text */
+  --proph-color-ink: #f5f5f7;
+  --proph-color-body: #f5f5f7;
+  --proph-color-body-on-dark: #ffffff;
+  --proph-color-body-muted: #d1d1d6;
+  --proph-color-ink-muted-80: #d1d1d6;
+  --proph-color-ink-muted-48: #9a9aa0;
+
+  /* Colors — hairlines */
+  --proph-color-divider-soft: #2c2c2e;
+  --proph-color-hairline: #3a3a3c;
+
+  /* Colors — surface */
+  --proph-color-canvas: #101012;
+  --proph-color-canvas-parchment: #1c1c1e;
+  --proph-color-surface-pearl: #242426;
+  --proph-color-surface-tile-1: #151517;
+  --proph-color-surface-tile-2: #1f1f21;
+  --proph-color-surface-tile-3: #121214;
+  --proph-color-surface-black: #000000;
+  --proph-color-surface-chip-translucent: rgba(72, 72, 74, 0.72);
+
+  /* Colors — on-color */
+  --proph-color-on-primary: #000000;
+  --proph-color-on-dark: #ffffff;
+
+  /* Colors — feedback */
+  --proph-color-feedback-error: #ff453a;
+  --proph-color-feedback-warning: #ffd60a;
+  --proph-color-feedback-success: #32d74b;
 }

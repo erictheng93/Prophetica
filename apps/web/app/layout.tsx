@@ -5,6 +5,22 @@ import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import "./globals.css";
 
+const themeInitScript = `
+(() => {
+  try {
+    const stored = window.localStorage.getItem("prophetica-theme");
+    const theme = stored === "dark" ? "dark" : "light";
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.style.colorScheme = theme;
+  } catch {
+    const root = document.documentElement;
+    root.dataset.theme = "light";
+    root.style.colorScheme = "light";
+  }
+})();
+`;
+
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("common.metadata");
 
@@ -49,8 +65,9 @@ export default async function RootLayout({
     getTranslations("common.noScript"),
   ]);
   return (
-    <html lang={locale}>
+    <html lang={locale} data-theme="light" suppressHydrationWarning>
       <body>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         {/*
          * noscript fallback — every interactive surface on Prophetica
          * (trade panel, KYC submission, top-up flow, sign-in, real-time

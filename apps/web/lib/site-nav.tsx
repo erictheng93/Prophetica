@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { ProphLinkButton } from "@prophetica/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { ThemeToggle, type ThemeToggleLabels } from "@/components/theme-toggle";
 
 // Shared site navigation — i18n-aware version (S commit).
 //
@@ -9,8 +10,9 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 //   - Static href maps live in this file (route hrefs are not translated).
 //   - Labels / headings come from `messages/<locale>.json` under
 //     `common.nav.*` and `common.footer.columns.*`.
-//   - Components (<Brand>, <MainNavLinks>, <AuthCta>, <FooterLegalRow>) are
-//     async server components that resolve their copy via getTranslations.
+//   - Components (<Brand>, <MainNavLinks>, <AuthCta>, <SiteThemeToggle>,
+//     <FooterLegalRow>) are async server components that resolve their copy
+//     via getTranslations.
 //
 // Migration note: callers stay unchanged (`<MainNavLinks />`); React 19 RSC
 // renders async server components transparently. Footer-column consumers
@@ -178,8 +180,22 @@ export async function AuthCta() {
       <ProphLinkButton variant="primary" href="/auth/sign-in">
         {t("getStarted")}
       </ProphLinkButton>
+      <SiteThemeToggle />
     </div>
   );
+}
+
+/** Site-wide light/dark mode switch; defaults to light until a user toggles. */
+export async function SiteThemeToggle() {
+  const t = await getTranslations("common.theme");
+  const labels: ThemeToggleLabels = {
+    dark: t("dark"),
+    light: t("light"),
+    switchToDark: t("switchToDark"),
+    switchToLight: t("switchToLight"),
+  };
+
+  return <ThemeToggle labels={labels} />;
 }
 
 /** Site-wide footer legal row. */
