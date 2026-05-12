@@ -223,14 +223,14 @@
 <td>完成註冊 + 首次儲值</td>
 <td>Email、手機 OTP、生日（≥18）、首發國對應證件驗證（見 §2.4）</td>
 <td><strong>不申報</strong>（保留 NULL）</td>
-<td>累計儲值 &lt; TWD 30,000 / 月、單筆 &lt; TWD 5,000</td>
+<td>累計儲值 &lt; 金幣 30,000 / 月、單筆 &lt; 金幣 5,000</td>
 </tr>
 <tr>
 <td><strong>Tier 2</strong> 標準</td>
 <td>累計儲值達 Tier 1 上限或自願升級</td>
 <td>證件 OCR + 自拍人臉比對 + Liveness Detection + 地址證明</td>
 <td><strong>可選申報</strong>（鼓勵以解鎖更高上限）</td>
-<td>累計儲值 &lt; TWD 300,000 / 月（已申報）；TWD 100,000 / 月（未申報）</td>
+<td>累計儲值 &lt; 金幣 300,000 / 月（已申報）；金幣 100,000 / 月（未申報）</td>
 </tr>
 <tr>
 <td><strong>Tier 3</strong> 強化（EDD）</td>
@@ -253,7 +253,7 @@
 </thead>
 <tbody><tr>
 <td>資料型態</td>
-<td><code>BIGINT NULL</code>（內部單位 = TWD × 100，與點數內部單位一致）</td>
+<td><code>BIGINT NULL</code>（內部單位 = 金幣 × 100，與銅幣內部單位一致）</td>
 </tr>
 <tr>
 <td>取值範圍</td>
@@ -261,7 +261,7 @@
 </tr>
 <tr>
 <td>申報來源</td>
-<td>Tier 2 自願填寫（UI 區間選單，例如「&lt; TWD 30k」、「30k-60k」、「60k-100k」、「&gt; 100k」皆對應一個區間中位數）；Tier 3 由 KYC 證明文件抽取</td>
+<td>Tier 2 自願填寫（UI 區間選單，例如「&lt; 金幣 30k」、「30k-60k」、「60k-100k」、「&gt; 100k」皆對應一個區間中位數）；Tier 3 由 KYC 證明文件抽取</td>
 </tr>
 <tr>
 <td>隱私</td>
@@ -278,7 +278,7 @@
 </tbody></table>
 <h4>Fallback 行為（給 SPEC-006 §4.1 等下游消費者）</h4>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html">SPEC-005-kyc-aml-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-<p><strong>呼應 SPEC-006 §4.1 RG 評分公式</strong>：當 <code>effective_monthly_income(user) is None</code>，「儲值金額 / 申報月收入」維度視為<strong>中性</strong>（不加分，但若該玩家儲值 &gt; TWD 30,000 / 月直接觸發 Tier 2 升級流程，間接強制申報）。</p>
+<p><strong>呼應 SPEC-006 §4.1 RG 評分公式</strong>：當 <code>effective_monthly_income(user) is None</code>，「儲值金額 / 申報月收入」維度視為<strong>中性</strong>（不加分，但若該玩家儲值 &gt; 金幣 30,000 / 月直接觸發 Tier 2 升級流程，間接強制申報）。</p>
 <h3>2.2 升級觸發條件</h3>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html">SPEC-005-kyc-aml-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 <p>升級失敗 → 帳戶<strong>功能凍結</strong>，已有持倉保留至結算，不影響玩家既有資產。</p>
@@ -480,10 +480,10 @@
 </ol>
 <h3>7.3 強制觸發 SAR 的情境</h3>
 <ul>
-<li>單筆儲值 &gt; USD 10,000</li>
-<li>30 日累計儲值 &gt; USD 30,000</li>
+<li>單筆儲值 &gt; 銀幣 10,000</li>
+<li>30 日累計儲值 &gt; 銀幣 30,000</li>
 <li>不尋常下注模式（極大單筆、極端勝率玩家集中下注）</li>
-<li>玩家拒絕 KYC 升級且帳戶留有大量點數</li>
+<li>玩家拒絕 KYC 升級且帳戶留有大量銅幣</li>
 </ul>
 <h2>8. 玩家 UX</h2>
 <h3>8.1 KYC 流程設計原則</h3>

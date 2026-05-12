@@ -33,7 +33,7 @@
 </blockquote>
 <hr />
 <h2>1. Objective</h2>
-<p>定義玩家儲值（fiat → 站內點數）的端到端支付通路：通路選型、收款主體、webhook 簽章、退款 / chargeback、跨幣別匯率鎖定、PCI 範圍劃線、多通路備援、結帳 UX。本 SPEC 補齊 SPEC-002（資金安全 / 帳本）與實際支付路徑之間的銜接議題。</p>
+<p>定義玩家儲值（金幣 Token → 站內銅幣）的端到端支付通路：通路選型、收款主體、webhook 簽章、退款 / chargeback、跨 Token 匯率鎖定、PCI 範圍劃線、多通路備援、結帳 UX。本 SPEC 補齊 SPEC-002（資金安全 / 帳本）與實際支付路徑之間的銜接議題。</p>
 <h2>2. 範圍與不在範圍</h2>
 <h3>2.1 In-scope</h3>
 <ul>
@@ -41,7 +41,7 @@
 <li>收款主體與託管帳戶對應</li>
 <li>Webhook 簽章驗證、idempotency、retry 規範</li>
 <li>Chargeback / 退款流程</li>
-<li>跨幣別匯率鎖定機制</li>
+<li>跨 Token 匯率鎖定機制</li>
 <li>PCI DSS 範圍劃線</li>
 <li>多通路備援切換策略</li>
 <li>結帳 UX 標準（含 RG 警示、上限提示）</li>
@@ -104,7 +104,7 @@
 <tr>
 <td><strong>備援</strong></td>
 <td>Wise / Airwallex（B2B 跨境）</td>
-<td>多國法幣</td>
+<td>多國金幣 Token</td>
 <td>Op Co.</td>
 <td>視情況啟用</td>
 </tr>
@@ -182,7 +182,7 @@
 </table>
 <p><strong>重要</strong>：通路結算前該款項屬於通路代收，不算入 <code>Bank.TrustAccount</code> 餘額。Ledger 記帳順序：
 1. webhook 確認 → <code>Pending.Deposit</code> 帳戶（asset）+ <code>Player.Wallet</code> 同步（liability）
-2. 通路結算入帳 → <code>Pending.Deposit</code> 轉至 <code>Bank.TrustAccount.{currency}</code>
+2. 通路結算入帳 → <code>Pending.Deposit</code> 轉至 <code>Bank.TrustAccount.{token_kind}</code>
 3. 兩階段都需 idempotent</p>
 <blockquote>
 <p>SPEC-002 §4.2 之 Chart of Accounts 需擴增 <code>Pending.Deposit.{provider}</code> 子帳戶。</p>
@@ -254,7 +254,7 @@
 <th>Timestamp 來源</th>
 <th>Provider txn ID 欄位</th>
 <th>settled_amount 欄位</th>
-<th>Currency 欄位</th>
+<th>TokenKind 欄位</th>
 <th>事件類型映射</th>
 </tr>
 </thead>
@@ -265,8 +265,8 @@
 <td>MD5 / SHA256（依設定）</td>
 <td><code>PaymentDate</code></td>
 <td><code>MerchantTradeNo</code></td>
-<td><code>TradeAmt</code>（TWD 整數元）× 100</td>
-<td>固定 TWD</td>
+<td><code>TradeAmt</code>（金幣整數單位）× 100</td>
+<td>固定 金幣</td>
 <td><code>RtnCode=1</code> → SETTLED；<code>RtnCode≠1</code> → FAILED</td>
 </tr>
 <tr>
@@ -276,7 +276,7 @@
 <td>header <code>t=</code> 部分</td>
 <td><code>id</code>（event）+ <code>data.object.id</code>（charge）</td>
 <td><code>data.object.amount_received</code>（已是最小單位）</td>
-<td><code>data.object.currency</code>（lower case ISO）</td>
+<td><code>data.object.token_kind</code>（lower case ISO）</td>
 <td><code>payment_intent.succeeded</code> → SETTLED；<code>charge.refunded</code> → REFUNDED；<code>charge.dispute.created</code> → CHARGEBACK</td>
 </tr>
 <tr>
@@ -285,8 +285,8 @@
 <td>SHA256 + AES</td>
 <td><code>PayTime</code></td>
 <td><code>MerchantOrderNo</code></td>
-<td><code>Amt</code>（TWD 元）× 100</td>
-<td>固定 TWD</td>
+<td><code>Amt</code>（金幣單位）× 100</td>
+<td>固定 金幣</td>
 <td><code>Status=SUCCESS</code> → SETTLED</td>
 </tr>
 <tr>
@@ -296,7 +296,7 @@
 <td>header <code>t=</code></td>
 <td><code>data.id</code>（event）</td>
 <td><code>data.attributes.amount</code></td>
-<td><code>data.attributes.currency</code></td>
+<td><code>data.attributes.token_kind</code></td>
 <td><code>payment.paid</code> → SETTLED；<code>payment.refunded</code> → REFUNDED</td>
 </tr>
 <tr>
@@ -305,8 +305,8 @@
 <td>HMAC-SHA256 + RSA</td>
 <td><code>responseTime</code></td>
 <td><code>requestId</code> + <code>transId</code></td>
-<td><code>amount</code>（VND 整數元）× 100</td>
-<td>固定 VND</td>
+<td><code>amount</code>（銅幣整數單位）× 100</td>
+<td>固定 銅幣</td>
 <td><code>resultCode=0</code> → SETTLED</td>
 </tr>
 <tr>
@@ -315,8 +315,8 @@
 <td>HMAC-SHA512</td>
 <td><code>vnp_PayDate</code></td>
 <td><code>vnp_TxnRef</code></td>
-<td><code>vnp_Amount</code>（VND × 100，已最小單位）</td>
-<td>固定 VND</td>
+<td><code>vnp_Amount</code>（銅幣 × 100，已最小單位）</td>
+<td>固定 銅幣</td>
 <td><code>vnp_ResponseCode=00</code> → SETTLED</td>
 </tr>
 </tbody>
@@ -326,12 +326,12 @@
 </blockquote>
 <h4>5.5.3 Phase 1 換算規則</h4>
 <blockquote>
-<p>SPEC-016 §7.1 規定 Phase 1 ledger 僅有 <code>Bank.TrustAccount.TWD</code>。對非 TWD 通路（PayMongo / MoMo / VNPay 等）：</p>
+<p>SPEC-016 §7.1 規定 Phase 1 ledger 僅有 <code>Bank.TrustAccount.金幣</code>。對非 金幣 通路（PayMongo / MoMo / VNPay 等）：</p>
 </blockquote>
 <ul>
 <li>Driver decode 時取通路提供的 <code>fx_rate</code>（若無則拒絕，要求業主與通路重簽合約包含 FX 透明欄位）</li>
-<li><code>settled_twd = original.amount × fx_rate</code>，存入 <code>ProviderWebhookEnvelope.settled_twd</code></li>
-<li>主流程僅 deposit <code>settled_twd</code> 到 <code>Bank.TrustAccount.TWD</code>，原幣別僅作 audit 紀錄</li>
+<li><code>settled_gold_units = original.amount × fx_rate</code>，存入 <code>ProviderWebhookEnvelope.settled_gold_units</code></li>
+<li>主流程僅 deposit <code>settled_gold_units</code> 到 <code>Bank.TrustAccount.金幣</code>，原 Token 類型僅作 audit 紀錄</li>
 <li><code>fx_rate</code> 字串保留小數精度（如 <code>"31.5"</code>），不轉 float</li>
 </ul>
 <h4>5.5.4 Driver 必含介面（Rust）</h4>
@@ -360,7 +360,7 @@
 <tbody>
 <tr>
 <td>玩家主動退款（未交易、KYC 失敗）</td>
-<td>退款至原入金通道；點數 reverse</td>
+<td>退款至原入金通道；銅幣 reverse</td>
 </tr>
 <tr>
 <td>系統故障導致重複扣款</td>
@@ -379,21 +379,21 @@
 <h3>6.3 退款限制</h3>
 <ul>
 <li>退款<strong>只能原路返回</strong>（信用卡退原卡、ATM 退原帳戶）</li>
-<li>部分退款最低粒度 = 1 點 = TWD 1（依計價單位）</li>
+<li>部分退款最低粒度 = 1 銅幣 = 金幣 1（依計價單位）</li>
 <li>退款金額不得超過原始儲值</li>
 <li>退款超過 90 天則拒絕（通路普遍時限）</li>
 </ul>
-<h2>7. 跨幣別與匯率</h2>
+<h2>7. 跨 Token與匯率</h2>
 <blockquote>
-<p><strong>Phase 1 — 永遠單幣別 TWD</strong>（呼應 <a href="./SPEC-002-funds-safety.html">SPEC-002 §3.1</a> 已 Resolved 之 1 點 = TWD 1）。ledger 僅維持 <code>Bank.TrustAccount.TWD</code> 一個資產帳戶；國際玩家以非 TWD 法幣儲值時，<strong>由通路在 webhook 中換算為 TWD 後入帳</strong>，平台 ledger 永遠以 TWD 計價，<strong>任何幣別皆於通路端完成換算</strong>。</p>
-<p>Phase 2（多幣別）保留設計但<strong>目前無啟用計畫</strong>。Q-3 已 Resolved 為 TWD 1:1，Phase 2 不再被 Q-3 阻塞；觸發條件改為<strong>業務驅動</strong>：(a) Op Co. 開立非 TWD 計價之國際版本（例如 USD ledger）、或 (b) 平台需主動承擔 FX 對沖（例如向 DMM 結算非 TWD 點數）。在無上述業務需求前，§7.4 之多幣別 schema 不實作。</p>
+<p><strong>Phase 1 — 永遠單 Token 金幣</strong>（呼應 <a href="./SPEC-002-funds-safety.html">SPEC-002 §3.1</a> 已 Resolved 之 1 銅幣 = 金幣 1）。ledger 僅維持 <code>Bank.TrustAccount.金幣</code> 一個資產帳戶；國際玩家以非金幣 Token 儲值時，<strong>由通路在 webhook 中換算為 金幣 後入帳</strong>，平台 ledger 永遠以 金幣 計價，<strong>任何 Token 類型皆於通路端完成換算</strong>。</p>
+<p>Phase 2（多 Token）保留設計但<strong>目前無啟用計畫</strong>。Q-3 已 Resolved 為 金幣 1:1，Phase 2 不再被 Q-3 阻塞；觸發條件改為<strong>業務驅動</strong>：(a) Op Co. 開立非 金幣 計價之國際版本（例如 銀幣 ledger）、或 (b) 平台需主動承擔 FX 對沖（例如向 DMM 結算非 金幣 銅幣）。在無上述業務需求前，§7.4 之多 Token schema 不實作。</p>
 </blockquote>
-<h3>7.1 Phase 1 — 單幣別（TWD）入帳路徑</h3>
+<h3>7.1 Phase 1 — 單 Token（金幣）入帳路徑</h3>
 <blockquote>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <h4>7.1.1 Webhook 必含欄位（FX 透明化）</h4>
-<p>不論玩家原儲值幣別，後端必須從 webhook 取得：</p>
+<p>不論玩家原儲值Token 類型，後端必須從 webhook 取得：</p>
 <table>
 <thead>
 <tr>
@@ -403,20 +403,20 @@
 </thead>
 <tbody>
 <tr>
-<td><code>settled_amount_twd</code></td>
+<td><code>settled_gold_amount</code></td>
 <td>入 ledger 的金額（內部單位 × 100）</td>
 </tr>
 <tr>
-<td><code>original_amount</code> / <code>original_currency</code></td>
-<td>對玩家顯示「您儲值 100 USD ≈ 3,150 TWD」</td>
+<td><code>original_amount</code> / <code>original_token_kind</code></td>
+<td>對玩家顯示「您儲值 100 銀幣 ≈ 3,150 金幣」</td>
 </tr>
 <tr>
 <td><code>fx_rate</code> / <code>fx_locked_at</code></td>
 <td>稽核留痕（存入 <code>ledger_transactions.metadata</code>）</td>
 </tr>
 <tr>
-<td><code>provider_fee_twd</code></td>
-<td>通路手續費（換算成 TWD）</td>
+<td><code>provider_fee_gold</code></td>
+<td>通路手續費（換算成 金幣）</td>
 </tr>
 </tbody>
 </table>
@@ -424,13 +424,13 @@
 <p>Phase 1 平台不承擔 FX 風險（換算發生於通路端）。通路收取的 FX spread 視為玩家成本。</p>
 <h3>7.3 玩家 UI 對 FX 的呈現</h3>
 <ul>
-<li>結帳前顯示原幣別金額 + 預估 TWD 點數，並標注「最終點數依通路結算匯率為準，可能微幅變動」</li>
-<li>入帳完成後，玩家錢包與儲值紀錄統一以 TWD 點數呈現</li>
-<li>退款比照 §6.3 「原路返回」原則，TWD 對原幣金額之精算差額由通路端處理</li>
+<li>結帳前顯示原 Token 類型金額 + 預估 金幣 銅幣，並標注「最終銅幣依通路結算匯率為準，可能微幅變動」</li>
+<li>入帳完成後，玩家錢包與儲值紀錄統一以 金幣 銅幣呈現</li>
+<li>退款比照 §6.3 「原路返回」原則，金幣 對原 Token金額之精算差額由通路端處理</li>
 </ul>
-<h3>7.4 Phase 2（保留設計，目前無啟用計畫）— 多幣別 ledger</h3>
+<h3>7.4 Phase 2（保留設計，目前無啟用計畫）— 多 Token ledger</h3>
 <blockquote>
-<p>以下為延伸設計，<strong>目前無啟用計畫</strong>。觸發條件為業務驅動（見 §7 開頭）：Op Co. 開非 TWD 計價國際版本、或平台主動承擔 FX 對沖。Phase 1 不實作此 schema，僅保留設計以避免未來大規模 migration。</p>
+<p>以下為延伸設計，<strong>目前無啟用計畫</strong>。觸發條件為業務驅動（見 §7 開頭）：Op Co. 開非 金幣 計價國際版本、或平台主動承擔 FX 對沖。Phase 1 不實作此 schema，僅保留設計以避免未來大規模 migration。</p>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-016-payment-gateway-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 </blockquote>
 <p>匯率鎖定原則：
@@ -524,8 +524,8 @@
 <td>≥ 80% 顯著紅字提醒；100% 拒絕儲值</td>
 </tr>
 <tr>
-<td>點數無回兌聲明</td>
-<td>結帳前最後一頁明示「此次儲值之點數無法兌回現金」並玩家勾選確認</td>
+<td>銅幣無回兌聲明</td>
+<td>結帳前最後一頁明示「此次儲值之銅幣無法兌回外部資產」並玩家勾選確認</td>
 </tr>
 <tr>
 <td>KYC tier 限額提示</td>
@@ -544,7 +544,7 @@
 <p>未勾選兩個 checkbox 不可前進。</p>
 <h3>10.3 儲值完成後</h3>
 <ul>
-<li>顯示「點數已入帳」</li>
+<li>顯示「銅幣已入帳」</li>
 <li>提示玩家設定 / 調整月度上限（如尚未設定）</li>
 <li>連結至「我的責任博弈」頁面</li>
 </ul>
@@ -588,7 +588,7 @@
 <li>Webhook endpoint 走 Cloudflare WAF + IP 白名單</li>
 <li>通路 API 金鑰存於 Vault，依各通路最小權限</li>
 <li>退款 API 內部呼叫需 4-eye 簽核（T3 客服 + Compliance）</li>
-<li>對帳差異 &gt; USD 1,000 自動凍結出帳</li>
+<li>對帳差異 &gt; 銀幣 1,000 自動凍結出帳</li>
 </ul>
 <h2>14. 驗收條件</h2>
 <ul>
@@ -610,7 +610,7 @@
 <li>玩家通路偏好是否要加密儲存（避免被推測使用習慣）？</li>
 <li>跨境匯率 hedge 是否在 Op Co. 規模達一定門檻後啟動（如 Wise 之 forward contract）？</li>
 <li>越南 / 菲律賓本地通路（Momo / PayMongo）是否需要設第二家 Op Co. 才能合規收款？</li>
-<li>退款是否提供「退至錢包點數」之選項（玩家未真的轉錯）？— 法律風險：點數無回兌原則之邊界</li>
+<li>退款是否提供「退至錢包銅幣」之選項（玩家未真的轉錯）？— 法律風險：銅幣無回兌原則之邊界</li>
 </ol>
 </body>
 </html>

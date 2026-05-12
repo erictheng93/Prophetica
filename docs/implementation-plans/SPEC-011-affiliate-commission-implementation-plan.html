@@ -67,7 +67,7 @@
       <li>推薦關係採 first-touch：首次帶入 referral code 即為最終綁定結果。</li>
       <li>交易佣金不寫入 trade hot path；只從 commission_accruals 匯流後再發放。</li>
       <li>介紹獎勵只在 T+30 日檢核完成且無 pending review 時才可發放。</li>
-      <li>Player.Wallet 對現金/應付科目禁止 outflow；違規 route 全部 reject。</li>
+      <li>Player.Wallet 對外部資產/應付科目禁止 outflow；違規 route 全部 reject。</li>
     </ul>
   </section>
 
@@ -164,7 +164,7 @@ CREATE INDEX idx_commission_accruals_referrer ON commission_accruals(referrer_id
     <ul>
       <li>月成功介紹超 20 則進入 pending_eddreview</li>
       <li>終身成功介紹超 200 則進入 pending_eddreview</li>
-      <li>單月交易佣金超額（TWD 50,000）進入 pending_eddreview</li>
+      <li>單月交易佣金超額（金幣 50,000）進入 pending_eddreview</li>
       <li>同 IP / device / KYC 群組按合併口徑套用同檻值</li>
     </ul>
   </section>

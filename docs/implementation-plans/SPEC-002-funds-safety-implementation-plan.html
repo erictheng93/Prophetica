@@ -60,7 +60,7 @@ CREATE TABLE ledger_accounts (
     id              BIGSERIAL PRIMARY KEY,
     code            VARCHAR(128) NOT NULL UNIQUE,        -- 例: 'Player.Wallet.42'
     type            VARCHAR(32)  NOT NULL,               -- asset/liability/revenue/expense
-    currency        VARCHAR(8)   NOT NULL DEFAULT 'PTS', -- 點數內幣別
+    token_kind        VARCHAR(8)   NOT NULL DEFAULT 'COPPER', -- 銅幣內Token 類型
     parent_id       BIGINT       REFERENCES ledger_accounts(id),
     metadata        JSONB        NOT NULL DEFAULT '{}',
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -90,7 +90,7 @@ CREATE TABLE ledger_entries (
     account_id      BIGINT NOT NULL REFERENCES ledger_accounts(id),
     direction       SMALLINT NOT NULL CHECK (direction IN (1,-1)),  -- 1=借方/+; -1=貸方/-
     amount          BIGINT  NOT NULL CHECK (amount > 0),             -- 內部單位（百分點）
-    currency        VARCHAR(8) NOT NULL,
+    token_kind        VARCHAR(8) NOT NULL,
     balance_after   BIGINT NOT NULL,                                 -- 該帳戶累計餘額
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -156,10 +156,10 @@ CREATE INDEX idx_idempo_expires ON idempotency_records(expires_at);
   </section>
 
   <section>
-    <h2>4.1 MVP 手動點數調整與 audit_logs</h2>
+    <h2>4.1 MVP 手動銅幣調整與 audit_logs</h2>
     <ul>
-      <li><code>POST /internal/ledger/manual-points-adjustments</code> 建立 <code>manual_points_adjustment</code>，只接受 delta-only：增加 Y 點或扣除 Y 點，不提供設定絕對餘額。</li>
-      <li>admin / manager 可查詢、增加與扣除會員點數；affiliate 僅可增加會員點數，affiliate 查詢任意會員餘額或扣點必須拒絕。</li>
+      <li><code>POST /internal/ledger/manual-points-adjustments</code> 建立 <code>manual_points_adjustment</code>，只接受 delta-only：增加 Y 銅幣或扣除 Y 銅幣，不提供設定絕對餘額。</li>
+      <li>admin / manager 可查詢、增加與扣除會員銅幣；affiliate 僅可增加會員銅幣，affiliate 查詢任意會員餘額或扣點必須拒絕。</li>
       <li>查詢操作寫 <code>audit_logs.action = 'wallet_balance_read'</code>；調整操作寫 <code>audit_logs.action = 'manual_points_adjustment'</code> 並將 <code>audit_log_id</code> 放入 ledger transaction metadata。</li>
       <li>INV-6 對 <code>Expense.ManualPointsGrant</code> 的例外僅限 <code>manual_points_adjustment</code> 扣點、actor_role 為 admin / manager 且帶 <code>audit_log_id</code>；ADR-0006 v1.0.2 已同步。</li>
     </ul>

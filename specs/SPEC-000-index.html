@@ -68,7 +68,7 @@
 </tr>
 <tr>
 <td>玩家行為</td>
-<td>以站內<strong>虛擬點數</strong>對未公開事件結果進行預測，與其他玩家撮合</td>
+<td>以站內<strong>虛擬銅幣</strong>對未公開事件結果進行預測，與其他玩家撮合</td>
 </tr>
 <tr>
 <td>平台角色</td>
@@ -76,7 +76,7 @@
 </tr>
 <tr>
 <td>出金政策</td>
-<td><strong>台灣司法管轄區內無任何出金通道</strong>；點數僅可在站內使用，不可兌換現金 / 虛擬貨幣 / 實體商品</td>
+<td><strong>台灣司法管轄區內無任何出金通道</strong>；銅幣僅可在站內使用，不可兌換外部資產 / 虛擬貨幣 / 實體商品</td>
 </tr>
 <tr>
 <td>主要市場</td>
@@ -100,8 +100,8 @@
 </thead>
 <tbody><tr>
 <td><a href="./SPEC-002-funds-safety.html">SPEC-002</a></td>
-<td>資金安全與虛擬點數帳本</td>
-<td>雙簿記、隔離帳戶、對帳機制、Frozen 子科目、<strong>INV-6 點數出口白名單（R-1，ADR-0006 落地，含 chargeback carve-out v0.1.8、manual adjustment carve-out v0.1.9）</strong>、MVP 手動點數調整、§9.3 最終一致性窗口（T-5）、Phase 1 monthly partition（T-3）</td>
+<td>資金安全與虛擬銅幣帳本</td>
+<td>雙簿記、隔離帳戶、對帳機制、Frozen 子科目、<strong>INV-6 銅幣出口白名單（R-1，ADR-0006 落地，含 chargeback carve-out v0.1.8、manual adjustment carve-out v0.1.9）</strong>、MVP 手動銅幣調整、§9.3 最終一致性窗口（T-5）、Phase 1 monthly partition（T-3）</td>
 <td>🟢 v0.1.9</td>
 </tr>
 <tr>
@@ -125,7 +125,7 @@
 <tr>
 <td><a href="./SPEC-016-payment-gateway.html">SPEC-016</a></td>
 <td>支付通路整合</td>
-<td>通路選型、Webhook、Chargeback ≥ 1 統一封號（H-5）、跨幣別、PCI 範圍</td>
+<td>通路選型、Webhook、Chargeback ≥ 1 統一封號（H-5）、跨 Token、PCI 範圍</td>
 <td>🟢 v0.1.1</td>
 </tr>
 <tr>
@@ -339,22 +339,37 @@
 <tr>
 <td>Settlement</td>
 <td>結算</td>
-<td>市場到期後依官方判定結果，將持倉轉為點數</td>
+<td>市場到期後依官方判定結果，將持倉轉為銅幣</td>
 </tr>
 <tr>
 <td>Tick</td>
 <td>最小價格單位</td>
-<td>1 cent（0.01 點）</td>
+<td>1 cent（0.01 銅幣）</td>
 </tr>
 <tr>
 <td>Lot</td>
 <td>最小數量單位</td>
-<td>1 股 = 1 點面額</td>
+<td>1 股 = 1 銅幣面額</td>
 </tr>
 <tr>
 <td>Points</td>
-<td>站內點數</td>
-<td>玩家儲值購買的虛擬遊戲點數，<strong>不可兌回現金</strong></td>
+<td>站內銅幣</td>
+<td>玩家儲值購買的虛擬遊戲銅幣，<strong>不可兌回外部資產</strong></td>
+</tr>
+<tr>
+<td>Gold Token</td>
+<td>金幣</td>
+<td>平台主要入金與計價 Token，用於儲值門檻、限額與對帳基準。</td>
+</tr>
+<tr>
+<td>Silver Token</td>
+<td>銀幣</td>
+<td>跨區、合規門檻與大型營運預算的參照 Token，不使用外部法定幣名稱。</td>
+</tr>
+<tr>
+<td>Copper Token</td>
+<td>銅幣</td>
+<td>站內遊戲、交易、獎勵與結算使用的玩家錢包 Token，不可兌回外部資產。</td>
 </tr>
 <tr>
 <td>DMM</td>
@@ -377,7 +392,7 @@
 <div class="changelog-list">
   <article class="changelog-entry">
     <h3>2026-05-11 · v0.3.5 · Tech Lead</h3>
-    <p><strong>SPEC-002 MVP manual points implementation alignment</strong>：SPEC-002 v0.1.9 新增 <code>manual_points_adjustment</code> 作為尚未啟用真實儲值前的授權調點路徑，admin / manager 可查詢、增加、扣除會員點數，affiliate 僅能增加點數；所有操作必須 delta-only 並寫入 <code>audit_logs</code>。本檔同步更新 P0 表摘要與版本；ADR-0006 v1.0.2 追認 INV-6 <code>Expense.ManualPointsGrant</code> carve-out。</p>
+    <p><strong>SPEC-002 MVP manual points implementation alignment</strong>：SPEC-002 v0.1.9 新增 <code>manual_points_adjustment</code> 作為尚未啟用真實儲值前的授權調點路徑，admin / manager 可查詢、增加、扣除會員銅幣，affiliate 僅能增加銅幣；所有操作必須 delta-only 並寫入 <code>audit_logs</code>。本檔同步更新 P0 表摘要與版本；ADR-0006 v1.0.2 追認 INV-6 <code>Expense.ManualPointsGrant</code> carve-out。</p>
   </article>
   <article class="changelog-entry">
     <h3>2026-05-09 · v0.3.4 · Tech Lead</h3>
@@ -404,7 +419,7 @@
       <li><strong>G-5</strong> §4.4 chargeback 反沖細化：介紹獎勵走 G-3 延遲路徑無需 clawback；持續佣金封號自動停止；封號前已支付佣金<strong>不追回</strong>（保善意第三方 + 不破 INV-6 + cost &lt; CAC 可吸收）；</li>
       <li><strong>G-6</strong> §4.5 ledger entry 補 sign convention cross-ref SPEC-002 §4.3 direction =±1 規則；</li>
       <li><strong>G-7</strong> §5.1 「推薦樹」用詞改為「推薦清單（flat list）」避免暗示 MLM；</li>
-      <li><strong>G-8</strong> §4.6 推薦獎勵上限：月度 20 個介紹 / 終身 200 個 / 月度佣金 TWD 50k / 同 IP-fingerprint 群組合併計算，超出進 EDD 4-eye review。§9 驗收條件由原 7 項擴充為 9.1 後端（9 項，Codex owner）+ 9.2 前端（3 項，Tech Lead owner）+ 9.3 跨 SPEC 依賴（2 項）+ 9.4 法律 / 業務（2 項）。§10 OQ #1 標 Resolved，新增 OQ #6（上限調整 governance）。本檔 §5 新增 Q-8 跨檔決策追蹤條目（v0.2.1 8 個 gap 之 single source of truth）。SPEC-011 「依賴」由 4 份擴增為 5 份（加 SPEC-016）。SPEC-011 v0.2.0 → v0.2.1。</li>
+      <li><strong>G-8</strong> §4.6 推薦獎勵上限：月度 20 個介紹 / 終身 200 個 / 月度佣金 金幣 50k / 同 IP-fingerprint 群組合併計算，超出進 EDD 4-eye review。§9 驗收條件由原 7 項擴充為 9.1 後端（9 項，Codex owner）+ 9.2 前端（3 項，Tech Lead owner）+ 9.3 跨 SPEC 依賴（2 項）+ 9.4 法律 / 業務（2 項）。§10 OQ #1 標 Resolved，新增 OQ #6（上限調整 governance）。本檔 §5 新增 Q-8 跨檔決策追蹤條目（v0.2.1 8 個 gap 之 single source of truth）。SPEC-011 「依賴」由 4 份擴增為 5 份（加 SPEC-016）。SPEC-011 v0.2.0 → v0.2.1。</li>
     </ul>
   </article>
   <article class="changelog-entry">
@@ -486,7 +501,7 @@
     <h3>2026-05-07 · v0.2.5 · Tech Lead</h3>
     <p><strong>R-1 / R-2 兩條合規紅線清除</strong>（業主 2026-05-07 拍板）：</p>
     <ul>
-      <li><strong>R-1 點數回兌紅線</strong>：SPEC-011 §6 整節重寫為 4 子節（B2B 簽約獨立法律關係 / 雙身份隔離 / 帳本層 INV-6 強制 / 會計科目分離）；§5.2 / §7.1 同步修正誤導描述；SPEC-002 §4.2 Chart of Accounts 補 <code>Liability.AccountsPayable.{partner_id}</code> / <code>Expense.AffiliatePartnerFee</code> / <code>Bank.OperatingAccount.{currency}</code>；SPEC-002 §5 新增 INV-6（<code>Player.Wallet.*</code> outflow 白名單，DB CONSTRAINT TRIGGER 強制 + CI sentinel-scan grep gate），ADR-0006 待落地擴展 ADR-0003 §5 INV 集合；SPEC-002 v0.1.4 → v0.1.5、SPEC-011 v0.1.0 → v0.2.0、SPEC-011「依賴」清單加 SPEC-010。</li>
+      <li><strong>R-1 銅幣回兌紅線</strong>：SPEC-011 §6 整節重寫為 4 子節（B2B 簽約獨立法律關係 / 雙身份隔離 / 帳本層 INV-6 強制 / 會計科目分離）；§5.2 / §7.1 同步修正誤導描述；SPEC-002 §4.2 Chart of Accounts 補 <code>Liability.AccountsPayable.{partner_id}</code> / <code>Expense.AffiliatePartnerFee</code> / <code>Bank.OperatingAccount.{token_kind}</code>；SPEC-002 §5 新增 INV-6（<code>Player.Wallet.*</code> outflow 白名單，DB CONSTRAINT TRIGGER 強制 + CI sentinel-scan grep gate），ADR-0006 待落地擴展 ADR-0003 §5 INV 集合；SPEC-002 v0.1.4 → v0.1.5、SPEC-011 v0.1.0 → v0.2.0、SPEC-011「依賴」清單加 SPEC-010。</li>
       <li><strong>R-2 平台下場紅線</strong>：SPEC-009 §5 「冷啟動補貼」整段移除（保留 placeholder 章節說明移除理由與替代方案 — DMM rebate 放大）；SPEC-009 §9 OQ #5 標 Resolved；SPEC-003 §12.1.1 sentinel <code>system.platform_announcement</code> (uid=4) 移除並加入 <code>RESERVED_REMOVED_USER_IDS</code> 防重用集合 + 兩個 unit test；SPEC-003 §12.1.4「例外情況」整段刪除（改為「<strong>無</strong>」）；SPEC-003 v0.2.1 → v0.2.2、SPEC-009 v0.2.0 → v0.2.1。</li>
       <li>本檔 §5 新增 R-1 / R-2 governance 條目（採 🔴 → ✅ 圖示保留 deal-breaker 痕跡供未來 audit）；§5.1 圖示說明補新狀態。</li>
       <li><strong>後續落地</strong>：ADR-0001 §6 「唯一例外」描述待新 ADR 標記為 superseded；ADR-0006 待業主審閱後落地。</li>
@@ -541,14 +556,14 @@
       <li>SPEC-017 §12 OQ #3 mock servers 同 monorepo Resolved（含 production binary 隔離 build tag）；</li>
       <li>SPEC-002 §12 OQ #2 <code>ledger_entries</code> Phase 1 不分區，明列分區觸發門檻與 monthly partition 為未來方案；</li>
       <li>SPEC-003 §19 OQ #3 訂單 ID 採 ULID（保留 per-market <code>seq uint64</code> 為撮合 FIFO 排序），§4.3 加 TODO 標記 PR #1 改 [16]byte；</li>
-      <li>SPEC-016 §7 Phase 2 多幣別觸發條件由「Q-3 拍板」改為業務驅動（Op Co. 國際版本 / FX 對沖），明示<strong>目前無啟用計畫</strong>；SPEC-002 §3.1 國際化說明同步收斂。</li>
+      <li>SPEC-016 §7 Phase 2 多 Token觸發條件由「Q-3 拍板」改為業務驅動（Op Co. 國際版本 / FX 對沖），明示<strong>目前無啟用計畫</strong>；SPEC-002 §3.1 國際化說明同步收斂。</li>
     </ul>
   </article>
   <article class="changelog-entry">
     <h3>2026-05-05 · v0.1.6 · Tech Lead</h3>
     <p>Codex 動工前 deal-breaker 收尾：</p>
     <ul>
-      <li>Q-3 點數計價 1 點 = TWD 1 由暫定改為 ✅ Resolved（業主拍板），SPEC-002 §3.1 同步；</li>
+      <li>Q-3 銅幣計價 1 銅幣 = 金幣 1 由暫定改為 ✅ Resolved（業主拍板），SPEC-002 §3.1 同步；</li>
       <li>Q-6 數據主權暫定 Cloudflare R2 ✅ Resolved；</li>
       <li>SPEC-005 §2.1 釘住 KYC tier canonical enum <code>TIER_0/1/2/3</code>，SPEC-017 §5.2 同步；</li>
       <li>SPEC-017 §12 OQ #1 / #2 / #5 全部 Resolved（commit gen/、env_file、Linux PR gate + macOS nightly）；</li>
@@ -576,7 +591,7 @@
       <li>SPEC-015 §11 7 年保留補強；</li>
       <li>ADR-0002 多處 dead link 全部修正並補 v1.0.2 Revision History；</li>
       <li>補回 SPEC-002 §3.2 內部精度（純技術整數化規範）；</li>
-      <li>SPEC-016 §7 跨幣別整節重寫，明確 Phase 1 單幣別 / Phase 2 多幣別保留設計，移除 <code>Bank.TrustAccount.USD</code> 舉例；</li>
+      <li>SPEC-016 §7 跨 Token整節重寫，明確 Phase 1 單 Token / Phase 2 多 Token保留設計，移除 <code>Bank.TrustAccount.銀幣</code> 舉例；</li>
       <li>SPEC-002 §12 Open Questions 補齊編號 1/2 並收斂跨檔議題引用。</li>
     </ul>
   </article>
@@ -645,11 +660,11 @@
 </tr>
 <tr>
 <td>Q-3</td>
-<td>點數計價單位：1 點 = TWD 1 vs USD 0.01 vs 抽象單位</td>
+<td>銅幣計價單位：1 銅幣 = 金幣 1 vs 銀幣 0.01 vs 抽象單位</td>
 <td>SPEC-002 §3.1 / ADR-0003 §11 V-5</td>
 <td>✅ Resolved</td>
 <td><a href="./SPEC-002-funds-safety.html">SPEC-002 §3.1</a></td>
-<td>1 點 = TWD 1（內部記帳基準幣別恆為 TWD，多幣別走 SPEC-016 §7 Phase 2）</td>
+<td>1 銅幣 = 金幣 1（內部記帳基準 Token 類型恆為 金幣，多 Token 走 SPEC-016 §7 Phase 2）</td>
 </tr>
 <tr>
 <td>Q-4</td>
@@ -685,11 +700,11 @@
 </tr>
 <tr>
 <td><strong>R-1</strong></td>
-<td>點數回兌紅線：是否允許「玩家錢包點數 → B2B 應付帳款 / 現金」之任何技術路徑？</td>
+<td>銅幣回兌紅線：是否允許「玩家錢包銅幣 → B2B 應付帳款 / 外部資產」之任何技術路徑？</td>
 <td>SPEC-002 §4.2 §5 / SPEC-011 §6</td>
 <td>🔴 → ✅ Resolved</td>
 <td>業主決議 2026-05-07</td>
-<td><strong>永不允許</strong>：徹底清除 SPEC-011 §6 原「業務帳戶可選擇將點數獎勵轉為 B2B 合約應付」設計；§6 重寫為 4 子節（B2B 簽約獨立、雙身份隔離、帳本層 INV-6 強制、會計科目分離 <code>Expense.AffiliateCommission</code> vs <code>Expense.AffiliatePartnerFee</code>）；SPEC-002 §5 新增 INV-6 由 DB CONSTRAINT TRIGGER 強制 <code>Player.Wallet.*</code> outflow 目的地白名單；ADR-0006 待落地擴展 ADR-0003 §5 INV 集合為 INV-1 ~ INV-6</td>
+<td><strong>永不允許</strong>：徹底清除 SPEC-011 §6 原「業務帳戶可選擇將銅幣獎勵轉為 B2B 合約應付」設計；§6 重寫為 4 子節（B2B 簽約獨立、雙身份隔離、帳本層 INV-6 強制、會計科目分離 <code>Expense.AffiliateCommission</code> vs <code>Expense.AffiliatePartnerFee</code>）；SPEC-002 §5 新增 INV-6 由 DB CONSTRAINT TRIGGER 強制 <code>Player.Wallet.*</code> outflow 目的地白名單；ADR-0006 待落地擴展 ADR-0003 §5 INV 集合為 INV-1 ~ INV-6</td>
 </tr>
 <tr>
 <td><strong>R-2</strong></td>
@@ -705,7 +720,7 @@
 <td>SPEC-011 §3.2 §3.3 §4.1 §4.2 §4.4 §4.5 §4.6 §5.1 / SPEC-002 §5 INV-6 / SPEC-010 §4.2.1</td>
 <td>✅ Resolved</td>
 <td><a href="./SPEC-011-affiliate-commission.html">SPEC-011 v0.2.1</a> 2026-05-07</td>
-<td><strong>G-1</strong> BLAKE3 + Crockford Base32 + 5 retries；<strong>G-2</strong> <code>affiliate_kinship_link</code> 子規則 6 特徵 + 雙 gate；<strong>G-3</strong> 延遲 30 天發放（從根源繞開 INV-6 clawback 衝突）；<strong>G-4</strong> 獨立每日批次 txn + <code>commission_accruals</code> staging；<strong>G-5</strong> chargeback 反沖：介紹獎勵 G-3 路徑無需 clawback、持續佣金自停、已付佣金不追回；<strong>G-6</strong> sign convention cross-ref SPEC-002 §4.3；<strong>G-7</strong>「推薦樹」→「推薦清單」；<strong>G-8</strong> 月度 20 / 終身 200 / 月度佣金 TWD 50k 上限。SPEC-002 §5 INV-6 <strong>不</strong>需新增 affiliate clawback carve-out。Codex 動工輸入完備</td>
+<td><strong>G-1</strong> BLAKE3 + Crockford Base32 + 5 retries；<strong>G-2</strong> <code>affiliate_kinship_link</code> 子規則 6 特徵 + 雙 gate；<strong>G-3</strong> 延遲 30 天發放（從根源繞開 INV-6 clawback 衝突）；<strong>G-4</strong> 獨立每日批次 txn + <code>commission_accruals</code> staging；<strong>G-5</strong> chargeback 反沖：介紹獎勵 G-3 路徑無需 clawback、持續佣金自停、已付佣金不追回；<strong>G-6</strong> sign convention cross-ref SPEC-002 §4.3；<strong>G-7</strong>「推薦樹」→「推薦清單」；<strong>G-8</strong> 月度 20 / 終身 200 / 月度佣金 金幣 50k 上限。SPEC-002 §5 INV-6 <strong>不</strong>需新增 affiliate clawback carve-out。Codex 動工輸入完備</td>
 </tr>
 <tr id="cross-cutting-q9">
 <td>Q-9</td>

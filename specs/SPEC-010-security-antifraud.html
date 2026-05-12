@@ -146,7 +146,7 @@
 <li>玩家登入：Email/Phone + Password + TOTP（強制）</li>
 <li>Password：argon2id，min length 12</li>
 <li>Session：JWT Access Token (15 min) + Refresh Token (7 day) + rotation</li>
-<li>高敏操作 step-up：儲值 &gt; USD 1,000、KYC 升級、自我排除 → 重新 MFA</li>
+<li>高敏操作 step-up：儲值 &gt; 銀幣 1,000、KYC 升級、自我排除 → 重新 MFA</li>
 <li>Admin / Compliance 後台：mTLS + Hardware MFA（YubiKey）</li>
 </ul>
 <h4>3.1.2 JWT Access Token 設計</h4>
@@ -199,7 +199,7 @@
 </tr>
 </thead>
 <tbody><tr>
-<td>儲值 &gt; USD 1,000 等值</td>
+<td>儲值 &gt; 銀幣 1,000 等值</td>
 <td>必須</td>
 <td>30 分鐘</td>
 </tr>
@@ -344,7 +344,7 @@
 </tr>
 <tr>
 <td>帳號接管</td>
-<td>偷取憑證後挪用點數</td>
+<td>偷取憑證後挪用銅幣</td>
 </tr>
 <tr>
 <td>卡片詐欺 / Chargeback</td>
@@ -368,7 +368,7 @@
 </ul>
 <h4>4.2.4 Oracle 內幕交易偵測</h4>
 <ul>
-<li>任一 Oracle / Admin / 員工的家屬 / 直屬下級的點數活動，全部留痕</li>
+<li>任一 Oracle / Admin / 員工的家屬 / 直屬下級的銅幣活動，全部留痕</li>
 <li>員工帳戶白名單，<strong>禁止</strong>在自己負責結算的市場下單</li>
 <li>違反 → 立即停權 + 民事索賠 + 刑事追訴</li>
 </ul>
@@ -437,8 +437,8 @@
 <ul>
 <li>高風險 BIN 拒收</li>
 <li>大額儲值要求 3DS2</li>
-<li>第一次儲值限額（&lt; USD 100）</li>
-<li>KYC 完成前不允許 &gt; USD 500 儲值</li>
+<li>第一次儲值限額（&lt; 銀幣 100）</li>
+<li>KYC 完成前不允許 &gt; 銀幣 500 儲值</li>
 </ul>
 <h3>6.2 應對</h3>
 <ul>
@@ -460,7 +460,7 @@
 <p>公開或私募 bounty：</p>
 <ul>
 <li>平台：HackerOne / Bugcrowd</li>
-<li>報酬：critical USD 5,000+ / high USD 1,000+ / medium USD 200+</li>
+<li>報酬：critical 銀幣 5,000+ / high 銀幣 1,000+ / medium 銀幣 200+</li>
 <li>範圍：production domain + DMM API</li>
 <li>排除：DDoS、社工</li>
 </ul>
@@ -656,8 +656,8 @@
 <td><a href="./SPEC-000-index.html#5-%E8%B7%A8%E6%AA%94%E6%B1%BA%E7%AD%96%E8%BF%BD%E8%B9%A4%E8%A1%A8cross-cutting-decision-tracker">SPEC-000 §5 Q-7</a></td>
 </tr>
 <tr>
-<td>點數計價單位</td>
-<td>1 點 = TWD 1（永遠單幣別 TWD）</td>
+<td>銅幣計價單位</td>
+<td>1 銅幣 = 金幣 1（永遠單 Token 金幣）</td>
 <td>SPEC-000 §5 Q-3</td>
 </tr>
 <tr>

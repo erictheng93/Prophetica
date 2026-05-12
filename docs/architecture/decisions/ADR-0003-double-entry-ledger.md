@@ -14,10 +14,10 @@
 
 ## 1. Context and Problem Statement
 
-prophetica 的核心是一個金融級帳本系統。每一筆玩家行為（儲值、掛單鎖倉、成交、結算、退款、推薦獎勵發放、客服補償）都會引起站內點數的位移，而這些位移必須能被：
+prophetica 的核心是一個金融級帳本系統。每一筆玩家行為（儲值、掛單鎖倉、成交、結算、退款、推薦獎勵發放、客服補償）都會引起站內銅幣的位移，而這些位移必須能被：
 
-1. **隨時稽核**：執照地監管要求「請告訴我此刻平台所有玩家點數總和、平台手續費收入總和，並證明數字一致」
-2. **完整追溯**：任一筆點數異動都能回答「從哪來、往哪去、為什麼、誰授權」
+1. **隨時稽核**：執照地監管要求「請告訴我此刻平台所有玩家銅幣總和、平台手續費收入總和，並證明數字一致」
+2. **完整追溯**：任一筆銅幣異動都能回答「從哪來、往哪去、為什麼、誰授權」
 3. **不可竄改**：任何人（含 DBA）不能秘密調整餘額而不留下痕跡
 4. **可被反沖**：Chargeback、結算錯誤、客服補償等場景需要「以新交易反沖舊交易」而非「修改舊交易」
 5. **能跨帳戶對等**：玩家錢包總和必須等於平台對玩家的負債總額，必須等於託管銀行帳戶實有金額（扣除手續費收入）
@@ -34,10 +34,10 @@ prophetica 的核心是一個金融級帳本系統。每一筆玩家行為（儲
 依重要性遞減：
 
 1. **不變式可被機械化驗證**：bug 必須自我暴露，不能仰賴人工 review 才發現
-2. **監管稽核硬需求**：執照地、外部審計事務所、玩家集體訴訟都會問「所有點數的去向」
+2. **監管稽核硬需求**：執照地、外部審計事務所、玩家集體訴訟都會問「所有銅幣的去向」
 3. **歷史不可竄改性**：任何修正必須以新事件表達，不能改寫舊事件
 4. **跨帳戶對帳能力**：玩家錢包 / 平台負債 / 銀行託管 / 手續費收入之間的等式必須持續成立
-5. **多幣別 / 多 entity 擴展**：未來支援 USD 點數、Op Co. 切多家時帳本不需重寫
+5. **多 Token / 多 entity 擴展**：未來支援 銀幣 銅幣、Op Co. 切多家時帳本不需重寫
 6. **支援 reversal 場景**：Chargeback、結算錯誤、客服補償、市場取消都需要反沖
 7. **engineering velocity**：MVP 必須快速上線，不能因架構複雜而拖慢開發
 8. **性能**：撮合產生的 entry 寫入吞吐必須跟得上撮合本身
@@ -201,7 +201,7 @@ D 的核心特性是「外部不可竄改性證明」。對 prophetica 場景：
 
 D 在加密原生交易所（Kraken Proof-of-Reserves、Binance PoR）已是標配，因為玩家對中心化交易所的信任度低。對 prophetica：
 
-- 玩家儲值法幣、領回的是站內點數（不可出金），「公開可驗證儲備」對玩家心智價值不高
+- 玩家儲值金幣 Token、領回的是站內銅幣（不可出金），「公開可驗證儲備」對玩家心智價值不高
 - 監管不要求區塊鏈錨定
 - 引入鏈上組件會增加密鑰管理、鏈失敗 fallback、跨境合規等不必要複雜度
 
@@ -252,7 +252,7 @@ E 否決。但本決策中採納其**設計理念**：SPEC-002 §4.2 的 Chart o
 1. **bug 自我暴露**：INV-1 在 DB 層強制，任何「忘記寫對手 entry」「金額算錯」「漏更新某個帳戶」都會直接讓 transaction commit 失敗，工程師當場知道 bug
 2. **監管稽核可機械化**：「請給我前月平台對玩家負債總額」一條 SQL 即可：`SELECT SUM(balance_after) FROM ledger_entries WHERE ... GROUP BY account WHERE type = 'liability'`
 3. **歷史完整不可竄改**：任何 reversal 都是新事件，原事件保留，可重現任意時間點之 system state
-4. **跨幣別 / 跨 entity 自然支援**：未來支援 USD 點數、Op Co. 切多家、不同手續費結構，只需新增 account，不需改帳本核心
+4. **跨 Token / 跨 entity 自然支援**：未來支援 銀幣 銅幣、Op Co. 切多家、不同手續費結構，只需新增 account，不需改帳本核心
 5. **與業界對話成本低**：招募有銀行 / 證交所 / 加密交易所背景之工程師時，「我們是雙簿記」是業界共通語言
 6. **自然支援多階段事件**：玩家掛單鎖倉 → 部分成交 → 撤回剩餘 → 結算，每階段有獨立 entries，可依需要拆解或合併查詢
 7. **相容外部審計工具**：標準會計軟體（Quickbooks、Xero）皆能 import double-entry 格式
@@ -263,7 +263,7 @@ E 否決。但本決策中採納其**設計理念**：SPEC-002 §4.2 的 Chart o
 2. **schema 紀律要求高**：Chart of Accounts 命名、帳戶類型、direction 規則都需嚴格遵循；新工程師上手有 1–2 週學習曲線
 3. **無法直接 UPDATE balance**：客服補償、行銷活動、月底調整都必須走 transaction，比直接改 balance 慢
 4. **Idempotency 強制**：每筆 transaction 必須帶 idempotency_key，否則 retry 會重複扣款；增加 application 層複雜度
-5. **大量小額交易場景**：若未來支援 micro-bet（< 0.01 點），單筆事件成本可能不經濟
+5. **大量小額交易場景**：若未來支援 micro-bet（< 0.01 銅幣），單筆事件成本可能不經濟
 6. **報表查詢需 aggregation**：取「user 42 當前餘額」需 SUM entries（雖可用 cache + balance_after 欄位）
 7. **DB trigger 性能影響**：CONSTRAINT TRIGGER DEFERRABLE 在 commit 時才檢查，但仍有 CPU 成本
 
@@ -380,7 +380,7 @@ E 否決。但本決策中採納其**設計理念**：SPEC-002 §4.2 的 Chart o
 | V-2 | `ledger_entries` partition 策略：每月 / 每週 / 每年 | DBA + SRE | 查詢性能、歸檔成本 |
 | V-3 | 客服 `compensation` transaction 的 4-eye 簽核介面：自建 vs Workflow 工具（如 Temporal / Airflow） | Engineering + Compliance | 建置時程、稽核可被監管接受度 |
 | V-4 | 跨 Operating Co.（未來 ADR-0002 升級 Option E 雙執照）的 ledger 是否完全分離，或共用 ledger 用 `entity_id` 區分 | Tech Lead + Compliance | 多執照擴展時的遷移路徑 |
-| V-5 | 點數計價單位敲定後（追蹤於 SPEC-000 §5）對 ledger schema 是否需變更 | Tech Lead | 若決定 1 點 = USD 0.01 則 currency 列預設值需變更 |
+| V-5 | 銅幣計價單位敲定後（追蹤於 SPEC-000 §5）對 ledger schema 是否需變更 | Tech Lead | 若決定 1 銅幣 = 銀幣 0.01 則 token_kind 列預設值需變更 |
 
 V-1 ~ V-2 標記為 **must-resolve**（影響第一個 migration script），需於 wallet-ledger-service 第一個 PR 之前釐清。V-3 ~ V-5 標記為 **defer-acceptable**（可在第一次客服補償 / 雙執照需求出現前處理）。
 

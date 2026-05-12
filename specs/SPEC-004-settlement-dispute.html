@@ -53,7 +53,7 @@
 <hr>
 <p>實作細節（欄位定義、流程邊界、交易一致性、監控指標）已集中於 <a href="../docs/implementation-plans/SPEC-004-settlement-dispute-implementation-plan.html">implementation plan</a>。</p>
 <h2>1. Objective</h2>
-<p>設計從「市場關閉」到「玩家點數變動完成」的完整結算流水線，能處理正常結算、延期、取消、爭議申訴、特殊情境（如平局、結果無法判定），並提供 24 小時申訴窗口、不可竄改的判定紀錄、與多人簽核稽核軌跡。</p>
+<p>設計從「市場關閉」到「玩家銅幣變動完成」的完整結算流水線，能處理正常結算、延期、取消、爭議申訴、特殊情境（如平局、結果無法判定），並提供 24 小時申訴窗口、不可竄改的判定紀錄、與多人簽核稽核軌跡。</p>
 <h2>2. 結算狀態機</h2>
 <p>狀態機由 6 個主要階段組成：OPEN → CLOSED → PENDING →（SETTLING / DISPUTED）→ SETTLED / CANCELLED。申訴與人工裁決路徑請參見 <a href="../docs/implementation-plans/SPEC-004-settlement-dispute-implementation-plan.html">implementation plan</a>。</p>
 <h2>3. 角色與權限</h2>
@@ -314,8 +314,8 @@
 <p>若玩家在結算發生前永久封號（self-exclusion）：</p>
 <ul>
 <li>持倉<strong>仍正常結算</strong>（不能因封號而沒收玩家應得收益）</li>
-<li>結算後點數計入該玩家的「凍結錢包」</li>
-<li>玩家若日後解除排除（最早 90 天後）可恢復點數</li>
+<li>結算後銅幣計入該玩家的「凍結錢包」</li>
+<li>玩家若日後解除排除（最早 90 天後）可恢復銅幣</li>
 </ul>
 <h2>10. 結算事件流（API / WS 推播）</h2>
 <h3>10.1 玩家可訂閱</h3>
@@ -324,10 +324,10 @@
 <p>公開結算列表 API 與資料欄位請見 <a href="../docs/implementation-plans/SPEC-004-settlement-dispute-implementation-plan.html">implementation plan</a>。</p>
 <h2>11. 反作弊與洗錢監測整合</h2>
 <h3>11.1 結算大戶監控</h3>
-<p>任一玩家在單一市場結算 payout &gt; USD 50,000 等值：</p>
+<p>任一玩家在單一市場結算 payout &gt; 銀幣 50,000 等值：</p>
 <ul>
 <li>自動觸發 EDD（Enhanced Due Diligence）</li>
-<li>點數凍結至 KYC 強化驗證通過</li>
+<li>銅幣凍結至 KYC 強化驗證通過</li>
 <li>大筆中獎客戶之歷史交易模式人工檢視（防共謀）</li>
 </ul>
 <h3>11.2 異常結算偵測</h3>

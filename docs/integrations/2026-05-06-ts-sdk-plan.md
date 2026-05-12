@@ -27,7 +27,7 @@ Behaviour proven by 12 commits:
 - liability bound enforcement + serialised balance writes (`9324ffd` / `f159b15`)
 - safety-check hardening (`e253ee0`)
 
-Read APIs return JSON; `txn_id` is `i64`; `*_minor_units` is `i64` (per SPEC-002 §3.2 internal precision = TWD × 100). Response shapes exposed in `api.rs` are already `serde::Serialize` structs with stable field names.
+Read APIs return JSON; `txn_id` is `i64`; `*_minor_units` is `i64` (per SPEC-002 §3.2 internal precision = 金幣 × 100). Response shapes exposed in `api.rs` are already `serde::Serialize` structs with stable field names.
 
 ### 1.2 Stubbed — directory exists, business code does not
 

@@ -61,7 +61,7 @@
     <h2>3. 帳本與賬戶對應</h2>
     <ul>
       <li>收款未入帳前屬於 provider 代收，不入 `Bank.TrustAccount`。</li>
-      <li>簽署 webhook 成功後先寫暫存帳戶 `Pending.Deposit.{provider}`，再依批次完成對 `Bank.TrustAccount.{currency}` 歸戶。</li>
+      <li>簽署 webhook 成功後先寫暫存帳戶 `Pending.Deposit.{provider}`，再依批次完成對 `Bank.TrustAccount.{token_kind}` 歸戶。</li>
       <li>Chargeback 阈值與封號門檻對齊 SPEC-010 / SPEC-002（>= 1 封號）。</li>
     </ul>
   </section>

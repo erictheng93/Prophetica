@@ -198,7 +198,7 @@ pub struct PriceLevel {
 
 <h2>8. 邊界條件與風險</h2>
 <ul>
-  <li>成交價區間：0~100（內部以 0.01 點位）。</li>
+  <li>成交價區間：0~100（內部以 0.01 銅幣位）。</li>
   <li>市場關閉後不得新進單；既有未成交單撤銷與鎖定反向處理。</li>
   <li>snapshot 與 WAL 損毀時要有校驗與恢復路徑。</li>
   <li>任何新 sentinel 或 removed sentinel 變更需先更新 SPEC / ADR，並附 Compliance 4-eye review。</li>

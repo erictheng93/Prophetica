@@ -26,14 +26,14 @@ ADR-0003 v1.0 於 2026-05-05 拍板雙簿記帳本，§5 列出 5 條核心不�
 
 ADR README §修訂規則「Accepted 後不可直接修改 ADR 主體」嚴格論已被 violated — SPEC-002 v0.1.1 變更時應該先寫 ADR 把 INV-2 / INV-4 公式擴展，再改 SPEC，但實際是先改 SPEC 後 ADR 沒同步。本 ADR 補上這個 governance gap。
 
-### 1.2 R-1 紅線清除暴露 INV 集合對「點數出口」的保護不足
+### 1.2 R-1 紅線清除暴露 INV 集合對「銅幣出口」的保護不足
 
-[SPEC-000 §5 R-1](../../../specs/SPEC-000-index.html) 業主決議 2026-05-07：點數**永不可回兌**，包含 B2B 應付帳款 / 現金 / 任何形式之兌換。SPEC-011 §6 整節重寫切斷「玩家錢包 → 應付帳款」之 application 層路徑。
+[SPEC-000 §5 R-1](../../../specs/SPEC-000-index.html) 業主決議 2026-05-07：銅幣**永不可回兌**，包含 B2B 應付帳款 / 外部資產 / 任何形式之兌換。SPEC-011 §6 整節重寫切斷「玩家錢包 → 應付帳款」之 application 層路徑。
 
 但 application 層保護有以下風險：
 - 任何 service code bug、admin UI 誤操作、未來新功能設計變更，可能不小心引入 `Player.Wallet → AccountsPayable` 之 ledger entry
 - application check 不是 zero-trust：admin 後台繞過 application 層直連 PG 即可寫入
-- ADR-0003 §5 既有 INV-1 ~ INV-5 都不能阻擋此類「點數出口」變動 — INV-1 借貸代數和為 0 對「Wallet 減 / AccountsPayable 加」這類 entry 完全合法
+- ADR-0003 §5 既有 INV-1 ~ INV-5 都不能阻擋此類「銅幣出口」變動 — INV-1 借貸代數和為 0 對「Wallet 減 / AccountsPayable 加」這類 entry 完全合法
 
 需要把紅線**下沉到 ledger 層**，由 PostgreSQL CHECK constraint + DB CONSTRAINT TRIGGER 強制執行。
 
@@ -41,7 +41,7 @@ ADR README §修訂規則「Accepted 後不可直接修改 ADR 主體」嚴格�
 
 依重要性遞減排序：
 
-1. **R-1 紅線零容忍**：點數不可回兌必須在 ledger 層由 DB 強制，不可僅依賴 application check
+1. **R-1 紅線零容忍**：銅幣不可回兌必須在 ledger 層由 DB 強制，不可僅依賴 application check
 2. **Frozen 子科目擴展正名**：INV-2 / INV-4 公式 drift 已存在 ~6 週，需要正式 governance 補正，避免未來 audit 時無法解釋「為何 ADR §5 與 SPEC §5 公式不一致」
 3. **不引入 INV 編號斷裂**：ADR-0003 §5 從 INV-1 ~ INV-5，新增 INV-6 自然延續編號；不重編 INV-2 / INV-4 為新編號（避免破壞 SPEC-002 / 對帳腳本 / SIEM alert / runbook 既有引用）
 4. **ADR governance 一致性**：ADR-0003 §5 INV 集合為「決策層級複述」，本 ADR 不取代 ADR-0003 主決策（雙簿記）僅擴展 §5 INV 集合
@@ -90,7 +90,7 @@ ADR-0006 範圍嚴格限定為「ADR-0003 §5 INV 集合擴展」：
 | **INV-3** | `Bank.TrustAccount + Σ(Revenue.*) − Σ(Expense.*) = 平台對玩家負債總額` | 每日 T+1 對帳 | ADR-0003 v1.0 §5 |
 | **INV-4** | `Player.Wallet.X` 與 `Player.Frozen.X` 任意時刻 ≥ 0（chargeback 反沖外）| application + DB CHECK | ADR-0003 v1.0 §5（範圍由 ADR-0006 擴展含 Frozen） |
 | **INV-5** | 每個 ledger_entry 一旦寫入不可 UPDATE / DELETE | DB role 權限分離 + audit | ADR-0003 v1.0 §5 |
-| **INV-6** | `Player.Wallet.{user_id}` 之 outflow（direction = +1，債務減少）目的地白名單，僅限：(a) `Player.Locked.{user_id}`、(b) `Player.Frozen.{user_id}`、(c) `Revenue.TradingFee` / `Revenue.SettlementFee`、(d) `Player.Wallet.{other_user_id}`（**僅限** `txn_type ∈ {trade, settle}`）、(e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 SPEC-002 §8.1 deposit 反向沖正；非「點數變現」路徑，玩家不取得現金）、(f) `Expense.ManualPointsGrant`（**僅限** `txn_type = manual_points_adjustment` 且 `metadata.adjustment_direction = 'deduct'` 且 `metadata.actor_role ∈ {'admin','manager'}`，此為 MVP 手動發點成本沖回，非對外付款）；**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何其他銀行 / 支付通路 / 外部錢包科目 | DB CONSTRAINT TRIGGER（拒絕 commit）+ CI sentinel-scan grep gate | **ADR-0006 新增**（呼應 SPEC-011 §6.3 R-1 紅線；chargeback carve-out 對齊 SPEC-002 §8.1；manual adjustment carve-out 對齊 SPEC-002 v0.1.9）|
+| **INV-6** | `Player.Wallet.{user_id}` 之 outflow（direction = +1，債務減少）目的地白名單，僅限：(a) `Player.Locked.{user_id}`、(b) `Player.Frozen.{user_id}`、(c) `Revenue.TradingFee` / `Revenue.SettlementFee`、(d) `Player.Wallet.{other_user_id}`（**僅限** `txn_type ∈ {trade, settle}`）、(e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 SPEC-002 §8.1 deposit 反向沖正；非「銅幣變現」路徑，玩家不取得外部資產）、(f) `Expense.ManualPointsGrant`（**僅限** `txn_type = manual_points_adjustment` 且 `metadata.adjustment_direction = 'deduct'` 且 `metadata.actor_role ∈ {'admin','manager'}`，此為 MVP 手動發點成本沖回，非對外付款）；**禁止**流向 `Liability.AccountsPayable.*` / `Bank.OperatingAccount.*` / `Expense.AffiliatePartnerFee` / 任何其他銀行 / 支付通路 / 外部錢包科目 | DB CONSTRAINT TRIGGER（拒絕 commit）+ CI sentinel-scan grep gate | **ADR-0006 新增**（呼應 SPEC-011 §6.3 R-1 紅線；chargeback carve-out 對齊 SPEC-002 §8.1；manual adjustment carve-out 對齊 SPEC-002 v0.1.9）|
 
 ### 4.2 INV-6 的 mechanical check 落地策略
 
@@ -181,7 +181,7 @@ rg -n -e 'Player\.Wallet.*->\s*AccountsPayable' \
    -e 'Player\.Wallet.*->\s*OperatingAccount' \
    -e 'wallet_to_payable|cash_out_player_pts|redeem_points_to_cash' \
    --type rust services/ crates/ \
-   && echo "::error::INV-6 / R-1 紅線：禁止 Player.Wallet → 應付/現金 路徑" && exit 1
+   && echo "::error::INV-6 / R-1 紅線：禁止 Player.Wallet → 應付/外部資產 路徑" && exit 1
 ```
 
 ### 4.3 INV-2 / INV-4 對齊 Frozen 之追認
@@ -200,7 +200,7 @@ ADR-0003 v1.0 §5 之 INV-2 公式「`Σ(Wallet) + Σ(Locked)`」與 INV-4 範�
 2. **governance 補正**：ADR-0003 §5 與 SPEC-002 §5 之間 ~6 週的 drift 正式對齊；未來 audit 不會出現「為何 ADR §5 公式與 SPEC §5 不一致」之尷尬
 3. **INV 編號連續**：INV-1 ~ INV-6 線性編號，對帳腳本 / SIEM alert / runbook 既有引用無需改動
 4. **三層保護**：CI grep（早期攔截 PR）+ application validate（早期回應 client）+ DB trigger（最終強制）
-5. **與業界對話成本不變**：「我們是雙簿記」仍是業界共通語言，新增的 INV-6 可解釋為「我們在帳本層強制玩家點數不可回兌之合規邊界」
+5. **與業界對話成本不變**：「我們是雙簿記」仍是業界共通語言，新增的 INV-6 可解釋為「我們在帳本層強制玩家銅幣不可回兌之合規邊界」
 
 ### 5.2 Negative
 
@@ -224,7 +224,7 @@ ADR-0003 v1.0 §5 之 INV-2 公式「`Σ(Wallet) + Σ(Locked)`」與 INV-4 範�
 
 ## 6. Compliance & Legal Boundary
 
-本 ADR 之 INV-6 為「點數不可回兌」原則的技術落地。違反 INV-6 之代價：
+本 ADR 之 INV-6 為「銅幣不可回兌」原則的技術落地。違反 INV-6 之代價：
 
 ```
 任何成功 commit 違反 INV-6 之 ledger entry：
@@ -259,7 +259,7 @@ ADR-0003 v1.0 §5 之 INV-2 公式「`Σ(Wallet) + Σ(Locked)`」與 INV-4 範�
 - [ADR-0001 §6 v1.0.2](./ADR-0001-order-book-with-dmm-over-lmsr.md) — 平台不下場紅線（連動 R-2）
 - [ADR-0002](./ADR-0002-three-company-corporate-structure.md) — 三公司架構（INV-3 之 Bank.TrustAccount 即 Op Co. 託管）
 - [ADR-0003](./ADR-0003-double-entry-ledger.md) — 雙簿記主決策（本 ADR §4.1 為 §5 之擴展）
-- [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.html) — 點數出口紅線追蹤
+- [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.html) — 銅幣出口紅線追蹤
 - [SPEC-002 §4.2.1 / §5 / §8.1](../../../specs/SPEC-002-funds-safety.html) — Frozen 子科目 / INV 表 / Chargeback 處理
 - [SPEC-011 §6.3](../../../specs/SPEC-011-affiliate-commission.html) — INV-6 在業務分潤路徑的 application 層引用
 - [SPEC-000 §5 R-1](../../../specs/SPEC-000-index.html) — R-1 紅線清除追蹤
@@ -277,7 +277,7 @@ ADR-0003 v1.0 §5 之 INV-2 公式「`Σ(Wallet) + Σ(Locked)`」與 INV-4 範�
 1. 寫 ledger transaction 前**永遠**先呼叫 `LedgerTxn::validate()`，不要假設 DB trigger 會兜底（trigger 兜底是最後一道，application 提早報錯使開發迭代快）
 2. 任何 `Player.Wallet.*` 出現在 `direction = 1` 之 entry 的 PR**必須**標 `wallet-outflow` label 並由 wallet-ledger-service module owner review；CI 自動加 label
 3. 業務酬勞 / 營運費出帳走獨立帳本軌道（`Liability.AccountsPayable.*` ↔ `Bank.OperatingAccount.*`），**永遠**與 `Player.Wallet.*` 零交集
-4. 若你認為 INV-6 白名單應該擴增（例如新增「玩家點數捐贈合作戒癮機構」之路徑）：**寫一份 ADR-XXXX 標記本 ADR §4.1 之 INV-6 為 partial superseded，附上業主 + Compliance + Legal 三方簽核**——不要直接改 trigger function 或 application validate
+4. 若你認為 INV-6 白名單應該擴增（例如新增「玩家銅幣捐贈合作戒癮機構」之路徑）：**寫一份 ADR-XXXX 標記本 ADR §4.1 之 INV-6 為 partial superseded，附上業主 + Compliance + Legal 三方簽核**——不要直接改 trigger function 或 application validate
 5. INV-6 trigger 之 plpgsql function 修改視同 ledger 核心模組變更，落入 SPEC-010 §9.3 MS-10 4-eye review
 
 ## 10. Revision History
@@ -285,5 +285,5 @@ ADR-0003 v1.0 §5 之 INV-2 公式「`Σ(Wallet) + Σ(Locked)`」與 INV-4 範�
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
 | 2026-05-07 | v1.0 | Tech Lead | 首版 Accepted；ADR-0003 §5 INV 集合擴展為 INV-1 ~ INV-6；INV-2 / INV-4 公式對齊含 Frozen 子科目（事後 governance 追認）；新增 INV-6 outflow whitelist（連動 R-1 紅線清除）|
-| 2026-05-07 | v1.0.1 | Tech Lead | INV-6 白名單補 chargeback carve-out（v1.0 落地過程中發現遺漏）：(a)-(d) 之外新增 (e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 SPEC-002 §8.1 deposit 反向沖正）。理由：chargeback 為「玩家信用卡爭議 → 銀行抽走原儲值 → 平台對玩家負債歸零 + 託管帳餘額減少退回卡組織」之合法 reversal，玩家**不**取得現金；§4.1 INV-6 行 + §4.2.1 plpgsql trigger 同步更新。發現過程：跑 wallet-ledger-service `chargeback_can_project_wallet_above_zero` test 時觸發 INV-6 偽陽性。屬於 v1.0 落地補正（typo / erratum 級），主決策方向未變動。 |
-| 2026-05-11 | v1.0.2 | Tech Lead | INV-6 白名單補 SPEC-002 v0.1.9 MVP `manual_points_adjustment` carve-out：(f) `Expense.ManualPointsGrant` 僅允許 `manual_points_adjustment` 扣點、`metadata.adjustment_direction = 'deduct'`、`metadata.actor_role ∈ {'admin','manager'}` 且帶 `audit_log_id`。此為手動發點成本沖回，不是點數回兌或對外付款；affiliate 扣點仍為 forbidden。 |
+| 2026-05-07 | v1.0.1 | Tech Lead | INV-6 白名單補 chargeback carve-out（v1.0 落地過程中發現遺漏）：(a)-(d) 之外新增 (e) `Bank.TrustAccount.*`（**僅限** `txn_type = chargeback`，呼應 SPEC-002 §8.1 deposit 反向沖正）。理由：chargeback 為「玩家信用卡爭議 → 銀行抽走原儲值 → 平台對玩家負債歸零 + 託管帳餘額減少退回卡組織」之合法 reversal，玩家**不**取得外部資產；§4.1 INV-6 行 + §4.2.1 plpgsql trigger 同步更新。發現過程：跑 wallet-ledger-service `chargeback_can_project_wallet_above_zero` test 時觸發 INV-6 偽陽性。屬於 v1.0 落地補正（typo / erratum 級），主決策方向未變動。 |
+| 2026-05-11 | v1.0.2 | Tech Lead | INV-6 白名單補 SPEC-002 v0.1.9 MVP `manual_points_adjustment` carve-out：(f) `Expense.ManualPointsGrant` 僅允許 `manual_points_adjustment` 扣點、`metadata.adjustment_direction = 'deduct'`、`metadata.actor_role ∈ {'admin','manager'}` 且帶 `audit_log_id`。此為手動發點成本沖回，不是銅幣回兌或對外付款；affiliate 扣點仍為 forbidden。 |

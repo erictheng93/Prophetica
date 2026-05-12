@@ -90,7 +90,7 @@ pub struct Market {
     pub settles_at:        DateTime&lt;Utc&gt;,     // 預計結算
     pub status:            MarketStatus,      // Open / Closed / Settling / Settled / Cancelled
     pub oracle_source:     String,            // 結果來源
-    pub min_tick_pts:      i64,               // 最小價格單位（內部單位百分點），預設 1 = 0.01 點
+    pub min_tick_pts:      i64,               // 最小價格單位（內部單位百分點），預設 1 = 0.01 銅幣
     pub min_lot:           i64,               // 最小股數，預設 1
     pub max_order_qty:     i64,               // 單筆最大股數，防作弊
     pub fee_bps:           u32,               // 手續費 basis points，預設 200 (=2%)
@@ -690,14 +690,14 @@ rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type rust services/dmm-gateway/ \
 <ul>
 <li><strong>絕不使用 float</strong>。所有價格與數量為 int64。</li>
 <li>價格內部單位：1 = 0.01（0-100 對應 0.00-1.00）</li>
-<li>點數內部單位：1 = 0.01 點（與 SPEC-002 一致）</li>
+<li>銅幣內部單位：1 = 0.01 銅幣（與 SPEC-002 一致）</li>
 <li>手續費 basis points：1 bp = 0.01%</li>
 </ul>
 <h3>14.2 金額計算</h3>
-<pre><code class="language-rust">// trade value (in 點 internal units, 100 = 1 點)
+<pre><code class="language-rust">// trade value (in 點 internal units, 100 = 1 銅幣)
 // price_pts: 0-100, qty: 股數
-// trade_value = price_pts * qty  →  internal pts × 1
-// 例: 65 × 100 = 6500 internal pts = 65.00 點
+// trade_value = price_pts * qty  →  internal copper units × 1
+// 例: 65 × 100 = 6500 internal copper units = 65.00 點
 let trade_value: i64 = i64::from(price_pts) * qty;
 
 // fee = trade_value * fee_bps / 10000
