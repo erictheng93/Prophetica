@@ -5,7 +5,14 @@
     },
     "auth": {
       "signIn": "Mag-sign in",
-      "getStarted": "Magsimula"
+      "signUp": "Mag-register",
+      "getStarted": "Magsimula",
+      "account": {
+        "ariaLabel": "Katayuan ng account",
+        "status": {
+          "unauthenticated": "Hindi naka-sign in"
+        }
+      }
     },
     "localeSwitcher": {
       "label": "Palitan ang wika"
@@ -121,6 +128,332 @@
       "faq": "FAQ",
       "disputes": "Disputes",
       "contact": "Contact"
+    }
+  },
+  "support": {
+    "overview": {
+      "metadata": {
+        "title": "Support center - prophetica",
+        "description": "24/7 support para sa general questions, top-ups, KYC, settlement, limits, at security incidents."
+      },
+      "hero": {
+        "kicker": "Support center",
+        "headline": "Lumapit sa tamang team para sa tamang tanong.",
+        "tagline": "Nandito ang lahat ng support channels at common topics. Ang complex cases ay hahawakan ng compliance-trained T2 / T3 support; inuuna ang limits at Compliance cases."
+      },
+      "channels": {
+        "heading": "Service channels",
+        "intro": "Piliin ang pinakamabilis na channel ayon sa issue. Ang RG at Compliance cases ay hahawakan ng certified support specialists.",
+        "items": {
+          "ticket": {
+            "label": "In-app ticket",
+            "sla": "Unang response sa loob ng 24 oras",
+            "desc": "Para sa lahat ng account, settlement, at general dispute issues. Chinese / English.",
+            "hours": "All hours"
+          },
+          "email": {
+            "label": "Email",
+            "sla": "Unang response sa loob ng 48 oras",
+            "desc": "I-aanunsyo ang service@ pagkatapos makumpirma ang license jurisdiction. May attachment support.",
+            "hours": "All hours"
+          },
+          "chat": {
+            "label": "Live Chat",
+            "sla": "Response sa loob ng 5 minuto",
+            "desc": "Para lang sa signed-in users. Chinese / English / Japanese.",
+            "hours": "24/7"
+          },
+          "phone": {
+            "label": "Phone support",
+            "sla": "Callback sa loob ng 4 oras",
+            "desc": "Para sa high-risk RG, Compliance, at escalated dispute cases.",
+            "hours": "Office hours"
+          }
+        }
+      },
+      "categories": {
+        "heading": "I-route ayon sa topic",
+        "items": {
+          "account": {
+            "kicker": "Account",
+            "title": "Sign-in / registration / two-step verification",
+            "body": "Verification codes, password resets, at locked accounts."
+          },
+          "topup": {
+            "kicker": "Top-up",
+            "title": "Payment issues",
+            "body": "Missing points, failed payments, at monthly top-up limits."
+          },
+          "kyc": {
+            "kicker": "KYC",
+            "title": "Identity verification",
+            "body": "Tier upgrade failures, SumSub flow questions, at document retention."
+          },
+          "settlement": {
+            "kicker": "Settlement",
+            "title": "Oracle at disputes",
+            "body": "Mga tanong tungkol sa settlement results at 24-hour dispute window."
+          },
+          "security": {
+            "kicker": "Security",
+            "title": "Compromised account",
+            "body": "Makipag-ugnayan agad sa support. Priority response sa loob ng 4 oras."
+          },
+          "rg": {
+            "kicker": "Limits",
+            "title": "Sobra na ang paglalaro ko",
+            "body": "Limits, cooldowns, account closure, at external help."
+          }
+        }
+      },
+      "rgCallout": {
+        "kicker": "Limits first",
+        "headline": "Kung ikaw o ang taong malapit sa iyo ay pakiramdam na wala nang kontrol ang paglalaro, mas inuuna ang entry point na ito kaysa sa ibang support path.",
+        "body": "Mayroon kaming certified limits support, limit / cooldown / account-closure tools, at professional external resources na independent sa prophetica.",
+        "cta": "Alamin ang limit tools",
+        "helplineLabel": "24-hour mental health support line"
+      }
+    }
+  },
+  "markets": {
+    "all": {
+      "metadata": {
+        "title": "Lahat ng markets - prophetica",
+        "description": "I-browse ang lahat ng open prediction markets."
+      },
+      "kicker": "Mga market",
+      "headline": "Lahat ng open matchups.",
+      "tagline": "Bawat market ay YES / NO binary question. Neutral na mina-match ng prophetica ang orders, at gumagamit ang players ng in-app points para ipahayag ang pananaw.",
+      "countLabel": "{count} open",
+      "sortLabel": "Sort: default order"
+    },
+    "trending": {
+      "metadata": {
+        "title": "Trending markets - prophetica",
+        "description": "Popular matchups na naka-rank ayon sa 24-hour volume."
+      },
+      "kicker": "Mga market / Trending",
+      "headline": "Ang matchups na pinakabantayan ng players.",
+      "tagline": "Naka-rank ayon sa trading volume sa nakaraang 24 oras. Ang mas mataas na volume ay senyales na nagko-converge ang market opinions, pero hindi ibig sabihin na tama ang consensus."
+    },
+    "new": {
+      "metadata": {
+        "title": "New listings - prophetica",
+        "description": "Mga prediction market na bagong bukas."
+      },
+      "kicker": "Mga market / Bago",
+      "headline": "Mga bagong bukas na matchup.",
+      "tagline": "Nakapasa ang mga market na ito sa SPEC-015 dual-signoff review at binuksan sa nakaraang ilang araw. Maaaring nabubuo pa ang liquidity."
+    },
+    "settled": {
+      "metadata": {
+        "title": "Settled markets - prophetica",
+        "description": "Mga market na kamakailan lang na-settle ng Oracle."
+      },
+      "kicker": "Mga market / Settled",
+      "headline": "Mga matchup na may final results.",
+      "tagline": "Mga market na napagdesisyunan at na-settle ng Oracle. Lahat ng player positions ay na-credit sa settlement time at makikita sa Portfolio.",
+      "emptyState": "Wala pang settled markets na maipapakita."
+    },
+    "notFound": {
+      "kicker": "Hindi nahanap ang market",
+      "headline": "Maaaring na-delist ang market na ito, o mali ang URL.",
+      "tagline": "Pumasok ulit mula sa market list o makipag-ugnayan sa support.",
+      "backLabel": "Bumalik sa markets",
+      "contactLabel": "Makipag-ugnayan sa support"
+    }
+  },
+  "howItWorks": {
+    "metadata": {
+      "title": "Paano gumagana - prophetica",
+      "description": "Buong player flow mula registration hanggang settlement: apat na entry steps, matching, market weights, Oracle settlement, at dispute windows."
+    },
+    "hero": {
+      "kicker": "Paano gumagana",
+      "headline": "Mula registration hanggang settlement sa loob ng limang minuto.",
+      "tagline": "Gumamit ng in-app points para magbigay ng pananaw sa unrevealed event outcomes. Papasok ang orders mo sa order book laban sa ibang players habang ang system ang bahala sa matching, settlement, at records.",
+      "ctaPrimary": "Mag-sign up ngayon",
+      "ctaSecondary": "Tingnan muna ang markets"
+    },
+    "principles": {
+      "heading": "Tatlong design principles",
+      "intro": "Unawain muna ang points, order book, at event records; mas magiging intuitive ang market prices pagkatapos.",
+      "items": {
+        "points": {
+          "kicker": "Principle one",
+          "title": "In-app points.",
+          "body": "Ang points na idinagdag sa account ay ginagamit para sa in-app markets, locked balances, at settlement display."
+        },
+        "orderbook": {
+          "kicker": "Principle two",
+          "title": "Order book matching.",
+          "body": "Mina-match ng system ang player orders ayon sa price priority, pagkatapos time priority, at nire-record ang bawat trade."
+        },
+        "events": {
+          "kicker": "Principle three",
+          "title": "Event records.",
+          "body": "Payments, matching, settlement, at decisions ay isinusulat sa event stream para ma-trace ng support at engineering."
+        }
+      }
+    },
+    "startSteps": {
+      "heading": "Apat na entry steps",
+      "intro": "Ang unang dalawang hakbang ay account safety at protection settings. Ang ikatlo at ikaapat ay tungkol sa gameplay.",
+      "items": {
+        "register": {
+          "title": "Mag-register ng account",
+          "body": "Email + mobile OTP + birthday (>=18). Tapusin ang basic Tier 1 verification sa ilalim ng 10 segundo nang walang document image upload.",
+          "cta": "Pumunta sa registration"
+        },
+        "rg": {
+          "title": "Itakda ang limits mo",
+          "body": "Required protection line ang monthly top-up limit (pumili ng TWD 1k / 5k / 30k / 100k). Maaari ka ring magdagdag ng wager limits, loss limits, at cooldown triggers.",
+          "cta": "Alamin ang limits"
+        },
+        "topup": {
+          "title": "Magdagdag ng points",
+          "body": "Gamitin ang licensed payment rails para sa jurisdiction mo. Karaniwang pumapasok ang points sa loob ng 5 minuto. 1 point = TWD 1 para sa internal accounting.",
+          "cta": "Top-up guide"
+        },
+        "trade": {
+          "title": "Mag-browse ng markets at mag-order",
+          "body": "Pumili ng market na naiintindihan mo, bumili ng isang YES o NO share, at hintayin ang settlement. Bawat share ay nagse-settle sa 100 points kung panalo o 0 points kung talo.",
+          "cta": "Tingnan ang markets"
+        }
+      }
+    },
+    "matching": {
+      "kicker": "Matching engine",
+      "headline": "Bawat matchup ay player versus player.",
+      "lead": "Kapag bumili ka ng isang YES share, hahanapin ng system sa <strong>order book</strong> ang matching counterparty at ima-match ayon sa price priority, pagkatapos time priority.",
+      "platformTakes": {
+        "kicker": "Kinokolekta ng platform",
+        "title": "Fees sa parehong panig",
+        "body": "Nakabatay ang fees sa trading volume at hindi sa kung panalo o talo ka. Gusto namin ng active markets, hindi one-sided losses."
+      },
+      "platformDoesNot": {
+        "kicker": "Labas sa flow na ito",
+        "title": "Gap sa panalo at talo ng players",
+        "body": "Ang trades at settlement ay tinutukoy ng orders, positions, at Oracle decisions. Ipinapakita lang ng system ang resulta at record."
+      },
+      "cta": "Tingnan ang real order book example"
+    },
+    "pricing": {
+      "heading": "Ipinapakita ang prices bilang market weights",
+      "intro": "Bawat YES / NO quote ay nasa pagitan ng 1-99. Mas mataas ang number, mas nakahilig ang market sa result na iyon. Ang YES weight na 38 ay puwedeng basahin bilang halos 38% leaning to YES ang market. Actual cost at settlement ay points pa rin ang calculation.",
+      "exampleHeading": "Pagbasa ng isang trade sa YES weight 38",
+      "exampleIntro": "Halimbawa, ang \"Taiwan reaches the WBSC semifinals\" ay may YES weight na 38. Bumili ka ng 100 YES shares:",
+      "cards": {
+        "cost": {
+          "label": "Cost",
+          "amount": "38 points",
+          "note": "100 shares x 38 / 100 = 38 points"
+        },
+        "winYes": {
+          "label": "Settles YES",
+          "amount": "+62 points",
+          "note": "100 shares settle to 100 points, minus 38-point cost"
+        },
+        "loseNo": {
+          "label": "Settles NO",
+          "amount": "-38 points",
+          "note": "Each share credits 0 points, kaya mawawala ang buong cost"
+        }
+      },
+      "exit": "Gustong lumabas nang maaga? Maaari kang mag-post ng sell order sa order book. Ang fill price ay depende sa market weight sa oras na iyon."
+    },
+    "settlement": {
+      "heading": "Settlement comes from Oracle",
+      "intro": "Kapag na-list ang bawat market, malinaw na itinatakda ng platform ang decision source (Oracle). Pagkatapos mag-close, ang Oracle result ang magtatakda ng YES o NO at automatic na iki-credit ang settlement sa player wallets.",
+      "items": {
+        "transparent": {
+          "title": "Public ang decision sources",
+          "body": "Malinaw na nakalista sa bawat market page ang oracle source, gaya ng weather agency, FOMC announcement, o election commission. Walang decision na \"sa tingin namin\"."
+        },
+        "appealWindow": {
+          "title": "24-hour dispute window",
+          "body": "Maaari kang magbukas ng dispute ticket sa loob ng 24 oras pagkatapos ng settlement. Bawat dispute ay makakatanggap ng status response; multi-user o high-value cases ay ie-escalate sa Compliance T3."
+        },
+        "stateMachine": {
+          "title": "Settlement state machine",
+          "body": "PENDING -> SETTLING -> SETTLED o CANCELLED. Bawat transition ay isinusulat sa event stream at makikita sa account records mo."
+        },
+        "autoPayout": {
+          "title": "Automatic na kino-convert ang positions",
+          "body": "Sa settlement, kino-convert ng system ang positions into points nang walang manual action. Makikita mo ang credited result sa Portfolio."
+        }
+      },
+      "cta": "Dispute process"
+    },
+    "compliance": {
+      "kicker": "Protection settings",
+      "headline": "Tapusin muna ang account setup bago gamitin ang markets.",
+      "body": "Hindi maaaring sumali ang mga wala pang 18 taon. Monthly top-up limits, cooldowns, at account-closure tools ay tumutulong sa players na kontrolin ang play rhythm.",
+      "ctaPrimary": "Limit tools",
+      "kycLink": "Identity verification tiers"
+    },
+    "closing": {
+      "kicker": "Ready?",
+      "headline": "Magsimula sa registration at i-browse ang unang market mo sa loob ng 10 minuto.",
+      "tagline": "Basic verification takes 10 seconds, limit setup about one minute, and top-ups usually arrive within five minutes.",
+      "ctaPrimary": "Mag-sign up ngayon",
+      "ctaSecondary": "Mag-browse ng markets"
+    }
+  },
+  "responsibleGaming": {
+    "metadata": {
+      "title": "Mga limitasyon - prophetica",
+      "description": "Limit settings, cooldowns, account closure, at help resources."
+    },
+    "overview": {
+      "hero": {
+        "kicker": "",
+        "headline": "Nasa kamay mo ang ritmo mo.",
+        "tagline": "Ang prophetica ay entertainment, hindi financial product. May tools kami para makapag-adjust, makapag-pause, o makaalis ka anumang oras, kasama ang independent help resources kapag kailangan."
+      },
+      "monthlySnapshot": {
+        "monthLabel": "Ngayong buwan (Mayo)",
+        "heading": "Activity snapshot mo ngayong buwan",
+        "depositCard": {
+          "kicker": "Monthly top-up usage",
+          "limitNote": "Monthly limit {limit}",
+          "ariaLabel": "Monthly top-up usage {pct}%"
+        },
+        "tradeCard": {
+          "kicker": "Trade count",
+          "subtitle": "Matched market trades"
+        },
+        "settlementCard": {
+          "kicker": "Net settlement",
+          "subtitle": "Kabuuang settlement result ngayong buwan"
+        }
+      },
+      "tools": {
+        "heading": "Available tools",
+        "cta": "Pumunta sa settings",
+        "items": {
+          "limits": {
+            "kicker": "Required",
+            "title": "Top-up limits",
+            "body": "Required protection line ang monthly top-up limit sa prophetica registration. Ang pagbaba ay effective agad; ang pagtaas ay nangangailangan ng 24-hour cooldown."
+          },
+          "cooldown": {
+            "kicker": "Optional",
+            "title": "Cooldown",
+            "body": "I-pause ang play sa maikling panahon. Sa pause, hindi makakapag-sign in, top up, o trade ang account; automatic itong babalik kapag tapos na."
+          },
+          "selfExclusion": {
+            "kicker": "Optional but binding",
+            "title": "Isara ang account",
+            "body": "Itigil ang paggamit ng service sa medium term, long term, o permanently. Hindi mababawi ang permanent closure, kaya magdesisyon nang maingat."
+          },
+          "resources": {
+            "kicker": "External",
+            "title": "Help resources",
+            "body": "Addiction counseling, mental health hotlines, at international support groups. Libreng 24-hour help na independent sa prophetica."
+          }
+        }
+      }
     }
   },
   "stubPage": {

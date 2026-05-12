@@ -6,9 +6,56 @@ import { test } from "node:test";
 import {
   DEFAULT_LOCALE,
   SUPPORTED_LOCALES,
+  type SupportedLocale,
   resolveAcceptLanguageLocale,
   resolveSupportedLocale,
 } from "../i18n/locales.js";
+
+type MessageTree = Record<string, unknown>;
+
+function readMessages(locale: SupportedLocale): MessageTree {
+  return JSON.parse(
+    readFileSync(join(process.cwd(), `messages/${locale}.json`), "utf8"),
+  ) as MessageTree;
+}
+
+function hasPath(messages: MessageTree, path: string): boolean {
+  let value: unknown = messages;
+
+  for (const segment of path.split(".")) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+
+    value = (value as MessageTree)[segment];
+  }
+
+  return value !== undefined;
+}
+
+function valueAtPath(messages: MessageTree, path: string): unknown {
+  let value: unknown = messages;
+
+  for (const segment of path.split(".")) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return undefined;
+    }
+
+    value = (value as MessageTree)[segment];
+  }
+
+  return value;
+}
+
+function leafPaths(value: unknown, prefix = ""): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return prefix ? [prefix] : [];
+  }
+
+  return Object.entries(value as MessageTree).flatMap(([key, child]) =>
+    leafPaths(child, prefix ? `${prefix}.${key}` : key),
+  );
+}
 
 test("web i18n supports the launch locales with Traditional Chinese as default", () => {
   assert.equal(DEFAULT_LOCALE, "zh-Hant");
@@ -33,13 +80,41 @@ test("accept-language resolver respects q-weighted supported candidates", () => 
 
 test("every supported locale has a parseable message catalogue", () => {
   for (const locale of SUPPORTED_LOCALES) {
-    const messages = JSON.parse(
-      readFileSync(join(process.cwd(), `messages/${locale}.json`), "utf8"),
-    ) as Record<string, unknown>;
+    const messages = readMessages(locale);
 
     assert.ok(messages.common, `${locale} missing common namespace`);
     assert.ok(messages.landing, `${locale} missing landing namespace`);
     assert.ok(messages.offline, `${locale} missing offline namespace`);
+  }
+});
+
+test("non-default catalogues cover the public top-nav page namespaces", () => {
+  const defaultMessages = readMessages(DEFAULT_LOCALE);
+  const requiredNamespaces = [
+    "markets",
+    "howItWorks",
+    "responsibleGaming.metadata",
+    "responsibleGaming.overview",
+    "support.overview",
+  ];
+
+  for (const locale of SUPPORTED_LOCALES) {
+    if (locale === DEFAULT_LOCALE) continue;
+
+    const messages = readMessages(locale);
+
+    for (const namespace of requiredNamespaces) {
+      assert.ok(hasPath(messages, namespace), `${locale} missing ${namespace}`);
+      const defaultNamespace = valueAtPath(defaultMessages, namespace);
+      const localeNamespace = valueAtPath(messages, namespace);
+
+      for (const key of leafPaths(defaultNamespace)) {
+        assert.ok(
+          hasPath(localeNamespace as MessageTree, key),
+          `${locale} missing ${namespace}.${key}`,
+        );
+      }
+    }
   }
 });
 

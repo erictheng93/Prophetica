@@ -5,7 +5,14 @@
     },
     "auth": {
       "signIn": "Đăng nhập",
-      "getStarted": "Bắt đầu"
+      "signUp": "Đăng ký",
+      "getStarted": "Bắt đầu",
+      "account": {
+        "ariaLabel": "Trạng thái tài khoản",
+        "status": {
+          "unauthenticated": "Chưa đăng nhập"
+        }
+      }
     },
     "localeSwitcher": {
       "label": "Đổi ngôn ngữ"
@@ -121,6 +128,332 @@
       "faq": "FAQ",
       "disputes": "Khiếu nại",
       "contact": "Liên hệ"
+    }
+  },
+  "support": {
+    "overview": {
+      "metadata": {
+        "title": "Trung tâm hỗ trợ - prophetica",
+        "description": "Hỗ trợ 24/7 cho câu hỏi chung, nạp điểm, KYC, thanh toán, giới hạn và sự cố bảo mật."
+      },
+      "hero": {
+        "kicker": "Trung tâm hỗ trợ",
+        "headline": "Gặp đúng đội cho đúng câu hỏi.",
+        "tagline": "Tất cả kênh hỗ trợ và chủ đề thường gặp được tập hợp tại đây. Các trường hợp phức tạp do đội T2 / T3 đã đào tạo tuân thủ xử lý; trường hợp giới hạn và Compliance được ưu tiên."
+      },
+      "channels": {
+        "heading": "Kênh dịch vụ",
+        "intro": "Chọn kênh nhanh nhất theo tính chất vấn đề. Trường hợp RG và Compliance do chuyên viên hỗ trợ được chứng nhận xử lý.",
+        "items": {
+          "ticket": {
+            "label": "Ticket trong ứng dụng",
+            "sla": "Phản hồi đầu tiên trong 24 giờ",
+            "desc": "Dành cho mọi vấn đề tài khoản, thanh toán và tranh chấp chung. Tiếng Trung / tiếng Anh.",
+            "hours": "Mọi thời điểm"
+          },
+          "email": {
+            "label": "Email",
+            "sla": "Phản hồi đầu tiên trong 48 giờ",
+            "desc": "service@ sẽ được công bố sau khi xác nhận khu vực cấp phép. Có thể đính kèm tài liệu.",
+            "hours": "Mọi thời điểm"
+          },
+          "chat": {
+            "label": "Live Chat",
+            "sla": "Phản hồi trong 5 phút",
+            "desc": "Chỉ dành cho người dùng đã đăng nhập. Tiếng Trung / tiếng Anh / tiếng Nhật.",
+            "hours": "24/7"
+          },
+          "phone": {
+            "label": "Hỗ trợ điện thoại",
+            "sla": "Gọi lại trong 4 giờ",
+            "desc": "Dành cho RG rủi ro cao, Compliance và trường hợp tranh chấp được nâng cấp.",
+            "hours": "Giờ hành chính"
+          }
+        }
+      },
+      "categories": {
+        "heading": "Chuyển tuyến theo chủ đề",
+        "items": {
+          "account": {
+            "kicker": "Tài khoản",
+            "title": "Đăng nhập / đăng ký / xác minh hai bước",
+            "body": "Mã xác minh, đặt lại mật khẩu và tài khoản bị khóa."
+          },
+          "topup": {
+            "kicker": "Nạp điểm",
+            "title": "Vấn đề thanh toán",
+            "body": "Điểm chưa vào, thanh toán thất bại và giới hạn nạp hằng tháng."
+          },
+          "kyc": {
+            "kicker": "KYC",
+            "title": "Xác minh danh tính",
+            "body": "Lỗi nâng tier, quy trình SumSub và lưu trữ tài liệu."
+          },
+          "settlement": {
+            "kicker": "Thanh toán",
+            "title": "Oracle và tranh chấp",
+            "body": "Câu hỏi về kết quả thanh toán và cửa sổ khiếu nại 24 giờ."
+          },
+          "security": {
+            "kicker": "Bảo mật",
+            "title": "Tài khoản bị chiếm đoạt",
+            "body": "Liên hệ hỗ trợ ngay. Phản hồi ưu tiên trong 4 giờ."
+          },
+          "rg": {
+            "kicker": "Giới hạn",
+            "title": "Tôi đang chơi quá nhiều",
+            "body": "Giới hạn, tạm nghỉ, đóng tài khoản và hỗ trợ bên ngoài."
+          }
+        }
+      },
+      "rgCallout": {
+        "kicker": "Giới hạn trước tiên",
+        "headline": "Nếu bạn hoặc người gần bạn cảm thấy việc chơi không còn trong tầm kiểm soát, lối vào này được ưu tiên hơn mọi đường hỗ trợ khác.",
+        "body": "Chúng tôi cung cấp hỗ trợ giới hạn được chứng nhận, công cụ giới hạn / tạm nghỉ / đóng tài khoản và nguồn chuyên môn bên ngoài độc lập với prophetica.",
+        "cta": "Tìm hiểu công cụ giới hạn",
+        "helplineLabel": "Đường dây hỗ trợ sức khỏe tâm thần 24 giờ"
+      }
+    }
+  },
+  "markets": {
+    "all": {
+      "metadata": {
+        "title": "Tất cả thị trường - prophetica",
+        "description": "Xem tất cả thị trường dự đoán đang mở."
+      },
+      "kicker": "Thị trường",
+      "headline": "Mọi trận đang mở.",
+      "tagline": "Mỗi thị trường là một câu hỏi nhị phân YES / NO. prophetica khớp lệnh trung lập, còn người chơi dùng điểm trong ứng dụng để thể hiện nhận định.",
+      "countLabel": "{count} đang mở",
+      "sortLabel": "Sắp xếp: thứ tự mặc định"
+    },
+    "trending": {
+      "metadata": {
+        "title": "Thị trường thịnh hành - prophetica",
+        "description": "Các trận phổ biến xếp theo khối lượng 24 giờ."
+      },
+      "kicker": "Thị trường / Thịnh hành",
+      "headline": "Những trận được người chơi quan tâm nhất.",
+      "tagline": "Xếp theo khối lượng giao dịch trong 24 giờ qua. Khối lượng cao cho thấy ý kiến thị trường đang hội tụ, nhưng không có nghĩa đồng thuận chắc chắn đúng."
+    },
+    "new": {
+      "metadata": {
+        "title": "Niêm yết mới - prophetica",
+        "description": "Các thị trường dự đoán mới mở."
+      },
+      "kicker": "Thị trường / Mới",
+      "headline": "Những trận vừa mở.",
+      "tagline": "Các thị trường này đã qua quy trình duyệt hai chữ ký SPEC-015 và mở trong vài ngày gần đây. Thanh khoản có thể vẫn đang hình thành."
+    },
+    "settled": {
+      "metadata": {
+        "title": "Thị trường đã thanh toán - prophetica",
+        "description": "Các thị trường mới được Oracle thanh toán."
+      },
+      "kicker": "Thị trường / Đã thanh toán",
+      "headline": "Những trận đã có kết quả cuối.",
+      "tagline": "Các thị trường đã được Oracle quyết định và thanh toán. Tất cả vị thế người chơi được ghi có khi thanh toán và có thể xem trong Danh mục.",
+      "emptyState": "Chưa có thị trường đã thanh toán để hiển thị."
+    },
+    "notFound": {
+      "kicker": "Không tìm thấy thị trường",
+      "headline": "Thị trường này có thể đã bị gỡ hoặc URL không đúng.",
+      "tagline": "Hãy vào lại từ danh sách thị trường hoặc liên hệ hỗ trợ.",
+      "backLabel": "Về thị trường",
+      "contactLabel": "Liên hệ hỗ trợ"
+    }
+  },
+  "howItWorks": {
+    "metadata": {
+      "title": "Cách hoạt động - prophetica",
+      "description": "Toàn bộ luồng người chơi từ đăng ký đến thanh toán: bốn bước vào, khớp lệnh, trọng số thị trường, thanh toán Oracle và cửa sổ khiếu nại."
+    },
+    "hero": {
+      "kicker": "Cách hoạt động",
+      "headline": "Từ đăng ký đến thanh toán trong năm phút.",
+      "tagline": "Dùng điểm trong ứng dụng để đưa ra nhận định về kết quả sự kiện chưa công bố. Lệnh của bạn vào order book đối ứng với người chơi khác, còn hệ thống xử lý khớp lệnh, thanh toán và ghi nhận.",
+      "ctaPrimary": "Đăng ký ngay",
+      "ctaSecondary": "Xem thị trường trước"
+    },
+    "principles": {
+      "heading": "Ba nguyên tắc thiết kế",
+      "intro": "Hiểu điểm, order book và hồ sơ sự kiện trước; sau đó giá thị trường sẽ trực quan hơn.",
+      "items": {
+        "points": {
+          "kicker": "Nguyên tắc một",
+          "title": "Điểm trong ứng dụng.",
+          "body": "Điểm nạp vào tài khoản được dùng cho thị trường trong ứng dụng, số dư bị khóa và hiển thị thanh toán."
+        },
+        "orderbook": {
+          "kicker": "Nguyên tắc hai",
+          "title": "Khớp lệnh order book.",
+          "body": "Hệ thống khớp lệnh người chơi theo ưu tiên giá rồi ưu tiên thời gian, đồng thời ghi lại từng giao dịch."
+        },
+        "events": {
+          "kicker": "Nguyên tắc ba",
+          "title": "Hồ sơ sự kiện.",
+          "body": "Thanh toán, khớp lệnh, quyết toán và quyết định đều được ghi vào event stream để hỗ trợ và kỹ thuật có thể truy vết."
+        }
+      }
+    },
+    "startSteps": {
+      "heading": "Bốn bước vào",
+      "intro": "Hai bước đầu là bảo mật tài khoản và cài đặt bảo vệ. Bước ba và bốn mới liên quan đến cách chơi.",
+      "items": {
+        "register": {
+          "title": "Đăng ký tài khoản",
+          "body": "Email + OTP di động + ngày sinh (>=18). Hoàn tất xác minh cơ bản Tier 1 trong dưới 10 giây mà không cần tải ảnh giấy tờ.",
+          "cta": "Đến đăng ký"
+        },
+        "rg": {
+          "title": "Đặt giới hạn của bạn",
+          "body": "Giới hạn nạp hằng tháng là lớp bảo vệ bắt buộc (chọn TWD 1k / 5k / 30k / 100k). Bạn cũng có thể thêm giới hạn đặt lệnh, giới hạn thua và điểm kích hoạt tạm nghỉ.",
+          "cta": "Tìm hiểu giới hạn"
+        },
+        "topup": {
+          "title": "Nạp điểm",
+          "body": "Dùng kênh thanh toán được cấp phép theo khu vực của bạn. Điểm thường vào trong 5 phút. 1 điểm = TWD 1 cho kế toán nội bộ.",
+          "cta": "Hướng dẫn nạp"
+        },
+        "trade": {
+          "title": "Xem thị trường và đặt lệnh",
+          "body": "Chọn thị trường bạn hiểu, mua một cổ phần YES hoặc NO rồi chờ thanh toán. Mỗi cổ phần thanh toán thành 100 điểm nếu thắng hoặc 0 điểm nếu thua.",
+          "cta": "Xem thị trường"
+        }
+      }
+    },
+    "matching": {
+      "kicker": "Bộ máy khớp lệnh",
+      "headline": "Mỗi trận là người chơi với người chơi.",
+      "lead": "Khi bạn mua một cổ phần YES, hệ thống tìm đối tác trong <strong>order book</strong> và khớp theo ưu tiên giá rồi ưu tiên thời gian.",
+      "platformTakes": {
+        "kicker": "Phí nền tảng thu",
+        "title": "Phí ở cả hai bên",
+        "body": "Phí dựa trên khối lượng giao dịch và không liên quan bạn thắng hay thua. Chúng tôi muốn thị trường sôi động, không phải thua lỗ một phía."
+      },
+      "platformDoesNot": {
+        "kicker": "Ngoài luồng này",
+        "title": "Chênh lệch thắng thua giữa người chơi",
+        "body": "Giao dịch và thanh toán được quyết định bởi lệnh, vị thế và Oracle. Hệ thống chỉ trình bày kết quả và hồ sơ."
+      },
+      "cta": "Xem ví dụ order book thật"
+    },
+    "pricing": {
+      "heading": "Giá được hiển thị như trọng số thị trường",
+      "intro": "Mỗi báo giá YES / NO nằm trong khoảng 1-99. Số càng cao, thị trường càng nghiêng về kết quả đó. Trọng số YES 38 có thể hiểu là thị trường hiện nghiêng khoảng 38% về YES. Chi phí và thanh toán thực tế vẫn tính bằng điểm.",
+      "exampleHeading": "Đọc một giao dịch ở trọng số YES 38",
+      "exampleIntro": "Giả sử \"Đài Loan vào bán kết WBSC\" hiện có trọng số YES 38. Bạn mua 100 cổ phần YES:",
+      "cards": {
+        "cost": {
+          "label": "Chi phí",
+          "amount": "38 điểm",
+          "note": "100 cổ phần x 38 / 100 = 38 điểm"
+        },
+        "winYes": {
+          "label": "Thanh toán YES",
+          "amount": "+62 điểm",
+          "note": "100 cổ phần thanh toán thành 100 điểm, trừ chi phí 38 điểm"
+        },
+        "loseNo": {
+          "label": "Thanh toán NO",
+          "amount": "-38 điểm",
+          "note": "Mỗi cổ phần ghi có 0 điểm, nên mất toàn bộ chi phí"
+        }
+      },
+      "exit": "Muốn thoát sớm? Bạn có thể đặt lệnh bán trong order book. Giá khớp được quyết định bởi trọng số thị trường lúc đó."
+    },
+    "settlement": {
+      "heading": "Thanh toán đến từ Oracle",
+      "intro": "Khi mỗi thị trường được niêm yết, nền tảng chỉ định nguồn quyết định rõ ràng (Oracle). Sau khi đóng, kết quả Oracle xác định YES hoặc NO và tự động ghi có vào ví người chơi.",
+      "items": {
+        "transparent": {
+          "title": "Nguồn quyết định công khai",
+          "body": "Mỗi trang thị trường liệt kê oracle source rõ ràng, như cơ quan thời tiết, thông báo FOMC hoặc ủy ban bầu cử. Không có quyết định kiểu \"chúng tôi nghĩ\"."
+        },
+        "appealWindow": {
+          "title": "Cửa sổ khiếu nại 24 giờ",
+          "body": "Bạn có thể mở ticket khiếu nại trong 24 giờ sau thanh toán. Mọi khiếu nại đều nhận phản hồi trạng thái; trường hợp nhiều người hoặc giá trị lớn được nâng lên Compliance T3."
+        },
+        "stateMachine": {
+          "title": "State machine thanh toán",
+          "body": "PENDING -> SETTLING -> SETTLED hoặc CANCELLED. Mỗi chuyển trạng thái được ghi vào event stream và có thể xem trong hồ sơ tài khoản."
+        },
+        "autoPayout": {
+          "title": "Vị thế tự động chuyển đổi",
+          "body": "Khi thanh toán, hệ thống chuyển vị thế thành điểm mà không cần thao tác thủ công. Bạn có thể xem kết quả ghi có trong Danh mục."
+        }
+      },
+      "cta": "Quy trình khiếu nại"
+    },
+    "compliance": {
+      "kicker": "Cài đặt bảo vệ",
+      "headline": "Hoàn tất thiết lập tài khoản trước khi dùng thị trường.",
+      "body": "Người dưới 18 tuổi không được tham gia. Giới hạn nạp hằng tháng, tạm nghỉ và công cụ đóng tài khoản giúp người chơi kiểm soát nhịp chơi.",
+      "ctaPrimary": "Công cụ giới hạn",
+      "kycLink": "Các cấp xác minh danh tính"
+    },
+    "closing": {
+      "kicker": "Sẵn sàng?",
+      "headline": "Bắt đầu bằng đăng ký và xem thị trường đầu tiên trong 10 phút.",
+      "tagline": "Xác minh cơ bản mất 10 giây, cài đặt giới hạn khoảng một phút, và nạp điểm thường vào trong năm phút.",
+      "ctaPrimary": "Đăng ký ngay",
+      "ctaSecondary": "Xem thị trường"
+    }
+  },
+  "responsibleGaming": {
+    "metadata": {
+      "title": "Giới hạn - prophetica",
+      "description": "Cài đặt giới hạn, tạm nghỉ, đóng tài khoản và nguồn trợ giúp."
+    },
+    "overview": {
+      "hero": {
+        "kicker": "",
+        "headline": "Nhịp của bạn nằm trong tay bạn.",
+        "tagline": "prophetica là giải trí, không phải sản phẩm tài chính. Chúng tôi cung cấp công cụ để bạn điều chỉnh, tạm dừng hoặc rời đi bất cứ lúc nào, cùng nguồn trợ giúp độc lập khi cần."
+      },
+      "monthlySnapshot": {
+        "monthLabel": "Tháng này (tháng 5)",
+        "heading": "Tóm tắt hoạt động tháng này",
+        "depositCard": {
+          "kicker": "Mức dùng nạp hằng tháng",
+          "limitNote": "Giới hạn tháng {limit}",
+          "ariaLabel": "Mức dùng nạp hằng tháng {pct}%"
+        },
+        "tradeCard": {
+          "kicker": "Số giao dịch",
+          "subtitle": "Giao dịch thị trường đã khớp"
+        },
+        "settlementCard": {
+          "kicker": "Thanh toán ròng",
+          "subtitle": "Tổng kết quả thanh toán trong tháng"
+        }
+      },
+      "tools": {
+        "heading": "Công cụ có sẵn",
+        "cta": "Đến cài đặt",
+        "items": {
+          "limits": {
+            "kicker": "Bắt buộc",
+            "title": "Giới hạn nạp",
+            "body": "Giới hạn nạp hằng tháng là lớp bảo vệ bắt buộc khi đăng ký prophetica. Giảm giới hạn có hiệu lực ngay; tăng giới hạn cần thời gian chờ 24 giờ."
+          },
+          "cooldown": {
+            "kicker": "Tùy chọn",
+            "title": "Tạm nghỉ",
+            "body": "Tạm dừng chơi trong thời gian ngắn. Trong thời gian này, tài khoản không thể đăng nhập, nạp điểm hoặc giao dịch; sẽ tự khôi phục khi hết hạn."
+          },
+          "selfExclusion": {
+            "kicker": "Tùy chọn nhưng ràng buộc",
+            "title": "Đóng tài khoản",
+            "body": "Ngừng dùng dịch vụ trong trung hạn, dài hạn hoặc vĩnh viễn. Đóng vĩnh viễn không thể đảo ngược, hãy quyết định cẩn thận."
+          },
+          "resources": {
+            "kicker": "Bên ngoài",
+            "title": "Nguồn trợ giúp",
+            "body": "Tư vấn nghiện, đường dây sức khỏe tâm thần và nhóm hỗ trợ quốc tế. Hỗ trợ miễn phí 24 giờ độc lập với prophetica."
+          }
+        }
+      }
     }
   },
   "stubPage": {

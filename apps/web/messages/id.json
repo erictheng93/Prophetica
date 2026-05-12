@@ -5,7 +5,14 @@
     },
     "auth": {
       "signIn": "Masuk",
-      "getStarted": "Mulai"
+      "signUp": "Daftar",
+      "getStarted": "Mulai",
+      "account": {
+        "ariaLabel": "Status akun",
+        "status": {
+          "unauthenticated": "Belum masuk"
+        }
+      }
     },
     "localeSwitcher": {
       "label": "Ganti bahasa"
@@ -121,6 +128,332 @@
       "faq": "FAQ",
       "disputes": "Sengketa",
       "contact": "Kontak"
+    }
+  },
+  "support": {
+    "overview": {
+      "metadata": {
+        "title": "Pusat bantuan - prophetica",
+        "description": "Bantuan 24/7 untuk pertanyaan umum, top-up, KYC, penyelesaian, batas bermain, dan insiden keamanan."
+      },
+      "hero": {
+        "kicker": "Pusat bantuan",
+        "headline": "Hubungi tim yang tepat untuk pertanyaan yang tepat.",
+        "tagline": "Semua kanal bantuan dan topik umum dikumpulkan di sini. Kasus kompleks ditangani oleh dukungan T2 / T3 yang terlatih kepatuhan; kasus batas bermain dan Compliance diprioritaskan."
+      },
+      "channels": {
+        "heading": "Kanal layanan",
+        "intro": "Pilih kanal tercepat sesuai jenis masalah. Kasus RG dan Compliance ditangani oleh spesialis bantuan tersertifikasi.",
+        "items": {
+          "ticket": {
+            "label": "Tiket dalam aplikasi",
+            "sla": "Respons pertama dalam 24 jam",
+            "desc": "Untuk semua masalah akun, penyelesaian, dan sengketa umum. Tionghoa / Inggris.",
+            "hours": "Sepanjang waktu"
+          },
+          "email": {
+            "label": "Email",
+            "sla": "Respons pertama dalam 48 jam",
+            "desc": "service@ akan diumumkan setelah yurisdiksi lisensi dikonfirmasi. Lampiran didukung.",
+            "hours": "Sepanjang waktu"
+          },
+          "chat": {
+            "label": "Live Chat",
+            "sla": "Respons dalam 5 menit",
+            "desc": "Hanya untuk pengguna yang sudah masuk. Tionghoa / Inggris / Jepang.",
+            "hours": "24/7"
+          },
+          "phone": {
+            "label": "Bantuan telepon",
+            "sla": "Panggilan balik dalam 4 jam",
+            "desc": "Khusus kasus RG berisiko tinggi, Compliance, dan sengketa yang dieskalasi.",
+            "hours": "Jam kantor"
+          }
+        }
+      },
+      "categories": {
+        "heading": "Arahkan berdasarkan topik",
+        "items": {
+          "account": {
+            "kicker": "Akun",
+            "title": "Masuk / registrasi / verifikasi dua langkah",
+            "body": "Kode verifikasi, reset kata sandi, dan akun terkunci."
+          },
+          "topup": {
+            "kicker": "Top-up",
+            "title": "Masalah pembayaran",
+            "body": "Poin belum masuk, pembayaran gagal, dan batas top-up bulanan."
+          },
+          "kyc": {
+            "kicker": "KYC",
+            "title": "Verifikasi identitas",
+            "body": "Kegagalan upgrade tier, alur SumSub, dan penyimpanan dokumen."
+          },
+          "settlement": {
+            "kicker": "Penyelesaian",
+            "title": "Oracle dan sengketa",
+            "body": "Pertanyaan tentang hasil penyelesaian dan jendela sengketa 24 jam."
+          },
+          "security": {
+            "kicker": "Keamanan",
+            "title": "Akun diretas",
+            "body": "Hubungi bantuan segera. Respons prioritas dalam 4 jam."
+          },
+          "rg": {
+            "kicker": "Batas bermain",
+            "title": "Saya bermain terlalu banyak",
+            "body": "Batas, jeda, penutupan akun, dan bantuan eksternal."
+          }
+        }
+      },
+      "rgCallout": {
+        "kicker": "Batas lebih dulu",
+        "headline": "Jika Anda atau orang terdekat merasa permainan tidak lagi terkendali, jalur ini lebih diprioritaskan daripada bantuan lainnya.",
+        "body": "Kami menyediakan dukungan batas tersertifikasi, alat batas / jeda / penutupan akun, serta sumber profesional eksternal yang independen dari prophetica.",
+        "cta": "Pelajari alat batas",
+        "helplineLabel": "Layanan dukungan kesehatan mental 24 jam"
+      }
+    }
+  },
+  "markets": {
+    "all": {
+      "metadata": {
+        "title": "Semua pasar - prophetica",
+        "description": "Jelajahi semua pasar prediksi yang sedang terbuka."
+      },
+      "kicker": "Pasar",
+      "headline": "Semua matchup yang terbuka.",
+      "tagline": "Setiap pasar adalah pertanyaan biner YES / NO. prophetica mencocokkan order secara netral, dan pemain memakai poin dalam aplikasi untuk menyatakan pandangan.",
+      "countLabel": "{count} terbuka",
+      "sortLabel": "Urutkan: urutan default"
+    },
+    "trending": {
+      "metadata": {
+        "title": "Pasar populer - prophetica",
+        "description": "Matchup populer berdasarkan volume 24 jam."
+      },
+      "kicker": "Pasar / Populer",
+      "headline": "Matchup yang paling diperhatikan pemain.",
+      "tagline": "Diurutkan berdasarkan volume perdagangan 24 jam terakhir. Volume tinggi berarti opini pasar sedang berkumpul, tetapi tidak berarti konsensus pasti benar."
+    },
+    "new": {
+      "metadata": {
+        "title": "Listing baru - prophetica",
+        "description": "Pasar prediksi yang baru dibuka."
+      },
+      "kicker": "Pasar / Baru",
+      "headline": "Matchup yang baru dibuka.",
+      "tagline": "Pasar ini telah melewati tinjauan dua tanda tangan SPEC-015 dan dibuka dalam beberapa hari terakhir. Likuiditas mungkin masih terbentuk."
+    },
+    "settled": {
+      "metadata": {
+        "title": "Pasar selesai - prophetica",
+        "description": "Pasar yang baru diselesaikan oleh Oracle."
+      },
+      "kicker": "Pasar / Selesai",
+      "headline": "Matchup dengan hasil akhir.",
+      "tagline": "Pasar yang telah diputuskan dan diselesaikan oleh Oracle. Semua posisi pemain dikreditkan saat penyelesaian dan dapat dilihat di Portofolio.",
+      "emptyState": "Belum ada pasar selesai untuk ditampilkan."
+    },
+    "notFound": {
+      "kicker": "Pasar tidak ditemukan",
+      "headline": "Pasar ini mungkin sudah dihapus, atau URL-nya salah.",
+      "tagline": "Masuk kembali dari daftar pasar atau hubungi bantuan.",
+      "backLabel": "Kembali ke pasar",
+      "contactLabel": "Hubungi bantuan"
+    }
+  },
+  "howItWorks": {
+    "metadata": {
+      "title": "Cara kerja - prophetica",
+      "description": "Alur lengkap pemain dari registrasi hingga penyelesaian: empat langkah masuk, pencocokan, bobot pasar, penyelesaian Oracle, dan jendela sengketa."
+    },
+    "hero": {
+      "kicker": "Cara kerja",
+      "headline": "Dari registrasi hingga penyelesaian dalam lima menit.",
+      "tagline": "Gunakan poin dalam aplikasi untuk mengambil pandangan atas hasil peristiwa yang belum diumumkan. Order Anda masuk ke order book melawan pemain lain sementara sistem menangani pencocokan, penyelesaian, dan catatan.",
+      "ctaPrimary": "Daftar sekarang",
+      "ctaSecondary": "Lihat pasar dulu"
+    },
+    "principles": {
+      "heading": "Tiga prinsip desain",
+      "intro": "Pahami poin, order book, dan catatan peristiwa terlebih dahulu; harga pasar akan terasa lebih intuitif.",
+      "items": {
+        "points": {
+          "kicker": "Prinsip satu",
+          "title": "Poin dalam aplikasi.",
+          "body": "Poin yang ditambahkan ke akun digunakan untuk pasar dalam aplikasi, saldo terkunci, dan tampilan penyelesaian."
+        },
+        "orderbook": {
+          "kicker": "Prinsip dua",
+          "title": "Pencocokan order book.",
+          "body": "Sistem mencocokkan order pemain berdasarkan prioritas harga lalu waktu, dan mencatat setiap transaksi."
+        },
+        "events": {
+          "kicker": "Prinsip tiga",
+          "title": "Catatan peristiwa.",
+          "body": "Pembayaran, pencocokan, penyelesaian, dan keputusan ditulis ke event stream agar bantuan dan engineering dapat menelusurinya."
+        }
+      }
+    },
+    "startSteps": {
+      "heading": "Empat langkah masuk",
+      "intro": "Dua langkah pertama adalah keamanan akun dan pengaturan perlindungan. Langkah ketiga dan keempat terkait permainan.",
+      "items": {
+        "register": {
+          "title": "Daftar akun",
+          "body": "Email + OTP ponsel + tanggal lahir (>=18). Selesaikan verifikasi dasar Tier 1 dalam kurang dari 10 detik tanpa mengunggah gambar dokumen.",
+          "cta": "Ke registrasi"
+        },
+        "rg": {
+          "title": "Tetapkan batas Anda",
+          "body": "Batas top-up bulanan adalah garis perlindungan wajib (pilih TWD 1k / 5k / 30k / 100k). Anda juga dapat menambahkan batas wager, batas rugi, dan pemicu jeda.",
+          "cta": "Pelajari batas"
+        },
+        "topup": {
+          "title": "Isi poin",
+          "body": "Gunakan jalur pembayaran berlisensi sesuai yurisdiksi Anda. Poin biasanya masuk dalam 5 menit. 1 poin = TWD 1 untuk akuntansi internal.",
+          "cta": "Panduan top-up"
+        },
+        "trade": {
+          "title": "Jelajahi pasar dan pasang order",
+          "body": "Pilih pasar yang Anda pahami, beli satu share YES atau NO, lalu tunggu penyelesaian. Setiap share menjadi 100 poin jika menang atau 0 poin jika kalah.",
+          "cta": "Lihat pasar"
+        }
+      }
+    },
+    "matching": {
+      "kicker": "Mesin pencocokan",
+      "headline": "Setiap matchup adalah pemain melawan pemain.",
+      "lead": "Saat Anda membeli satu share YES, sistem mencari lawan transaksi di <strong>order book</strong> dan mencocokkan berdasarkan prioritas harga lalu waktu.",
+      "platformTakes": {
+        "kicker": "Yang dikenakan platform",
+        "title": "Biaya pada kedua sisi",
+        "body": "Biaya didasarkan pada volume perdagangan dan tidak terkait menang atau kalah. Kami menginginkan pasar aktif, bukan kerugian sepihak."
+      },
+      "platformDoesNot": {
+        "kicker": "Di luar alur ini",
+        "title": "Selisih menang dan kalah pemain",
+        "body": "Transaksi dan penyelesaian ditentukan oleh order, posisi, dan keputusan Oracle. Sistem hanya menampilkan hasil dan catatan."
+      },
+      "cta": "Lihat contoh order book nyata"
+    },
+    "pricing": {
+      "heading": "Harga ditampilkan sebagai bobot pasar",
+      "intro": "Setiap quote YES / NO berada di antara 1-99. Semakin tinggi angkanya, semakin pasar condong ke hasil itu. Bobot YES 38 dapat dibaca sebagai pasar saat ini sekitar 38% condong ke YES. Biaya dan penyelesaian tetap dihitung dalam poin.",
+      "exampleHeading": "Membaca satu transaksi pada bobot YES 38",
+      "exampleIntro": "Misalkan \"Taiwan mencapai semifinal WBSC\" memiliki bobot YES 38. Anda membeli 100 share YES:",
+      "cards": {
+        "cost": {
+          "label": "Biaya",
+          "amount": "38 poin",
+          "note": "100 share x 38 / 100 = 38 poin"
+        },
+        "winYes": {
+          "label": "Selesai sebagai YES",
+          "amount": "+62 poin",
+          "note": "100 share diselesaikan menjadi 100 poin, dikurangi biaya 38 poin"
+        },
+        "loseNo": {
+          "label": "Selesai sebagai NO",
+          "amount": "-38 poin",
+          "note": "Setiap share mengkredit 0 poin, sehingga seluruh biaya hilang"
+        }
+      },
+      "exit": "Ingin keluar lebih awal? Anda dapat memasang order jual di order book. Harga eksekusi ditentukan oleh bobot pasar saat itu."
+    },
+    "settlement": {
+      "heading": "Penyelesaian berasal dari Oracle",
+      "intro": "Saat setiap pasar didaftarkan, platform menentukan sumber keputusan yang jelas (Oracle). Setelah pasar ditutup, hasil Oracle menentukan YES atau NO dan penyelesaian otomatis mengkredit wallet pemain.",
+      "items": {
+        "transparent": {
+          "title": "Sumber keputusan bersifat publik",
+          "body": "Setiap halaman pasar menampilkan oracle source dengan jelas, seperti badan cuaca, pengumuman FOMC, atau komisi pemilu. Tidak ada keputusan berdasarkan \"menurut kami\"."
+        },
+        "appealWindow": {
+          "title": "Jendela sengketa 24 jam",
+          "body": "Anda dapat membuka tiket sengketa dalam 24 jam setelah penyelesaian. Setiap sengketa menerima respons status; kasus banyak pengguna atau bernilai besar dieskalasi ke Compliance T3."
+        },
+        "stateMachine": {
+          "title": "State machine penyelesaian",
+          "body": "PENDING -> SETTLING -> SETTLED atau CANCELLED. Setiap transisi ditulis ke event stream dan dapat dilihat di catatan akun Anda."
+        },
+        "autoPayout": {
+          "title": "Posisi dikonversi otomatis",
+          "body": "Saat penyelesaian, sistem mengonversi posisi menjadi poin tanpa tindakan manual. Anda dapat meninjau hasil kredit di Portofolio."
+        }
+      },
+      "cta": "Proses sengketa"
+    },
+    "compliance": {
+      "kicker": "Pengaturan perlindungan",
+      "headline": "Selesaikan pengaturan akun sebelum memakai pasar.",
+      "body": "Orang di bawah 18 tahun tidak boleh berpartisipasi. Batas top-up bulanan, jeda, dan alat penutupan akun membantu pemain mengendalikan ritme bermain.",
+      "ctaPrimary": "Alat batas",
+      "kycLink": "Tingkat verifikasi identitas"
+    },
+    "closing": {
+      "kicker": "Siap?",
+      "headline": "Mulai dari registrasi dan jelajahi pasar pertama Anda dalam 10 menit.",
+      "tagline": "Verifikasi dasar membutuhkan 10 detik, pengaturan batas sekitar satu menit, dan top-up biasanya masuk dalam lima menit.",
+      "ctaPrimary": "Daftar sekarang",
+      "ctaSecondary": "Jelajahi pasar"
+    }
+  },
+  "responsibleGaming": {
+    "metadata": {
+      "title": "Batas bermain - prophetica",
+      "description": "Pengaturan batas, jeda, penutupan akun, dan sumber bantuan."
+    },
+    "overview": {
+      "hero": {
+        "kicker": "",
+        "headline": "Ritme Anda tetap di tangan Anda.",
+        "tagline": "prophetica adalah hiburan, bukan produk keuangan. Kami menyediakan alat agar Anda dapat menyesuaikan, berhenti sementara, atau keluar kapan saja, dengan sumber bantuan independen saat dibutuhkan."
+      },
+      "monthlySnapshot": {
+        "monthLabel": "Bulan ini (Mei)",
+        "heading": "Snapshot aktivitas Anda bulan ini",
+        "depositCard": {
+          "kicker": "Pemakaian top-up bulanan",
+          "limitNote": "Batas bulanan {limit}",
+          "ariaLabel": "Pemakaian top-up bulanan {pct}%"
+        },
+        "tradeCard": {
+          "kicker": "Jumlah transaksi",
+          "subtitle": "Transaksi pasar yang tercocokkan"
+        },
+        "settlementCard": {
+          "kicker": "Penyelesaian bersih",
+          "subtitle": "Total hasil penyelesaian bulan ini"
+        }
+      },
+      "tools": {
+        "heading": "Alat yang tersedia",
+        "cta": "Ke pengaturan",
+        "items": {
+          "limits": {
+            "kicker": "Wajib",
+            "title": "Batas top-up",
+            "body": "Batas top-up bulanan adalah garis perlindungan wajib saat registrasi prophetica. Menurunkannya berlaku segera; menaikkannya memerlukan cooldown 24 jam."
+          },
+          "cooldown": {
+            "kicker": "Opsional",
+            "title": "Jeda",
+            "body": "Hentikan permainan untuk periode singkat. Selama jeda, akun tidak dapat masuk, top up, atau berdagang; pulih otomatis saat periode berakhir."
+          },
+          "selfExclusion": {
+            "kicker": "Opsional tetapi mengikat",
+            "title": "Tutup akun",
+            "body": "Berhenti memakai layanan untuk jangka menengah, panjang, atau permanen. Penutupan permanen tidak dapat dibatalkan, jadi putuskan dengan hati-hati."
+          },
+          "resources": {
+            "kicker": "Eksternal",
+            "title": "Sumber bantuan",
+            "body": "Konseling adiksi, hotline kesehatan mental, dan grup dukungan internasional. Bantuan gratis 24 jam yang independen dari prophetica."
+          }
+        }
+      }
     }
   },
   "stubPage": {

@@ -5,7 +5,14 @@
     },
     "auth": {
       "signIn": "登录",
-      "getStarted": "开始体验"
+      "signUp": "注册",
+      "getStarted": "开始体验",
+      "account": {
+        "ariaLabel": "账户状态",
+        "status": {
+          "unauthenticated": "未登录"
+        }
+      }
     },
     "localeSwitcher": {
       "label": "切换语言"
@@ -121,6 +128,332 @@
       "faq": "常见问题",
       "disputes": "申诉流程",
       "contact": "联系我们"
+    }
+  },
+  "support": {
+    "overview": {
+      "metadata": {
+        "title": "客服中心 - prophetica",
+        "description": "24/7 客服体系。一般查询、充值、KYC、结算、自我设限与安全事件。"
+      },
+      "hero": {
+        "kicker": "客服中心",
+        "headline": "找对团队，问对问题。",
+        "tagline": "所有客服渠道与常见议题都整理在这里。复杂个案会由受过合规培训的 T2 / T3 客服接手；自我设限与 Compliance 案件优先处理。"
+      },
+      "channels": {
+        "heading": "服务渠道",
+        "intro": "依问题性质选择最快渠道。RG 与 Compliance 个案由受认证的客服专员处理。",
+        "items": {
+          "ticket": {
+            "label": "站内工单",
+            "sla": "24 小时内首次回应",
+            "desc": "适用于所有账号、结算与一般争议。中文 / 英文。",
+            "hours": "全时段"
+          },
+          "email": {
+            "label": "Email",
+            "sla": "48 小时内首次回应",
+            "desc": "service@ 将在执照地确认后公告。可附文件。",
+            "hours": "全时段"
+          },
+          "chat": {
+            "label": "Live Chat",
+            "sla": "5 分钟内回应",
+            "desc": "限已登录用户。中文 / 英文 / 日文。",
+            "hours": "24/7"
+          },
+          "phone": {
+            "label": "电话客服",
+            "sla": "4 小时内回拨",
+            "desc": "限 RG 高风险、Compliance 与争议升级个案。",
+            "hours": "办公时间"
+          }
+        }
+      },
+      "categories": {
+        "heading": "按主题分流",
+        "items": {
+          "account": {
+            "kicker": "账号",
+            "title": "登录 / 注册 / 两步验证",
+            "body": "验证码、密码重设与账号锁定问题。"
+          },
+          "topup": {
+            "kicker": "充值",
+            "title": "支付问题",
+            "body": "点数未入账、支付失败与月充值上限。"
+          },
+          "kyc": {
+            "kicker": "KYC",
+            "title": "身份验证",
+            "body": "Tier 升级失败、SumSub 流程与证件保存疑问。"
+          },
+          "settlement": {
+            "kicker": "结算",
+            "title": "Oracle 与争议",
+            "body": "对结算结果有疑问，以及 24 小时申诉窗口。"
+          },
+          "security": {
+            "kicker": "安全",
+            "title": "账号被盗",
+            "body": "请立即联系客服务；4 小时内优先回应。"
+          },
+          "rg": {
+            "kicker": "自我设限",
+            "title": "我玩太多了",
+            "body": "限额、冷静期、关闭账号与外部援助。"
+          }
+        }
+      },
+      "rgCallout": {
+        "kicker": "自我设限优先",
+        "headline": "如果你或身边的人觉得游戏已失去掌控，这个入口优先于所有其他协助。",
+        "body": "我们提供受认证的自我设限客服、限额 / 冷静期 / 关闭账号工具，以及独立于 prophetica 的外部专业资源。",
+        "cta": "了解自我设限工具",
+        "helplineLabel": "24 小时心理支持热线"
+      }
+    }
+  },
+  "markets": {
+    "all": {
+      "metadata": {
+        "title": "全部市场 - prophetica",
+        "description": "浏览所有开放中的预测市场。"
+      },
+      "kicker": "市场",
+      "headline": "所有开放中的对局。",
+      "tagline": "每个市场都是 YES / NO 二元问题。prophetica 中立撮合订单，玩家用站内点数表达判断。",
+      "countLabel": "{count} 个开放中",
+      "sortLabel": "排序：默认顺序"
+    },
+    "trending": {
+      "metadata": {
+        "title": "热门市场 - prophetica",
+        "description": "按 24 小时成交量排序的热门对局。"
+      },
+      "kicker": "市场 / 热门",
+      "headline": "玩家最关注的对局。",
+      "tagline": "按过去 24 小时成交量排序。成交量大代表市场意见正在收敛，但不代表共识一定正确。"
+    },
+    "new": {
+      "metadata": {
+        "title": "新上架 - prophetica",
+        "description": "最近开盘的预测市场。"
+      },
+      "kicker": "市场 / 新上架",
+      "headline": "刚开放的对局。",
+      "tagline": "这些市场已通过 SPEC-015 双签审查，并在过去数天内开盘。流动性可能仍在累积。"
+    },
+    "settled": {
+      "metadata": {
+        "title": "已结算市场 - prophetica",
+        "description": "近期完成 Oracle 结算的市场。"
+      },
+      "kicker": "市场 / 已结算",
+      "headline": "结果已出炉的对局。",
+      "tagline": "已由 Oracle 判定并完成结算的市场。所有玩家持仓会在结算时入账，可在个人持仓页查看。",
+      "emptyState": "目前没有已结算市场可显示。"
+    },
+    "notFound": {
+      "kicker": "找不到这个市场",
+      "headline": "这个市场可能已下架，或网址有误。",
+      "tagline": "请从市场列表重新进入，或联系客服。",
+      "backLabel": "回市场列表",
+      "contactLabel": "联系客服"
+    }
+  },
+  "howItWorks": {
+    "metadata": {
+      "title": "玩法说明 - prophetica",
+      "description": "从注册到结算的完整玩家流程：四个入场步骤、撮合机制、市场权重、Oracle 结算与申诉窗口。"
+    },
+    "hero": {
+      "kicker": "玩法说明",
+      "headline": "从注册到结算，五分钟看懂。",
+      "tagline": "你用站内点数对未公开事件结果表达判断，订单会进入与其他玩家对局的订单簿。系统负责撮合、结算与记录。",
+      "ctaPrimary": "立即注册",
+      "ctaSecondary": "先看市场"
+    },
+    "principles": {
+      "heading": "三个设计重点",
+      "intro": "先理解点数、订单簿与事件记录，再看市场价格会更直观。",
+      "items": {
+        "points": {
+          "kicker": "原则一",
+          "title": "站内点数。",
+          "body": "充值取得的点数用于站内市场、锁仓与结算显示。"
+        },
+        "orderbook": {
+          "kicker": "原则二",
+          "title": "订单簿撮合。",
+          "body": "系统按价格优先、时间优先撮合玩家订单，并记录每笔成交。"
+        },
+        "events": {
+          "kicker": "原则三",
+          "title": "事件记录。",
+          "body": "支付、撮合、结算与判定都会写入事件流，方便客服与工程追查。"
+        }
+      }
+    },
+    "startSteps": {
+      "heading": "入场四步骤",
+      "intro": "前两步是账号安全与保护设置，第三第四步才与玩法相关。",
+      "items": {
+        "register": {
+          "title": "注册账号",
+          "body": "Email + 手机 OTP + 生日（>=18 岁）。10 秒内完成基础 Tier 1 验证，无需上传证件影像。",
+          "cta": "前往注册"
+        },
+        "rg": {
+          "title": "设置自我设限",
+          "body": "月充值上限是必设的保护线（TWD 1k / 5k / 30k / 100k 任选）。也可加上下单上限、损失上限与冷静期触发点。",
+          "cta": "了解限额"
+        },
+        "topup": {
+          "title": "充值点数",
+          "body": "依执照地的支付渠道完成充值，点数通常 5 分钟内入账。1 点 = TWD 1（内部记账基准）。",
+          "cta": "充值说明"
+        },
+        "trade": {
+          "title": "浏览市场并下单",
+          "body": "选择你有把握的市场，买 YES 或 NO 一股，等待市场结算。每股结算为 100 点（赢）或 0 点（输）。",
+          "cta": "查看市场"
+        }
+      }
+    },
+    "matching": {
+      "kicker": "撮合机制",
+      "headline": "每一笔对局都是玩家对玩家。",
+      "lead": "当你买入一股 YES，系统会在<strong>订单簿</strong>寻找可成交的对手单，并按价格优先、时间优先撮合。",
+      "platformTakes": {
+        "kicker": "平台收取",
+        "title": "双边手续费",
+        "body": "按交易量计算，与你的胜负无关。我们希望市场活络，而不是某一边输太多。"
+      },
+      "platformDoesNot": {
+        "kicker": "不在此流程内",
+        "title": "玩家输赢差额",
+        "body": "成交与结算由订单、持仓与 Oracle 判定共同决定，系统只呈现结果与记录。"
+      },
+      "cta": "查看真实订单簿示例"
+    },
+    "pricing": {
+      "heading": "价格改看市场权重",
+      "intro": "每一股 YES / NO 的报价落在 1-99。数字越高，代表市场越偏向该结果；YES 权重 38 可理解为市场目前约 38% 看好 YES。实际投入与结算仍以点数计算。",
+      "exampleHeading": "用 YES 权重 38 看一笔交易",
+      "exampleIntro": "假设「中华队晋级 WBSC 四强」目前 YES 权重是 38。你买 100 股 YES：",
+      "cards": {
+        "cost": {
+          "label": "成本",
+          "amount": "38 点",
+          "note": "100 股 x 38 / 100 = 38 点"
+        },
+        "winYes": {
+          "label": "结算为 YES",
+          "amount": "+62 点",
+          "note": "100 股共结算 100 点，扣除 38 点成本"
+        },
+        "loseNo": {
+          "label": "结算为 NO",
+          "amount": "-38 点",
+          "note": "每股入账 0 点，全额成本损失"
+        }
+      },
+      "exit": "想中途离场？可以在订单簿挂卖单，成交价由当时市场权重决定。"
+    },
+    "settlement": {
+      "heading": "结算来自 Oracle",
+      "intro": "每个市场上架时，平台都会指定明确的判定来源（Oracle）。市场关盘后，依 Oracle 公告判定 YES 或 NO，并自动结算进玩家钱包。",
+      "items": {
+        "transparent": {
+          "title": "判定来源公开透明",
+          "body": "市场页会清楚列出 oracle source，例如气象机构、FOMC 公告或选举委员会。没有「我们觉得」这种判定。"
+        },
+        "appealWindow": {
+          "title": "24 小时申诉窗口",
+          "body": "结算后 24 小时内可开申诉工单。所有申诉都会收到状态回复；多人申诉或大额个案会升级到 Compliance T3。"
+        },
+        "stateMachine": {
+          "title": "结算状态机",
+          "body": "PENDING -> SETTLING -> SETTLED 或 CANCELLED。每个状态转换都会写入事件流，可在个人记录页查到。"
+        },
+        "autoPayout": {
+          "title": "持仓自动兑换",
+          "body": "结算当下系统会把持仓转换为点数入账，不需手动操作。可在个人持仓页查看入账结果。"
+        }
+      },
+      "cta": "申诉流程"
+    },
+    "compliance": {
+      "kicker": "保护设置",
+      "headline": "先完成账号设置，再开始使用市场。",
+      "body": "18 岁以下不可参与。月充值上限、冷静期与关闭账号工具可协助玩家控制使用节奏。",
+      "ctaPrimary": "自我设限工具",
+      "kycLink": "身份验证分层"
+    },
+    "closing": {
+      "kicker": "准备好了吗？",
+      "headline": "从注册开始，10 分钟内就能浏览第一个市场。",
+      "tagline": "基础验证 10 秒；自我设限设置约 1 分钟；充值通常 5 分钟内入账。",
+      "ctaPrimary": "立即注册",
+      "ctaSecondary": "浏览市场"
+    }
+  },
+  "responsibleGaming": {
+    "metadata": {
+      "title": "自我设限 - prophetica",
+      "description": "限额设置、冷静期、关闭账号与求助资源。"
+    },
+    "overview": {
+      "hero": {
+        "kicker": "",
+        "headline": "你的节奏，由你掌握。",
+        "tagline": "prophetica 是娱乐，不是金融商品。我们提供工具让你随时调整、暂停或退出，并在需要时提供独立求助资源。"
+      },
+      "monthlySnapshot": {
+        "monthLabel": "本月（5 月）",
+        "heading": "你这个月的活动快照",
+        "depositCard": {
+          "kicker": "月充值用量",
+          "limitNote": "月上限 {limit}",
+          "ariaLabel": "月充值用量 {pct}%"
+        },
+        "tradeCard": {
+          "kicker": "交易次数",
+          "subtitle": "对局成交笔数"
+        },
+        "settlementCard": {
+          "kicker": "净结算",
+          "subtitle": "本月所有结算加总"
+        }
+      },
+      "tools": {
+        "heading": "可用工具",
+        "cta": "前往设置",
+        "items": {
+          "limits": {
+            "kicker": "强制",
+            "title": "充值上限",
+            "body": "月充值上限是 prophetica 注册时必设的保护线。降低立即生效；提高需 24 小时冷却期。"
+          },
+          "cooldown": {
+            "kicker": "可选",
+            "title": "冷静期",
+            "body": "短期暂停游戏。期间账号无法登录、充值或交易，到期自动恢复。"
+          },
+          "selfExclusion": {
+            "kicker": "强制可选",
+            "title": "关闭账号",
+            "body": "中长期或永久停止使用本服务。永久关闭无法撤销，请谨慎决定。"
+          },
+          "resources": {
+            "kicker": "外部",
+            "title": "求助资源",
+            "body": "成瘾咨询、心理卫生热线与国际支持团体。24 小时免费，独立于 prophetica。"
+          }
+        }
+      }
     }
   },
   "stubPage": {
