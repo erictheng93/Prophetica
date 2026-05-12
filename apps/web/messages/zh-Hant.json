@@ -6,7 +6,14 @@
     },
     "auth": {
       "signIn": "登入",
-      "getStarted": "開始體驗"
+      "signUp": "註冊",
+      "getStarted": "開始體驗",
+      "account": {
+        "ariaLabel": "帳戶狀態",
+        "status": {
+          "unauthenticated": "未登入"
+        }
+      }
     },
     "localeSwitcher": {
       "label": "切換語言"

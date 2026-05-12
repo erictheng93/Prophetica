@@ -1,5 +1,10 @@
 import { getTranslations } from "next-intl/server";
-import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import {
+  ProphFooter,
+  ProphLinkButton,
+  ProphSubNav,
+  ProphTile,
+} from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
@@ -16,7 +21,13 @@ import {
 //
 // Product posture: copy frames the product as an event-prediction experience.
 
-const TileMedia = ({ label, surface }: { label: string; surface: "light" | "dark" }) => (
+const TileMedia = ({
+  label,
+  surface,
+}: {
+  label: string;
+  surface: "light" | "dark";
+}) => (
   <div
     className={
       "flex h-64 w-full max-w-3xl items-center justify-center rounded-proph-lg " +
@@ -25,7 +36,9 @@ const TileMedia = ({ label, surface }: { label: string; surface: "light" | "dark
         : "bg-proph-canvas-parchment text-proph-ink-muted-80")
     }
   >
-    <span className="font-display text-[21px] font-semibold tracking-[0.231px]">{label}</span>
+    <span className="font-display text-[21px] font-semibold tracking-[0.231px]">
+      {label}
+    </span>
   </div>
 );
 
@@ -44,11 +57,19 @@ export default async function LandingPage() {
        * surface count doesn't justify Apple's two-tier nav model — one row is
        * enough information density for now.
        */}
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
       <ProphTile
         surface="light"
-        kicker={<span className="text-[17px] leading-[1.47] tracking-[0]">{t("hero.kicker")}</span>}
+        kicker={
+          <span className="text-[17px] leading-[1.47] tracking-[0]">
+            {t("hero.kicker")}
+          </span>
+        }
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {t("hero.headline")}
@@ -57,8 +78,12 @@ export default async function LandingPage() {
         tagline={t("hero.tagline")}
         actions={
           <>
-            <ProphLinkButton variant="primary" href="/auth/sign-in">{t("hero.ctaPrimary")}</ProphLinkButton>
-            <ProphLinkButton variant="secondary-pill" href="/how-it-works">{t("hero.ctaSecondary")}</ProphLinkButton>
+            <ProphLinkButton variant="primary" href="/auth/sign-in">
+              {t("hero.ctaPrimary")}
+            </ProphLinkButton>
+            <ProphLinkButton variant="secondary-pill" href="/how-it-works">
+              {t("hero.ctaSecondary")}
+            </ProphLinkButton>
           </>
         }
         media={<TileMedia label={t("hero.media")} surface="light" />}
@@ -69,7 +94,11 @@ export default async function LandingPage() {
         kicker={t("neutral.kicker")}
         headline={t("neutral.headline")}
         tagline={t("neutral.tagline")}
-        actions={<ProphLinkButton variant="primary" href="/how-it-works">{t("neutral.cta")}</ProphLinkButton>}
+        actions={
+          <ProphLinkButton variant="primary" href="/how-it-works">
+            {t("neutral.cta")}
+          </ProphLinkButton>
+        }
         media={<TileMedia label={t("neutral.media")} surface="dark" />}
       />
 
@@ -80,8 +109,12 @@ export default async function LandingPage() {
         tagline={t("points.tagline")}
         actions={
           <>
-            <ProphLinkButton variant="primary" href="/topup">{t("points.ctaPrimary")}</ProphLinkButton>
-            <ProphLinkButton variant="secondary-pill" href="/legal/terms">{t("points.ctaSecondary")}</ProphLinkButton>
+            <ProphLinkButton variant="primary" href="/topup">
+              {t("points.ctaPrimary")}
+            </ProphLinkButton>
+            <ProphLinkButton variant="secondary-pill" href="/legal/terms">
+              {t("points.ctaSecondary")}
+            </ProphLinkButton>
           </>
         }
         media={<TileMedia label={t("points.media")} surface="light" />}
@@ -94,11 +127,23 @@ export default async function LandingPage() {
         tagline={t("responsibleGaming.tagline")}
         actions={
           <>
-            <ProphLinkButton variant="primary" href="/responsible-gaming/limits">{t("responsibleGaming.ctaPrimary")}</ProphLinkButton>
-            <ProphLinkButton variant="secondary-pill-on-dark" href="/responsible-gaming/resources">{t("responsibleGaming.ctaSecondary")}</ProphLinkButton>
+            <ProphLinkButton
+              variant="primary"
+              href="/responsible-gaming/limits"
+            >
+              {t("responsibleGaming.ctaPrimary")}
+            </ProphLinkButton>
+            <ProphLinkButton
+              variant="secondary-pill-on-dark"
+              href="/responsible-gaming/resources"
+            >
+              {t("responsibleGaming.ctaSecondary")}
+            </ProphLinkButton>
           </>
         }
-        media={<TileMedia label={t("responsibleGaming.media")} surface="dark" />}
+        media={
+          <TileMedia label={t("responsibleGaming.media")} surface="dark" />
+        }
       />
 
       <ProphTile
@@ -108,8 +153,12 @@ export default async function LandingPage() {
         tagline={t("start.tagline")}
         actions={
           <>
-            <ProphLinkButton variant="primary" href="/auth/sign-in">{t("start.ctaPrimary")}</ProphLinkButton>
-            <ProphLinkButton variant="secondary-pill" href="/markets">{t("start.ctaSecondary")}</ProphLinkButton>
+            <ProphLinkButton variant="primary" href="/auth/sign-in?mode=signup">
+              {t("start.ctaPrimary")}
+            </ProphLinkButton>
+            <ProphLinkButton variant="secondary-pill" href="/markets">
+              {t("start.ctaSecondary")}
+            </ProphLinkButton>
           </>
         }
       />

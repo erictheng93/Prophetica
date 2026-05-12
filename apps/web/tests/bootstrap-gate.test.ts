@@ -43,3 +43,26 @@ test("landing page retains the SPEC-017 bootstrap marker for acceptance checks",
 
   assert.match(source, /prophetica web - bootstrapping/);
 });
+
+test("unauthenticated navigation exposes account status and signup entry", () => {
+  const source = readWebFile("lib/site-nav.tsx");
+
+  assert.match(source, /aria-label=\{t\("account\.ariaLabel"\)\}/);
+  assert.match(source, /t\("account\.status\.unauthenticated"\)/);
+  assert.match(source, /href="\/auth\/sign-in\?mode=signup"/);
+});
+
+test("landing page registration CTA opens signup mode directly", () => {
+  const source = readWebFile("app/page.tsx");
+
+  assert.match(
+    source,
+    /<ProphLinkButton\s+variant="primary"\s+href="\/auth\/sign-in\?mode=signup">\s*\{t\("start\.ctaPrimary"\)\}\s*<\/ProphLinkButton>/,
+  );
+});
+
+test("Tailwind scans shared web lib components used by pages", () => {
+  const source = readWebFile("tailwind.config.ts");
+
+  assert.match(source, /"\.\/lib\/\*\*\/\*\.\{ts,tsx\}"/);
+});

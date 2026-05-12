@@ -10,6 +10,7 @@ const config: Config = {
   content: [
     "./app/**/*.{ts,tsx,mdx}",
     "./components/**/*.{ts,tsx}",
+    "./lib/**/*.{ts,tsx}",
     // Workspace primitives — Tailwind must scan these to emit utility classes
     // referenced inside @prophetica/ui components.
     "../../packages/ui/src/**/*.{ts,tsx}",
@@ -36,7 +37,8 @@ const config: Config = {
           "surface-tile-2": "var(--proph-color-surface-tile-2)",
           "surface-tile-3": "var(--proph-color-surface-tile-3)",
           "surface-black": "var(--proph-color-surface-black)",
-          "surface-chip-translucent": "var(--proph-color-surface-chip-translucent)",
+          "surface-chip-translucent":
+            "var(--proph-color-surface-chip-translucent)",
           "on-primary": "var(--proph-color-on-primary)",
           "on-dark": "var(--proph-color-on-dark)",
           "feedback-error": "var(--proph-color-feedback-error)",

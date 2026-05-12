@@ -165,21 +165,37 @@ export async function MainNavLinks() {
   );
 }
 
-/** 登入 text link + 開始體驗 primary pill; goes in `ProphSubNav.cta`. */
+/** Account status + auth entry points; goes in `ProphSubNav.cta`. */
 export async function AuthCta() {
   const t = await getTranslations("common.auth");
   return (
     <div className="flex items-center gap-2 sm:gap-3">
       <LanguageSwitcher />
-      <a
-        href="/auth/sign-in"
-        className="hidden font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink sm:inline"
+      <nav
+        aria-label={t("account.ariaLabel")}
+        className="flex items-center gap-2"
       >
-        {t("signIn")}
-      </a>
-      <ProphLinkButton variant="primary" href="/auth/sign-in">
-        {t("getStarted")}
-      </ProphLinkButton>
+        <span className="inline-flex min-h-8 items-center gap-2 rounded-proph-pill border border-proph-hairline bg-proph-canvas px-3 font-text text-[13px] leading-[1.31] tracking-[0] text-proph-ink-muted-80">
+          <span
+            className="h-1.5 w-1.5 rounded-proph-full bg-proph-ink-muted-48"
+            aria-hidden="true"
+          />
+          {t("account.status.unauthenticated")}
+        </span>
+        <a
+          href="/auth/sign-in"
+          className="font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink"
+        >
+          {t("signIn")}
+        </a>
+        <ProphLinkButton
+          variant="primary"
+          href="/auth/sign-in?mode=signup"
+          className="px-4 py-2 text-[14px] leading-[1.29] tracking-[-0.224px]"
+        >
+          {t("signUp")}
+        </ProphLinkButton>
+      </nav>
       <SiteThemeToggle />
     </div>
   );
