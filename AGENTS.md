@@ -8,13 +8,15 @@ Prophetica is a Rust/pnpm monorepo. Frontend apps live in `apps/` (`web`, `admin
 
 Use `rtk` before external CLI commands when invoking developer tools from Codex.
 
-- `rtk pnpm dev`: run all Turbo `dev` tasks in parallel.
+- `rtk pnpm dev`: run the MVP player web app and admin app in parallel.
+- `rtk pnpm dev:all-apps`: run all Turbo `dev` tasks in parallel, including LIFF.
 - `rtk pnpm build`: build all pnpm workspace targets.
 - `rtk pnpm lint` / `rtk pnpm typecheck`: run linting and TypeScript checks.
 - `rtk pnpm test`: run pnpm workspace tests.
 - `rtk cargo nextest run --workspace --locked`: run Rust tests.
 - `rtk cargo clippy --workspace --all-targets --locked -- -D warnings`: enforce Rust lints.
-- `rtk make dev` / `rtk make down`: start or stop local Docker dependencies.
+- `rtk make dev`: run the MVP player web app and admin app in parallel.
+- `rtk make dev-infra` / `rtk make down`: start or stop local Docker dependencies.
 - `rtk make proto`: regenerate protobuf outputs with Buf.
 
 ## Development Compute Policy
@@ -68,4 +70,3 @@ Examples:
 - `rtk npm run build`
 
 PowerShell builtins and simple read-only inspection commands do not need the `rtk` prefix.
-

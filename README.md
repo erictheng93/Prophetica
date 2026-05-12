@@ -138,7 +138,7 @@ This repository now uses the SPEC-017 monorepo scaffold:
 - Rust 1.85 / edition 2024 Cargo workspace for service stubs and shared crates.
 - pnpm 9 + Turborepo for `apps/*` and `packages/*`.
 - `buf.yaml` and `buf.gen.yaml` consume `packages/proto/v1/*.proto` and emit committed Rust and TypeScript stubs.
-- `infra/docker-compose.local.yaml` provides the local bootstrap stack.
+- `infra/docker-compose.local.yaml` provides the full local dependency stack for later integration work.
 
 Common commands:
 
@@ -146,8 +146,25 @@ Common commands:
 make doctor
 make bootstrap
 make dev
+make dev-infra
 make test
 make lint
 ```
+
+MVP local development starts the player-facing web app and admin app only:
+
+```bash
+make dev
+# web:   http://localhost:3000
+# admin: http://localhost:3002
+```
+
+The admin app uses local mock users for the MVP loop:
+
+- `admin@prophetica.local` / `admin`
+- `manager@prophetica.local` / `manager`
+- `affiliate@prophetica.local` / `affiliate`
+
+Use `make dev-infra` only when PostgreSQL, Redis, Kafka, Vault, Mailhog, or the observability stack are needed. The full Kafka / Grafana / Prometheus local stack is tracked as MVP Phase 2 in [`TODO.md`](./TODO.md).
 
 The first PR intentionally contains only bootstrap stubs. Business logic remains out of scope for SPEC-017.

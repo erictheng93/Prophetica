@@ -1,6 +1,28 @@
 # TODO
 
-Last updated: 2026-05-09
+Last updated: 2026-05-12
+
+## MVP Phase 2: Local Infra And Observability Stack
+
+Phase 1 MVP development intentionally starts with the player-facing web app and
+admin app only. Full local infrastructure is deferred to Phase 2 so the initial
+user/admin workflow can move without requiring Kafka, Grafana, Prometheus, or
+the full Docker dependency stack.
+
+- Promote `make dev-infra` into the Phase 2 local integration entrypoint and
+  keep `make dev` focused on web + admin.
+- Bring up and smoke-test PostgreSQL, Redis, Kafka, Vault, Mailhog,
+  Prometheus, Grafana, Tempo, Loki, and the OTel Collector through
+  `infra/docker-compose.local.yaml`.
+- Wire matching-engine projection events to Kafka in the production event path,
+  with `acks=all` and idempotent producer settings.
+- Replace static readiness with dependency-aware checks for services that need
+  PostgreSQL, Redis, Kafka, or downstream service calls.
+- Add a lightweight Phase 2 smoke command that verifies compose health, key
+  service `/healthz/ready` responses, Prometheus scrape reachability, and a
+  Grafana dashboard import.
+- Document resource expectations for macOS/OrbStack and keep full-stack checks
+  out of the default MVP loop.
 
 ## Public Beta Launch Gate Blockers
 

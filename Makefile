@@ -1,4 +1,4 @@
-.PHONY: doctor bootstrap dev down test lint fmt proto migrate seed clean
+.PHONY: doctor bootstrap dev dev-mvp dev-infra down test lint fmt proto migrate seed clean
 
 BASH ?= bash
 
@@ -8,7 +8,12 @@ doctor:
 bootstrap:
 	$(BASH) ./tools/scripts/bootstrap.sh
 
-dev:
+dev: dev-mvp
+
+dev-mvp:
+	pnpm run dev:mvp
+
+dev-infra:
 	docker compose -f infra/docker-compose.local.yaml up -d
 
 down:
