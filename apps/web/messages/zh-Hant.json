@@ -904,7 +904,7 @@
   "howItWorks": {
     "metadata": {
       "title": "玩法說明 — prophetica",
-      "description": "從註冊到結算的完整玩家流程：4 步驟入場、撮合機制、cent 價格、Oracle 結算與申訴窗口。"
+      "description": "從註冊到結算的完整玩家流程：4 步驟入場、撮合機制、市場權重、Oracle 結算與申訴窗口。"
     },
     "hero": {
       "kicker": "玩法說明",
@@ -977,20 +977,20 @@
       "cta": "看真實訂單簿範例"
     },
     "pricing": {
-      "heading": "價格用 cent 表示",
-      "intro": "每一股的價格是 1–99 cent（1 cent = 0.01 點）。可以把價格讀成「市場認為這件事發生的機率」。買 YES 50¢ ≈ 市場認為機率 50/50；買 YES 80¢ ≈ 市場認為機率 80%。",
-      "exampleHeading": "一個具體例子",
-      "exampleIntro": "假設「中華隊晉級 WBSC 四強」目前 YES 報價 38¢。你買 100 股 YES：",
+      "heading": "價格改看市場權重",
+      "intro": "每一股 YES / NO 的報價落在 1–99。數字越高，代表市場越偏向該結果；YES 權重 38，可以讀成市場目前約 38% 看好 YES。實際投入與結算仍以點數計算。",
+      "exampleHeading": "用 YES 權重 38 看一筆交易",
+      "exampleIntro": "假設「中華隊晉級 WBSC 四強」目前 YES 權重是 38。你買 100 股 YES：",
       "cards": {
         "cost": {
           "label": "成本",
           "amount": "38 點",
-          "note": "100 股 × 38¢ ÷ 100 = 38 點"
+          "note": "100 股 × 38 ÷ 100 = 38 點"
         },
         "winYes": {
           "label": "結算為 YES",
           "amount": "+62 點",
-          "note": "每股入帳 100 點，總入帳 100 點 − 38 點成本"
+          "note": "100 股共結算 100 點，扣除 38 點投入"
         },
         "loseNo": {
           "label": "結算為 NO",
@@ -998,7 +998,7 @@
           "note": "每股入帳 0 點，全額成本損失"
         }
       },
-      "exit": "想中途離場？可以在訂單簿掛賣單，等待其他玩家接手。"
+      "exit": "想中途離場？可以在訂單簿掛賣單，成交價由當時市場權重決定。"
     },
     "settlement": {
       "heading": "結算來自 Oracle",

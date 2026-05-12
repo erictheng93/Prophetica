@@ -42,3 +42,23 @@ test("every supported locale has a parseable message catalogue", () => {
     assert.ok(messages.offline, `${locale} missing offline namespace`);
   }
 });
+
+test("how it works pricing copy uses market weighting instead of cent notation", () => {
+  const messages = JSON.parse(
+    readFileSync(join(process.cwd(), "messages/zh-Hant.json"), "utf8"),
+  ) as {
+    howItWorks: {
+      metadata: Record<string, string>;
+      pricing: Record<string, unknown>;
+    };
+  };
+
+  const publicCopy = JSON.stringify({
+    metadata: messages.howItWorks.metadata,
+    pricing: messages.howItWorks.pricing,
+  });
+
+  assert.doesNotMatch(publicCopy, /\bcent\b|¢/i);
+  assert.match(publicCopy, /市場權重/);
+  assert.match(publicCopy, /YES 權重/);
+});
