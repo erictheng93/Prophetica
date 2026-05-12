@@ -20,14 +20,19 @@ export class ApiError extends Error {
 
 export function decodeErrorEnvelope(status: number, body: unknown): ApiError {
   const record = isRecord(body) ? body : {};
-  const code = readString(record.code) ?? readString(record.error) ?? `HTTP_${status}`;
-  const message = readString(record.message) ?? `Request failed with status ${status}`;
+  const code =
+    readString(record.code) ?? readString(record.error) ?? `HTTP_${status}`;
+  const message =
+    readString(record.message) ??
+    readString(record.error) ??
+    `Request failed with status ${status}`;
 
   return new ApiError(status, {
     code,
     message,
     traceId: readString(record.trace_id) ?? readString(record.traceId),
-    idempotencyKey: readString(record.idempotency_key) ?? readString(record.idempotencyKey),
+    idempotencyKey:
+      readString(record.idempotency_key) ?? readString(record.idempotencyKey),
     details: record.details,
   });
 }

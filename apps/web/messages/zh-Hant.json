@@ -1997,7 +1997,9 @@
       "qtyPositive": "數量須大於 0",
       "qtyMax": "單次下單上限 100,000 股"
     },
-    "flashMock": "(後端待接) 已收到 {side} × {quantity} 股 @ {price}¢ 的下單請求。",
+    "flashAccepted": "已送出 {side} × {quantity} 股 @ {price}¢，訂單 {orderId} 已由撮合引擎受理。",
+    "flashRejected": "訂單未送出：{message}",
+    "unknownError": "未知錯誤",
     "summary": {
       "openLabel": "開啟下單面板",
       "stockUnitTemplate": "{side} · {price}¢ × {quantity} 股",
@@ -2019,7 +2021,7 @@
       "maxCostLabel": "最大成本",
       "pointsTemplate": "{amount} 點",
       "submitting": "送出中…",
-      "submit": "送出訂單（後端待接）",
+      "submit": "送出訂單",
       "footnote": "下單前請確認你已完成 KYC 層級驗證、設定月儲值上限。違反者由 SPEC-003 撮合層直接拒收。"
     }
   },

@@ -36,3 +36,31 @@ test("action forms are not shipped disabled", () => {
     assert.doesNotMatch(source, /<button\b[^>]*\bdisabled\b/, file);
   }
 });
+
+test("trade panel submit is not validity-disabled before hydration validation runs", () => {
+  const source = readFileSync(
+    join(process.cwd(), "components/trade-panel.tsx"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(source, /disabled=\{!isValid \|\| isSubmitting\}/);
+});
+
+test("trade panel uses an explicit click handler instead of native form submission", () => {
+  const source = readFileSync(
+    join(process.cwd(), "components/trade-panel.tsx"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(source, /type="submit"/);
+  assert.match(source, /onClick=\{handleSubmit\(onSubmit\)\}/);
+});
+
+test("trade panel has a concrete default side for hydrated submission", () => {
+  const source = readFileSync(
+    join(process.cwd(), "components/trade-panel.tsx"),
+    "utf8",
+  );
+
+  assert.match(source, /value="YES"[\s\S]*defaultChecked/);
+});

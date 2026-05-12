@@ -17,7 +17,8 @@ use axum::{
 };
 use proto::proph::v1::{
     CancelOrderRequest, GetBookSnapshotRequest, MarketId, OrderId as ProtoOrderId, OrderStatus,
-    OrderType as ProtoOrderType, PlaceOrderRequest, Side as ProtoSide, TimeInForce, UserId,
+    OrderType as ProtoOrderType, Outcome as ProtoOutcome, PlaceOrderRequest, Side as ProtoSide,
+    TimeInForce, UserId,
     engine_service_server::{EngineService, EngineServiceServer},
 };
 use serde::{Deserialize, Serialize};
@@ -58,6 +59,13 @@ struct PlaceOrderHttpRequest {
     price_pts: i32,
     quantity: i64,
     time_in_force: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NormalizedHttpOrder {
+    side: ProtoSide,
+    outcome: ProtoOutcome,
+    price_pts: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -218,7 +226,7 @@ async fn place_order_http(
     headers: HeaderMap,
     Json(payload): Json<PlaceOrderHttpRequest>,
 ) -> Result<Json<OrderActionResponse>, (StatusCode, Json<ErrorResponse>)> {
-    validate_outcome(&payload.outcome)?;
+    let normalized = normalize_http_order(&payload)?;
     let user_id = user_id_from_headers(&headers)?;
     let response = state
         .service
@@ -226,10 +234,10 @@ async fn place_order_http(
             audit: None,
             user_id: Some(UserId { value: user_id }),
             market_id: Some(MarketId { value: market_id }),
-            side: map_http_side(&payload.side)?.into(),
-            outcome: 1,
+            side: normalized.side.into(),
+            outcome: normalized.outcome.into(),
             r#type: map_http_order_type(&payload.order_type)?.into(),
-            price_pts: payload.price_pts,
+            price_pts: normalized.price_pts,
             quantity: payload.quantity,
             tif: map_http_time_in_force(&payload.time_in_force)?.into(),
             post_only: payload.order_type.eq_ignore_ascii_case("POST_ONLY"),
@@ -269,7 +277,11 @@ async fn place_order_http(
         order_id,
         status: http_order_status(order.status),
         filled_qty: response.filled_qty,
-        avg_price_pts: response.avg_price_pts,
+        avg_price_pts: denormalize_avg_price_pts(
+            &payload.outcome,
+            response.filled_qty,
+            response.avg_price_pts,
+        ),
         remaining_qty: order.qty_remaining,
         fee_pts: response.fee.map_or(0, |fee| fee.amount),
     }))
@@ -511,17 +523,43 @@ fn user_id_from_headers(headers: &HeaderMap) -> Result<u64, (StatusCode, Json<Er
         })
 }
 
-fn validate_outcome(outcome: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if outcome.eq_ignore_ascii_case("YES") {
-        return Ok(());
-    }
-
-    Err((
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: "only YES outcome orders are currently supported".to_string(),
+fn normalize_http_order(
+    payload: &PlaceOrderHttpRequest,
+) -> Result<NormalizedHttpOrder, (StatusCode, Json<ErrorResponse>)> {
+    let side = map_http_side(&payload.side)?;
+    match map_http_outcome(&payload.outcome)? {
+        ProtoOutcome::Yes => Ok(NormalizedHttpOrder {
+            side,
+            outcome: ProtoOutcome::Yes,
+            price_pts: payload.price_pts,
         }),
-    ))
+        ProtoOutcome::No => Ok(NormalizedHttpOrder {
+            side: opposite_side(side),
+            outcome: ProtoOutcome::Yes,
+            price_pts: 100 - payload.price_pts,
+        }),
+        ProtoOutcome::Unspecified | ProtoOutcome::Void => Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "outcome must be YES or NO".to_string(),
+            }),
+        )),
+    }
+}
+
+fn map_http_outcome(outcome: &str) -> Result<ProtoOutcome, (StatusCode, Json<ErrorResponse>)> {
+    if outcome.eq_ignore_ascii_case("YES") {
+        Ok(ProtoOutcome::Yes)
+    } else if outcome.eq_ignore_ascii_case("NO") {
+        Ok(ProtoOutcome::No)
+    } else {
+        Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "outcome must be YES or NO".to_string(),
+            }),
+        ))
+    }
 }
 
 fn map_http_side(side: &str) -> Result<ProtoSide, (StatusCode, Json<ErrorResponse>)> {
@@ -536,6 +574,26 @@ fn map_http_side(side: &str) -> Result<ProtoSide, (StatusCode, Json<ErrorRespons
                 error: "side must be buy or sell".to_string(),
             }),
         ))
+    }
+}
+
+fn opposite_side(side: ProtoSide) -> ProtoSide {
+    match side {
+        ProtoSide::Bid => ProtoSide::Ask,
+        ProtoSide::Ask => ProtoSide::Bid,
+        ProtoSide::Unspecified => ProtoSide::Unspecified,
+    }
+}
+
+fn denormalize_avg_price_pts(outcome: &str, filled_qty: i64, avg_price_pts: i32) -> i32 {
+    if filled_qty <= 0 || avg_price_pts == 0 {
+        return avg_price_pts;
+    }
+
+    if outcome.eq_ignore_ascii_case("NO") {
+        100 - avg_price_pts
+    } else {
+        avg_price_pts
     }
 }
 

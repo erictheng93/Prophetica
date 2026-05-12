@@ -6,14 +6,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslations } from "next-intl";
 import { TrendDown, TrendUp } from "@phosphor-icons/react";
+import { placeMarketOrder } from "@/lib/engine-api";
 import type { Market } from "@/lib/mock-markets";
 
 /*
  * Order entry form per SPEC-003 §3 (cent-priced YES/NO outcomes) + ADR-0004
  * §9 #6 (forms must use React Hook Form + Zod once they actually submit).
- *
- * Submission is mocked — real wiring goes through packages/ts-sdk → market-
- * service / matching-engine via the protobuf RPC defined in SPEC-003 §6.
  *
  * Responsive behavior:
  *   - Desktop (≥ lg): sticky right column.
@@ -44,7 +42,10 @@ export function TradePanel({ market }: { market: Market }) {
   type TradeOutput = z.output<typeof tradeSchema>;
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
+  const [flash, setFlash] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
 
   const isTradable = market.status === "open" || market.status === "closing";
 
@@ -52,7 +53,7 @@ export function TradePanel({ market }: { market: Market }) {
     register,
     handleSubmit,
     watch,
-    formState: { errors, isSubmitting, isValid },
+    formState: { errors, isSubmitting },
   } = useForm<TradeInput, undefined, TradeOutput>({
     resolver: zodResolver(tradeSchema),
     defaultValues: {
@@ -67,25 +68,49 @@ export function TradePanel({ market }: { market: Market }) {
   const priceCents = Number(watch("priceCents"));
   const quantity = Number(watch("quantity"));
   const maxCost =
-    Number.isFinite(priceCents) && Number.isFinite(quantity) && priceCents > 0 && quantity > 0
+    Number.isFinite(priceCents) &&
+    Number.isFinite(quantity) &&
+    priceCents > 0 &&
+    quantity > 0
       ? (priceCents * quantity) / 100
       : 0;
 
   const sideLabel = side === "YES" ? "YES" : "NO";
-  const sideQuote = side === "YES" ? market.yesAskCents : 100 - market.yesBidCents;
+  const sideQuote =
+    side === "YES" ? market.yesAskCents : 100 - market.yesBidCents;
 
   const onSubmit = async (values: TradeOutput) => {
-    // Mock latency that mimics the real backend round-trip.
-    await new Promise((r) => setTimeout(r, 600));
-    setFlash(
-      tFlash("flashMock", {
-        side: values.side,
-        quantity: values.quantity.toLocaleString(),
-        price: values.priceCents,
-      }),
-    );
-    setSheetOpen(false);
-    setTimeout(() => setFlash(null), 5000);
+    try {
+      const order = await placeMarketOrder({
+        marketId: market.id,
+        userId: process.env.NEXT_PUBLIC_PROPHETICA_ENGINE_USER_ID ?? "10",
+        side: "buy",
+        outcome: values.side,
+        type: "LIMIT",
+        pricePts: values.priceCents,
+        quantity: values.quantity,
+        timeInForce: "GTC",
+      });
+      setFlash({
+        kind: "success",
+        message: tFlash("flashAccepted", {
+          side: values.side,
+          quantity: values.quantity.toLocaleString(),
+          price: values.priceCents,
+          orderId: order.orderId,
+        }),
+      });
+      setSheetOpen(false);
+      setTimeout(() => setFlash(null), 5000);
+    } catch (error) {
+      setFlash({
+        kind: "error",
+        message: tFlash("flashRejected", {
+          message:
+            error instanceof Error ? error.message : tFlash("unknownError"),
+        }),
+      });
+    }
   };
 
   if (!isTradable) return null;
@@ -111,7 +136,9 @@ export function TradePanel({ market }: { market: Market }) {
             })}
           </span>
           <span className="mt-1 font-mono text-[17px] font-semibold tabular-nums text-proph-ink">
-            {tSummary("maxCostTemplate", { amount: maxCost.toLocaleString("zh-Hant") })}
+            {tSummary("maxCostTemplate", {
+              amount: maxCost.toLocaleString("zh-Hant"),
+            })}
           </span>
         </span>
         <span className="rounded-proph-pill bg-proph-primary px-5 py-2 font-text text-[14px] tracking-[-0.224px] text-proph-on-primary">
@@ -160,18 +187,32 @@ export function TradePanel({ market }: { market: Market }) {
           {tPanel("complianceNote")}
         </p>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-5" noValidate>
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="mt-5 space-y-5"
+          noValidate
+        >
           {/* Side selector — sr-only radios + has-[:checked] visual */}
           <fieldset>
             <legend className="sr-only">{tPanel("sideLegend")}</legend>
             <div className="grid grid-cols-2 gap-2">
               <label className="cursor-pointer rounded-proph-md border border-proph-hairline bg-proph-canvas p-4 has-[:checked]:border-proph-primary has-[:checked]:bg-proph-canvas-parchment">
-                <input type="radio" {...register("side")} value="YES" className="sr-only" />
+                <input
+                  type="radio"
+                  {...register("side")}
+                  value="YES"
+                  defaultChecked
+                  className="sr-only"
+                />
                 <span className="block font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
                   BUY
                 </span>
                 <span className="mt-1 inline-flex items-center gap-1 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-primary">
-                  <TrendUp weight="bold" className="h-6 w-6 shrink-0" aria-hidden />
+                  <TrendUp
+                    weight="bold"
+                    className="h-6 w-6 shrink-0"
+                    aria-hidden
+                  />
                   YES
                 </span>
                 <span className="mt-1 block font-mono text-[14px] tabular-nums text-proph-ink-muted-80">
@@ -179,12 +220,21 @@ export function TradePanel({ market }: { market: Market }) {
                 </span>
               </label>
               <label className="cursor-pointer rounded-proph-md border border-proph-hairline bg-proph-canvas p-4 has-[:checked]:border-proph-primary has-[:checked]:bg-proph-canvas-parchment">
-                <input type="radio" {...register("side")} value="NO" className="sr-only" />
+                <input
+                  type="radio"
+                  {...register("side")}
+                  value="NO"
+                  className="sr-only"
+                />
                 <span className="block font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
                   BUY
                 </span>
                 <span className="mt-1 inline-flex items-center gap-1 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-ink">
-                  <TrendDown weight="bold" className="h-6 w-6 shrink-0" aria-hidden />
+                  <TrendDown
+                    weight="bold"
+                    className="h-6 w-6 shrink-0"
+                    aria-hidden
+                  />
                   NO
                 </span>
                 <span className="mt-1 block font-mono text-[14px] tabular-nums text-proph-ink-muted-80">
@@ -232,22 +282,30 @@ export function TradePanel({ market }: { market: Market }) {
               {tPanel("maxCostLabel")}
             </span>
             <span className="font-mono text-[21px] font-semibold tabular-nums text-proph-ink">
-              {tPanel("pointsTemplate", { amount: maxCost.toLocaleString("zh-Hant") })}
+              {tPanel("pointsTemplate", {
+                amount: maxCost.toLocaleString("zh-Hant"),
+              })}
             </span>
           </div>
 
           {flash ? (
             <p
-              role="status"
-              className="rounded-proph-md border border-proph-primary/40 bg-proph-canvas-parchment px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-primary"
+              role={flash.kind === "error" ? "alert" : "status"}
+              className={
+                "rounded-proph-md border px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] " +
+                (flash.kind === "error"
+                  ? "border-proph-feedback-error/50 bg-proph-canvas text-proph-feedback-error"
+                  : "border-proph-primary/40 bg-proph-canvas-parchment text-proph-primary")
+              }
             >
-              {flash}
+              {flash.message}
             </p>
           ) : null}
 
           <button
-            type="submit"
-            disabled={!isValid || isSubmitting}
+            type="button"
+            onClick={handleSubmit(onSubmit)}
+            disabled={isSubmitting}
             className="w-full inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary transition-transform duration-150 ease-out active:scale-[0.95] disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
           >
             {isSubmitting ? tPanel("submitting") : tPanel("submit")}

@@ -18,6 +18,10 @@
       "types": "./src/kyc/index.ts",
       "import": "./src/kyc/index.ts"
     },
+    "./engine": {
+      "types": "./src/engine/index.ts",
+      "import": "./src/engine/index.ts"
+    },
     "./kyc-provider": {
       "types": "./src/kyc-provider/index.ts",
       "import": "./src/kyc-provider/index.ts"

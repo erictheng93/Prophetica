@@ -124,6 +124,90 @@ async fn rest_order_flow_uses_matching_engine_service_state() {
 }
 
 #[tokio::test]
+async fn buy_no_http_order_is_normalized_into_yes_order_book() {
+    let app = service_router(InMemoryEngineService::default());
+
+    let response = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/v1/markets/mkt-election/orders",
+            Some(10),
+            &json!({
+                "side": "buy",
+                "outcome": "NO",
+                "type": "LIMIT",
+                "price_pts": 45,
+                "quantity": 3,
+                "time_in_force": "GTC"
+            }),
+        ))
+        .await
+        .expect("request should be handled");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let placed = response_json(response).await;
+    assert_eq!(placed["status"], json!("ACTIVE"));
+    assert_eq!(placed["remaining_qty"], json!(3));
+
+    let snapshot = app
+        .oneshot(empty_get("/api/v1/markets/mkt-election/book?depth=10"))
+        .await
+        .expect("request should be handled");
+    assert_eq!(snapshot.status(), StatusCode::OK);
+    let body = response_json(snapshot).await;
+    assert_eq!(body["asks"], json!([{ "price_pts": 55, "qty": 3 }]));
+}
+
+#[tokio::test]
+async fn filled_buy_no_http_order_reports_no_average_price() {
+    let app = service_router(InMemoryEngineService::default());
+
+    let maker = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/v1/markets/mkt-election/orders",
+            Some(11),
+            &json!({
+                "side": "buy",
+                "outcome": "YES",
+                "type": "LIMIT",
+                "price_pts": 55,
+                "quantity": 3,
+                "time_in_force": "GTC"
+            }),
+        ))
+        .await
+        .expect("request should be handled");
+    assert_eq!(maker.status(), StatusCode::OK);
+
+    let taker = app
+        .oneshot(json_request(
+            "POST",
+            "/api/v1/markets/mkt-election/orders",
+            Some(10),
+            &json!({
+                "side": "buy",
+                "outcome": "NO",
+                "type": "LIMIT",
+                "price_pts": 45,
+                "quantity": 3,
+                "time_in_force": "GTC"
+            }),
+        ))
+        .await
+        .expect("request should be handled");
+
+    assert_eq!(taker.status(), StatusCode::OK);
+    let placed = response_json(taker).await;
+    assert_eq!(placed["status"], json!("FILLED"));
+    assert_eq!(placed["filled_qty"], json!(3));
+    assert_eq!(placed["avg_price_pts"], json!(45));
+    assert_eq!(placed["remaining_qty"], json!(0));
+}
+
+#[tokio::test]
 async fn book_websocket_route_is_registered() {
     let app = service_router(InMemoryEngineService::default());
 

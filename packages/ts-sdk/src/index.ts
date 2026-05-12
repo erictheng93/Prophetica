@@ -55,6 +55,7 @@ export type {
   SumsubMockProviderOptions,
 } from "./kyc-provider/index.js";
 export { createWalletClient, type WalletClient } from "./wallet/client.js";
+export { createEngineClient, type EngineClient } from "./engine/client.js";
 export type {
   PointsDisposition,
   SelfExclusionMode,
@@ -64,6 +65,15 @@ export type {
   SubmitSelfExclusionRequest,
   SubmitSelfExclusionResponse,
 } from "./responsible-gaming/types.js";
+export type {
+  EngineOrderSide,
+  EngineOrderStatus,
+  EngineOrderType,
+  EngineOutcome,
+  EngineTimeInForce,
+  PlaceEngineOrderRequest,
+  PlaceEngineOrderResponse,
+} from "./engine/types.js";
 export type {
   EntryDirection,
   LedgerEntry,
