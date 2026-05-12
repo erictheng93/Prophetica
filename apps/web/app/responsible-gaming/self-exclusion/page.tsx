@@ -11,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-const SCOPE_ITEM_IDS = ["freeze", "settle", "rejoin", "crossPlatform"] as const;
+const SCOPE_ITEM_IDS = ["freeze", "settle", "rejoin"] as const;
 const TIMEOUT_OPTION_IDS = ["6m", "1y"] as const;
 const PERMANENT_OPTION_IDS = ["hold", "donate"] as const;
 

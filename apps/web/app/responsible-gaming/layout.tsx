@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphSubNav } from "@prophetica/ui";
-import { RGHelpline } from "@/components/rg-helpline";
 import {
   AuthCta,
   Brand,
@@ -14,7 +13,7 @@ import {
 
 // Shared chrome for /responsible-gaming/* — SPEC-006 §7.3 dedicated RG section.
 // Single primary nav (consolidated from prior global+sub stack) + an inline
-// RG-section chip row + helpline strip + footer.
+// RG-section chip row + footer.
 
 /*
  * RG section navigation — rendered as inline content (not sticky chrome) so
@@ -61,9 +60,7 @@ export default async function ResponsibleGamingLayout({ children }: { children: 
 
       {children}
 
-      <RGHelpline />
-
-      <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
+      <ProphFooter columns={footerColumns} legal={<FooterLegalRow showHelpline={false} />} />
     </main>
   );
 }

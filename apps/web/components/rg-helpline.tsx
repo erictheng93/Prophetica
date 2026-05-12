@@ -16,7 +16,6 @@ interface HelplineData {
 }
 
 const HELPLINE_DATA: HelplineData[] = [
-  { key: "mhwSafe", number: "1925" },
   { key: "drugPrevention", number: "0800-770-885" },
   { key: "teacherZhang", number: "1980" },
 ];

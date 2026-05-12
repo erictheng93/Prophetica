@@ -153,7 +153,7 @@ message GetWalletBalanceRequest {
 // 三個子科目對應 SPEC-002 §4.2.1：
 //   Player.Wallet.{user_id}  → available
 //   Player.Locked.{user_id}  → locked   （訂單鎖定中）
-//   Player.Frozen.{user_id}  → frozen   （RG 自我排除 / 合規凍結）
+//   Player.Frozen.{user_id}  → frozen   （RG 解除賬號 / 合規凍結）
 message GetWalletBalanceResponse {
   UserID user = 1;                          // echo for client convenience
   int64 available_minor_units = 2;

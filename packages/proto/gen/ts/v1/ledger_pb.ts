@@ -351,7 +351,7 @@ export const GetWalletBalanceRequestSchema: GenMessage<GetWalletBalanceRequest> 
  * 三個子科目對應 SPEC-002 §4.2.1：
  *   Player.Wallet.{user_id}  → available
  *   Player.Locked.{user_id}  → locked   （訂單鎖定中）
- *   Player.Frozen.{user_id}  → frozen   （RG 自我排除 / 合規凍結）
+ *   Player.Frozen.{user_id}  → frozen   （RG 解除賬號 / 合規凍結）
  *
  * @generated from message proph.v1.GetWalletBalanceResponse
  */

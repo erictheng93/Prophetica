@@ -8,7 +8,7 @@
     "nav": {
       "markets": "市場",
       "howItWorks": "玩法",
-      "responsibleGaming": "責任博弈",
+      "responsibleGaming": "自我設限",
       "support": "客服"
     },
     "footer": {
@@ -47,12 +47,12 @@
           }
         },
         "responsibleGaming": {
-          "heading": "責任博弈",
+          "heading": "自我設限",
           "items": {
             "overview": "概覽",
             "limits": "限額設定",
             "cooldown": "冷靜期",
-            "selfExclusion": "自我排除",
+            "selfExclusion": "解除賬號",
             "resources": "求助資源"
           }
         },
@@ -98,7 +98,7 @@
       "settled": "已結算"
     },
     "responsibleGaming": {
-      "ariaLabel": "責任博弈 區段導覽"
+      "ariaLabel": "自我設限 區段導覽"
     },
     "support": {
       "ariaLabel": "客服 區段導覽",
@@ -112,12 +112,12 @@
     "overview": {
       "metadata": {
         "title": "客服中心 — prophetica",
-        "description": "24/7 客服體系。一般查詢、儲值、KYC、結算、責任博弈、安全事件。"
+        "description": "24/7 客服體系。一般查詢、儲值、KYC、結算、自我設限、安全事件。"
       },
       "hero": {
         "kicker": "客服中心",
         "headline": "找對人，問對問題。",
-        "tagline": "我們把所有客服管道與常見議題整理在這裡。複雜個案會由受過合規培訓的 T2 / T3 客服接手；責任博弈與 Compliance 案件優先處理。"
+        "tagline": "我們把所有客服管道與常見議題整理在這裡。複雜個案會由受過合規培訓的 T2 / T3 客服接手；自我設限與 Compliance 案件優先處理。"
       },
       "channels": {
         "heading": "服務管道",
@@ -178,24 +178,24 @@
             "body": "立即聯繫客服，4 小時內優先回應。"
           },
           "rg": {
-            "kicker": "責任博弈",
+            "kicker": "自我設限",
             "title": "我玩太多了",
-            "body": "限額、冷靜期、自我排除、外部援助。"
+            "body": "限額、冷靜期、解除賬號、外部援助。"
           }
         }
       },
       "rgCallout": {
-        "kicker": "責任博弈優先",
+        "kicker": "自我設限優先",
         "headline": "如果你或身邊的人覺得遊戲已失去掌控，這條入口優先於所有其他協助。",
-        "body": "我們有受過認證的責任博弈客服、限額 / 冷靜期 / 自我排除工具，以及獨立於 prophetica 之外的外部專業資源。撥打援助專線完全免費，且不會與 prophetica 交換任何資訊。",
-        "cta": "了解責任博弈工具",
+        "body": "我們有受過認證的自我設限客服、限額 / 冷靜期 / 解除賬號工具，以及獨立於 prophetica 之外的外部專業資源。撥打援助專線完全免費，且不會與 prophetica 交換任何資訊。",
+        "cta": "了解自我設限工具",
         "helplineLabel": "衛福部安心專線 · 24 小時"
       }
     },
     "faq": {
       "metadata": {
         "title": "常見問題 — prophetica",
-        "description": "帳號、儲值、KYC、結算、責任博弈、安全等常見問題與解答。"
+        "description": "帳號、儲值、KYC、結算、自我設限、安全等常見問題與解答。"
       },
       "hero": {
         "kicker": "客服 / 常見問題",
@@ -216,7 +216,7 @@
             },
             "frozen": {
               "q": "為什麼帳戶被凍結？",
-              "a": "凍結原因會以 Email 與站內訊息通知。常見原因：KYC 重啟、自我排除生效、可疑活動偵測。可透過工單申請審核。"
+              "a": "凍結原因會以 Email 與站內訊息通知。常見原因：KYC 重啟、解除賬號生效、可疑活動偵測。可透過工單申請審核。"
             },
             "multiAccount": {
               "q": "可以同時擁有多個帳號嗎？",
@@ -237,7 +237,7 @@
             },
             "monthlyLimit": {
               "q": "為什麼有月儲值上限？",
-              "a": "責任博弈機制（SPEC-006 §3.1）的強制保護。Tier 1 為 TWD 30,000；升級 Tier 2 / 3 可解鎖更高上限。"
+              "a": "自我設限機制（SPEC-006 §3.1）的強制保護。Tier 1 為 TWD 30,000；升級 Tier 2 / 3 可解鎖更高上限。"
             },
             "raiseLimit": {
               "q": "降低儲值上限後可以馬上提高嗎？",
@@ -280,19 +280,19 @@
           }
         },
         "rg": {
-          "title": "責任博弈",
+          "title": "自我設限",
           "items": {
             "tooMuch": {
               "q": "我覺得自己玩太多了，怎麼辦？",
-              "a": "馬上前往<rgLink>責任博弈</rgLink>設定限額或啟動冷靜期。外部援助專線 <helplineLink>1925</helplineLink>（衛福部安心專線）24 小時免費，且不會與 prophetica 交換任何資訊。"
+              "a": "馬上前往<rgLink>自我設限</rgLink>設定限額或啟動冷靜期。外部援助專線 <helplineLink>1925</helplineLink>（衛福部安心專線）24 小時免費，且不會與 prophetica 交換任何資訊。"
             },
             "selfExclusion": {
-              "q": "自我排除可以解除嗎？",
+              "q": "解除賬號可以解除嗎？",
               "a": "Time-out（6 個月 / 1 年）到期後可申請解除，並有 14 天延長冷靜期。永久排除無法解除。"
             },
             "thirdParty": {
               "q": "親友可以代為申請停權嗎？",
-              "a": "我們接受第三方通報，但不會直接以親友通報為據停權；通報觸發系統 review，可能聯繫玩家邀請其自我排除（SPEC-006 §5.4）。"
+              "a": "我們接受第三方通報，但不會直接以親友通報為據停權；通報觸發系統 review，可能聯繫玩家邀請其解除賬號（SPEC-006 §5.4）。"
             }
           }
         },
@@ -425,7 +425,7 @@
             "body": "頁面錯誤、API 失敗、資料顯示異常。請描述重現步驟與時間。"
           },
           "rg": {
-            "label": "責任博弈個案",
+            "label": "自我設限個案",
             "sla": "4 小時內回撥（電話）",
             "body": "玩家或親友覺得遊戲節奏失控。受過認證的 RG 客服處理；不會以親友通報為據強制停權。"
           }
@@ -928,7 +928,7 @@
           "cta": "前往註冊"
         },
         "rg": {
-          "title": "設定責任博弈",
+          "title": "設定自我設限",
           "body": "月儲值上限是必設的保護線（TWD 1k / 5k / 30k / 100k 擇一）。可選擇加上下注上限、損失上限與冷靜期觸發點。",
           "cta": "了解限額"
         },
@@ -1010,14 +1010,14 @@
     "compliance": {
       "kicker": "保護設定",
       "headline": "先完成帳戶設定，再開始使用市場。",
-      "body": "18 歲以下不可參與。月儲值上限、冷靜期與自我排除工具可協助玩家控制使用節奏。",
-      "ctaPrimary": "責任博弈工具",
+      "body": "18 歲以下不可參與。月儲值上限、冷靜期與解除賬號工具可協助玩家控制使用節奏。",
+      "ctaPrimary": "自我設限工具",
       "kycLink": "身份驗證分層"
     },
     "closing": {
       "kicker": "準備好了嗎？",
       "headline": "從註冊開始，10 分鐘內就能瀏覽你的第一個市場。",
-      "tagline": "基礎驗證 10 秒；責任博弈設定 1 分鐘；儲值入帳 5 分鐘以內。",
+      "tagline": "基礎驗證 10 秒；自我設限設定 1 分鐘；儲值入帳 5 分鐘以內。",
       "ctaPrimary": "立即註冊",
       "ctaSecondary": "瀏覽市場"
     }
@@ -1203,13 +1203,13 @@
   },
   "responsibleGaming": {
     "metadata": {
-      "title": "責任博弈 — prophetica",
-      "description": "限額設定、冷靜期、自我排除與求助資源。"
+      "title": "自我設限 — prophetica",
+      "description": "限額設定、冷靜期、解除賬號與求助資源。"
     },
     "helpline": {
       "kicker": "需要協助",
       "headline": "如果你或身邊的人對遊戲行為感到困擾，這些專線 24 小時為你而開。",
-      "ariaLabel": "責任博弈援助資源",
+      "ariaLabel": "自我設限援助資源",
       "items": {
         "mhwSafe": {
           "label": "衛福部安心專線",
@@ -1228,7 +1228,7 @@
     },
     "overview": {
       "hero": {
-        "kicker": "責任博弈",
+        "kicker": "",
         "headline": "你的節奏，由你掌握。",
         "tagline": "prophetica 是娛樂，不是金融商品。我們提供工具讓你隨時調整、暫停或退出，並在你需要時提供獨立的求助資源。"
       },
@@ -1265,7 +1265,7 @@
           },
           "selfExclusion": {
             "kicker": "強制可選",
-            "title": "自我排除",
+            "title": "解除賬號",
             "body": "中長期或永久停止使用本服務。永久排除不可逆，請審慎決定。"
           },
           "resources": {
@@ -1278,11 +1278,11 @@
     },
     "limits": {
       "metadata": {
-        "title": "儲值上限 — 責任博弈 — prophetica",
+        "title": "儲值上限 — 自我設限 — prophetica",
         "description": "查看與調整你的月儲值上限。降低立即生效；提高需 24 小時冷卻期。"
       },
       "hero": {
-        "kicker": "責任博弈 / 限額",
+        "kicker": "自我設限 / 限額",
         "headline": "月儲值上限是你的保護線。",
         "tagline": "設定一個你能承受的金額，讓 prophetica 在你超過這個額度前主動把門關上。"
       },
@@ -1304,11 +1304,11 @@
     },
     "cooldown": {
       "metadata": {
-        "title": "冷靜期 — 責任博弈 — prophetica",
+        "title": "冷靜期 — 自我設限 — prophetica",
         "description": "暫停 24 小時、7 天或 30 天。期間無法登入、儲值與交易。"
       },
       "hero": {
-        "kicker": "責任博弈 / 冷靜期",
+        "kicker": "自我設限 / 冷靜期",
         "headline": "休息一下，比加碼更重要。",
         "tagline": "冷靜期是給你自己的暫停鍵。期間 prophetica 完全把門關上 ── 帳戶凍結、通知靜音 ── 直到你準備好再開始。"
       },
@@ -1351,23 +1351,23 @@
             "body": "深度暫停。讓自己徹底離開一個月，重新評估遊戲節奏。"
           }
         },
-        "callout": "冷靜期一旦啟動即無法取消。若需要更長期或永久停止使用，請使用<exclusionLink>自我排除</exclusionLink>。",
+        "callout": "冷靜期一旦啟動即無法取消。若需要更長期或永久停止使用，請使用<exclusionLink>解除賬號</exclusionLink>。",
         "consent": "我了解冷靜期啟動後無法縮短或取消。",
         "submit": "啟動冷靜期（後端待接）"
       }
     },
     "selfExclusion": {
       "metadata": {
-        "title": "自我排除 — 責任博弈 — prophetica",
+        "title": "解除賬號 — 自我設限 — prophetica",
         "description": "中長期或永久停止使用本服務。永久排除不可逆。"
       },
       "hero": {
-        "kicker": "責任博弈 / 自我排除",
+        "kicker": "自我設限 / 解除賬號",
         "headline": "這是一個很大的決定。",
-        "tagline": "自我排除不是冷靜期。它代表你想中長期、甚至永久離開 prophetica。請先讀完範圍、再做選擇。"
+        "tagline": "解除賬號不是冷靜期。它代表你想中長期、甚至永久離開 prophetica。請先讀完範圍、再做選擇。"
       },
       "scope": {
-        "heading": "自我排除的範圍",
+        "heading": "解除賬號的範圍",
         "items": {
           "freeze": {
             "title": "完全凍結帳戶",
@@ -1380,10 +1380,6 @@
           "rejoin": {
             "title": "再註冊偵測",
             "body": "KYC 證件 hash 命中名單即拒絕；同 device fingerprint + IP 修改個資視為可疑。"
-          },
-          "crossPlatform": {
-            "title": "跨平台名單",
-            "body": "若執照地有跨平台排除制度（如 GAMSTOP），自動同步。台灣目前無此制度。"
           }
         }
       },
@@ -1421,17 +1417,17 @@
           }
         },
         "consent": "我清楚知道<strong>永久排除無法解除</strong>。我不是因為一時情緒、糾紛或賠錢才做這個決定，而是經過完整評估之後的選擇。",
-        "footnote": "這個按鈕在後端待接前不會生效。建議先撥打援助專線，或聯繫客服協助評估。",
+        "footnote": "這個按鈕在後端待接前不會生效。建議先聯繫客服協助評估。",
         "submit": "啟動永久排除（後端待接）"
       }
     },
     "resources": {
       "metadata": {
-        "title": "求助資源 — 責任博弈 — prophetica",
+        "title": "求助資源 — 自我設限 — prophetica",
         "description": "獨立於 prophetica 之外的專業協助、心理衛生與戒癮資源。"
       },
       "hero": {
-        "kicker": "責任博弈 / 求助資源",
+        "kicker": "自我設限 / 求助資源",
         "headline": "你不需要一個人面對。",
         "tagline": "這個頁面整理的所有資源都獨立於 prophetica 之外。我們把連結放在這裡，但聯繫的是專業機構，不是我們。"
       },
@@ -1450,14 +1446,14 @@
           },
           "supportCs": {
             "title": "客服 RG 介入",
-            "body": "若你已使用過冷靜期或自我排除，仍感到難以控制行為，可申請與受過 RG 訓練的客服 1 對 1 評估，協助規劃個人化計畫。",
+            "body": "若你已使用過冷靜期或解除賬號，仍感到難以控制行為，可申請與受過 RG 訓練的客服 1 對 1 評估，協助規劃個人化計畫。",
             "cta": "預約客服評估"
           }
         }
       },
       "privacy": {
         "heading": "關於你的隱私",
-        "external": "撥打外部援助專線完全免費，且<strong>不會與 prophetica 交換任何資訊</strong>。我們不會知道你聯絡了哪些機構、討論了什麼。",
+        "external": "聯繫外部專業資源完全免費，且<strong>不會與 prophetica 交換任何資訊</strong>。我們不會知道你聯絡了哪些機構、討論了什麼。",
         "internal": "如果你選擇透過站內客服求助，溝通紀錄將依<privacyLink>隱私政策</privacyLink>處理，僅授權給通過 RG 培訓的客服人員存取。"
       }
     }
@@ -1648,7 +1644,7 @@
       "income": {
         "kicker": "可選",
         "heading": "月收入申報",
-        "intro": "申報後可解鎖更高的月儲值上限（TWD 300,000）。<strong>不申報也可以使用 Tier 2</strong>，但月儲值上限維持 TWD 100,000。申報資料視為敏感個資，僅供責任博弈評分使用，客服只看區間不看精確值。",
+        "intro": "申報後可解鎖更高的月儲值上限（TWD 300,000）。<strong>不申報也可以使用 Tier 2</strong>，但月儲值上限維持 TWD 100,000。申報資料視為敏感個資，僅供自我設限評分使用，客服只看區間不看精確值。",
         "legend": "月收入區間",
         "buckets": {
           "lt30k": "< TWD 30,000",
@@ -1821,7 +1817,7 @@
           "income": {
             "field": "月收入（區間）",
             "collected": "Tier 2 自願 / Tier 3 必填",
-            "purpose": "責任博弈評分（SPEC-006 §4.1）；解鎖更高儲值上限。",
+            "purpose": "自我設限評分（SPEC-006 §4.1）；解鎖更高儲值上限。",
             "retention": "同帳戶生命週期；12 個月未更新自動標記過時。",
             "access": "你本人 + Compliance Officer。<strong>客服只看區間，不看精確值</strong>。"
           },
@@ -1968,7 +1964,7 @@
       "backdropLabel": "關閉下單面板",
       "closeAriaLabel": "關閉",
       "closeLabel": "關閉",
-      "complianceNote": "SPEC-003 撮合送單前須通過責任博弈評分（SPEC-006 §4）與 KYC 層級檢查。",
+      "complianceNote": "SPEC-003 撮合送單前須通過自我設限評分（SPEC-006 §4）與 KYC 層級檢查。",
       "sideLegend": "選擇下單方向",
       "priceLabel": "價格（cent）",
       "priceHint": "目前 {side} 的最佳報價 {quote}¢",
@@ -2119,7 +2115,7 @@
           "legend": "你必須了解三件事",
           "terms": "我已閱讀 <termsLink>服務條款</termsLink> 與 <privacyLink>隱私政策</privacyLink>，並同意 prophetica 依此處理我的資料。",
           "points": "我了解 prophetica 使用站內點數呈現餘額、鎖倉與結算結果。",
-          "entertainment": "我了解 prophetica 是事件預測產品，<strong>非投資工具</strong>。我願意設定月儲值上限作為自我保護機制，並隨時可使用冷靜期 / 自我排除工具。"
+          "entertainment": "我了解 prophetica 是事件預測產品，<strong>非投資工具</strong>。我願意設定月儲值上限作為自我保護機制，並隨時可使用冷靜期 / 解除賬號工具。"
         },
         "submitNote": "送出後將進入 4 步必經流程，最後才開帳戶。",
         "submit": "開始註冊（後端待接）",
@@ -2134,7 +2130,7 @@
             "body": "確認你滿 18 歲。失敗即停止註冊。"
           },
           "rg": {
-            "label": "責任博弈聲明",
+            "label": "自我設限聲明",
             "body": "閱讀並勾選同意。明列 prophetica 為娛樂遊戲、非投資工具。"
           },
           "limit": {
@@ -2151,7 +2147,7 @@
       "compliance": {
         "kicker": "請務必記得",
         "headline": "18 歲以下不得參與。如已失控，撥打 <helplineLink>1925</helplineLink> 安心專線 24 小時免費。",
-        "cta": "責任博弈資源"
+        "cta": "自我設限資源"
       }
     }
   },
@@ -2180,9 +2176,9 @@
       "media": "Points wallet"
     },
     "responsibleGaming": {
-      "kicker": "責任博弈優先",
+      "kicker": "自我設限優先",
       "headline": "先設限額，再開始遊戲。",
-      "tagline": "每個帳號都必須完成限額設定。我們提供冷靜期、自我排除與求助資源，並對未成年參與採零容忍。",
+      "tagline": "每個帳號都必須完成限額設定。我們提供冷靜期、解除賬號與求助資源，並對未成年參與採零容忍。",
       "ctaPrimary": "設定我的限額",
       "ctaSecondary": "求助資源",
       "media": "Responsible gaming dashboard"
