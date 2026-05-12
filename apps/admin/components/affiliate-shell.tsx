@@ -7,11 +7,12 @@ import { AdminNavDrawer } from "./admin-nav-drawer";
 interface AffiliateShellProps {
   children: ReactNode;
   affiliateId: string;
-  active: "home" | "payouts" | "sub-tree";
+  active: "home" | "points" | "payouts" | "sub-tree";
 }
 
 const subNav: { key: AffiliateShellProps["active"]; href: string; label: string }[] = [
   { key: "home", href: "/me/affiliate", label: "概覽" },
+  { key: "points", href: "/me/affiliate/points", label: "會員點數" },
   { key: "payouts", href: "/me/affiliate/payouts", label: "撥款進度" },
   { key: "sub-tree", href: "/me/affiliate/sub-tree", label: "推薦鏈" },
 ];

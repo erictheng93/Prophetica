@@ -19,10 +19,30 @@ test("affiliate cannot reach any internal route", () => {
 });
 
 test("only affiliate can reach /me/affiliate and its descendants", () => {
-  for (const path of ["/me/affiliate", "/me/affiliate/payouts", "/me/affiliate/sub-tree"]) {
+  for (const path of [
+    "/me/affiliate",
+    "/me/affiliate/points",
+    "/me/affiliate/payouts",
+    "/me/affiliate/sub-tree",
+  ]) {
     assert.equal(canAccess(path, "affiliate"), true, `affiliate -> ${path}`);
     assert.equal(canAccess(path, "admin"), false, `admin -> ${path}`);
     assert.equal(canAccess(path, "manager"), false, `manager -> ${path}`);
+  }
+});
+
+test("points BFF routes are reachable by every signed-in role", () => {
+  for (const role of ALL_ROLES) {
+    assert.equal(
+      canAccess("/api/points/wallets/user_123/balance", role),
+      true,
+      `${role} -> balance BFF`,
+    );
+    assert.equal(
+      canAccess("/api/points/manual-adjustments", role),
+      true,
+      `${role} -> manual adjustment BFF`,
+    );
   }
 });
 

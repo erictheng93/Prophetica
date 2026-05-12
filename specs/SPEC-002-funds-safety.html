@@ -37,7 +37,7 @@
   <h2>變更紀錄</h2>
   <article class="changelog-item">
     <h3>v0.1.9</h3>
-    <p>MVP 階段尚未啟用真實儲值時，新增 <code>manual_points_adjustment</code> 帳本交易作為授權後台 / 合作方入點路徑。admin / manager 可對會員銅幣執行查詢、增加與扣除；affiliate 僅可增加會員銅幣，且不得查詢任意會員餘額或扣除銅幣。所有操作均為 delta-only（增加 Y 銅幣 / 扣除 Y 銅幣），禁止直接設定絕對餘額、禁止 UPDATE / DELETE 舊分錄，並必須寫入 <code>audit_logs</code>。§4.2 補 <code>Expense.ManualPointsGrant</code>，§4.4.5 補手動調點分錄，§5 INV-6 加入僅限 admin / manager 扣點之 contra-expense carve-out；ADR-0006 v1.0.2 已同步追認此 carve-out。</p>
+    <p>MVP 階段尚未啟用真實儲值時，新增 <code>manual_points_adjustment</code> 帳本交易作為授權後台 / 合作方入點路徑。admin / manager 可對會員銅幣執行查詢、增加與扣除；affiliate 可查詢任意會員餘額以核對贈點結果與避免 dispute，但僅可增加會員銅幣，且不得扣除銅幣。所有操作均為 delta-only（增加 Y 銅幣 / 扣除 Y 銅幣），禁止直接設定絕對餘額、禁止 UPDATE / DELETE 舊分錄，並必須寫入 <code>audit_logs</code>。§4.2 補 <code>Expense.ManualPointsGrant</code>，§4.4.5 補手動調點分錄，§5 INV-6 加入僅限 admin / manager 扣點之 contra-expense carve-out；ADR-0006 v1.0.2 已同步追認此 carve-out。</p>
   </article>
   <article class="changelog-item">
     <h3>v0.1.8</h3>
@@ -387,10 +387,10 @@ A 與 B 各自從掛單階段（§4.4.2 等同邏輯）已鎖入各自的 max lo
 </tr>
 <tr>
 <td><code>affiliate</code></td>
-<td>不得查詢任意會員餘額；僅可查看自身調點請求狀態</td>
+<td>允許查詢任意會員餘額，用於核對贈點結果與 dispute 處理</td>
 <td>允許</td>
 <td>禁止</td>
-<td>不得扣點、不得查詢任意會員餘額、不得代表 admin / manager 操作</td>
+<td>不得扣點、不得設定絕對餘額、不得代表 admin / manager 操作</td>
 </tr>
 </tbody></table>
 <p>所有 admin / manager / affiliate 在銅幣範圍內的操作都必須寫入 <code>audit_logs</code>。查詢類操作以 <code>action = 'wallet_balance_read'</code> 留痕；調整類操作以 <code>action = 'manual_points_adjustment'</code> 留痕並連到對應 ledger transaction。</p>
@@ -656,7 +656,7 @@ Layer 5 (月度)：第三方審計事務所抽樣對帳
 <li><input disabled="" type="checkbox"> DB trigger 強制 INV-1 通過驗證測試（嘗試插入不平衡 transaction 必須 fail）</li>
 <li><input disabled="" type="checkbox"> 模擬 1000 並發儲值，最終 wallet 餘額與 transaction count 完全相符</li>
 <li><input disabled="" type="checkbox"> Idempotency 測試：相同 key 提交 100 次，僅一筆 transaction</li>
-<li><input disabled="" type="checkbox"> 手動銅幣調整：admin / manager 可增加與扣除銅幣；affiliate 只能增加銅幣；任一角色嘗試設定絕對餘額必須 fail</li>
+<li><input disabled="" type="checkbox"> 手動銅幣調整：admin / manager 可查詢、增加與扣除銅幣；affiliate 可查詢任意會員餘額但只能增加銅幣；任一角色嘗試設定絕對餘額必須 fail</li>
 <li><input disabled="" type="checkbox"> 手動銅幣調整皆寫入 <code>audit_logs</code>，且 ledger transaction metadata 可回查 <code>audit_log_id</code></li>
 <li><input disabled="" type="checkbox"> INV-6 測試：<code>manual_points_adjustment</code> 扣點僅允許 admin / manager 對 <code>Expense.ManualPointsGrant</code> 沖回；affiliate 扣點或任何流向外部資產 / 應付帳款 / 營運帳戶的交易必須 fail</li>
 <li><input disabled="" type="checkbox"> 對帳腳本可在 5 分鐘內處理 1M 筆 entries</li>

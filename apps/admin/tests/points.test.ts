@@ -69,6 +69,34 @@ test("proxyPointsBalanceRequest forwards audited admin balance reads", async () 
   assert.match(headers["x-request-id"], /^admin-points:/);
 });
 
+test("proxyPointsBalanceRequest allows audited affiliate balance reads", async () => {
+  const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+  const response = await proxyPointsBalanceRequest({
+    viewer: affiliateViewer,
+    userId: "user_123",
+    ledgerUrl: "http://ledger.local",
+    fetchImpl: async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        user_id: "user_123",
+        available_minor_units: -100,
+        locked_minor_units: 0,
+        frozen_minor_units: 0,
+      });
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    String(calls[0]?.[0]),
+    "http://ledger.local/internal/ledger/wallets/user_123/balance",
+  );
+  const headers = calls[0]?.[1]?.headers as Record<string, string>;
+  assert.equal(headers["x-actor-id"], "U-AFF-001");
+  assert.equal(headers["x-operator-role"], "affiliate");
+  assert.equal(headers["x-affiliate-id"], "AFF-001");
+});
+
 test("proxyManualPointsAdjustment overwrites actor fields and forwards idempotency", async () => {
   const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
   const response = await proxyManualPointsAdjustment({
@@ -114,13 +142,48 @@ test("proxyManualPointsAdjustment overwrites actor fields and forwards idempoten
   assert.equal(body.delta_minor_units, 2500);
 });
 
-test("points proxy rejects affiliate callers before upstream", async () => {
+test("proxyManualPointsAdjustment allows affiliate grants with affiliate id", async () => {
+  const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+  const response = await proxyManualPointsAdjustment({
+    viewer: affiliateViewer,
+    ledgerUrl: "http://ledger.local",
+    request: {
+      target_user_id: "user_123",
+      direction: "grant",
+      delta_minor_units: 100,
+      reason_code: "campaign",
+      reason_text: "affiliate campaign grant",
+      idempotency_key: "manual-points:grant:affiliate",
+    },
+    fetchImpl: async (input, init) => {
+      calls.push([input, init]);
+      return Response.json({
+        txn_id: 77,
+        idempotency_key: "manual-points:grant:affiliate",
+        replayed: false,
+        audit_log_id: "audit:manual-points:grant:affiliate",
+      });
+    },
+  });
+
+  assert.equal(response.status, 200);
+  const init = calls[0]?.[1];
+  const headers = init?.headers as Record<string, string>;
+  assert.equal(headers["x-affiliate-id"], "AFF-001");
+  const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+  assert.equal(body.actor_user_id, "U-AFF-001");
+  assert.equal(body.actor_role, "affiliate");
+  assert.equal(body.affiliate_id, "AFF-001");
+  assert.equal(body.direction, "grant");
+});
+
+test("points proxy rejects affiliate deduct before upstream", async () => {
   let called = false;
   const response = await proxyManualPointsAdjustment({
     viewer: affiliateViewer,
     request: {
       target_user_id: "user_123",
-      direction: "grant",
+      direction: "deduct",
       delta_minor_units: 100,
       reason_code: "campaign",
       reason_text: "bad call",

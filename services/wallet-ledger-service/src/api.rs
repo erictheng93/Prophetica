@@ -440,7 +440,10 @@ where
     let Some(context) = audit_actor_context_from_headers(headers)? else {
         return Ok(());
     };
-    let allowed = matches!(context.actor_role.as_str(), "admin" | "manager");
+    let allowed = matches!(
+        context.actor_role.as_str(),
+        "admin" | "manager" | "affiliate"
+    );
     let audit_log = wallet_balance_read_audit_log(target_user_id, &context, allowed);
     service
         .record_audit_log(audit_log)
@@ -449,7 +452,7 @@ where
 
     if !allowed {
         return Err(forbidden_error(
-            "only admin or manager can query member wallet balances".to_owned(),
+            "only admin, manager, or affiliate can query member wallet balances".to_owned(),
         ));
     }
 
@@ -949,7 +952,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_wallet_balance_affiliate_read_is_forbidden_and_audited() {
+    async fn get_wallet_balance_affiliate_read_is_allowed_and_audited() {
         let store = InMemoryLedgerStore::default();
         seed_entry(&store, "Player.Wallet.user_01", -10_000);
 
@@ -962,14 +965,14 @@ mod tests {
             .await
             .expect("request should be handled");
 
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(store.audit_count(), 1);
         let audit_log = store.latest_audit_log();
         assert_eq!(audit_log.action, "wallet_balance_read");
         assert_eq!(audit_log.actor_user_id, "affiliate-user-001");
         assert_eq!(audit_log.actor_role, "affiliate");
         assert_eq!(audit_log.target_user_id, "user_01");
-        assert_eq!(audit_log.metadata["allowed"], json!(false));
+        assert_eq!(audit_log.metadata["allowed"], json!(true));
     }
 
     #[tokio::test]

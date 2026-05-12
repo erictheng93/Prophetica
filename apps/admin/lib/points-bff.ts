@@ -29,7 +29,7 @@ const DEFAULT_LEDGER_URL = "http://127.0.0.1:8086";
 export async function proxyPointsBalanceRequest(
   input: ProxyPointsBalanceInput,
 ): Promise<Response> {
-  if (!canOperatePoints(input.viewer)) {
+  if (!canReadPoints(input.viewer)) {
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -51,13 +51,21 @@ export async function proxyPointsBalanceRequest(
 export async function proxyManualPointsAdjustment(
   input: ProxyManualPointsAdjustmentInput,
 ): Promise<Response> {
-  if (!canOperatePoints(input.viewer)) {
+  if (!canAdjustPoints(input.viewer)) {
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
 
   const parsed = parseManualPointsAdjustment(input.request);
   if ("error" in parsed) {
     return Response.json({ error: parsed.error }, { status: 400 });
+  }
+  if (input.viewer.role === "affiliate") {
+    if (parsed.value.direction !== "grant") {
+      return Response.json({ error: "forbidden_direction" }, { status: 403 });
+    }
+    if (!input.viewer.affiliateId) {
+      return Response.json({ error: "affiliate_id_required" }, { status: 403 });
+    }
   }
 
   const correlationId =
@@ -68,6 +76,8 @@ export async function proxyManualPointsAdjustment(
   const body = JSON.stringify({
     actor_user_id: input.viewer.sub,
     actor_role: input.viewer.role,
+    affiliate_id:
+      input.viewer.role === "affiliate" ? input.viewer.affiliateId : undefined,
     target_user_id: parsed.value.target_user_id,
     direction: parsed.value.direction,
     delta_minor_units: parsed.value.delta_minor_units,
@@ -91,10 +101,24 @@ export async function proxyManualPointsAdjustment(
   });
 }
 
-function canOperatePoints(
+function canReadPoints(
   viewer: SessionPayload | null,
 ): viewer is SessionPayload {
-  return viewer?.role === "admin" || viewer?.role === "manager";
+  return (
+    viewer?.role === "admin" ||
+    viewer?.role === "manager" ||
+    viewer?.role === "affiliate"
+  );
+}
+
+function canAdjustPoints(
+  viewer: SessionPayload | null,
+): viewer is SessionPayload {
+  return (
+    viewer?.role === "admin" ||
+    viewer?.role === "manager" ||
+    viewer?.role === "affiliate"
+  );
 }
 
 function parseManualPointsAdjustment(
@@ -170,6 +194,9 @@ async function proxyToLedger(input: {
     "x-request-id": requestId,
     ...input.headers,
   };
+  if (input.viewer.affiliateId) {
+    headers["x-affiliate-id"] = input.viewer.affiliateId;
+  }
   const upstreamUrl = new URL(
     input.path,
     input.ledgerUrl ?? process.env.WALLET_LEDGER_BASE_URL ?? DEFAULT_LEDGER_URL,

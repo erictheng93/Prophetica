@@ -35,7 +35,12 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
     useState<ManualPointsAdjustmentResponse | null>(null);
   const [adjustmentLoading, setAdjustmentLoading] = useState(false);
 
-  const canSubmit = viewerRole === "admin" || viewerRole === "manager";
+  const canSubmit =
+    viewerRole === "admin" ||
+    viewerRole === "manager" ||
+    viewerRole === "affiliate";
+  const allowedDirections: ManualPointDirection[] =
+    viewerRole === "affiliate" ? ["grant"] : ["grant", "deduct"];
   const idempotencyPreview = useMemo(
     () => `manual-points:${direction}:<uuid-v4>`,
     [direction],
@@ -92,6 +97,10 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
     }
     if (!reasonCode.trim() || !reasonText.trim()) {
       setAdjustmentError("請填寫 reason code 與原因說明。");
+      return;
+    }
+    if (!allowedDirections.includes(direction)) {
+      setAdjustmentError("此角色不允許扣除點數。");
       return;
     }
 
@@ -216,8 +225,11 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
               disabled={!canSubmit || adjustmentLoading}
               className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus disabled:opacity-60"
             >
-              <option value="grant">{directionLabels.grant}</option>
-              <option value="deduct">{directionLabels.deduct}</option>
+              {allowedDirections.map((option) => (
+                <option key={option} value={option}>
+                  {directionLabels[option]}
+                </option>
+              ))}
             </select>
           </label>
 

@@ -483,7 +483,7 @@
 <tr><td><code>/kyc-risk</code></td><td>✅</td><td>✅</td><td>403</td></tr>
 <tr><td><code>/compensation</code> 補償審批</td><td>✅ 終審</td><td>✅ 提案</td><td>403</td></tr>
 <tr><td><code>/approvals</code> 人工審批</td><td>✅ 終審</td><td>✅ 一審</td><td>403</td></tr>
-<tr><td><code>/me/affiliate*</code></td><td>403</td><td>403</td><td>✅ 僅自己</td></tr>
+<tr><td><code>/me/affiliate*</code></td><td>403</td><td>403</td><td>✅ 代理 portal；含任意會員餘額查詢與 grant-only 調點</td></tr>
 </tbody>
 </table>
 <p>「✅ 唯讀」「✅ 提案」與 admin 共用同一頁面 component，差異由 RBAC 在 server-side 過濾 CTA 與 server fetch 範圍實現，<strong>不</strong>另開分支路由。</p>
