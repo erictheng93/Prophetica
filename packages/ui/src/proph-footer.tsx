@@ -22,11 +22,20 @@ export interface ProphFooterProps {
  */
 export function ProphFooter({ columns, legal, className }: ProphFooterProps) {
   return (
-    <footer className={cn("w-full bg-proph-canvas-parchment text-center text-proph-ink-muted-80", "py-16", className)}>
+    <footer
+      className={cn(
+        "w-full bg-proph-canvas-parchment text-center text-proph-ink-muted-80",
+        "py-16",
+        className,
+      )}
+    >
       <div className="mx-auto max-w-[1440px] px-6 md:px-10">
-        <div className="grid grid-cols-2 justify-items-center gap-10 md:grid-cols-4 lg:grid-cols-5">
+        <div className="flex flex-wrap justify-center gap-10">
           {columns.map((col) => (
-            <div key={col.heading} className="w-full max-w-[220px]">
+            <div
+              key={col.heading}
+              className="w-[calc((100%-2.5rem)/2)] max-w-[220px] md:w-[calc((100%-7.5rem)/4)] lg:w-[calc((100%-10rem)/5)]"
+            >
               <h3 className="mb-3 font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
                 {col.heading}
               </h3>

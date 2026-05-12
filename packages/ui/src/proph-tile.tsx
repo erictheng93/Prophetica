@@ -89,7 +89,9 @@ export const ProphTile = forwardRef<HTMLElement, ProphTileProps>(
 
     const mediaBlock = media ? (
       <div className="mt-12 flex justify-center">
-        <div className="proph-product-shadow">{media}</div>
+        <div className="proph-product-shadow flex w-full justify-center">
+          {media}
+        </div>
       </div>
     ) : null;
 
