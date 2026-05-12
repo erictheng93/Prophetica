@@ -9,10 +9,15 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // SPEC-006 §3.1 — fixed monthly limit options. "無上限" intentionally absent.
 const limitOptions = [
-  { value: 1000, label: "TWD 1,000" },
-  { value: 5000, label: "TWD 5,000" },
-  { value: 30000, label: "TWD 30,000" },
-  { value: 100000, label: "TWD 100,000" },
+  { value: 1000 },
+  { value: 3000 },
+  { value: 5000 },
+  { value: 10000 },
+  { value: 30000 },
+  { value: 50000 },
+  { value: 100000 },
+  { value: 300000 },
+  { value: 500000 },
 ];
 
 const mockState = {
@@ -39,7 +44,7 @@ export default async function LimitsPage() {
         tagline={t("hero.tagline")}
       />
       <CurrentLimitCard t={t} formatPoints={formatPoints} />
-      <AdjustForm t={t} />
+      <AdjustForm t={t} formatPoints={formatPoints} />
     </>
   );
 }
@@ -87,7 +92,13 @@ function CurrentLimitCard({
   );
 }
 
-function AdjustForm({ t }: { t: LimitsCopy }) {
+function AdjustForm({
+  t,
+  formatPoints,
+}: {
+  t: LimitsCopy;
+  formatPoints: (n: number) => string;
+}) {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
@@ -114,7 +125,9 @@ function AdjustForm({ t }: { t: LimitsCopy }) {
                     defaultChecked={opt.value === mockState.currentLimit}
                     className="h-4 w-4 accent-proph-primary"
                   />
-                  <span className="font-display text-[21px] font-semibold tracking-[0.231px]">{opt.label}</span>
+                  <span className="font-display text-[21px] font-semibold tracking-[0.231px]">
+                    {formatPoints(opt.value)}
+                  </span>
                 </label>
               ))}
               <label className="flex cursor-pointer flex-col gap-2 rounded-proph-md border border-proph-hairline bg-proph-canvas px-5 py-4 has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment md:col-span-2">
