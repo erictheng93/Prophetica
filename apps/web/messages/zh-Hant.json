@@ -1353,6 +1353,12 @@
         "heading": "選擇冷靜期長度",
         "intro": "到期自動解除，無需任何操作。期限內無法縮短或取消。",
         "legend": "冷靜期長度選項",
+        "status": {
+          "label": "目前狀態",
+          "active": "冷靜期已啟動，預計於 {date} 結束。",
+          "inactive": "目前沒有啟動中的冷靜期，可以選擇長度後啟動。",
+          "fallback": "暫時無法連上後端，送出前請確認本機 API gateway 已啟動。"
+        },
         "options": {
           "24h": {
             "label": "24 小時",
@@ -1369,7 +1375,10 @@
         },
         "callout": "冷靜期一旦啟動即無法取消。若需要更長期或永久停止使用，請使用<exclusionLink>解除賬號</exclusionLink>。",
         "consent": "我了解冷靜期啟動後無法縮短或取消。",
-        "submit": "啟動冷靜期（後端待接）"
+        "submit": "啟動冷靜期",
+        "submitPending": "正在啟動…",
+        "success": "冷靜期已啟動，後端已記錄這次自我設限。",
+        "genericError": "冷靜期啟動失敗，請稍後再試。"
       }
     },
     "selfExclusion": {

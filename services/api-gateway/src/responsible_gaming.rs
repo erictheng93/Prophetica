@@ -12,6 +12,13 @@ use crate::{ApiError, AuthContext, WalletLedgerClient};
 
 const SIX_MONTHS_SECONDS: i64 = 183 * 24 * 60 * 60;
 const ONE_YEAR_SECONDS: i64 = 365 * 24 * 60 * 60;
+const DAY_SECONDS: i64 = 24 * 60 * 60;
+const AVAILABLE_COOLDOWN_DURATIONS: [CooldownDuration; 3] = [
+    CooldownDuration::TwentyFourHours,
+    CooldownDuration::SevenDays,
+    CooldownDuration::ThirtyDays,
+];
+
 #[derive(Debug, Clone, Copy)]
 pub struct ResponsibleGamingClock {
     fixed_epoch_seconds: Option<i64>,
@@ -40,6 +47,33 @@ impl ResponsibleGamingClock {
         })
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct FixedClock(ResponsibleGamingClock);
+
+impl FixedClock {
+    #[must_use]
+    pub fn new(epoch_seconds: u64) -> Self {
+        let epoch_seconds = i64::try_from(epoch_seconds).unwrap_or(i64::MAX);
+        Self(ResponsibleGamingClock::fixed(epoch_seconds))
+    }
+}
+
+impl From<FixedClock> for ResponsibleGamingClock {
+    fn from(value: FixedClock) -> Self {
+        value.0
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SystemClock;
+
+impl From<SystemClock> for ResponsibleGamingClock {
+    fn from(_: SystemClock) -> Self {
+        ResponsibleGamingClock::system()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SelfExclusionMode {
@@ -98,6 +132,62 @@ pub struct SubmitSelfExclusionRequest {
     pub consent: bool,
     pub reason: Option<String>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum CooldownDuration {
+    #[serde(rename = "24h")]
+    TwentyFourHours,
+    #[serde(rename = "7d")]
+    SevenDays,
+    #[serde(rename = "30d")]
+    ThirtyDays,
+}
+
+impl CooldownDuration {
+    #[must_use]
+    pub const fn seconds(self) -> i64 {
+        match self {
+            Self::TwentyFourHours => DAY_SECONDS,
+            Self::SevenDays => 7 * DAY_SECONDS,
+            Self::ThirtyDays => 30 * DAY_SECONDS,
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "24h" => Some(Self::TwentyFourHours),
+            "7d" => Some(Self::SevenDays),
+            "30d" => Some(Self::ThirtyDays),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CooldownRecord {
+    duration: CooldownDuration,
+    started_at_epoch_seconds: i64,
+    ends_at_epoch_seconds: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CooldownStatusResponse {
+    pub user_id: String,
+    pub active: bool,
+    pub duration: Option<CooldownDuration>,
+    pub started_at_epoch_seconds: Option<i64>,
+    pub ends_at_epoch_seconds: Option<i64>,
+    pub remaining_seconds: i64,
+    pub available_durations: Vec<CooldownDuration>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct StartCooldownRequest {
+    pub duration: String,
+    #[serde(default)]
+    pub consent: bool,
+}
+
 pub trait SelfExclusionStore {
     /// Returns the idempotent response for this user/key, when present.
     ///
@@ -134,6 +224,32 @@ pub trait SelfExclusionStore {
         response: SubmitSelfExclusionResponse,
     ) -> Result<(), ApiError>;
 }
+
+pub trait CooldownStore {
+    /// Returns the user's active cooldown status at `now_epoch_seconds`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the backing store cannot be read.
+    fn cooldown_status(
+        &self,
+        user_id: &str,
+        now_epoch_seconds: i64,
+    ) -> Result<CooldownStatusResponse, ApiError>;
+
+    /// Starts a cooldown, or returns the existing active cooldown for the user.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the backing store cannot be written.
+    fn start_cooldown(
+        &self,
+        user_id: &str,
+        duration: CooldownDuration,
+        now_epoch_seconds: i64,
+    ) -> Result<CooldownStatusResponse, ApiError>;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelfExclusionIdempotencyRecord {
     request_hash: u64,
@@ -146,10 +262,25 @@ struct ResponsibleGamingState<W, S> {
     store: S,
     clock: ResponsibleGamingClock,
 }
+
+#[derive(Debug, Clone)]
+struct CooldownState<S> {
+    store: S,
+    clock: ResponsibleGamingClock,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct InMemorySelfExclusionStore {
     state: Arc<Mutex<InMemorySelfExclusionState>>,
 }
+
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryCooldownStore {
+    cooldowns: Arc<Mutex<HashMap<String, CooldownRecord>>>,
+}
+
+pub type InMemoryResponsibleGamingStore = InMemoryCooldownStore;
+
 #[derive(Debug, Default)]
 struct InMemorySelfExclusionState {
     records: Vec<SelfExclusionRecord>,
@@ -176,6 +307,27 @@ where
             clock,
         })
 }
+
+pub fn cooldown_router<S>(store: S, clock: ResponsibleGamingClock) -> Router
+where
+    S: CooldownStore + Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route(
+            "/v1/me/responsible-gaming/cooldown",
+            get(get_cooldown::<S>).post(start_cooldown::<S>),
+        )
+        .with_state(CooldownState { store, clock })
+}
+
+pub fn router<S, C>(store: S, clock: C) -> Router
+where
+    S: CooldownStore + Clone + Send + Sync + 'static,
+    C: Into<ResponsibleGamingClock>,
+{
+    cooldown_router(store, clock.into())
+}
+
 async fn get_self_exclusion_status<W, S>(
     State(state): State<ResponsibleGamingState<W, S>>,
     auth: AuthContext,
@@ -270,6 +422,49 @@ where
 
     Ok(Json(response))
 }
+
+async fn get_cooldown<S>(
+    State(state): State<CooldownState<S>>,
+    auth: AuthContext,
+) -> Result<Json<CooldownStatusResponse>, ApiError>
+where
+    S: CooldownStore,
+{
+    Ok(Json(state.store.cooldown_status(
+        &auth.user_id,
+        state.clock.now_epoch_seconds(),
+    )?))
+}
+
+async fn start_cooldown<S>(
+    State(state): State<CooldownState<S>>,
+    auth: AuthContext,
+    Json(request): Json<StartCooldownRequest>,
+) -> Result<Json<CooldownStatusResponse>, ApiError>
+where
+    S: CooldownStore,
+{
+    if !request.consent {
+        return Err(ApiError::bad_request(
+            "cooldown_consent_required",
+            "Explicit responsible gaming cooldown consent is required",
+        ));
+    }
+
+    let Some(duration) = CooldownDuration::parse(&request.duration) else {
+        return Err(ApiError::bad_request(
+            "invalid_cooldown_duration",
+            "Cooldown duration must be one of 24h, 7d, or 30d",
+        ));
+    };
+
+    Ok(Json(state.store.start_cooldown(
+        &auth.user_id,
+        duration,
+        state.clock.now_epoch_seconds(),
+    )?))
+}
+
 impl SelfExclusionStore for InMemorySelfExclusionStore {
     fn idempotency_record(
         &self,
@@ -329,6 +524,56 @@ impl SelfExclusionStore for InMemorySelfExclusionStore {
         Ok(())
     }
 }
+
+impl CooldownStore for InMemoryCooldownStore {
+    fn cooldown_status(
+        &self,
+        user_id: &str,
+        now_epoch_seconds: i64,
+    ) -> Result<CooldownStatusResponse, ApiError> {
+        let mut cooldowns = self
+            .cooldowns
+            .lock()
+            .map_err(|_| ApiError::internal("cooldown store lock poisoned"))?;
+        let record = cooldowns.get(user_id).cloned();
+        if let Some(record) = record {
+            if record.ends_at_epoch_seconds > now_epoch_seconds {
+                return Ok(active_cooldown_status(user_id, &record, now_epoch_seconds));
+            }
+            cooldowns.remove(user_id);
+        }
+
+        Ok(inactive_cooldown_status(user_id))
+    }
+
+    fn start_cooldown(
+        &self,
+        user_id: &str,
+        duration: CooldownDuration,
+        now_epoch_seconds: i64,
+    ) -> Result<CooldownStatusResponse, ApiError> {
+        let mut cooldowns = self
+            .cooldowns
+            .lock()
+            .map_err(|_| ApiError::internal("cooldown store lock poisoned"))?;
+
+        if let Some(record) = cooldowns.get(user_id).cloned() {
+            if record.ends_at_epoch_seconds > now_epoch_seconds {
+                return Ok(active_cooldown_status(user_id, &record, now_epoch_seconds));
+            }
+        }
+
+        let record = CooldownRecord {
+            duration,
+            started_at_epoch_seconds: now_epoch_seconds,
+            ends_at_epoch_seconds: now_epoch_seconds.saturating_add(duration.seconds()),
+        };
+        cooldowns.insert(user_id.to_owned(), record.clone());
+
+        Ok(active_cooldown_status(user_id, &record, now_epoch_seconds))
+    }
+}
+
 fn validate_request(request: &SubmitSelfExclusionRequest) -> Result<(), ApiError> {
     if !request.consent {
         return Err(ApiError::bad_request(
@@ -430,5 +675,35 @@ fn is_active(record: &SelfExclusionRecord, now_epoch_seconds: i64) -> bool {
         SelfExclusionMode::Timeout => record
             .ends_at_epoch_seconds
             .is_some_and(|ends_at| ends_at > now_epoch_seconds),
+    }
+}
+
+fn active_cooldown_status(
+    user_id: &str,
+    record: &CooldownRecord,
+    now_epoch_seconds: i64,
+) -> CooldownStatusResponse {
+    CooldownStatusResponse {
+        user_id: user_id.to_owned(),
+        active: true,
+        duration: Some(record.duration),
+        started_at_epoch_seconds: Some(record.started_at_epoch_seconds),
+        ends_at_epoch_seconds: Some(record.ends_at_epoch_seconds),
+        remaining_seconds: record
+            .ends_at_epoch_seconds
+            .saturating_sub(now_epoch_seconds),
+        available_durations: AVAILABLE_COOLDOWN_DURATIONS.to_vec(),
+    }
+}
+
+fn inactive_cooldown_status(user_id: &str) -> CooldownStatusResponse {
+    CooldownStatusResponse {
+        user_id: user_id.to_owned(),
+        active: false,
+        duration: None,
+        started_at_epoch_seconds: None,
+        ends_at_epoch_seconds: None,
+        remaining_seconds: 0,
+        available_durations: AVAILABLE_COOLDOWN_DURATIONS.to_vec(),
     }
 }

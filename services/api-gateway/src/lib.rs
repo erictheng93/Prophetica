@@ -1263,6 +1263,10 @@ pub async fn run_http() -> anyhow::Result<()> {
             HttpMatchingEngineClient::from_env()?,
             HttpReferralClient::from_env()?,
         ))
+        .merge(responsible_gaming::cooldown_router(
+            responsible_gaming::InMemoryCooldownStore::default(),
+            responsible_gaming::ResponsibleGamingClock::system(),
+        ))
         .merge(
             analytics_reporting::AnalyticsProxyConfig::from_env().map_or_else(
                 |_| analytics_reporting::unconfigured_router(),

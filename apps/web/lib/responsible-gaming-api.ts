@@ -11,7 +11,13 @@ import { generateIdempotencyKey } from "./idempotency.js";
 const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
 const DEFAULT_DEV_USER_ID = "user_01";
 const POINTS_PER_TWD = 100;
+const COOLDOWN_PATH = "/v1/me/responsible-gaming/cooldown";
 const SELF_EXCLUSION_PATH = "/v1/responsible-gaming/self-exclusion";
+
+export const COOLDOWN_DURATIONS = ["24h", "7d", "30d"] as const;
+
+export type CooldownDuration = (typeof COOLDOWN_DURATIONS)[number];
+
 export type ResponsibleGamingSource =
   | "api-gateway"
   | "fallback:api-gateway-unavailable";
@@ -41,6 +47,25 @@ export interface SelfExclusionSubmissionView {
   replayed: boolean;
   source: ResponsibleGamingSource;
 }
+
+export interface CooldownStatusView {
+  userId: string;
+  active: boolean;
+  duration: CooldownDuration | null;
+  startedAtEpochSeconds: number | null;
+  endsAtEpochSeconds: number | null;
+  remainingSeconds: number;
+  availableDurations: CooldownDuration[];
+  source: ResponsibleGamingSource;
+}
+
+export type CooldownStatus = CooldownStatusView;
+
+export interface StartCooldownInput {
+  duration: CooldownDuration;
+  consent: boolean;
+}
+
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
 export type ResponsibleGamingClientFactory = (
   options: ClientOptions,
@@ -59,6 +84,17 @@ export interface RequestSelfExclusionOptions
     Omit<SubmitSelfExclusionRequest, "idempotencyKey"> {
   idempotencyKey?: string;
 }
+
+interface ApiCooldownStatus {
+  user_id: string;
+  active: boolean;
+  duration: string | null;
+  started_at_epoch_seconds: number | null;
+  ends_at_epoch_seconds: number | null;
+  remaining_seconds: number;
+  available_durations: string[];
+}
+
 interface ApiSelfExclusionRecord {
   record_id: string;
   user_id: string;
@@ -82,6 +118,72 @@ interface ApiSubmitSelfExclusionResponse {
   ledger_idempotency_key: string;
   replayed: boolean;
 }
+
+export class ResponsibleGamingApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.name = "ResponsibleGamingApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export async function fetchCooldownStatus(
+  options: FetchSelfExclusionStatusOptions = {},
+): Promise<CooldownStatusView> {
+  const { baseUrl, userId, fetcher } = transportContext(options);
+
+  try {
+    const response = await fetcher(`${baseUrl}${COOLDOWN_PATH}`, {
+      cache: "no-store",
+      headers: requestHeaders(userId),
+    });
+    if (!response.ok) {
+      return fallbackCooldownStatus(userId);
+    }
+
+    return mapCooldownStatus(
+      (await response.json()) as ApiCooldownStatus,
+      "api-gateway",
+    );
+  } catch {
+    return fallbackCooldownStatus(userId);
+  }
+}
+
+export async function startCooldown(
+  input: StartCooldownInput,
+  options: FetchSelfExclusionStatusOptions = {},
+): Promise<CooldownStatusView> {
+  const { baseUrl, userId, fetcher } = transportContext(options);
+  const response = await fetcher(`${baseUrl}${COOLDOWN_PATH}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      ...requestHeaders(userId),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const error = await decodeError(response);
+    throw new ResponsibleGamingApiError(
+      response.status,
+      error.code,
+      error.message,
+    );
+  }
+
+  return mapCooldownStatus(
+    (await response.json()) as ApiCooldownStatus,
+    "api-gateway",
+  );
+}
+
 export async function fetchSelfExclusionStatus(
   options: FetchSelfExclusionStatusOptions = {},
 ): Promise<SelfExclusionStatusView> {
@@ -249,6 +351,23 @@ function selfExclusionRequest(
   }
   return request;
 }
+
+function mapCooldownStatus(
+  status: ApiCooldownStatus,
+  source: ResponsibleGamingSource,
+): CooldownStatusView {
+  return {
+    userId: status.user_id,
+    active: status.active,
+    duration: isCooldownDuration(status.duration) ? status.duration : null,
+    startedAtEpochSeconds: status.started_at_epoch_seconds,
+    endsAtEpochSeconds: status.ends_at_epoch_seconds,
+    remainingSeconds: status.remaining_seconds,
+    availableDurations: status.available_durations.filter(isCooldownDuration),
+    source,
+  };
+}
+
 function fallbackStatus(userId: string): SelfExclusionStatusView {
   return {
     userId,
@@ -257,12 +376,57 @@ function fallbackStatus(userId: string): SelfExclusionStatusView {
     source: "fallback:api-gateway-unavailable",
   };
 }
+
+function fallbackCooldownStatus(userId: string): CooldownStatusView {
+  return {
+    userId,
+    active: false,
+    duration: null,
+    startedAtEpochSeconds: null,
+    endsAtEpochSeconds: null,
+    remainingSeconds: 0,
+    availableDurations: [...COOLDOWN_DURATIONS],
+    source: "fallback:api-gateway-unavailable",
+  };
+}
+
 function requestHeaders(userId: string): Record<string, string> {
   return {
     accept: "application/json",
     "x-user-id": userId,
   };
 }
+
+function isCooldownDuration(value: unknown): value is CooldownDuration {
+  return COOLDOWN_DURATIONS.some((duration) => duration === value);
+}
+
+async function decodeError(
+  response: Response,
+): Promise<{ code: string; message: string }> {
+  try {
+    const payload = (await response.json()) as {
+      error?: unknown;
+      message?: unknown;
+    };
+    return {
+      code:
+        typeof payload.error === "string"
+          ? payload.error
+          : "responsible_gaming_error",
+      message:
+        typeof payload.message === "string"
+          ? payload.message
+          : "Responsible gaming request failed",
+    };
+  } catch {
+    return {
+      code: "responsible_gaming_error",
+      message: "Responsible gaming request failed",
+    };
+  }
+}
+
 function minorUnitsToPoints(minorUnits: number | bigint): number {
   return Number(minorUnits) / POINTS_PER_TWD;
 }
