@@ -1,6 +1,9 @@
 import { decodeErrorEnvelope } from "./errors.js";
 
-export type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
+export type Fetcher = (
+  input: string | URL,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export interface AuthOptions {
   bearerToken?: string;
@@ -17,6 +20,7 @@ export interface JsonRequestOptions {
   method?: "GET" | "POST";
   path: string;
   query?: URLSearchParams;
+  headers?: Record<string, string>;
   body?: unknown;
 }
 
@@ -49,12 +53,16 @@ export class HttpClient {
     if (this.auth?.userId) {
       headers.set("x-user-id", this.auth.userId);
     }
+    for (const [key, value] of Object.entries(options.headers ?? {})) {
+      headers.set(key, value);
+    }
 
     const response = await this.fetcher(url.toString(), {
       method: options.method ?? "GET",
       cache: "no-store",
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        options.body === undefined ? undefined : JSON.stringify(options.body),
     });
     const body = await readJson(response);
 

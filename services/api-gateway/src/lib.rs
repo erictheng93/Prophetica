@@ -25,6 +25,7 @@ pub mod admin_ops;
 pub mod analytics_reporting;
 pub mod drill_logs;
 pub mod kill_switch;
+pub mod responsible_gaming;
 
 const USER_ID_HEADER: HeaderName = HeaderName::from_static("x-user-id");
 const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-key");
@@ -321,6 +322,13 @@ pub trait WalletLedgerClient {
         account_code: &str,
         limit: i64,
     ) -> Result<Vec<LedgerEntry>, ApiError>;
+
+    async fn freeze_player_funds(
+        &self,
+        user_id: &str,
+        amount_minor_units: i64,
+        idempotency_key: &str,
+    ) -> Result<(), ApiError>;
 }
 
 #[async_trait]
@@ -508,6 +516,72 @@ impl WalletLedgerClient for HttpWalletLedgerClient {
 
         Ok(body.entries)
     }
+
+    async fn freeze_player_funds(
+        &self,
+        user_id: &str,
+        amount_minor_units: i64,
+        idempotency_key: &str,
+    ) -> Result<(), ApiError> {
+        if amount_minor_units <= 0 {
+            return Ok(());
+        }
+
+        let url = self
+            .base_url
+            .join("/internal/ledger/transactions")
+            .map_err(|error| ApiError::upstream(error.to_string()))?;
+        let body = FreezePlayerFundsRequest {
+            txn_type: "freeze",
+            correlation_id: Some(idempotency_key),
+            description: Some("self-exclusion freeze player funds"),
+            metadata: serde_json::json!({
+                "reason": "self_exclusion",
+                "triggered_by": user_id,
+                "ref_id": idempotency_key,
+            }),
+            entries: vec![
+                FreezePlayerFundsEntry {
+                    account_code: format!("Player.Wallet.{user_id}"),
+                    direction: "debit",
+                    amount_minor_units,
+                },
+                FreezePlayerFundsEntry {
+                    account_code: format!("Player.Frozen.{user_id}"),
+                    direction: "credit",
+                    amount_minor_units,
+                },
+            ],
+        };
+
+        self.client
+            .post(url)
+            .header(IDEMPOTENCY_KEY_HEADER.as_str(), idempotency_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| ApiError::upstream(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::upstream(error.to_string()))?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct FreezePlayerFundsRequest<'a> {
+    txn_type: &'static str,
+    correlation_id: Option<&'a str>,
+    description: Option<&'static str>,
+    metadata: serde_json::Value,
+    entries: Vec<FreezePlayerFundsEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct FreezePlayerFundsEntry {
+    account_code: String,
+    direction: &'static str,
+    amount_minor_units: i64,
 }
 
 #[async_trait]
@@ -793,6 +867,12 @@ where
     E: MatchingEngineClient + Clone + Send + Sync + 'static,
     R: ReferralClient + Clone + Send + Sync + 'static,
 {
+    let rg_router = responsible_gaming::responsible_gaming_router(
+        wallet_ledger.clone(),
+        responsible_gaming::InMemorySelfExclusionStore::default(),
+        responsible_gaming::ResponsibleGamingClock::system(),
+    );
+
     Router::new()
         .route(
             "/v1/me/wallet/balance",
@@ -831,6 +911,7 @@ where
             engine,
             referral,
         )))
+        .merge(rg_router)
 }
 
 #[tracing::instrument(fields(service.name = SERVICE_NAME, proph.user_id = %auth.user_id), skip(state))]
@@ -1747,6 +1828,15 @@ mod tests {
                 amount_minor_units: 10_000,
                 balance_after_minor_units: -10_000,
             }])
+        }
+
+        async fn freeze_player_funds(
+            &self,
+            _user_id: &str,
+            _amount_minor_units: i64,
+            _idempotency_key: &str,
+        ) -> Result<(), ApiError> {
+            Ok(())
         }
     }
 

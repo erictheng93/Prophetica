@@ -1,8 +1,21 @@
-export { ApiError, decodeErrorEnvelope, type ErrorEnvelope } from "./runtime/errors.js";
-export { HttpClient, type AuthOptions, type ClientOptions, type Fetcher } from "./runtime/fetch.js";
+export {
+  ApiError,
+  decodeErrorEnvelope,
+  type ErrorEnvelope,
+} from "./runtime/errors.js";
+export {
+  HttpClient,
+  type AuthOptions,
+  type ClientOptions,
+  type Fetcher,
+} from "./runtime/fetch.js";
 export { generateUuidV7 } from "./runtime/idempotency.js";
 export { i64ToJsonNumber, parseI64, type JsonI64 } from "./runtime/i64.js";
 export { createKycClient, type KycClient } from "./kyc/client.js";
+export {
+  createResponsibleGamingClient,
+  type ResponsibleGamingClient,
+} from "./responsible-gaming/client.js";
 export type {
   KycStatus,
   KycStatusView,
@@ -42,6 +55,15 @@ export type {
   SumsubMockProviderOptions,
 } from "./kyc-provider/index.js";
 export { createWalletClient, type WalletClient } from "./wallet/client.js";
+export type {
+  PointsDisposition,
+  SelfExclusionMode,
+  SelfExclusionPeriod,
+  SelfExclusionRecord,
+  SelfExclusionStatus,
+  SubmitSelfExclusionRequest,
+  SubmitSelfExclusionResponse,
+} from "./responsible-gaming/types.js";
 export type {
   EntryDirection,
   LedgerEntry,

@@ -1415,7 +1415,7 @@
           }
         },
         "consent": "我了解期間無法登入，且解除後仍有 14 天延長冷靜期。",
-        "submit": "啟動 Time-out（後端待接）"
+        "submit": "啟動 Time-out"
       },
       "permanent": {
         "kicker": "選項二（不可逆）",
@@ -1433,8 +1433,29 @@
           }
         },
         "consent": "我清楚知道<strong>不可逆停用無法解除</strong>。我不是因為一時情緒、糾紛或賠錢才做這個決定，而是經過完整評估之後的選擇。",
-        "footnote": "這個按鈕在後端待接前不會生效。建議先聯繫客服協助評估。",
-        "submit": "啟動不可逆停用（後端待接）"
+        "footnote": "啟動後會立即建立自我排除紀錄並凍結可用點數。建議先聯繫客服協助評估。",
+        "submit": "啟動不可逆停用"
+      },
+      "status": {
+        "activeHeading": "此帳戶已有啟用中的自我排除",
+        "activeBody": "目前模式：{mode}{period}。後端會拒絕重複啟動，既有持倉仍依規則結算。",
+        "submittedHeading": "自我排除已提交",
+        "submittedBody": "後端已建立紀錄並送出凍結錢包流程。請重新整理以查看最新狀態。",
+        "unavailableHeading": "目前無法連線至後端",
+        "unavailableBody": "頁面仍可閱讀規則，但提交功能需要 api-gateway 可用後才會生效。",
+        "invalidHeading": "提交資料不完整",
+        "invalidBody": "請選擇一個模式並勾選必要確認後再提交。",
+        "frozenLabel": "已凍結點數",
+        "sourceLabel": "資料來源",
+        "points": "{n} 點",
+        "modes": {
+          "timeout": "Time-out",
+          "permanent": "不可逆停用"
+        },
+        "periods": {
+          "six_months": " / 6 個月",
+          "one_year": " / 1 年"
+        }
       }
     },
     "resources": {

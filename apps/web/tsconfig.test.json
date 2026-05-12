@@ -17,6 +17,7 @@
     "lib/offline-mutation-queue.ts",
     "lib/market-api.ts",
     "lib/position-api.ts",
+    "lib/responsible-gaming-api.ts",
     "lib/ws-client.ts",
     "lib/observability/**/*.ts"
   ]
