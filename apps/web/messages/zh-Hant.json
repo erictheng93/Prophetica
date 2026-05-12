@@ -13,9 +13,7 @@
     },
     "footer": {
       "legal": {
-        "copyright": "© {year} prophetica. 趣味預測平台 · 18+。",
-        "helplinePrefix": "援助專線",
-        "helplineHours": "（24 小時）"
+        "copyright": "© {year} prophetica. 趣味預測平台 · 18+。"
       },
       "columns": {
         "about": {
@@ -187,7 +185,7 @@
       "rgCallout": {
         "kicker": "自我設限優先",
         "headline": "如果你或身邊的人覺得遊戲已失去掌控，這條入口優先於所有其他協助。",
-        "body": "我們有受過認證的自我設限客服、限額 / 冷靜期 / 解除賬號工具，以及獨立於 prophetica 之外的外部專業資源。撥打援助專線完全免費，且不會與 prophetica 交換任何資訊。",
+        "body": "我們有受過認證的自我設限客服、限額 / 冷靜期 / 解除賬號工具，以及獨立於 prophetica 之外的外部專業資源。",
         "cta": "了解自我設限工具",
         "helplineLabel": "衛福部安心專線 · 24 小時"
       }
@@ -284,7 +282,7 @@
           "items": {
             "tooMuch": {
               "q": "我覺得自己玩太多了，怎麼辦？",
-              "a": "馬上前往<rgLink>自我設限</rgLink>設定限額或啟動冷靜期。外部援助專線 <helplineLink>1925</helplineLink>（衛福部安心專線）24 小時免費，且不會與 prophetica 交換任何資訊。"
+              "a": "馬上前往<rgLink>自我設限</rgLink>設定限額或啟動冷靜期。也可以查看外部專業資源，相關諮詢不會與 prophetica 交換任何資訊。"
             },
             "selfExclusion": {
               "q": "解除賬號可以解除嗎？",
@@ -2139,14 +2137,14 @@
           },
           "resources": {
             "label": "援助資源連結",
-            "body": "顯示 1925 安心專線等外部資源。確認後才進入 KYC Tier 1。"
+            "body": "顯示外部資源連結。確認後才進入 KYC Tier 1。"
           }
         },
         "next": "完成這 4 步後進入 <tier1Link>KYC Tier 1 基礎驗證</tier1Link>（另 10 秒）。即可瀏覽市場開始下單。"
       },
       "compliance": {
         "kicker": "請務必記得",
-        "headline": "18 歲以下不得參與。如已失控，撥打 <helplineLink>1925</helplineLink> 安心專線 24 小時免費。",
+        "headline": "18 歲以下不得參與。如已失控，請先停止使用並尋求可信任的人或專業協助。",
         "cta": "自我設限資源"
       }
     }

@@ -60,7 +60,7 @@ export default async function ResponsibleGamingLayout({ children }: { children: 
 
       {children}
 
-      <ProphFooter columns={footerColumns} legal={<FooterLegalRow showHelpline={false} />} />
+      <ProphFooter columns={footerColumns} legal={<FooterLegalRow />} />
     </main>
   );
 }

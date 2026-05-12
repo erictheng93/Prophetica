@@ -48,7 +48,7 @@ export default async function LandingPage() {
 
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
+        kicker={<span className="text-[17px] leading-[1.47] tracking-[0]">{t("hero.kicker")}</span>}
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {t("hero.headline")}

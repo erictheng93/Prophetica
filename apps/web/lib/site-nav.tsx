@@ -153,7 +153,7 @@ export async function MainNavLinks() {
         <a
           key={href}
           href={href}
-          className="font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink"
+          className="font-text text-[15px] leading-[1.35] tracking-[0] text-proph-ink/70 transition-colors hover:text-proph-ink"
         >
           {t(key)}
         </a>
@@ -180,28 +180,12 @@ export async function AuthCta() {
   );
 }
 
-/**
- * Site-wide footer legal row. SPEC-006 §7.1 mandates 18+ + 援助電話 on every
- * footer; this component is the single rendering of that contract.
- */
-export async function FooterLegalRow({
-  showHelpline = true,
-}: {
-  showHelpline?: boolean;
-} = {}) {
+/** Site-wide footer legal row. */
+export async function FooterLegalRow() {
   const t = await getTranslations("common.footer.legal");
   return (
-    <div className="flex flex-col items-center justify-center gap-3 text-center md:flex-row md:gap-6">
+    <div className="flex flex-col items-center justify-center gap-3 text-center">
       <span>{t("copyright", { year: new Date().getFullYear() })}</span>
-      {showHelpline ? (
-        <span className="font-text text-[12px] leading-none tracking-[-0.12px]">
-          {t("helplinePrefix")}{" "}
-          <a href="tel:1925" className="text-proph-primary underline">
-            1925
-          </a>
-          {t("helplineHours")}
-        </span>
-      ) : null}
     </div>
   );
 }

@@ -88,11 +88,6 @@ function RichAnswer({
         {chunks}
       </a>
     ),
-    helplineLink: (chunks) => (
-      <a href="tel:1925" className="text-proph-primary underline">
-        {chunks}
-      </a>
-    ),
   });
 }
 

@@ -454,15 +454,6 @@ function RGReminder({ t }: { t: TopupCopy }) {
           <ProphLinkButton variant="primary" href="/responsible-gaming/cooldown">
             {t("rgReminder.ctaCooldown")}
           </ProphLinkButton>
-          <a
-            href="tel:1925"
-            className="font-mono text-[21px] font-semibold tabular-nums text-proph-primary-on-dark hover:underline"
-          >
-            1925{" "}
-            <span className="font-text text-[14px] tracking-[-0.224px] text-proph-body-muted">
-              {t("rgReminder.helplineLabel")}
-            </span>
-          </a>
         </div>
       </div>
     </section>

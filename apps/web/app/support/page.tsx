@@ -124,15 +124,6 @@ function RGCallout({ t }: { t: SupportOverviewCopy }) {
           <ProphLinkButton variant="primary" href="/responsible-gaming">
             {t("rgCallout.cta")}
           </ProphLinkButton>
-          <a
-            href="tel:1925"
-            className="font-mono text-[28px] font-semibold tabular-nums text-proph-primary-on-dark hover:underline"
-          >
-            1925
-            <span className="ml-2 font-text text-[14px] tracking-[-0.224px] text-proph-body-muted">
-              {t("rgCallout.helplineLabel")}
-            </span>
-          </a>
         </div>
       </div>
     </section>

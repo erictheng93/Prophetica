@@ -374,13 +374,7 @@ function ComplianceReminder({ t }: { t: AuthCopy }) {
           {t("compliance.kicker")}
         </span>
         <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
-          {t.rich("compliance.headline", {
-            helplineLink: (chunks) => (
-              <a href="tel:1925" className="text-proph-primary-on-dark hover:underline">
-                {chunks}
-              </a>
-            ),
-          })}
+          {t("compliance.headline")}
         </h2>
         <div className="mt-6">
           <ProphLinkButton variant="primary" href="/responsible-gaming/resources">
