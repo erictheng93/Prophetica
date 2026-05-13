@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
 import { ProphFooter, ProphSubNav, ProphTile } from "@prophetica/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -17,8 +16,10 @@ interface PageProps {
 
 type AuthCopy = Awaited<ReturnType<typeof getTranslations<"auth.signIn">>>;
 
-const launchCountries = ["TW", "JP", "KR", "VN", "MY"] as const;
-const postSignupStepKeys = ["age", "rg", "limit", "resources"] as const;
+const officialLineHref =
+  process.env.NEXT_PUBLIC_OFFICIAL_LINE_URL ||
+  "/support/contact?topic=beta-access";
+const officialLineIsExternal = officialLineHref.startsWith("http");
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("auth.signIn.metadata");
@@ -67,8 +68,6 @@ export default async function AuthPage({ searchParams }: PageProps) {
       <ModeToggle mode={mode} t={t} />
 
       {mode === "signup" ? <SignupForm t={t} /> : <SigninForm t={t} />}
-
-      {mode === "signup" ? <PostSignupPreview t={t} /> : null}
 
       <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
     </main>
@@ -194,173 +193,41 @@ function SigninForm({ t }: { t: AuthCopy }) {
 
 function SignupForm({ t }: { t: AuthCopy }) {
   return (
-    <section className="bg-proph-canvas">
+    <section
+      className="bg-proph-canvas"
+      aria-labelledby="signup-beta-gate-heading"
+    >
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
-        <form action="#" className="space-y-6">
-          <label className="block">
-            <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
-              Email
-            </span>
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
-            />
-            <span className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
-              {t("signup.emailHint")}
-            </span>
-          </label>
-
-          <label className="block">
-            <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
-              {t("signup.birthday")}
-            </span>
-            <input
-              type="date"
-              name="birthday"
-              required
-              className="mt-1 w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
-            />
-            <span className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
-              {t("signup.birthdayHint")}
-            </span>
-          </label>
-
-          <label className="block">
-            <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
-              {t("signup.country")}
-            </span>
-            <select
-              name="country"
-              className="mt-1 w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink focus:border-proph-primary-focus focus:outline-none"
-            >
-              <option value="">{t("signup.countryPlaceholder")}</option>
-              {launchCountries.map((code) => (
-                <option key={code} value={code}>
-                  {t(`countries.${code.toLowerCase()}`)}
-                </option>
-              ))}
-            </select>
-            <span className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
-              {t("signup.countryHint")}
-            </span>
-          </label>
-
-          <fieldset className="space-y-3">
-            <legend className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
-              {t("signup.disclosures.legend")}
-            </legend>
-
-            <DisclosureCheckbox>
-              {t.rich("signup.disclosures.terms", {
-                termsLink: (chunks) => (
-                  <a href="/legal/terms" className="text-proph-primary underline">
-                    {chunks}
-                  </a>
-                ),
-                privacyLink: (chunks) => (
-                  <a href="/legal/privacy" className="text-proph-primary underline">
-                    {chunks}
-                  </a>
-                ),
-              })}
-            </DisclosureCheckbox>
-
-            <DisclosureCheckbox>
-              {t.rich("signup.disclosures.points", {
-                strong: (chunks) => <strong className="font-semibold text-proph-ink">{chunks}</strong>,
-              })}
-            </DisclosureCheckbox>
-
-            <DisclosureCheckbox>
-              {t.rich("signup.disclosures.entertainment", {
-                strong: (chunks) => <strong className="font-semibold text-proph-ink">{chunks}</strong>,
-              })}
-            </DisclosureCheckbox>
-          </fieldset>
-
-          <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
-            <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
-              {t("signup.submitNote")}
-            </p>
-            <button
-              type="submit"
-              disabled
-              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
-            >
-              {t("signup.submit")}
-            </button>
-          </div>
-
-          <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
-            {t.rich("signup.signinPrompt", {
-              signinLink: (chunks) => (
-                <a href="/auth/sign-in" className="text-proph-primary underline">
-                  {chunks}
-                </a>
-              ),
-            })}
+        <div className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 md:p-8">
+          <p className="font-text text-[12px] uppercase leading-none tracking-[0] text-proph-primary">
+            {t("signup.betaGate.eyebrow")}
           </p>
-        </form>
-      </div>
-    </section>
-  );
-}
-
-function DisclosureCheckbox({ children }: { children: ReactNode }) {
-  return (
-    <label className="flex items-start gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-      <input type="checkbox" required className="mt-1 h-4 w-4 accent-proph-primary" />
-      <span>{children}</span>
-    </label>
-  );
-}
-
-function PostSignupPreview({ t }: { t: AuthCopy }) {
-  return (
-    <section className="bg-proph-canvas-parchment">
-      <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <header className="mb-8">
-          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
-            {t("postSignup.heading")}
+          <h2
+            id="signup-beta-gate-heading"
+            className="mt-4 font-display text-[28px] font-semibold leading-[1.1] tracking-[0] text-proph-ink sm:text-[34px]"
+          >
+            {t("signup.betaGate.heading")}
           </h2>
-          <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
-            {t("postSignup.intro")}
+          <p className="mt-4 font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
+            {t("signup.betaGate.body")}
           </p>
-        </header>
-
-        <ol className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {postSignupStepKeys.map((key, index) => (
-            <li
-              key={key}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+          <div className="mt-6 flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 sm:flex-row sm:items-center">
+            <a
+              href={officialLineHref}
+              target={officialLineIsExternal ? "_blank" : undefined}
+              rel={officialLineIsExternal ? "noreferrer" : undefined}
+              className="inline-flex min-h-11 select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary transition-colors hover:bg-proph-primary-focus"
             >
-              <div className="flex items-baseline gap-3">
-                <span className="font-mono text-[28px] font-semibold tabular-nums tracking-[-0.374px] text-proph-primary">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <h3 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
-                  {t(`postSignup.steps.${key}.label`)}
-                </h3>
-              </div>
-              <p className="mt-2 font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
-                {t(`postSignup.steps.${key}.body`)}
-              </p>
-            </li>
-          ))}
-        </ol>
-
-        <p className="mt-6 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
-          {t.rich("postSignup.next", {
-            tier1Link: (chunks) => (
-              <a href="/kyc/tier-1" className="text-proph-primary underline">
-                {chunks}
-              </a>
-            ),
-          })}
-        </p>
+              {t("signup.betaGate.lineCta")}
+            </a>
+            <a
+              href="/auth/sign-in"
+              className="inline-flex min-h-11 select-none items-center justify-center rounded-proph-pill border border-proph-hairline bg-proph-canvas px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80 transition-colors hover:border-proph-primary hover:text-proph-ink"
+            >
+              {t("signup.betaGate.signinCta")}
+            </a>
+          </div>
+        </div>
       </div>
     </section>
   );

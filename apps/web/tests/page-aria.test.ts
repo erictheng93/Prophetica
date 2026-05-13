@@ -55,6 +55,17 @@ function signInFormSource(): string {
   return match[0];
 }
 
+function signupFormSource(): string {
+  const source = readSignInPageSource();
+  const match = source.match(
+    /function SignupForm[\s\S]*?(?:function signinStatusFromParam|$)/,
+  );
+
+  assert.ok(match, "SignupForm source should be discoverable");
+
+  return match[0];
+}
+
 test("static forms do not use unsupported aria-disabled attributes", () => {
   for (const file of formPageFiles) {
     const source = readFileSync(join(process.cwd(), file), "utf8");
@@ -217,6 +228,45 @@ test("sign-in copy explains phone numbers may include or omit the leading zero",
   assert.equal(identifier.placeholder, "Email 或手機號碼");
   assert.match(String(identifier.hint), /0912345698/);
   assert.match(String(identifier.hint), /912345698/);
+});
+
+test("signup mode is an invite-only beta gate instead of a registration form", () => {
+  const source = signupFormSource();
+  const pageSource = readSignInPageSource();
+  const messages = JSON.parse(
+    readFileSync(join(process.cwd(), "messages/zh-Hant.json"), "utf8"),
+  ) as {
+    auth: {
+      signIn: {
+        signup: {
+          betaGate?: {
+            heading?: string;
+            body?: string;
+            lineCta?: string;
+            signinCta?: string;
+          };
+        };
+      };
+    };
+  };
+
+  assert.match(source, /signup\.betaGate\.heading/);
+  assert.match(source, /signup\.betaGate\.body/);
+  assert.match(source, /signup\.betaGate\.lineCta/);
+  assert.match(source, /signup\.betaGate\.signinCta/);
+  assert.doesNotMatch(source, /name="email"/);
+  assert.doesNotMatch(source, /name="birthday"/);
+  assert.doesNotMatch(source, /name="country"/);
+  assert.doesNotMatch(source, /<fieldset\b/);
+  assert.doesNotMatch(pageSource, /<PostSignupPreview\b/);
+  assert.equal(
+    messages.auth.signIn.signup.betaGate?.body?.includes("目前內測中"),
+    true,
+  );
+  assert.equal(
+    messages.auth.signIn.signup.betaGate?.lineCta,
+    "加入官方 LINE",
+  );
 });
 
 test("action forms are not shipped disabled", () => {

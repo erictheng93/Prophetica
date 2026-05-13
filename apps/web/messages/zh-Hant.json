@@ -2132,9 +2132,9 @@
           "tagline": "用註冊 Email 或手機號碼與密碼登入。"
         },
         "signup": {
-          "kicker": "註冊新帳戶",
-          "headline": "5 步驟內完成註冊。",
-          "tagline": "註冊後會自動進入 4 個必經設定（年齡 → RG 聲明 → 儲值上限 → 援助資源），最後才到 KYC Tier 1。"
+          "kicker": "內測邀請",
+          "headline": "目前只開放內測名單。",
+          "tagline": "自主註冊尚未開放。想搶先體驗 prophetica 的用戶，請先加入官方 LINE。"
         }
       },
       "modeToggle": {
@@ -2162,44 +2162,13 @@
         "signupPrompt": "沒有帳戶？ <signupLink>註冊一個</signupLink>"
       },
       "signup": {
-        "emailHint": "我們會寄驗證連結到此 Email。也是後續客服聯繫的主要管道。",
-        "birthday": "生日",
-        "birthdayHint": "生日 < 18 歲將立即拒絕註冊。",
-        "country": "所在國家",
-        "countryPlaceholder": "— 請選擇 —",
-        "countryHint": "目前註冊表單先支援這 5 國。",
-        "disclosures": {
-          "legend": "你必須了解三件事",
-          "terms": "我已閱讀 <termsLink>服務條款</termsLink> 與 <privacyLink>隱私政策</privacyLink>，並同意 prophetica 依此處理我的資料。",
-          "points": "我了解 prophetica 使用站內點數呈現餘額、鎖倉與結算結果。",
-          "entertainment": "我了解 prophetica 是事件預測產品，<strong>非投資工具</strong>。我願意設定月儲值上限作為自我保護機制，並隨時可使用冷靜期 / 解除賬號工具。"
-        },
-        "submitNote": "送出後將進入 4 步必經流程，最後才開帳戶。",
-        "submit": "開始註冊（後端待接）",
-        "signinPrompt": "已有帳戶？ <signinLink>登入</signinLink>"
-      },
-      "postSignup": {
-        "heading": "送出後會發生什麼",
-        "intro": "SPEC-006 §3.1 規定的 4 個必經步驟。每一步都不可跳過；中途離開要從頭開始。",
-        "steps": {
-          "age": {
-            "label": "年齡確認",
-            "body": "確認你滿 18 歲。失敗即停止註冊。"
-          },
-          "rg": {
-            "label": "自我設限聲明",
-            "body": "閱讀並勾選同意。明列 prophetica 為娛樂遊戲、非投資工具。"
-          },
-          "limit": {
-            "label": "月儲值上限設定",
-            "body": "TWD 1k / 5k / 30k / 100k 擇一。預設不可選「無上限」。"
-          },
-          "resources": {
-            "label": "援助資源連結",
-            "body": "顯示外部資源連結。確認後才進入 KYC Tier 1。"
-          }
-        },
-        "next": "完成這 4 步後進入 <tier1Link>KYC Tier 1 基礎驗證</tier1Link>（另 10 秒）。即可瀏覽市場開始下單。"
+        "betaGate": {
+          "eyebrow": "Closed beta",
+          "heading": "目前內測中",
+          "body": "目前內測中，暫時不開放自主註冊。如果希望可以搶先體驗的用戶，請加入我們的官方 LINE。",
+          "lineCta": "加入官方 LINE",
+          "signinCta": "已有帳號，前往登入"
+        }
       }
     }
   },
