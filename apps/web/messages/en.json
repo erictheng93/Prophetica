@@ -244,7 +244,7 @@
       },
       "kicker": "Markets / New",
       "headline": "Freshly opened matchups.",
-      "tagline": "These markets passed the SPEC-015 dual-signoff review and opened within the past few days. Liquidity may still be building."
+      "tagline": "These matchups opened recently, so participation and liquidity may still be building."
     },
     "settled": {
       "metadata": {
