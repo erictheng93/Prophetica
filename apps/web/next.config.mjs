@@ -36,6 +36,23 @@ const KYC_ROUTE_GLOB = "/kyc/:path*";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  turbopack: {
+    resolveAlias: {
+      "./idempotency.js": "./lib/idempotency.ts",
+      "./kyc-idempotency.js": "./lib/kyc-idempotency.ts",
+      "./kyc-metrics.js": "./lib/telemetry/kyc-metrics.ts",
+      "./kyc-state-machine.js": "./lib/kyc-state-machine.ts",
+      "./latency.js": "./lib/observability/latency.ts",
+      "./logger.js": "./lib/observability/logger.ts",
+      "./market-api.js": "./lib/market-api.ts",
+      "./mock-markets.js": "./lib/mock-markets.ts",
+      "./mock-portfolio.js": "./lib/mock-portfolio.ts",
+      "./observability/trace.js": "./lib/observability/trace.ts",
+      "./prom-registry.js": "./lib/telemetry/prom-registry.ts",
+      "./trace.js": "./lib/observability/trace.ts",
+      "./vitals.js": "./lib/observability/vitals.ts",
+    },
+  },
   transpilePackages: [
     "@prophetica/ui",
     "@prophetica/design-tokens",
