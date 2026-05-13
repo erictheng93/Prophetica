@@ -455,6 +455,92 @@
           }
         }
       }
+    },
+    "selfExclusion": {
+      "metadata": {
+        "title": "Close account — Responsible gaming — prophetica",
+        "description": "Pause use of this service for the medium term, long term, or permanently. Permanent closure cannot be reversed."
+      },
+      "hero": {
+        "kicker": "Self-exclusion / account closure",
+        "headline": "This is a major decision.",
+        "tagline": "Account closure is not a cooldown. It means you want to step away from prophetica for the medium term, long term, or permanently. Read the scope before choosing."
+      },
+      "scope": {
+        "heading": "What account closure covers",
+        "items": {
+          "freeze": {
+            "title": "Full account freeze",
+            "body": "Sign-in, top-up, trading, and messages all stop, just as they do during a cooldown."
+          },
+          "settle": {
+            "title": "Open positions still settle",
+            "body": "Unsettled markets settle under the original rules. Results go to a frozen wallet and are handled according to the selected mode."
+          },
+          "rejoin": {
+            "title": "Re-registration detection",
+            "body": "A matching KYC document hash is rejected. Matching device fingerprint + IP with changed personal data is treated as suspicious."
+          }
+        }
+      },
+      "timeout": {
+        "kicker": "Option one",
+        "heading": "Medium-term time-out",
+        "intro": "Choose 6 months or 1 year. After it expires, you may request reactivation, followed by an extra 14-day cooling period to confirm the decision is not impulsive.",
+        "legend": "Time-out period",
+        "options": {
+          "6m": {
+            "label": "6 months",
+            "body": "For players who need a longer break but still want to keep the account. Reactivation requires a request after expiry plus another 14-day cooling period."
+          },
+          "1y": {
+            "label": "1 year",
+            "body": "A deeper break. Reactivation also requires a request after expiry plus a 14-day cooling period."
+          }
+        },
+        "consent": "I understand I cannot sign in during the period and that reactivation still has a 14-day cooling period.",
+        "submit": "Start time-out"
+      },
+      "permanent": {
+        "kicker": "Option two, irreversible",
+        "headline": "Permanent closure cannot be reversed.",
+        "lead": "This option cannot be undone. Once started, your KYC document number is added to the exclusion list. Future attempts to register with the same identity are automatically rejected.",
+        "pointsLegend": "Points handling",
+        "options": {
+          "hold": {
+            "title": "Hold for 6 months",
+            "body": "Points are frozen for 6 months. Permanent closure remains in force, and the points expire under the terms after that period."
+          },
+          "donate": {
+            "title": "Donate to a partner treatment organization",
+            "body": "Points are valued at the current rate and donated to an addiction-treatment or mental-health organization partnered with Compliance. A donation record is available on request."
+          }
+        },
+        "consent": "I understand that <strong>permanent closure cannot be reversed</strong>. I am not making this decision because of a short-term emotion, dispute, or loss, but after a full review.",
+        "footnote": "Starting this creates a self-exclusion record immediately and freezes available points. Contacting support first is recommended.",
+        "submit": "Start permanent closure"
+      },
+      "status": {
+        "activeHeading": "This account already has active self-exclusion",
+        "activeBody": "Current mode: {mode}{period}. The backend rejects duplicate requests, and existing positions still settle under the rules.",
+        "submittedHeading": "Self-exclusion submitted",
+        "submittedBody": "The backend created the record and started the frozen-wallet flow. Refresh to see the latest status.",
+        "unavailableHeading": "Backend is currently unavailable",
+        "unavailableBody": "You can still read the rules, but submission requires api-gateway to be available.",
+        "invalidHeading": "Submission is incomplete",
+        "invalidBody": "Choose a mode and tick the required confirmation before submitting.",
+        "frozenLabel": "Frozen points",
+        "sourceLabel": "Data source",
+        "points": "{n} points",
+        "modes": {
+          "timeout": "Time-out",
+          "permanent": "Permanent closure"
+        },
+        "periods": {
+          "six_months": " / 6 months",
+          "one_year": " / 1 year"
+        }
+      }
     }
   },
   "stubPage": {
@@ -513,6 +599,96 @@
           "invalid": "The Email, mobile number, or password is incorrect.",
           "unavailable": "Sign-in is temporarily unavailable. Try again later.",
           "mfaRequired": "This account requires two-step verification. Complete verification first."
+        }
+      }
+    }
+  },
+  "kyc": {
+    "privacyNotice": {
+      "metadata": {
+        "title": "KYC privacy notice — prophetica",
+        "description": "What KYC fields we collect, why we collect them, how long we keep them, and who can access them."
+      },
+      "hero": {
+        "kicker": "KYC privacy notice",
+        "headline": "Before you submit anything, see what we collect and why.",
+        "tagline": "This notice follows SPEC-005 §8.1: before you send any KYC data, the process is laid out clearly. Each field shows its purpose, retention period, and access scope."
+      },
+      "matrix": {
+        "heading": "Field-by-field explanation",
+        "labels": {
+          "purpose": "Why",
+          "retention": "Retention",
+          "access": "Access"
+        },
+        "rows": {
+          "legalName": {
+            "field": "Legal name matching your document",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "Establish the legal account identity, screen sanctions lists, and support settlement records.",
+            "retention": "Account lifetime + 7 years.",
+            "access": "You + compliance-trained support staff + Compliance Officer + authorized auditors."
+          },
+          "birthday": {
+            "field": "Date of birth",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "Verify that you are at least 18 years old under SPEC-006 §6.",
+            "retention": "Account lifetime + 7 years.",
+            "access": "Same as above."
+          },
+          "documentId": {
+            "field": "Document number",
+            "collected": "Tier 1 implicit check / Tier 2 / 3",
+            "purpose": "Deduplicate identities, screen sanctions lists, and match the self-exclusion list under SPEC-006 §5.4.",
+            "retention": "<strong>Only a SHA256 hash is stored</strong>. The raw number is never stored and is discarded after submission. The hash is kept for account lifetime + 7 years.",
+            "access": "Backend kyc-service only. It can compare the hash but cannot recover the raw number."
+          },
+          "documentImage": {
+            "field": "Document image",
+            "collected": "Tier 2 / 3 through SumSub",
+            "purpose": "Extract data with OCR and let reviewers assess document authenticity.",
+            "retention": "SumSub Cloud in the EU region + our daily R2 EU backup, encrypted with AES-256 at rest and protected by 7-year Object Lock.",
+            "access": "Compliance Officer + SumSub reviewers + authorized auditors. Support staff cannot directly access raw images."
+          },
+          "selfie": {
+            "field": "Selfie + liveness check",
+            "collected": "Tier 2 / 3",
+            "purpose": "Compare your face with the document image. Liveness prevents photo impersonation.",
+            "retention": "Same as document image.",
+            "access": "Same as document image."
+          },
+          "address": {
+            "field": "Proof of address",
+            "collected": "Tier 2 / 3",
+            "purpose": "Verify that declared residence matches evidence and support geographic risk review.",
+            "retention": "Same as document image.",
+            "access": "Same as document image."
+          },
+          "income": {
+            "field": "Monthly income band",
+            "collected": "Optional for Tier 2 / required for Tier 3",
+            "purpose": "Support responsible-gaming limit scoring under SPEC-006 §4.1 and unlock higher top-up limits.",
+            "retention": "Account lifetime. Marked stale automatically if not updated for 12 months.",
+            "access": "You + Compliance Officer. <strong>Support sees only the band, not the exact value</strong>."
+          },
+          "funds": {
+            "field": "Source-of-funds evidence / bank statement",
+            "collected": "Tier 3",
+            "purpose": "Verify declared monthly income and feed the AML rules engine.",
+            "retention": "Encrypted in R2 for 7 years.",
+            "access": "Compliance Officer + authorized auditors."
+          }
+        }
+      },
+      "rights": {
+        "heading": "Your rights",
+        "intro": "The full personal-data rights explanation is in the <privacyLink>privacy policy</privacyLink>. Summary:",
+        "items": {
+          "query": "<strong>Access</strong>: export all KYC fields at any time. The zip is generated within 24 hours.",
+          "rectify": "<strong>Rectification</strong>: request changes to name, address, and similar fields. Sensitive fields such as birthday or document number require a new KYC check.",
+          "delete": "<strong>Deletion</strong>: soft-delete the account. KYC records are retained for at least 7 years as legally required.",
+          "portability": "<strong>Portability</strong>: export in JSON format for use with another service.",
+          "object": "<strong>Objection</strong>: opt out of marketing messages. KYC processing is required to perform the service and cannot be opted out of."
         }
       }
     }

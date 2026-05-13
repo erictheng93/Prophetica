@@ -455,6 +455,92 @@
           }
         }
       }
+    },
+    "selfExclusion": {
+      "metadata": {
+        "title": "关闭账户 — 自我设限 — prophetica",
+        "description": "中长期或不可逆停止使用本服务。不可逆停用无法解除。"
+      },
+      "hero": {
+        "kicker": "自我设限 / 关闭账户",
+        "headline": "这是一个很重大的决定。",
+        "tagline": "关闭账户不是冷静期。它代表你想中长期，甚至永久离开 prophetica。请先读完影响范围，再做选择。"
+      },
+      "scope": {
+        "heading": "关闭账户的影响范围",
+        "items": {
+          "freeze": {
+            "title": "完全冻结账户",
+            "body": "登入、储值、交易、收件全部停止，与冷静期相同。"
+          },
+          "settle": {
+            "title": "持仓照常结算",
+            "body": "未结算的对局会依原规则结算，结果存入冻结钱包，并依所选模式处理。"
+          },
+          "rejoin": {
+            "title": "再注册侦测",
+            "body": "KYC 证件 hash 命中名单即拒绝；同 device fingerprint + IP 修改个人资料会视为可疑。"
+          }
+        }
+      },
+      "timeout": {
+        "kicker": "选项一",
+        "heading": "中长期暂停（Time-out）",
+        "intro": "6 个月或 1 年。到期后可申请解除，并有 14 天延长冷静期，确保决定不是冲动。",
+        "legend": "中长期暂停期间",
+        "options": {
+          "6m": {
+            "label": "6 个月",
+            "body": "适合需要较长休息但仍想保留账户的玩家。到期后须主动申请解除，并再经过 14 天延长冷静期。"
+          },
+          "1y": {
+            "label": "1 年",
+            "body": "深度远离。同样到期后须主动申请解除 + 14 天冷静期。"
+          }
+        },
+        "consent": "我了解期间无法登入，且解除后仍有 14 天延长冷静期。",
+        "submit": "启动 Time-out"
+      },
+      "permanent": {
+        "kicker": "选项二（不可逆）",
+        "headline": "不可逆停用。",
+        "lead": "这个选项无法解除。一旦启动，你的 KYC 证件号码会写入停用名单；未来尝试以同一身份注册新账户将被自动拒绝。",
+        "pointsLegend": "点数处理方式",
+        "options": {
+          "hold": {
+            "title": "保留 6 个月",
+            "body": "点数冻结保留 6 个月。届时不可逆停用仍会维持，点数依条款处理为失效。"
+          },
+          "donate": {
+            "title": "捐赠合作戒瘾机构",
+            "body": "点数依当下价值换算，捐赠至 Compliance 合作的戒瘾 / 心理卫生机构。捐赠记录可索取。"
+          }
+        },
+        "consent": "我清楚知道<strong>不可逆停用无法解除</strong>。我不是因为一时情绪、纠纷或亏损才做这个决定，而是经过完整评估后的选择。",
+        "footnote": "启动后会立即建立自我排除记录并冻结可用点数。建议先联系客服协助评估。",
+        "submit": "启动不可逆停用"
+      },
+      "status": {
+        "activeHeading": "此账户已有启用中的自我排除",
+        "activeBody": "目前模式：{mode}{period}。后端会拒绝重复启动，既有持仓仍依规则结算。",
+        "submittedHeading": "自我排除已提交",
+        "submittedBody": "后端已建立记录并送出冻结钱包流程。请刷新以查看最新状态。",
+        "unavailableHeading": "目前无法连接至后端",
+        "unavailableBody": "页面仍可阅读规则，但提交功能需要 api-gateway 可用后才会生效。",
+        "invalidHeading": "提交资料不完整",
+        "invalidBody": "请选择一个模式并勾选必要确认后再提交。",
+        "frozenLabel": "已冻结点数",
+        "sourceLabel": "资料来源",
+        "points": "{n} 点",
+        "modes": {
+          "timeout": "Time-out",
+          "permanent": "不可逆停用"
+        },
+        "periods": {
+          "six_months": " / 6 个月",
+          "one_year": " / 1 年"
+        }
+      }
     }
   },
   "stubPage": {
@@ -513,6 +599,96 @@
           "invalid": "Email、手机号或密码不正确。",
           "unavailable": "登录服务暂时无法使用，请稍后再试。",
           "mfaRequired": "此账号需要两步验证，请先完成验证流程。"
+        }
+      }
+    }
+  },
+  "kyc": {
+    "privacyNotice": {
+      "metadata": {
+        "title": "KYC 隐私说明 — prophetica",
+        "description": "我们会收集哪些 KYC 字段、为什么收集、保存多久、谁可以访问。"
+      },
+      "hero": {
+        "kicker": "KYC 隐私说明",
+        "headline": "先说明我们收集什么、为什么收集、保存多久。",
+        "tagline": "这份说明依 SPEC-005 §8.1 设计：在你提交任何 KYC 资料前，先把流程透明摊开。每个字段的用途、保存期限和可访问人员都列在这里。"
+      },
+      "matrix": {
+        "heading": "逐项说明",
+        "labels": {
+          "purpose": "为什么",
+          "retention": "保存多久",
+          "access": "谁可以访问"
+        },
+        "rows": {
+          "legalName": {
+            "field": "姓名（与证件一致）",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "建立具法律意义的账户身份；制裁名单比对；结算凭证。",
+            "retention": "账户生命周期 + 7 年。",
+            "access": "你本人 + 通过合规培训的客服 + Compliance Officer + 授权稽核人员。"
+          },
+          "birthday": {
+            "field": "生日",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "验证已满 18 岁（SPEC-006 §6 未成年保护）。",
+            "retention": "同账户生命周期 + 7 年。",
+            "access": "同上。"
+          },
+          "documentId": {
+            "field": "证件号码",
+            "collected": "Tier 1（隐式验证）/ Tier 2 / 3",
+            "purpose": "唯一性比对、制裁名单比对、自我排除名单比对（SPEC-006 §5.4）。",
+            "retention": "<strong>只保存 SHA256 哈希</strong>，原始号码不入库，提交后立即丢弃。哈希保存同账户生命周期 + 7 年。",
+            "access": "后端 kyc-service（只能比对，不能还原原始号码）。"
+          },
+          "documentImage": {
+            "field": "证件影像",
+            "collected": "Tier 2 / 3（通过 SumSub）",
+            "purpose": "OCR 抽取信息；审核时判断证件真伪。",
+            "retention": "SumSub Cloud（EU region）+ 我方 R2（EU）每日批次副本，AES-256 at-rest 加密，Object Lock 7 年。",
+            "access": "Compliance Officer + SumSub 审核员 + 授权稽核人员。客服无法直接访问原始影像。"
+          },
+          "selfie": {
+            "field": "自拍 + Liveness",
+            "collected": "Tier 2 / 3",
+            "purpose": "与证件影像比对人脸一致性。Liveness 防止使用照片冒充本人。",
+            "retention": "同证件影像。",
+            "access": "同证件影像。"
+          },
+          "address": {
+            "field": "地址证明",
+            "collected": "Tier 2 / 3",
+            "purpose": "验证居住地与声明地一致；进行地理风险评估。",
+            "retention": "同证件影像。",
+            "access": "同证件影像。"
+          },
+          "income": {
+            "field": "月收入（区间）",
+            "collected": "Tier 2 自愿 / Tier 3 必填",
+            "purpose": "自我设限评分（SPEC-006 §4.1）；解锁更高储值上限。",
+            "retention": "同账户生命周期；12 个月未更新会自动标记为过期。",
+            "access": "你本人 + Compliance Officer。<strong>客服只看区间，不看精确值</strong>。"
+          },
+          "funds": {
+            "field": "收入来源证明 / 银行对账单",
+            "collected": "Tier 3",
+            "purpose": "验证申报月收入；供 AML 规则引擎使用。",
+            "retention": "R2 加密保存 7 年。",
+            "access": "Compliance Officer + 授权稽核人员。"
+          }
+        }
+      },
+      "rights": {
+        "heading": "你的权利",
+        "intro": "完整的个人资料权利说明在<privacyLink>隐私政策</privacyLink>。摘要如下：",
+        "items": {
+          "query": "<strong>查询权</strong>：可随时导出所有 KYC 字段（24 小时内生成 zip）",
+          "rectify": "<strong>更正权</strong>：姓名、地址等可申请更正；敏感字段（生日 / 证件号）需重新 KYC",
+          "delete": "<strong>删除权</strong>：软删除账户；KYC 记录依法最少保留 7 年",
+          "portability": "<strong>携带权</strong>：导出格式为 JSON，可带到其他服务",
+          "object": "<strong>反对权</strong>：营销推送 opt-out；KYC 处理是履约必要，无法反对"
         }
       }
     }
