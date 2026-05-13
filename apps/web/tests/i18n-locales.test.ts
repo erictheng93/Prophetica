@@ -26,9 +26,11 @@ const localizedNamespaces = [
   "howItWorks",
   "responsibleGaming.metadata",
   "responsibleGaming.overview",
+  "responsibleGaming.selfExclusion",
   "stubPage",
   "landing",
   "offline",
+  "kyc.privacyNotice",
 ];
 
 const deferredTranslationNamespaces = [
@@ -37,7 +39,13 @@ const deferredTranslationNamespaces = [
   "affiliate",
   "auth.signIn",
   "connectionStatus",
-  "kyc",
+  "kyc.layout",
+  "kyc.overview",
+  "kyc.status",
+  "kyc.tier1",
+  "kyc.tier2",
+  "kyc.tier3",
+  "kyc.tierStepper",
   "legal.stubs",
   "marketCard",
   "marketDetail",
@@ -47,7 +55,6 @@ const deferredTranslationNamespaces = [
   "responsibleGaming.helpline",
   "responsibleGaming.limits",
   "responsibleGaming.resources",
-  "responsibleGaming.selfExclusion",
   "settlement",
   "support.contact",
   "support.disputes",
@@ -57,11 +64,11 @@ const deferredTranslationNamespaces = [
 ];
 
 const maxDeferredTranslationLeafCount: Partial<Record<SupportedLocale, number>> = {
-  "zh-Hans": 991,
-  en: 991,
-  id: 991,
-  vi: 991,
-  tl: 991,
+  "zh-Hans": 865,
+  en: 865,
+  id: 865,
+  vi: 865,
+  tl: 865,
 };
 
 function readMessages(locale: SupportedLocale): MessageTree {
@@ -219,6 +226,38 @@ test("non-Chinese catalogues do not contain Chinese copy", () => {
 
     for (const [path, value] of stringLeafEntries(messages)) {
       assert.doesNotMatch(value, cjk, `${locale}.${path}`);
+    }
+  }
+});
+
+test("Vietnamese sensitive compliance copy keeps tone marks", () => {
+  const vietnameseTone =
+    /[ăâđêôơưĂÂĐÊÔƠƯáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/u;
+  const technicalValuesWithoutToneMarks = new Set([
+    "kyc.privacyNotice.matrix.rows.legalName.collected",
+    "kyc.privacyNotice.matrix.rows.birthday.collected",
+  ]);
+  const sensitiveNamespaces = [
+    "responsibleGaming.selfExclusion",
+    "kyc.privacyNotice",
+  ];
+  const messages = readMessages("vi");
+
+  for (const namespace of sensitiveNamespaces) {
+    for (const [path, value] of stringLeafEntries(valueAtPath(messages, namespace))) {
+      const fullPath = `${namespace}.${path}`;
+
+      if (
+        value.length > 12 &&
+        /[a-z]{3,}/i.test(value) &&
+        !technicalValuesWithoutToneMarks.has(fullPath)
+      ) {
+        assert.match(
+          value,
+          vietnameseTone,
+          `vi.${fullPath} appears to be diacritic-stripped`,
+        );
+      }
     }
   }
 });

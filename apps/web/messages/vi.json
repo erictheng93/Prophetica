@@ -455,6 +455,92 @@
           }
         }
       }
+    },
+    "selfExclusion": {
+      "metadata": {
+        "title": "Đóng tài khoản — Responsible gaming — prophetica",
+        "description": "Tạm dừng sử dụng dịch vụ trong trung hạn, dài hạn hoặc vĩnh viễn. Đóng vĩnh viễn không thể đảo ngược."
+      },
+      "hero": {
+        "kicker": "Self-exclusion / đóng tài khoản",
+        "headline": "Đây là một quyết định lớn.",
+        "tagline": "Đóng tài khoản không phải là cooldown. Điều đó nghĩa là bạn muốn rời prophetica trong trung hạn, dài hạn hoặc vĩnh viễn. Hãy đọc phạm vi ảnh hưởng trước khi chọn."
+      },
+      "scope": {
+        "heading": "Phạm vi đóng tài khoản",
+        "items": {
+          "freeze": {
+            "title": "Đóng băng toàn bộ tài khoản",
+            "body": "Đăng nhập, top-up, giao dịch và tin nhắn đều dừng lại, giống như trong cooldown."
+          },
+          "settle": {
+            "title": "Vị thế mở vẫn được quyết toán",
+            "body": "Market chưa quyết toán vẫn xử lý theo quy tắc ban đầu. Kết quả vào ví bị đóng băng và được xử lý theo mode đã chọn."
+          },
+          "rejoin": {
+            "title": "Phát hiện đăng ký lại",
+            "body": "Hash giấy tờ KYC trùng khớp sẽ bị từ chối. Device fingerprint + IP trùng khớp kèm dữ liệu cá nhân thay đổi được xem là đáng ngờ."
+          }
+        }
+      },
+      "timeout": {
+        "kicker": "Tùy chọn một",
+        "heading": "Time-out trung hạn",
+        "intro": "Chọn 6 tháng hoặc 1 năm. Sau khi hết hạn, bạn có thể yêu cầu kích hoạt lại, kèm thêm 14 ngày cooling để xác nhận quyết định không bốc đồng.",
+        "legend": "Thời gian time-out",
+        "options": {
+          "6m": {
+            "label": "6 tháng",
+            "body": "Dành cho người chơi cần nghỉ lâu hơn nhưng vẫn muốn giữ tài khoản. Kích hoạt lại cần yêu cầu sau khi hết hạn và thêm 14 ngày cooling."
+          },
+          "1y": {
+            "label": "1 năm",
+            "body": "Một khoảng nghỉ sâu hơn. Kích hoạt lại cũng cần yêu cầu sau khi hết hạn và 14 ngày cooling."
+          }
+        },
+        "consent": "Tôi hiểu rằng tôi không thể đăng nhập trong thời gian này và việc kích hoạt lại vẫn có 14 ngày cooling.",
+        "submit": "Bắt đầu time-out"
+      },
+      "permanent": {
+        "kicker": "Tùy chọn hai, không thể đảo ngược",
+        "headline": "Đóng vĩnh viễn không thể đảo ngược.",
+        "lead": "Tùy chọn này không thể hoàn tác. Khi bắt đầu, số giấy tờ KYC của bạn được thêm vào danh sách exclusion. Các lần đăng ký sau bằng cùng danh tính sẽ tự động bị từ chối.",
+        "pointsLegend": "Xử lý điểm",
+        "options": {
+          "hold": {
+            "title": "Giữ trong 6 tháng",
+            "body": "Điểm bị đóng băng trong 6 tháng. Đóng vĩnh viễn vẫn có hiệu lực, và điểm hết hạn theo điều khoản sau giai đoạn đó."
+          },
+          "donate": {
+            "title": "Quyên góp cho tổ chức điều trị đối tác",
+            "body": "Điểm được định giá theo tỷ lệ hiện tại và quyên góp cho tổ chức điều trị nghiện hoặc sức khỏe tâm thần hợp tác với Compliance. Có thể yêu cầu hồ sơ quyên góp."
+          }
+        },
+        "consent": "Tôi hiểu rằng <strong>đóng vĩnh viễn không thể đảo ngược</strong>. Tôi không đưa ra quyết định này vì cảm xúc ngắn hạn, tranh chấp hoặc thua lỗ, mà sau khi xem xét đầy đủ.",
+        "footnote": "Bắt đầu thao tác này sẽ tạo ngay hồ sơ self-exclusion và đóng băng điểm khả dụng. Nên liên hệ hỗ trợ trước.",
+        "submit": "Bắt đầu đóng vĩnh viễn"
+      },
+      "status": {
+        "activeHeading": "Tài khoản này đã có self-exclusion đang hoạt động",
+        "activeBody": "Mode hiện tại: {mode}{period}. Backend từ chối yêu cầu trùng lặp, và các vị thế hiện có vẫn quyết toán theo quy tắc.",
+        "submittedHeading": "Self-exclusion đã gửi",
+        "submittedBody": "Backend đã tạo hồ sơ và bắt đầu luồng ví đóng băng. Refresh để xem trạng thái mới nhất.",
+        "unavailableHeading": "Backend hiện không khả dụng",
+        "unavailableBody": "Bạn vẫn có thể đọc quy tắc, nhưng gửi yêu cầu cần api-gateway khả dụng.",
+        "invalidHeading": "Yêu cầu chưa đầy đủ",
+        "invalidBody": "Chọn một mode và tick xác nhận bắt buộc trước khi gửi.",
+        "frozenLabel": "Điểm bị đóng băng",
+        "sourceLabel": "Nguồn dữ liệu",
+        "points": "{n} điểm",
+        "modes": {
+          "timeout": "Time-out",
+          "permanent": "Đóng vĩnh viễn"
+        },
+        "periods": {
+          "six_months": " / 6 tháng",
+          "one_year": " / 1 năm"
+        }
+      }
     }
   },
   "stubPage": {
@@ -513,6 +599,96 @@
           "invalid": "Email, số điện thoại hoặc mật khẩu không đúng.",
           "unavailable": "Dịch vụ đăng nhập tạm thời không khả dụng. Vui lòng thử lại sau.",
           "mfaRequired": "Tài khoản này cần xác minh hai bước. Vui lòng hoàn tất xác minh trước."
+        }
+      }
+    }
+  },
+  "kyc": {
+    "privacyNotice": {
+      "metadata": {
+        "title": "Thông báo quyền riêng tư KYC — prophetica",
+        "description": "Các trường KYC chúng tôi thu thập, lý do thu thập, thời gian lưu, và ai có thể truy cập."
+      },
+      "hero": {
+        "kicker": "Thông báo quyền riêng tư KYC",
+        "headline": "Trước khi gửi dữ liệu, hãy xem chúng tôi thu thập gì và vì sao.",
+        "tagline": "Thông báo này theo SPEC-005 §8.1: trước khi bạn gửi bất kỳ dữ liệu KYC nào, quy trình được trình bày rõ ràng. Mỗi trường đều nêu mục đích, thời hạn lưu, và phạm vi truy cập."
+      },
+      "matrix": {
+        "heading": "Giải thích từng trường",
+        "labels": {
+          "purpose": "Lý do",
+          "retention": "Thời hạn lưu",
+          "access": "Quyền truy cập"
+        },
+        "rows": {
+          "legalName": {
+            "field": "Tên pháp lý khớp với giấy tờ",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "Thiết lập danh tính tài khoản hợp pháp, kiểm tra danh sách trừng phạt, và hỗ trợ hồ sơ quyết toán.",
+            "retention": "Vòng đời tài khoản + 7 năm.",
+            "access": "Bạn + nhân viên hỗ trợ đã được đào tạo tuân thủ + Compliance Officer + kiểm toán viên được ủy quyền."
+          },
+          "birthday": {
+            "field": "Ngày sinh",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "Xác minh bạn ít nhất 18 tuổi theo SPEC-006 §6.",
+            "retention": "Vòng đời tài khoản + 7 năm.",
+            "access": "Như trên."
+          },
+          "documentId": {
+            "field": "Số giấy tờ",
+            "collected": "Kiểm tra ngầm Tier 1 / Tier 2 / 3",
+            "purpose": "Phát hiện danh tính trùng lặp, kiểm tra danh sách trừng phạt, và đối chiếu danh sách self-exclusion theo SPEC-006 §5.4.",
+            "retention": "<strong>Chỉ lưu hash SHA256</strong>. Số gốc không bao giờ được lưu và bị loại bỏ sau khi gửi. Hash được lưu trong vòng đời tài khoản + 7 năm.",
+            "access": "Chỉ backend kyc-service. Dịch vụ chỉ có thể so sánh hash và không thể khôi phục số gốc."
+          },
+          "documentImage": {
+            "field": "Ảnh giấy tờ",
+            "collected": "Tier 2 / 3 thông qua SumSub",
+            "purpose": "Trích xuất dữ liệu bằng OCR và giúp reviewer đánh giá tính xác thực của giấy tờ.",
+            "retention": "SumSub Cloud tại region EU + bản sao lưu R2 EU hằng ngày của chúng tôi, mã hóa AES-256 at rest và bảo vệ bằng Object Lock 7 năm.",
+            "access": "Compliance Officer + reviewer SumSub + kiểm toán viên được ủy quyền. Nhân viên hỗ trợ không thể truy cập trực tiếp ảnh gốc."
+          },
+          "selfie": {
+            "field": "Selfie + kiểm tra liveness",
+            "collected": "Tier 2 / 3",
+            "purpose": "So khớp khuôn mặt của bạn với ảnh giấy tờ. Liveness ngăn mạo danh bằng ảnh.",
+            "retention": "Như ảnh giấy tờ.",
+            "access": "Như ảnh giấy tờ."
+          },
+          "address": {
+            "field": "Bằng chứng địa chỉ",
+            "collected": "Tier 2 / 3",
+            "purpose": "Xác minh nơi cư trú khai báo khớp với bằng chứng và hỗ trợ đánh giá rủi ro địa lý.",
+            "retention": "Như ảnh giấy tờ.",
+            "access": "Như ảnh giấy tờ."
+          },
+          "income": {
+            "field": "Khoảng thu nhập hằng tháng",
+            "collected": "Tùy chọn ở Tier 2 / bắt buộc ở Tier 3",
+            "purpose": "Hỗ trợ chấm điểm giới hạn responsible gaming theo SPEC-006 §4.1 và mở giới hạn top-up cao hơn.",
+            "retention": "Vòng đời tài khoản. Tự động đánh dấu cũ nếu không cập nhật trong 12 tháng.",
+            "access": "Bạn + Compliance Officer. <strong>Hỗ trợ chỉ thấy khoảng, không thấy giá trị chính xác</strong>."
+          },
+          "funds": {
+            "field": "Bằng chứng nguồn tiền / sao kê ngân hàng",
+            "collected": "Tier 3",
+            "purpose": "Xác minh thu nhập hằng tháng đã khai báo và cung cấp dữ liệu cho bộ quy tắc AML.",
+            "retention": "Lưu mã hóa trong R2 trong 7 năm.",
+            "access": "Compliance Officer + kiểm toán viên được ủy quyền."
+          }
+        }
+      },
+      "rights": {
+        "heading": "Quyền của bạn",
+        "intro": "Giải thích đầy đủ về quyền dữ liệu cá nhân nằm trong <privacyLink>chính sách quyền riêng tư</privacyLink>. Tóm tắt:",
+        "items": {
+          "query": "<strong>Quyền truy cập</strong>: xuất tất cả trường KYC bất kỳ lúc nào. File zip được tạo trong 24 giờ.",
+          "rectify": "<strong>Quyền chỉnh sửa</strong>: yêu cầu sửa tên, địa chỉ và các trường tương tự. Trường nhạy cảm như ngày sinh hoặc số giấy tờ cần kiểm tra KYC mới.",
+          "delete": "<strong>Quyền xóa</strong>: soft-delete tài khoản. Hồ sơ KYC được lưu ít nhất 7 năm theo yêu cầu pháp luật.",
+          "portability": "<strong>Quyền di chuyển dữ liệu</strong>: xuất định dạng JSON để dùng với dịch vụ khác.",
+          "object": "<strong>Quyền phản đối</strong>: opt out khỏi tin nhắn marketing. Xử lý KYC là cần thiết để cung cấp dịch vụ nên không thể từ chối."
         }
       }
     }

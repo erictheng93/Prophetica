@@ -455,6 +455,92 @@
           }
         }
       }
+    },
+    "selfExclusion": {
+      "metadata": {
+        "title": "Isara ang account — Responsible gaming — prophetica",
+        "description": "Ihinto ang paggamit ng serbisyong ito sa medium term, long term, o permanente. Hindi na mababaliktad ang permanent closure."
+      },
+      "hero": {
+        "kicker": "Self-exclusion / account closure",
+        "headline": "Malaking desisyon ito.",
+        "tagline": "Ang account closure ay hindi cooldown. Ibig sabihin gusto mong lumayo sa prophetica sa medium term, long term, o permanente. Basahin muna ang saklaw bago pumili."
+      },
+      "scope": {
+        "heading": "Saklaw ng account closure",
+        "items": {
+          "freeze": {
+            "title": "Full account freeze",
+            "body": "Hihinto ang sign-in, top-up, trading, at messages, katulad ng nangyayari sa cooldown."
+          },
+          "settle": {
+            "title": "Mase-settle pa rin ang open positions",
+            "body": "Ang unsettled markets ay ise-settle ayon sa original rules. Mapupunta ang results sa frozen wallet at hahawakan ayon sa napiling mode."
+          },
+          "rejoin": {
+            "title": "Re-registration detection",
+            "body": "Tatanggihan ang matching KYC document hash. Ang matching device fingerprint + IP na may binagong personal data ay ituturing na suspicious."
+          }
+        }
+      },
+      "timeout": {
+        "kicker": "Option one",
+        "heading": "Medium-term time-out",
+        "intro": "Pumili ng 6 buwan o 1 taon. Pagkatapos mag-expire, maaari kang humiling ng reactivation, na may dagdag na 14-day cooling period para matiyak na hindi impulsive ang desisyon.",
+        "legend": "Time-out period",
+        "options": {
+          "6m": {
+            "label": "6 buwan",
+            "body": "Para sa players na kailangan ng mas mahabang pahinga pero gusto pa ring panatilihin ang account. Kailangan ng request pagkatapos mag-expire at isa pang 14-day cooling period."
+          },
+          "1y": {
+            "label": "1 taon",
+            "body": "Mas malalim na pahinga. Kailangan din ng request pagkatapos mag-expire at 14-day cooling period."
+          }
+        },
+        "consent": "Nauunawaan kong hindi ako makakapag-sign in sa panahong ito at may 14-day cooling period pa rin ang reactivation.",
+        "submit": "Simulan ang time-out"
+      },
+      "permanent": {
+        "kicker": "Option two, irreversible",
+        "headline": "Hindi mababaliktad ang permanent closure.",
+        "lead": "Hindi na maa-undo ang option na ito. Kapag sinimulan, idaragdag ang iyong KYC document number sa exclusion list. Awtomatikong tatanggihan ang susunod na registration gamit ang parehong identity.",
+        "pointsLegend": "Paghawak sa points",
+        "options": {
+          "hold": {
+            "title": "I-hold sa loob ng 6 buwan",
+            "body": "Ife-freeze ang points sa loob ng 6 buwan. Mananatili ang permanent closure, at mag-e-expire ang points ayon sa terms pagkatapos ng panahong iyon."
+          },
+          "donate": {
+            "title": "I-donate sa partner treatment organization",
+            "body": "Vavaluate ang points sa kasalukuyang rate at ido-donate sa addiction-treatment o mental-health organization na partner ng Compliance. Available ang donation record kapag hiniling."
+          }
+        },
+        "consent": "Nauunawaan ko na <strong>hindi mababaliktad ang permanent closure</strong>. Hindi ko ginagawa ang desisyong ito dahil sa panandaliang emosyon, dispute, o loss, kundi matapos ang buong pagsusuri.",
+        "footnote": "Kapag sinimulan ito, agad na gagawa ng self-exclusion record at ife-freeze ang available points. Inirerekomenda munang kontakin ang support.",
+        "submit": "Simulan ang permanent closure"
+      },
+      "status": {
+        "activeHeading": "May active self-exclusion na ang account na ito",
+        "activeBody": "Kasalukuyang mode: {mode}{period}. Tatanggihan ng backend ang duplicate requests, at mase-settle pa rin ang existing positions ayon sa rules.",
+        "submittedHeading": "Naisumite na ang self-exclusion",
+        "submittedBody": "Gumawa na ng record ang backend at sinimulan ang frozen-wallet flow. Mag-refresh para makita ang pinakabagong status.",
+        "unavailableHeading": "Hindi available ang backend sa ngayon",
+        "unavailableBody": "Mababasa mo pa rin ang rules, pero kailangan available ang api-gateway para makapagsumite.",
+        "invalidHeading": "Hindi kumpleto ang submission",
+        "invalidBody": "Pumili ng mode at i-tick ang required confirmation bago magsumite.",
+        "frozenLabel": "Frozen points",
+        "sourceLabel": "Data source",
+        "points": "{n} points",
+        "modes": {
+          "timeout": "Time-out",
+          "permanent": "Permanent closure"
+        },
+        "periods": {
+          "six_months": " / 6 buwan",
+          "one_year": " / 1 taon"
+        }
+      }
     }
   },
   "stubPage": {
@@ -513,6 +599,96 @@
           "invalid": "Mali ang Email, mobile number, o password.",
           "unavailable": "Pansamantalang hindi available ang sign-in. Subukan muli mamaya.",
           "mfaRequired": "Kailangan ng account na ito ng two-step verification. Tapusin muna ang verification."
+        }
+      }
+    }
+  },
+  "kyc": {
+    "privacyNotice": {
+      "metadata": {
+        "title": "KYC privacy notice — prophetica",
+        "description": "Kung anong KYC fields ang kinokolekta namin, bakit, gaano katagal iniimbak, at sino ang may access."
+      },
+      "hero": {
+        "kicker": "KYC privacy notice",
+        "headline": "Bago ka magsumite, alamin kung ano ang kinokolekta namin at bakit.",
+        "tagline": "Sumusunod ang notice na ito sa SPEC-005 §8.1: bago ka magpadala ng anumang KYC data, malinaw muna ang buong proseso. Makikita sa bawat field ang layunin, retention period, at access scope."
+      },
+      "matrix": {
+        "heading": "Paliwanag bawat field",
+        "labels": {
+          "purpose": "Bakit",
+          "retention": "Retention",
+          "access": "Access"
+        },
+        "rows": {
+          "legalName": {
+            "field": "Legal name na tugma sa dokumento",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "Itatag ang legal na identity ng account, mag-screen sa sanctions lists, at suportahan ang settlement records.",
+            "retention": "Account lifetime + 7 taon.",
+            "access": "Ikaw + compliance-trained support staff + Compliance Officer + authorized auditors."
+          },
+          "birthday": {
+            "field": "Petsa ng kapanganakan",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "Tiyaking ikaw ay hindi bababa sa 18 taong gulang ayon sa SPEC-006 §6.",
+            "retention": "Account lifetime + 7 taon.",
+            "access": "Pareho sa nasa itaas."
+          },
+          "documentId": {
+            "field": "Document number",
+            "collected": "Tier 1 implicit check / Tier 2 / 3",
+            "purpose": "Mag-deduplicate ng identity, mag-screen sa sanctions lists, at mag-match sa self-exclusion list ayon sa SPEC-006 §5.4.",
+            "retention": "<strong>SHA256 hash lang ang iniimbak</strong>. Hindi kailanman iniimbak ang raw number at itinatapon ito pagkatapos isumite. Iniimbak ang hash sa account lifetime + 7 taon.",
+            "access": "Backend kyc-service lang. Maaari nitong ikumpara ang hash pero hindi maibabalik ang raw number."
+          },
+          "documentImage": {
+            "field": "Document image",
+            "collected": "Tier 2 / 3 sa pamamagitan ng SumSub",
+            "purpose": "Kumuha ng data gamit ang OCR at tulungan ang reviewers na suriin ang authenticity ng dokumento.",
+            "retention": "SumSub Cloud sa EU region + araw-araw na R2 EU backup namin, encrypted gamit ang AES-256 at rest at protektado ng 7-year Object Lock.",
+            "access": "Compliance Officer + SumSub reviewers + authorized auditors. Hindi direktang maa-access ng support staff ang raw images."
+          },
+          "selfie": {
+            "field": "Selfie + liveness check",
+            "collected": "Tier 2 / 3",
+            "purpose": "Ikumpara ang mukha mo sa document image. Pinipigilan ng liveness ang pagpapanggap gamit ang larawan.",
+            "retention": "Pareho sa document image.",
+            "access": "Pareho sa document image."
+          },
+          "address": {
+            "field": "Proof of address",
+            "collected": "Tier 2 / 3",
+            "purpose": "Tiyaking tugma ang declared residence sa ebidensya at suportahan ang geographic risk review.",
+            "retention": "Pareho sa document image.",
+            "access": "Pareho sa document image."
+          },
+          "income": {
+            "field": "Monthly income band",
+            "collected": "Optional sa Tier 2 / required sa Tier 3",
+            "purpose": "Suportahan ang responsible-gaming limit scoring ayon sa SPEC-006 §4.1 at i-unlock ang mas mataas na top-up limits.",
+            "retention": "Account lifetime. Awtomatikong mamarkahan na stale kung hindi na-update sa loob ng 12 buwan.",
+            "access": "Ikaw + Compliance Officer. <strong>Band lang ang nakikita ng support, hindi ang eksaktong value</strong>."
+          },
+          "funds": {
+            "field": "Source-of-funds evidence / bank statement",
+            "collected": "Tier 3",
+            "purpose": "I-verify ang dineklarang buwanang income at magbigay ng input sa AML rules engine.",
+            "retention": "Encrypted sa R2 sa loob ng 7 taon.",
+            "access": "Compliance Officer + authorized auditors."
+          }
+        }
+      },
+      "rights": {
+        "heading": "Mga karapatan mo",
+        "intro": "Ang buong paliwanag ng personal-data rights ay nasa <privacyLink>privacy policy</privacyLink>. Buod:",
+        "items": {
+          "query": "<strong>Access</strong>: puwedeng i-export ang lahat ng KYC fields anumang oras. Ginagawa ang zip sa loob ng 24 oras.",
+          "rectify": "<strong>Rectification</strong>: puwedeng humiling ng pagbabago sa pangalan, address, at katulad na fields. Ang sensitive fields tulad ng birthday o document number ay nangangailangan ng bagong KYC check.",
+          "delete": "<strong>Deletion</strong>: soft-delete ng account. Ang KYC records ay iniingatan nang hindi bababa sa 7 taon ayon sa legal requirement.",
+          "portability": "<strong>Portability</strong>: export sa JSON format para magamit sa ibang serbisyo.",
+          "object": "<strong>Objection</strong>: opt out sa marketing messages. Kailangan ang KYC processing para maibigay ang serbisyo at hindi ito maaaring i-opt out."
         }
       }
     }

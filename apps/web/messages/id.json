@@ -455,6 +455,92 @@
           }
         }
       }
+    },
+    "selfExclusion": {
+      "metadata": {
+        "title": "Tutup akun — Responsible gaming — prophetica",
+        "description": "Berhenti memakai layanan ini untuk jangka menengah, panjang, atau permanen. Penutupan permanen tidak dapat dibatalkan."
+      },
+      "hero": {
+        "kicker": "Self-exclusion / penutupan akun",
+        "headline": "Ini keputusan besar.",
+        "tagline": "Penutupan akun bukan cooldown. Ini berarti Anda ingin menjauh dari prophetica untuk jangka menengah, panjang, atau permanen. Baca cakupannya sebelum memilih."
+      },
+      "scope": {
+        "heading": "Cakupan penutupan akun",
+        "items": {
+          "freeze": {
+            "title": "Akun dibekukan penuh",
+            "body": "Masuk, top-up, trading, dan pesan semuanya berhenti, sama seperti saat cooldown."
+          },
+          "settle": {
+            "title": "Posisi terbuka tetap diselesaikan",
+            "body": "Market yang belum selesai tetap diselesaikan sesuai aturan awal. Hasilnya masuk ke wallet beku dan ditangani sesuai mode yang dipilih."
+          },
+          "rejoin": {
+            "title": "Deteksi pendaftaran ulang",
+            "body": "Hash dokumen KYC yang cocok akan ditolak. Device fingerprint + IP yang cocok dengan data pribadi yang diubah dianggap mencurigakan."
+          }
+        }
+      },
+      "timeout": {
+        "kicker": "Opsi satu",
+        "heading": "Time-out jangka menengah",
+        "intro": "Pilih 6 bulan atau 1 tahun. Setelah berakhir, Anda dapat meminta reaktivasi, lalu ada masa cooling tambahan 14 hari untuk memastikan keputusan tidak impulsif.",
+        "legend": "Periode time-out",
+        "options": {
+          "6m": {
+            "label": "6 bulan",
+            "body": "Untuk pemain yang butuh istirahat lebih panjang tetapi masih ingin mempertahankan akun. Reaktivasi perlu diminta setelah berakhir dan melewati cooling tambahan 14 hari."
+          },
+          "1y": {
+            "label": "1 tahun",
+            "body": "Jeda yang lebih dalam. Reaktivasi juga perlu diminta setelah berakhir dan melewati cooling 14 hari."
+          }
+        },
+        "consent": "Saya memahami bahwa saya tidak dapat masuk selama periode ini dan reaktivasi tetap memiliki masa cooling 14 hari.",
+        "submit": "Mulai time-out"
+      },
+      "permanent": {
+        "kicker": "Opsi dua, tidak dapat dibatalkan",
+        "headline": "Penutupan permanen tidak dapat dibatalkan.",
+        "lead": "Opsi ini tidak dapat diurungkan. Setelah dimulai, nomor dokumen KYC Anda ditambahkan ke daftar pengecualian. Upaya mendaftar lagi dengan identitas yang sama akan otomatis ditolak.",
+        "pointsLegend": "Penanganan poin",
+        "options": {
+          "hold": {
+            "title": "Simpan selama 6 bulan",
+            "body": "Poin dibekukan selama 6 bulan. Penutupan permanen tetap berlaku, dan poin kedaluwarsa sesuai ketentuan setelah periode itu."
+          },
+          "donate": {
+            "title": "Donasikan ke organisasi perawatan mitra",
+            "body": "Poin dinilai dengan kurs saat ini dan didonasikan ke organisasi perawatan adiksi atau kesehatan mental mitra Compliance. Catatan donasi tersedia atas permintaan."
+          }
+        },
+        "consent": "Saya memahami bahwa <strong>penutupan permanen tidak dapat dibatalkan</strong>. Keputusan ini bukan karena emosi sesaat, sengketa, atau kerugian, tetapi setelah peninjauan penuh.",
+        "footnote": "Memulai ini langsung membuat catatan self-exclusion dan membekukan poin yang tersedia. Disarankan menghubungi dukungan terlebih dahulu.",
+        "submit": "Mulai penutupan permanen"
+      },
+      "status": {
+        "activeHeading": "Akun ini sudah memiliki self-exclusion aktif",
+        "activeBody": "Mode saat ini: {mode}{period}. Backend menolak permintaan duplikat, dan posisi yang ada tetap diselesaikan sesuai aturan.",
+        "submittedHeading": "Self-exclusion terkirim",
+        "submittedBody": "Backend membuat catatan dan memulai alur wallet beku. Refresh untuk melihat status terbaru.",
+        "unavailableHeading": "Backend saat ini tidak tersedia",
+        "unavailableBody": "Anda tetap dapat membaca aturan, tetapi pengiriman memerlukan api-gateway tersedia.",
+        "invalidHeading": "Pengiriman belum lengkap",
+        "invalidBody": "Pilih mode dan centang konfirmasi wajib sebelum mengirim.",
+        "frozenLabel": "Poin beku",
+        "sourceLabel": "Sumber data",
+        "points": "{n} poin",
+        "modes": {
+          "timeout": "Time-out",
+          "permanent": "Penutupan permanen"
+        },
+        "periods": {
+          "six_months": " / 6 bulan",
+          "one_year": " / 1 tahun"
+        }
+      }
     }
   },
   "stubPage": {
@@ -513,6 +599,96 @@
           "invalid": "Email, nomor ponsel, atau kata sandi tidak benar.",
           "unavailable": "Layanan masuk sementara tidak tersedia. Coba lagi nanti.",
           "mfaRequired": "Akun ini memerlukan verifikasi dua langkah. Selesaikan verifikasi terlebih dahulu."
+        }
+      }
+    }
+  },
+  "kyc": {
+    "privacyNotice": {
+      "metadata": {
+        "title": "Pemberitahuan privasi KYC — prophetica",
+        "description": "Field KYC apa yang kami kumpulkan, alasannya, masa simpannya, dan siapa yang dapat mengaksesnya."
+      },
+      "hero": {
+        "kicker": "Pemberitahuan privasi KYC",
+        "headline": "Sebelum mengirim data, lihat apa yang kami kumpulkan dan alasannya.",
+        "tagline": "Pemberitahuan ini mengikuti SPEC-005 §8.1: sebelum Anda mengirim data KYC, prosesnya dijelaskan secara transparan. Setiap field menampilkan tujuan, masa simpan, dan aksesnya."
+      },
+      "matrix": {
+        "heading": "Penjelasan per field",
+        "labels": {
+          "purpose": "Alasan",
+          "retention": "Masa simpan",
+          "access": "Akses"
+        },
+        "rows": {
+          "legalName": {
+            "field": "Nama legal sesuai dokumen",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "Menetapkan identitas akun legal, memeriksa daftar sanksi, dan mendukung catatan penyelesaian.",
+            "retention": "Masa aktif akun + 7 tahun.",
+            "access": "Anda + staf dukungan yang sudah dilatih kepatuhan + Compliance Officer + auditor berwenang."
+          },
+          "birthday": {
+            "field": "Tanggal lahir",
+            "collected": "Tier 1 / 2 / 3",
+            "purpose": "Memastikan Anda berusia minimal 18 tahun sesuai SPEC-006 §6.",
+            "retention": "Masa aktif akun + 7 tahun.",
+            "access": "Sama seperti di atas."
+          },
+          "documentId": {
+            "field": "Nomor dokumen",
+            "collected": "Pemeriksaan implisit Tier 1 / Tier 2 / 3",
+            "purpose": "Mendeteksi identitas ganda, memeriksa daftar sanksi, dan mencocokkan daftar self-exclusion sesuai SPEC-006 §5.4.",
+            "retention": "<strong>Hanya hash SHA256 yang disimpan</strong>. Nomor asli tidak pernah disimpan dan dibuang setelah pengiriman. Hash disimpan selama masa aktif akun + 7 tahun.",
+            "access": "Backend kyc-service saja. Layanan ini hanya dapat membandingkan hash dan tidak dapat memulihkan nomor asli."
+          },
+          "documentImage": {
+            "field": "Gambar dokumen",
+            "collected": "Tier 2 / 3 melalui SumSub",
+            "purpose": "Mengambil data dengan OCR dan membantu reviewer menilai keaslian dokumen.",
+            "retention": "SumSub Cloud di region EU + cadangan harian R2 EU kami, dienkripsi AES-256 at rest dan dilindungi Object Lock 7 tahun.",
+            "access": "Compliance Officer + reviewer SumSub + auditor berwenang. Staf dukungan tidak dapat mengakses gambar mentah secara langsung."
+          },
+          "selfie": {
+            "field": "Selfie + pemeriksaan liveness",
+            "collected": "Tier 2 / 3",
+            "purpose": "Membandingkan wajah Anda dengan gambar dokumen. Liveness mencegah penyamaran memakai foto.",
+            "retention": "Sama seperti gambar dokumen.",
+            "access": "Sama seperti gambar dokumen."
+          },
+          "address": {
+            "field": "Bukti alamat",
+            "collected": "Tier 2 / 3",
+            "purpose": "Memastikan alamat tinggal sesuai pernyataan dan mendukung tinjauan risiko geografis.",
+            "retention": "Sama seperti gambar dokumen.",
+            "access": "Sama seperti gambar dokumen."
+          },
+          "income": {
+            "field": "Rentang pendapatan bulanan",
+            "collected": "Opsional untuk Tier 2 / wajib untuk Tier 3",
+            "purpose": "Mendukung skor batas responsible gaming sesuai SPEC-006 §4.1 dan membuka batas top-up yang lebih tinggi.",
+            "retention": "Masa aktif akun. Ditandai kedaluwarsa otomatis jika tidak diperbarui selama 12 bulan.",
+            "access": "Anda + Compliance Officer. <strong>Dukungan hanya melihat rentang, bukan nilai tepatnya</strong>."
+          },
+          "funds": {
+            "field": "Bukti sumber dana / rekening koran",
+            "collected": "Tier 3",
+            "purpose": "Memverifikasi pendapatan bulanan yang dinyatakan dan memberi masukan ke mesin aturan AML.",
+            "retention": "Disimpan terenkripsi di R2 selama 7 tahun.",
+            "access": "Compliance Officer + auditor berwenang."
+          }
+        }
+      },
+      "rights": {
+        "heading": "Hak Anda",
+        "intro": "Penjelasan lengkap hak data pribadi ada di <privacyLink>kebijakan privasi</privacyLink>. Ringkasannya:",
+        "items": {
+          "query": "<strong>Akses</strong>: ekspor semua field KYC kapan saja. File zip dibuat dalam 24 jam.",
+          "rectify": "<strong>Perbaikan</strong>: ajukan perubahan nama, alamat, dan field serupa. Field sensitif seperti tanggal lahir atau nomor dokumen memerlukan pemeriksaan KYC baru.",
+          "delete": "<strong>Penghapusan</strong>: hapus akun secara soft-delete. Catatan KYC disimpan minimal 7 tahun sesuai kewajiban hukum.",
+          "portability": "<strong>Portabilitas</strong>: ekspor dalam format JSON untuk digunakan di layanan lain.",
+          "object": "<strong>Keberatan</strong>: keluar dari pesan pemasaran. Pemrosesan KYC diperlukan untuk menjalankan layanan dan tidak dapat ditolak."
         }
       }
     }
