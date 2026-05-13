@@ -84,8 +84,8 @@ impl AuthConfig {
             env::var("USER_SERVICE_LOCAL_LOGIN_USER_ID").unwrap_or_else(|_| "user_42".to_owned());
         let email = env::var("USER_SERVICE_LOCAL_LOGIN_EMAIL")
             .unwrap_or_else(|_| "member@example.com".to_owned());
-        let phone = env::var("USER_SERVICE_LOCAL_LOGIN_PHONE")
-            .unwrap_or_else(|_| "0912345698".to_owned());
+        let phone =
+            env::var("USER_SERVICE_LOCAL_LOGIN_PHONE").unwrap_or_else(|_| "0912345698".to_owned());
         let password =
             env::var("USER_SERVICE_LOCAL_LOGIN_PASSWORD").unwrap_or_else(|_| "member".to_owned());
 
@@ -230,7 +230,9 @@ fn normalize_phone(value: &str) -> Option<String> {
 
     if subscriber.len() == 9
         && subscriber.starts_with('9')
-        && subscriber.chars().all(|character| character.is_ascii_digit())
+        && subscriber
+            .chars()
+            .all(|character| character.is_ascii_digit())
     {
         Some(format!("+886{subscriber}"))
     } else {

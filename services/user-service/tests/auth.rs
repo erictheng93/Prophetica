@@ -92,7 +92,10 @@ async fn login_rejects_wrong_password_or_identifier_kind() {
     .await;
 
     assert_eq!(wrong_password.status, StatusCode::UNAUTHORIZED);
-    assert_eq!(wrong_password.body["error"], json!("ERROR_CODE_INVALID_CREDENTIALS"));
+    assert_eq!(
+        wrong_password.body["error"],
+        json!("ERROR_CODE_INVALID_CREDENTIALS")
+    );
     assert_eq!(wrong_kind.status, StatusCode::UNAUTHORIZED);
 }
 
@@ -124,9 +127,8 @@ struct LoginTestResponse {
 }
 
 fn config_with_fixture() -> AuthConfig {
-    let account =
-        LocalLoginAccount::new("user_42", "member@example.com", "0912345698", "member")
-            .expect("fixture account is valid");
+    let account = LocalLoginAccount::new("user_42", "member@example.com", "0912345698", "member")
+        .expect("fixture account is valid");
 
     AuthConfig::new(vec![account])
 }
