@@ -122,15 +122,26 @@ function SigninForm({ t }: { t: AuthCopy }) {
         <form action="#" className="space-y-6">
           <label className="block">
             <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
-              Email
+              {t("signin.identifier.label")}
             </span>
             <input
-              type="email"
-              name="email"
+              id="signin-identifier"
+              type="text"
+              name="identifier"
               autoComplete="username"
-              placeholder="you@example.com"
+              autoCapitalize="none"
+              enterKeyHint="next"
+              spellCheck={false}
+              aria-describedby="signin-identifier-hint"
+              placeholder={t("signin.identifier.placeholder")}
               className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
             />
+            <span
+              id="signin-identifier-hint"
+              className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48"
+            >
+              {t("signin.identifier.hint")}
+            </span>
           </label>
 
           <label className="block">

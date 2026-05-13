@@ -2130,7 +2130,7 @@
         "signin": {
           "kicker": "登入",
           "headline": "歡迎回來。",
-          "tagline": "用註冊 Email 與密碼登入。第一次登入會提示啟用兩步驗證。"
+          "tagline": "用註冊 Email 或手機號碼與密碼登入。"
         },
         "signup": {
           "kicker": "註冊新帳戶",
@@ -2151,6 +2151,11 @@
         "my": "馬來西亞"
       },
       "signin": {
+        "identifier": {
+          "label": "Email 或手機號碼",
+          "placeholder": "you@example.com 或 0912345698",
+          "hint": "台灣手機號碼可輸入 0912345698，也可省略前導 0 為 912345698。"
+        },
         "password": "密碼",
         "forgotPassword": "忘記密碼？",
         "remember": "在此裝置保持登入 14 天（公用裝置請勿勾選）",
