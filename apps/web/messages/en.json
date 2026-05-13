@@ -463,7 +463,6 @@
   },
   "landing": {
     "hero": {
-      "kicker": "Prediction entertainment",
       "headline": "Prediction is wisdom arriving early from the far shore of time.",
       "tagline": "Use in-app points to forecast unrevealed event outcomes and compare your judgment with your opponents.",
       "ctaPrimary": "Get started",
@@ -471,14 +470,12 @@
       "media": "Hero visual"
     },
     "neutral": {
-      "kicker": "Neutral platform",
       "headline": "Fair matching. Clear settlement.",
       "tagline": "prophetica only provides matching and settlement. It does not hold contract positions or act as a market maker. Every market is a player-versus-player contest of judgment.",
       "cta": "See the matching model",
       "media": "Order book illustration"
     },
     "points": {
-      "kicker": "Points are the game",
       "headline": "In-app points, entertainment only.",
       "tagline": "Points added to your account are shown as balance, locked amount, and settlement records inside the app.",
       "ctaPrimary": "Points guide",
@@ -486,7 +483,6 @@
       "media": "Points wallet"
     },
     "responsibleGaming": {
-      "kicker": "Limits first",
       "headline": "Set your limit before you play.",
       "tagline": "Every account must complete limit settings. We provide cooldowns, account closure, and help resources, with zero tolerance for underage participation.",
       "ctaPrimary": "Set my limit",
@@ -494,7 +490,6 @@
       "media": "Responsible gaming dashboard"
     },
     "start": {
-      "kicker": "Start in three steps",
       "headline": "Verify, set limits, browse markets.",
       "tagline": "Identity verification keeps play fair and compliant, limits protect your entertainment rhythm, and the market list is your arena.",
       "ctaPrimary": "Sign up now",

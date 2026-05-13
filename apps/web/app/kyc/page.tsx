@@ -65,9 +65,6 @@ function CurrentStatusBlock({
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
         <header className="mb-8">
-          <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] uppercase text-proph-ink-muted-48">
-            {t("current.kicker")}
-          </span>
           <h2 className="mt-1 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("current.heading")}
           </h2>
@@ -180,7 +177,6 @@ export default async function KYCOverviewPage() {
     <>
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />

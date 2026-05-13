@@ -463,7 +463,6 @@
   },
   "landing": {
     "hero": {
-      "kicker": "Giải trí dự đoán",
       "headline": "Dự đoán là trí tuệ đến sớm từ bờ bên kia của thời gian.",
       "tagline": "Dùng điểm trong ứng dụng để dự đoán kết quả các sự kiện chưa công bố và so sánh nhận định của bạn với đối thủ.",
       "ctaPrimary": "Bắt đầu",
@@ -471,14 +470,12 @@
       "media": "Hero visual"
     },
     "neutral": {
-      "kicker": "Nền tảng trung lập",
       "headline": "Khớp lệnh công bằng. Thanh toán rõ ràng.",
       "tagline": "prophetica chỉ cung cấp dịch vụ khớp lệnh và thanh toán. Nền tảng không nắm giữ vị thế hợp đồng và không làm market maker. Mỗi thị trường là cuộc so tài nhận định giữa người chơi.",
       "cta": "Xem cơ chế khớp lệnh",
       "media": "Order book illustration"
     },
     "points": {
-      "kicker": "Điểm là trò chơi",
       "headline": "Điểm trong ứng dụng, chỉ để giải trí.",
       "tagline": "Điểm nạp vào tài khoản được hiển thị dưới dạng số dư, khoản khóa và hồ sơ thanh toán trong ứng dụng.",
       "ctaPrimary": "Hướng dẫn điểm",
@@ -486,7 +483,6 @@
       "media": "Points wallet"
     },
     "responsibleGaming": {
-      "kicker": "Giới hạn trước tiên",
       "headline": "Đặt giới hạn trước khi chơi.",
       "tagline": "Mỗi tài khoản phải hoàn tất cài đặt giới hạn. Chúng tôi cung cấp tạm nghỉ, đóng tài khoản và nguồn trợ giúp, đồng thời không dung thứ việc người chưa đủ tuổi tham gia.",
       "ctaPrimary": "Đặt giới hạn của tôi",
@@ -494,7 +490,6 @@
       "media": "Responsible gaming dashboard"
     },
     "start": {
-      "kicker": "Bắt đầu trong ba bước",
       "headline": "Xác minh, đặt giới hạn, xem thị trường.",
       "tagline": "Xác minh danh tính giúp trải nghiệm công bằng và tuân thủ, giới hạn bảo vệ nhịp giải trí của bạn, còn danh sách thị trường là đấu trường của bạn.",
       "ctaPrimary": "Đăng ký ngay",

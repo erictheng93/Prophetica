@@ -65,11 +65,6 @@ export default async function LandingPage() {
 
       <ProphTile
         surface="light"
-        kicker={
-          <span className="text-[17px] leading-[1.47] tracking-[0]">
-            {t("hero.kicker")}
-          </span>
-        }
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {t("hero.headline")}
@@ -91,7 +86,6 @@ export default async function LandingPage() {
 
       <ProphTile
         surface="dark"
-        kicker={t("neutral.kicker")}
         headline={t("neutral.headline")}
         tagline={t("neutral.tagline")}
         actions={
@@ -104,7 +98,6 @@ export default async function LandingPage() {
 
       <ProphTile
         surface="parchment"
-        kicker={t("points.kicker")}
         headline={t("points.headline")}
         tagline={t("points.tagline")}
         actions={
@@ -122,7 +115,6 @@ export default async function LandingPage() {
 
       <ProphTile
         surface="dark-2"
-        kicker={t("responsibleGaming.kicker")}
         headline={t("responsibleGaming.headline")}
         tagline={t("responsibleGaming.tagline")}
         actions={
@@ -148,7 +140,6 @@ export default async function LandingPage() {
 
       <ProphTile
         surface="light"
-        kicker={t("start.kicker")}
         headline={t("start.headline")}
         tagline={t("start.tagline")}
         actions={

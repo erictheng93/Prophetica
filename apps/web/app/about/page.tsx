@@ -34,7 +34,6 @@ export default async function AboutPage() {
 
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {t("hero.headline")}
@@ -69,9 +68,6 @@ export default async function AboutPage() {
                 key={id}
                 className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
               >
-                <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-                  {t(`principles.items.${id}.kicker`)}
-                </div>
                 <h3 className="mt-1 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
                   {t(`principles.items.${id}.title`)}
                 </h3>
@@ -86,9 +82,6 @@ export default async function AboutPage() {
 
       <section className="bg-proph-surface-tile-1 text-proph-on-dark">
         <div className="mx-auto max-w-proph px-6 py-20 md:px-10">
-          <span className="font-text text-[14px] font-semibold uppercase leading-[1.29] tracking-[-0.224px] text-proph-body-muted">
-            {t("neutrality.kicker")}
-          </span>
           <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("neutrality.headline")}
           </h2>
@@ -198,7 +191,6 @@ export default async function AboutPage() {
 
       <ProphTile
         surface="light"
-        kicker={t("contact.kicker")}
         headline={t("contact.headline")}
         tagline={t("contact.tagline")}
         actions={

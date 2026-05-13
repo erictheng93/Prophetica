@@ -89,9 +89,6 @@ function CategoryGrid({ t }: { t: SupportOverviewCopy }) {
               href={c.route}
               className="group rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 transition-colors hover:border-proph-primary"
             >
-              <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-                {t(`categories.items.${c.key}.kicker`)}
-              </span>
               <h3 className="mt-1 font-display text-[21px] font-semibold tracking-[0.231px] text-proph-ink group-hover:underline">
                 {t(`categories.items.${c.key}.title`)}
               </h3>
@@ -111,9 +108,6 @@ function RGCallout({ t }: { t: SupportOverviewCopy }) {
   return (
     <section className="bg-proph-surface-tile-1 text-proph-on-dark">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <span className="font-text text-[14px] font-semibold uppercase leading-[1.29] tracking-[-0.224px] text-proph-body-muted">
-          {t("rgCallout.kicker")}
-        </span>
         <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
           {t("rgCallout.headline")}
         </h2>
@@ -137,7 +131,6 @@ export default async function SupportHubPage() {
     <>
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />

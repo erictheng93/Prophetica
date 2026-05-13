@@ -26,7 +26,6 @@ export default async function ResourcesPage() {
     <>
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />

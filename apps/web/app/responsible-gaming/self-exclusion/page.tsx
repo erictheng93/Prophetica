@@ -88,7 +88,6 @@ export default async function SelfExclusionPage({
       <h1 className="sr-only">{t("hero.headline")}</h1>
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -214,9 +213,6 @@ function TimeoutChoice({ t }: { t: SECopy }) {
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
         <header className="mb-8">
-          <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] uppercase text-proph-ink-muted-48">
-            {t("timeout.kicker")}
-          </span>
           <h2 className="mt-1 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("timeout.heading")}
           </h2>
@@ -284,9 +280,6 @@ function PermanentSection({ t }: { t: SECopy }) {
     <section className="bg-proph-surface-tile-1 text-proph-on-dark">
       <div className="mx-auto max-w-proph px-6 py-20 md:px-10">
         <header className="mb-10">
-          <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] uppercase text-proph-body-muted">
-            {t("permanent.kicker")}
-          </span>
           <h2 className="mt-1 font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {t("permanent.headline")}
           </h2>

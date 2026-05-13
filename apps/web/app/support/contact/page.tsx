@@ -177,7 +177,6 @@ export default async function ContactPage() {
     <>
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />

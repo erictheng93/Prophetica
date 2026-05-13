@@ -2128,7 +2128,6 @@
       },
       "hero": {
         "signin": {
-          "kicker": "登入",
           "headline": "歡迎回來。",
           "tagline": "用註冊 Email 或手機號碼與密碼登入。"
         },
@@ -2159,8 +2158,6 @@
         "password": "密碼",
         "forgotPassword": "忘記密碼？",
         "remember": "在此裝置保持登入 14 天（公用裝置請勿勾選）",
-        "mfaNotice": "<strong>兩步驗證：</strong> 首次登入會引導你綁定 TOTP App（Google Authenticator、1Password 等）。遺失裝置請聯繫 <supportLink>客服</supportLink> 申請重設，需重新通過 KYC。",
-        "submitNote": "送出後依設定送 OTP / TOTP；未驗證前不會建立 session。",
         "submit": "登入（後端待接）",
         "signupPrompt": "沒有帳戶？ <signupLink>註冊一個</signupLink>"
       },
@@ -2203,17 +2200,11 @@
           }
         },
         "next": "完成這 4 步後進入 <tier1Link>KYC Tier 1 基礎驗證</tier1Link>（另 10 秒）。即可瀏覽市場開始下單。"
-      },
-      "compliance": {
-        "kicker": "請務必記得",
-        "headline": "18 歲以下不得參與。如已失控，請先停止使用並尋求可信任的人或專業協助。",
-        "cta": "自我設限資源"
       }
     }
   },
   "landing": {
     "hero": {
-      "kicker": "趣味預測娛樂",
       "headline": "預測，不過是智慧在時光彼岸的提前抵達。",
       "tagline": "用站內點數對未公開事件結果進行預測，與對手比眼光。",
       "ctaPrimary": "開始體驗",
@@ -2221,14 +2212,12 @@
       "media": "Hero visual"
     },
     "neutral": {
-      "kicker": "平台中立",
       "headline": "公平撮合，清楚結算。",
       "tagline": "prophetica 僅提供撮合與結算服務，不持有合約倉位、不做造市商。所有對局都是玩家與玩家之間的眼光對決。",
       "cta": "看撮合機制",
       "media": "Order book illustration"
     },
     "points": {
-      "kicker": "點數即遊戲",
       "headline": "站內點數，純娛樂。",
       "tagline": "儲值取得的點數會以站內餘額、鎖倉與結算紀錄呈現。",
       "ctaPrimary": "點數說明",
@@ -2236,7 +2225,6 @@
       "media": "Points wallet"
     },
     "responsibleGaming": {
-      "kicker": "自我設限優先",
       "headline": "先設限額，再開始遊戲。",
       "tagline": "每個帳號都必須完成限額設定。我們提供冷靜期、解除賬號與求助資源，並對未成年參與採零容忍。",
       "ctaPrimary": "設定我的限額",
@@ -2244,7 +2232,6 @@
       "media": "Responsible gaming dashboard"
     },
     "start": {
-      "kicker": "開始遊戲三步",
       "headline": "完成驗證、設定限額、瀏覽市場。",
       "tagline": "身份驗證確保公平與合規，限額設定保護自己的娛樂節奏，市場列表是你的競技場。",
       "ctaPrimary": "立即註冊",

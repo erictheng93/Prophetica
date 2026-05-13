@@ -463,7 +463,6 @@
   },
   "landing": {
     "hero": {
-      "kicker": "趣味预测娱乐",
       "headline": "预测，不过是智慧在时光彼岸的提前抵达。",
       "tagline": "用站内点数对未公开事件结果进行预测，与对手比眼光。",
       "ctaPrimary": "开始体验",
@@ -471,14 +470,12 @@
       "media": "Hero visual"
     },
     "neutral": {
-      "kicker": "平台中立",
       "headline": "公平撮合，清楚结算。",
       "tagline": "prophetica 仅提供撮合与结算服务，不持有合约仓位、不做做市商。所有对局都是玩家与玩家之间的眼光对决。",
       "cta": "看撮合机制",
       "media": "Order book illustration"
     },
     "points": {
-      "kicker": "点数即游戏",
       "headline": "站内点数，纯娱乐。",
       "tagline": "充值取得的点数会以站内余额、锁仓与结算纪录呈现。",
       "ctaPrimary": "点数说明",
@@ -486,7 +483,6 @@
       "media": "Points wallet"
     },
     "responsibleGaming": {
-      "kicker": "自我设限优先",
       "headline": "先设限额，再开始游戏。",
       "tagline": "每个账号都必须完成限额设置。我们提供冷静期、解除账号与求助资源，并对未成年参与采零容忍。",
       "ctaPrimary": "设置我的限额",
@@ -494,7 +490,6 @@
       "media": "Responsible gaming dashboard"
     },
     "start": {
-      "kicker": "开始游戏三步",
       "headline": "完成验证、设置限额、浏览市场。",
       "tagline": "身份验证确保公平与合规，限额设置保护自己的娱乐节奏，市场列表是你的竞技场。",
       "ctaPrimary": "立即注册",

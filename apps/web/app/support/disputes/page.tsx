@@ -371,7 +371,6 @@ export default async function DisputesPage() {
     <>
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
         actions={

@@ -67,7 +67,6 @@ export default async function PortfolioPage() {
 
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -104,7 +103,6 @@ function SummaryCards({
 }) {
   const cards = [
     {
-      kicker: t("summary.wallet.kicker"),
       label:
         walletOverview.source === "api-gateway"
           ? t("summary.wallet.labelLive", { userId: walletOverview.balance.userId })
@@ -113,31 +111,26 @@ function SummaryCards({
       tone: "neutral" as const,
     },
     {
-      kicker: t("summary.locked.kicker"),
       label: t("summary.locked.label"),
       value: formatPoints(walletOverview.balance.lockedPoints + walletOverview.balance.frozenPoints),
       tone: "neutral" as const,
     },
     {
-      kicker: t("summary.activeCost.kicker"),
       label: t("summary.activeCost.label"),
       value: formatPoints(summary.totalCostPoints),
       tone: "neutral" as const,
     },
     {
-      kicker: t("summary.activeValue.kicker"),
       label: t("summary.activeValue.label"),
       value: formatPoints(summary.currentValuePoints),
       tone: "neutral" as const,
     },
     {
-      kicker: t("summary.unrealized.kicker"),
       label: t("summary.unrealized.label"),
       value: formatPointsSigned(summary.unrealizedPnlPoints),
       tone: pickTone(summary.unrealizedPnlPoints),
     },
     {
-      kicker: t("summary.realized.kicker"),
       label: t("summary.realized.label"),
       value: formatPointsSigned(summary.realizedPnlPointsLifetime),
       tone: pickTone(summary.realizedPnlPointsLifetime),
@@ -150,12 +143,9 @@ function SummaryCards({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {cards.map((card) => (
             <article
-              key={card.kicker}
+              key={card.label}
               className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
             >
-              <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-                {card.kicker}
-              </div>
               <div
                 className={
                   "mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px] " +

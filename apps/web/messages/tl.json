@@ -463,7 +463,6 @@
   },
   "landing": {
     "hero": {
-      "kicker": "Prediction entertainment",
       "headline": "Ang prediksyon ay karunungang maagang dumarating mula sa kabilang pampang ng panahon.",
       "tagline": "Gumamit ng in-app points para hulaan ang mga event outcome na hindi pa inilalabas at ikumpara ang iyong pananaw sa mga kalaban.",
       "ctaPrimary": "Magsimula",
@@ -471,14 +470,12 @@
       "media": "Hero visual"
     },
     "neutral": {
-      "kicker": "Neutral na platform",
       "headline": "Patas na matching. Malinaw na settlement.",
       "tagline": "Nagbibigay lang ang prophetica ng matching at settlement. Hindi ito humahawak ng contract positions at hindi ito market maker. Bawat market ay player-versus-player na labanan ng pananaw.",
       "cta": "Tingnan ang matching model",
       "media": "Order book illustration"
     },
     "points": {
-      "kicker": "Points ang laro",
       "headline": "In-app points, pang-entertainment lang.",
       "tagline": "Ang points na idinagdag sa account ay ipinapakita bilang balance, locked amount, at settlement records sa loob ng app.",
       "ctaPrimary": "Points guide",
@@ -486,7 +483,6 @@
       "media": "Points wallet"
     },
     "responsibleGaming": {
-      "kicker": "Limitasyon muna",
       "headline": "Magtakda ng limitasyon bago maglaro.",
       "tagline": "Kailangang kumpletuhin ng bawat account ang limit settings. Mayroon kaming cooldown, account closure, at help resources, at zero tolerance sa underage participation.",
       "ctaPrimary": "Itakda ang limitasyon ko",
@@ -494,7 +490,6 @@
       "media": "Responsible gaming dashboard"
     },
     "start": {
-      "kicker": "Magsimula sa tatlong hakbang",
       "headline": "Mag-verify, magtakda ng limitasyon, mag-browse ng markets.",
       "tagline": "Pinapanatili ng identity verification na patas at compliant ang laro, pinoprotektahan ng limits ang iyong entertainment rhythm, at ang market list ang iyong arena.",
       "ctaPrimary": "Mag-sign up ngayon",

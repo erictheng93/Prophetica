@@ -41,7 +41,6 @@ export default async function AffiliatePage() {
 
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {t("hero.headline")}
@@ -72,9 +71,6 @@ export default async function AffiliatePage() {
                 key={id}
                 className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
               >
-                <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-                  {t(`commission.${id}.kicker`)}
-                </div>
                 <h3 className="mt-1 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
                   {t(`commission.${id}.title`)}
                 </h3>
@@ -213,9 +209,6 @@ export default async function AffiliatePage() {
 
       <section className="bg-proph-surface-tile-1 text-proph-on-dark">
         <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-          <span className="font-text text-[14px] font-semibold uppercase leading-[1.29] tracking-[-0.224px] text-proph-body-muted">
-            {t("notMlm.kicker")}
-          </span>
           <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
             {t("notMlm.headline")}
           </h2>
@@ -232,7 +225,6 @@ export default async function AffiliatePage() {
 
       <ProphTile
         surface="light"
-        kicker={t("closing.kicker")}
         headline={t("closing.headline")}
         tagline={t("closing.tagline")}
         actions={

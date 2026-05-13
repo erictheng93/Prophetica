@@ -67,7 +67,6 @@ export default async function TopUpPage() {
 
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -444,9 +443,6 @@ function RGReminder({ t }: { t: TopupCopy }) {
   return (
     <section className="bg-proph-surface-tile-1 text-proph-on-dark">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
-        <span className="font-text text-[14px] font-semibold uppercase leading-[1.29] tracking-[-0.224px] text-proph-body-muted">
-          {t("rgReminder.kicker")}
-        </span>
         <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
           {t("rgReminder.headline")}
         </h2>

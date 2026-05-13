@@ -47,7 +47,6 @@ export default async function ResponsibleGamingPage() {
     <>
       <ProphTile
         surface="light"
-        kicker={tHero("kicker")}
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {tHero("headline")}
@@ -84,9 +83,6 @@ function MonthlySnapshot({
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-            <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-              {t("depositCard.kicker")}
-            </div>
             <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px]">
               {formatPoints(mockSnapshot.depositPoints)}
             </div>
@@ -103,9 +99,6 @@ function MonthlySnapshot({
           </article>
 
           <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-            <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-              {t("tradeCard.kicker")}
-            </div>
             <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px]">
               {mockSnapshot.tradeCount}
             </div>
@@ -115,9 +108,6 @@ function MonthlySnapshot({
           </article>
 
           <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-            <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-              {t("settlementCard.kicker")}
-            </div>
             <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px]">
               {formatPoints(mockSnapshot.netSettlementPoints)}
             </div>
@@ -145,9 +135,6 @@ function ToolsGrid({ t }: { t: ToolsCopy }) {
               href={TOOL_HREFS[id]}
               className="group rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 transition-colors hover:border-proph-primary"
             >
-              <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-                {t(`items.${id}.kicker`)}
-              </span>
               <h3 className="mt-1 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px] text-proph-ink">
                 {t(`items.${id}.title`)}
               </h3>

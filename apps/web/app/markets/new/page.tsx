@@ -22,7 +22,6 @@ export default async function MarketsNewPage() {
     <>
       <ProphTile
         surface="light"
-        kicker={t("kicker")}
         headline={t("headline")}
         tagline={t("tagline")}
       />

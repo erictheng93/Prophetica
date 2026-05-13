@@ -45,7 +45,6 @@ export default async function AccountAffiliatePage() {
 
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -92,22 +91,18 @@ function SourceBanner({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard
 function SummaryCards({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard }) {
   const cards = [
     {
-      kicker: t("summary.count.kicker"),
       label: t("summary.count.label"),
       value: dashboard.summary.successfulReferralsCount.toLocaleString("zh-Hant"),
     },
     {
-      kicker: t("summary.total.kicker"),
       label: t("summary.total.label"),
       value: formatPoints(dashboard.summary.totalRewardsPoints),
     },
     {
-      kicker: t("summary.last30d.kicker"),
       label: t("summary.last30d.label"),
       value: formatPoints(dashboard.summary.last30dCommissionPoints),
     },
     {
-      kicker: t("summary.last12m.kicker"),
       label: t("summary.last12m.label"),
       value: formatPoints(dashboard.summary.last12mCommissionPoints),
     },
@@ -128,12 +123,9 @@ function SummaryCards({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           {cards.map((card) => (
             <article
-              key={card.kicker}
+              key={card.label}
               className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
             >
-              <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-                {card.kicker}
-              </div>
               <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-ink sm:text-[34px]">
                 {card.value}
               </div>
@@ -322,9 +314,6 @@ function NotMlmReminder({ t }: { t: Copy }) {
   return (
     <section className="bg-proph-surface-tile-1 text-proph-on-dark">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
-        <span className="font-text text-[14px] font-semibold uppercase leading-[1.29] tracking-[-0.224px] text-proph-body-muted">
-          {t("notMlm.kicker")}
-        </span>
         <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
           {t("notMlm.headline")}
         </h2>

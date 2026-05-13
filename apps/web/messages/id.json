@@ -463,7 +463,6 @@
   },
   "landing": {
     "hero": {
-      "kicker": "Hiburan prediksi",
       "headline": "Prediksi adalah kebijaksanaan yang tiba lebih dulu dari seberang waktu.",
       "tagline": "Gunakan poin dalam aplikasi untuk memprediksi hasil peristiwa yang belum diumumkan dan bandingkan penilaian Anda dengan lawan.",
       "ctaPrimary": "Mulai",
@@ -471,14 +470,12 @@
       "media": "Hero visual"
     },
     "neutral": {
-      "kicker": "Platform netral",
       "headline": "Pencocokan adil. Penyelesaian jelas.",
       "tagline": "prophetica hanya menyediakan pencocokan dan penyelesaian. Platform tidak memegang posisi kontrak dan bukan market maker. Setiap pasar adalah adu penilaian antarpemain.",
       "cta": "Lihat model pencocokan",
       "media": "Order book illustration"
     },
     "points": {
-      "kicker": "Poin adalah permainan",
       "headline": "Poin dalam aplikasi, hanya hiburan.",
       "tagline": "Poin yang ditambahkan ke akun ditampilkan sebagai saldo, dana terkunci, dan catatan penyelesaian di dalam aplikasi.",
       "ctaPrimary": "Panduan poin",
@@ -486,7 +483,6 @@
       "media": "Points wallet"
     },
     "responsibleGaming": {
-      "kicker": "Batas lebih dulu",
       "headline": "Tetapkan batas sebelum bermain.",
       "tagline": "Setiap akun wajib menyelesaikan pengaturan batas. Kami menyediakan jeda, penutupan akun, dan sumber bantuan, serta tidak menoleransi partisipasi di bawah umur.",
       "ctaPrimary": "Tetapkan batas saya",
@@ -494,7 +490,6 @@
       "media": "Responsible gaming dashboard"
     },
     "start": {
-      "kicker": "Mulai dalam tiga langkah",
       "headline": "Verifikasi, tetapkan batas, jelajahi pasar.",
       "tagline": "Verifikasi identitas menjaga permainan tetap adil dan patuh, batas melindungi ritme hiburan Anda, dan daftar pasar adalah arena Anda.",
       "ctaPrimary": "Daftar sekarang",

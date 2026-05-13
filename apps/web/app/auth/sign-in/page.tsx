@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
-import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import { ProphFooter, ProphSubNav, ProphTile } from "@prophetica/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import {
   Brand,
@@ -60,7 +60,6 @@ export default async function AuthPage({ searchParams }: PageProps) {
 
       <ProphTile
         surface="light"
-        kicker={t(`hero.${mode}.kicker`)}
         headline={t(`hero.${mode}.headline`)}
         tagline={t(`hero.${mode}.tagline`)}
       />
@@ -70,8 +69,6 @@ export default async function AuthPage({ searchParams }: PageProps) {
       {mode === "signup" ? <SignupForm t={t} /> : <SigninForm t={t} />}
 
       {mode === "signup" ? <PostSignupPreview t={t} /> : null}
-
-      <ComplianceReminder t={t} />
 
       <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
     </main>
@@ -170,21 +167,7 @@ function SigninForm({ t }: { t: AuthCopy }) {
             {t("signin.remember")}
           </label>
 
-          <div className="rounded-proph-md border border-proph-primary/30 bg-proph-canvas-parchment px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-            {t.rich("signin.mfaNotice", {
-              strong: (chunks) => <strong className="font-semibold text-proph-ink">{chunks}</strong>,
-              supportLink: (chunks) => (
-                <a href="/support/contact" className="text-proph-primary underline">
-                  {chunks}
-                </a>
-              ),
-            })}
-          </div>
-
           <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
-            <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
-              {t("signin.submitNote")}
-            </p>
             <button
               type="submit"
               disabled
@@ -378,26 +361,6 @@ function PostSignupPreview({ t }: { t: AuthCopy }) {
             ),
           })}
         </p>
-      </div>
-    </section>
-  );
-}
-
-function ComplianceReminder({ t }: { t: AuthCopy }) {
-  return (
-    <section className="bg-proph-surface-tile-1 text-proph-on-dark">
-      <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
-        <span className="font-text text-[14px] font-semibold uppercase leading-[1.29] tracking-[-0.224px] text-proph-body-muted">
-          {t("compliance.kicker")}
-        </span>
-        <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
-          {t("compliance.headline")}
-        </h2>
-        <div className="mt-6">
-          <ProphLinkButton variant="primary" href="/responsible-gaming/resources">
-            {t("compliance.cta")}
-          </ProphLinkButton>
-        </div>
       </div>
     </section>
   );

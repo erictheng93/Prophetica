@@ -16,7 +16,6 @@ import {
 // is approved.
 
 export interface StubPageProps {
-  kicker: string;
   headline: string;
   tagline?: ReactNode;
   /** Optional secondary CTA href; defaults to "/" (home). */
@@ -25,7 +24,6 @@ export interface StubPageProps {
 }
 
 export async function StubPage({
-  kicker,
   headline,
   tagline,
   backHref = "/",
@@ -41,7 +39,6 @@ export async function StubPage({
 
       <ProphTile
         surface="light"
-        kicker={kicker}
         headline={headline}
         tagline={tagline ?? t("tagline")}
         actions={

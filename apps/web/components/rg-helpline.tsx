@@ -29,9 +29,6 @@ export async function RGHelpline() {
     >
       <div className="mx-auto max-w-proph px-6 py-10 md:px-10">
         <div className="mb-6 flex flex-col gap-1">
-          <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] uppercase text-proph-body-muted">
-            {t("kicker")}
-          </span>
           <h3 className="font-display text-[28px] font-normal leading-[1.14] tracking-[0.196px]">
             {t("headline")}
           </h3>

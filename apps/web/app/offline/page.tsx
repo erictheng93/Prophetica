@@ -29,9 +29,6 @@ export default async function OfflinePage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-proph-canvas-parchment px-6 py-16">
       <div className="w-full max-w-[480px] text-center">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-feedback-warning">
-          {t("kicker")}
-        </p>
         <h1 className="mt-3 text-[34px] font-semibold leading-[1.1] tracking-[-0.374px] text-proph-ink md:text-[40px] md:leading-[1.07]">
           {t("headline")}
         </h1>

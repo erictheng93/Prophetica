@@ -87,9 +87,6 @@ export default async function RootLayout({
         <noscript>
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-proph-canvas-parchment px-6 py-12">
             <div className="w-full max-w-[480px] text-center">
-              <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-feedback-warning">
-                {tNoScript("kicker")}
-              </p>
               <h1 className="mt-3 font-display text-[28px] font-semibold leading-[1.14] tracking-[-0.28px] text-proph-ink sm:text-[34px] sm:leading-[1.1] sm:tracking-[-0.374px] md:text-[40px] md:leading-[1.07]">
                 {tNoScript("headline")}
               </h1>

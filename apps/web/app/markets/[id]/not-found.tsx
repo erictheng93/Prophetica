@@ -6,7 +6,6 @@ export default async function MarketNotFound() {
   return (
     <ProphTile
       surface="light"
-      kicker={t("kicker")}
       headline={t("headline")}
       tagline={t("tagline")}
       actions={

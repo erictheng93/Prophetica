@@ -62,9 +62,6 @@ function Requirements({ t }: { t: Tier3Copy }) {
               key={key}
               className="flex flex-col rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
             >
-              <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-                {t(`requirements.items.${key}.kicker`)}
-              </span>
               <h3 className="mt-1 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
                 {t(`requirements.items.${key}.title`)}
               </h3>
@@ -91,7 +88,6 @@ export default async function Tier3Page() {
     <>
       <ProphTile
         surface="light"
-        kicker={t("hero.kicker")}
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />

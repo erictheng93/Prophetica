@@ -6,14 +6,12 @@ import { ProbabilityBar } from "@/components/probability-bar";
 import { ProbabilityChart } from "@/components/probability-chart";
 import { TradePanel } from "@/components/trade-panel";
 import {
-  categoryLabel,
   formatCloseAt,
   formatPoints,
   getChartSeries,
   getRecentTrades,
   type Market,
   type RecentTrade,
-  statusLabel,
 } from "@/lib/mock-markets";
 import { fetchOrderBookSnapshot, type EngineOrderBookSnapshot } from "@/lib/engine-api";
 import { fetchMarketById } from "@/lib/market-api";
@@ -49,7 +47,6 @@ export default async function MarketDetailPage({ params }: PageProps) {
     <>
       <ProphTile
         surface="light"
-        kicker={`${categoryLabel[market.category]} · ${statusLabel[market.status]}`}
         headline={market.title}
         tagline={market.brief}
       />
