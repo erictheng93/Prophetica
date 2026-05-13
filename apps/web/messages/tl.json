@@ -1,5 +1,6 @@
 {
   "common": {
+    "brand": "Prophetica",
     "metadata": {
       "description": "Isang event-prediction entertainment experience na may Apple-style na disenyo."
     },
@@ -463,7 +464,7 @@
   "landing": {
     "hero": {
       "kicker": "Prediction entertainment",
-      "headline": "Ang prediksyon ay labanan ng pananaw.",
+      "headline": "Ang prediksyon ay karunungang maagang dumarating mula sa kabilang pampang ng panahon.",
       "tagline": "Gumamit ng in-app points para hulaan ang mga event outcome na hindi pa inilalabas at ikumpara ang iyong pananaw sa mga player sa buong mundo.",
       "ctaPrimary": "Magsimula",
       "ctaSecondary": "Alamin kung paano",

@@ -1,5 +1,6 @@
 {
   "common": {
+    "brand": "Prophetica",
     "metadata": {
       "description": "An event-prediction entertainment experience built with Apple-style design."
     },
@@ -463,7 +464,7 @@
   "landing": {
     "hero": {
       "kicker": "Prediction entertainment",
-      "headline": "Prediction is a contest of perspective.",
+      "headline": "Prediction is wisdom arriving early from the far shore of time.",
       "tagline": "Use in-app points to forecast unrevealed event outcomes and compare your judgment with players around the world.",
       "ctaPrimary": "Get started",
       "ctaSecondary": "Learn how it works",

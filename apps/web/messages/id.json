@@ -1,5 +1,6 @@
 {
   "common": {
+    "brand": "Prophetica",
     "metadata": {
       "description": "Pengalaman hiburan prediksi peristiwa dengan desain bergaya Apple."
     },
@@ -463,7 +464,7 @@
   "landing": {
     "hero": {
       "kicker": "Hiburan prediksi",
-      "headline": "Prediksi adalah adu sudut pandang.",
+      "headline": "Prediksi adalah kebijaksanaan yang tiba lebih dulu dari seberang waktu.",
       "tagline": "Gunakan poin dalam aplikasi untuk memprediksi hasil peristiwa yang belum diumumkan dan bandingkan penilaian Anda dengan pemain di seluruh dunia.",
       "ctaPrimary": "Mulai",
       "ctaSecondary": "Pelajari cara kerja",

@@ -13,6 +13,57 @@ import {
 
 type MessageTree = Record<string, unknown>;
 
+const CHINESE_LOCALES: SupportedLocale[] = ["zh-Hant", "zh-Hans"];
+const NON_CHINESE_LOCALES = SUPPORTED_LOCALES.filter(
+  (locale) => !CHINESE_LOCALES.includes(locale),
+);
+
+const localizedNamespaces = [
+  "common",
+  "sectionNav",
+  "support.overview",
+  "markets",
+  "howItWorks",
+  "responsibleGaming.metadata",
+  "responsibleGaming.overview",
+  "stubPage",
+  "landing",
+  "offline",
+];
+
+const deferredTranslationNamespaces = [
+  "about",
+  "accountAffiliate",
+  "affiliate",
+  "auth.signIn",
+  "connectionStatus",
+  "kyc",
+  "legal.stubs",
+  "marketCard",
+  "marketDetail",
+  "portfolio",
+  "probabilityChart",
+  "responsibleGaming.cooldown",
+  "responsibleGaming.helpline",
+  "responsibleGaming.limits",
+  "responsibleGaming.resources",
+  "responsibleGaming.selfExclusion",
+  "settlement",
+  "support.contact",
+  "support.disputes",
+  "support.faq",
+  "topup",
+  "tradePanel",
+];
+
+const maxDeferredTranslationLeafCount: Partial<Record<SupportedLocale, number>> = {
+  "zh-Hans": 991,
+  en: 991,
+  id: 991,
+  vi: 991,
+  tl: 991,
+};
+
 function readMessages(locale: SupportedLocale): MessageTree {
   return JSON.parse(
     readFileSync(join(process.cwd(), `messages/${locale}.json`), "utf8"),
@@ -57,6 +108,24 @@ function leafPaths(value: unknown, prefix = ""): string[] {
   );
 }
 
+function stringLeafEntries(value: unknown, prefix = ""): [string, string][] {
+  if (typeof value === "string") {
+    return prefix ? [[prefix, value]] : [];
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  return Object.entries(value as MessageTree).flatMap(([key, child]) =>
+    stringLeafEntries(child, prefix ? `${prefix}.${key}` : key),
+  );
+}
+
+function pathIsWithinNamespace(path: string, namespace: string): boolean {
+  return path === namespace || path.startsWith(`${namespace}.`);
+}
+
 test("web i18n supports the launch locales with Traditional Chinese as default", () => {
   assert.equal(DEFAULT_LOCALE, "zh-Hant");
   assert.deepEqual(SUPPORTED_LOCALES, ["zh-Hant", "zh-Hans", "en", "id", "vi", "tl"]);
@@ -88,22 +157,15 @@ test("every supported locale has a parseable message catalogue", () => {
   }
 });
 
-test("non-default catalogues cover the public top-nav page namespaces", () => {
+test("non-default catalogues cover localized namespaces before runtime fallback", () => {
   const defaultMessages = readMessages(DEFAULT_LOCALE);
-  const requiredNamespaces = [
-    "markets",
-    "howItWorks",
-    "responsibleGaming.metadata",
-    "responsibleGaming.overview",
-    "support.overview",
-  ];
 
   for (const locale of SUPPORTED_LOCALES) {
     if (locale === DEFAULT_LOCALE) continue;
 
     const messages = readMessages(locale);
 
-    for (const namespace of requiredNamespaces) {
+    for (const namespace of localizedNamespaces) {
       assert.ok(hasPath(messages, namespace), `${locale} missing ${namespace}`);
       const defaultNamespace = valueAtPath(defaultMessages, namespace);
       const localeNamespace = valueAtPath(messages, namespace);
@@ -114,6 +176,49 @@ test("non-default catalogues cover the public top-nav page namespaces", () => {
           `${locale} missing ${namespace}.${key}`,
         );
       }
+    }
+  }
+});
+
+test("remaining non-default fallback coverage is explicit and cannot grow silently", () => {
+  const defaultMessages = readMessages(DEFAULT_LOCALE);
+  const defaultLeafPaths = leafPaths(defaultMessages);
+
+  for (const locale of SUPPORTED_LOCALES) {
+    if (locale === DEFAULT_LOCALE) continue;
+
+    const messages = readMessages(locale);
+    const missingPaths = defaultLeafPaths.filter((path) => !hasPath(messages, path));
+    const untrackedPaths = missingPaths.filter(
+      (path) =>
+        !deferredTranslationNamespaces.some((namespace) =>
+          pathIsWithinNamespace(path, namespace),
+        ),
+    );
+
+    assert.deepEqual(
+      untrackedPaths,
+      [],
+      `${locale} has untracked zh-Hant fallback keys`,
+    );
+
+    assert.ok(
+      missingPaths.length <= (maxDeferredTranslationLeafCount[locale] ?? 0),
+      `${locale} fallback debt grew from ${
+        maxDeferredTranslationLeafCount[locale]
+      } to ${missingPaths.length} keys`,
+    );
+  }
+});
+
+test("non-Chinese catalogues do not contain Chinese copy", () => {
+  const cjk = /[\u3400-\u9fff]/u;
+
+  for (const locale of NON_CHINESE_LOCALES) {
+    const messages = readMessages(locale);
+
+    for (const [path, value] of stringLeafEntries(messages)) {
+      assert.doesNotMatch(value, cjk, `${locale}.${path}`);
     }
   }
 });

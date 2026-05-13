@@ -1,5 +1,6 @@
 {
   "common": {
+    "brand": "Prophetica",
     "metadata": {
       "description": "Trải nghiệm giải trí dự đoán sự kiện với thiết kế phong cách Apple."
     },
@@ -463,7 +464,7 @@
   "landing": {
     "hero": {
       "kicker": "Giải trí dự đoán",
-      "headline": "Dự đoán là cuộc so tài về góc nhìn.",
+      "headline": "Dự đoán là trí tuệ đến sớm từ bờ bên kia của thời gian.",
       "tagline": "Dùng điểm trong ứng dụng để dự đoán kết quả các sự kiện chưa công bố và so sánh nhận định của bạn với người chơi toàn cầu.",
       "ctaPrimary": "Bắt đầu",
       "ctaSecondary": "Tìm hiểu cách chơi",
