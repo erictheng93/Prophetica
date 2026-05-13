@@ -11,7 +11,7 @@
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lint": "tsc --project tsconfig.lint.json",
-    "test": "node -e \"require('node:fs').rmSync('.test-out', { recursive: true, force: true })\" && tsc --project tsconfig.test.json && node --test .test-out/tests/*.test.js"
+    "test": "node -e \"require('node:fs').rmSync('.test-out', { recursive: true, force: true })\" && tsc --project tsconfig.test.json && node --experimental-strip-types --disable-warning=ExperimentalWarning --test .test-out/tests/*.test.js"
   },
   "dependencies": {
     "@cloudflare/kumo": "latest",

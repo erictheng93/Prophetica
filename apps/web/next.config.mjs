@@ -36,7 +36,11 @@ const KYC_ROUTE_GLOB = "/kyc/:path*";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  transpilePackages: ["@prophetica/ui", "@prophetica/design-tokens"],
+  transpilePackages: [
+    "@prophetica/ui",
+    "@prophetica/design-tokens",
+    "@prophetica/ts-sdk",
+  ],
   async headers() {
     return [
       {

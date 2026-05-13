@@ -3,7 +3,17 @@ import { test } from "node:test";
 import { ALL_ROLES, canAccess, canApprove, capabilityFor, defaultLandingFor, filterRoutes } from "../lib/rbac.js";
 import type { OpsRoute } from "../lib/ops-facade.js";
 
-const internalRoutes = ["/", "/dashboard", "/members", "/points", "/affiliate", "/kyc-risk", "/compensation", "/approvals"] as const;
+const internalRoutes = [
+  "/",
+  "/dashboard",
+  "/faq",
+  "/members",
+  "/points",
+  "/affiliate",
+  "/kyc-risk",
+  "/compensation",
+  "/approvals",
+] as const;
 
 test("admin and manager can reach every internal route", () => {
   for (const path of internalRoutes) {
@@ -44,6 +54,12 @@ test("points BFF routes are reachable by every signed-in role", () => {
       `${role} -> manual adjustment BFF`,
     );
   }
+});
+
+test("FAQ catalog route is limited to admin and manager sessions", () => {
+  assert.equal(canAccess("/api/faq/catalog", "admin"), true);
+  assert.equal(canAccess("/api/faq/catalog", "manager"), true);
+  assert.equal(canAccess("/api/faq/catalog", "affiliate"), false);
 });
 
 test("admin and manager can reach /affiliate/[id] detail; affiliate cannot", () => {

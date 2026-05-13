@@ -2,7 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   // Workspace packages need to be transpiled because they ship as TS.
-  transpilePackages: ["@prophetica/ui", "@prophetica/design-tokens"],
+  transpilePackages: [
+    "@prophetica/ui",
+    "@prophetica/design-tokens",
+    "@prophetica/ts-sdk",
+  ],
   // lib/* uses NodeNext-style `./foo.js` extensions so node:test (tsc + node)
   // can run them. Tell webpack to strip `.js` when looking up TS sources so
   // the dev server and prod build still resolve them.

@@ -29,6 +29,8 @@ test("Cloudflare worker adapter is wired through OpenNext and Wrangler", () => {
   assert.match(wranglerConfig, /^\[assets\]$/m);
   assert.match(wranglerConfig, /^directory = ["']\.open-next\/assets["']$/m);
   assert.match(wranglerConfig, /^binding = ["']WORKER_SELF_REFERENCE["']$/m);
+  assert.match(wranglerConfig, /^\[\[kv_namespaces\]\]$/m);
+  assert.match(wranglerConfig, /^binding = ["']FAQ_CONTENT_KV["']$/m);
 });
 
 test("health route remains static and returns the SPEC-017 ok payload", () => {

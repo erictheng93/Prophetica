@@ -9,6 +9,7 @@ export const adminCopy = {
     overview: "總覽",
     dashboard: "決策支援",
     analytics: "分析報表",
+    faq: "FAQ 管理",
     signOut: "登出",
     brandLabel: "管理後台",
     roleAdmin: "管理員",
@@ -194,6 +195,12 @@ export const adminCopy = {
     auditHeading: "稽核查詢",
     auditDescription:
       "提供 evidence lookup 的固定查詢名稱，讓審批、補償、代理與 KYC 事件能被追蹤。",
+  },
+  faq: {
+    eyebrow: "客服內容",
+    title: "FAQ 管理",
+    description:
+      "維護玩家前台常見問題分類、題目與答案。發布後前台 FAQ 會優先讀取後台內容；沒有發布內容時回到系統預設。",
   },
   components: {
     previewSnapshot: "快照",

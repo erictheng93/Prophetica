@@ -53,7 +53,17 @@ test("admin test script typechecks then runs compiled node tests", () => {
   };
 
   assert.match(packageJson.scripts?.test ?? "", /tsc --project tsconfig\.test\.json/);
-  assert.match(packageJson.scripts?.test ?? "", /node --test \.test-out\/tests\/\*\.test\.js/);
+  assert.match(
+    packageJson.scripts?.test ?? "",
+    /node .*--test \.test-out\/tests\/\*\.test\.js/,
+  );
+});
+
+test("admin worker has the shared FAQ content KV binding", () => {
+  const wranglerConfig = readAdminFile("wrangler.toml");
+
+  assert.match(wranglerConfig, /^\[\[kv_namespaces\]\]$/m);
+  assert.match(wranglerConfig, /^binding = ["']FAQ_CONTENT_KV["']$/m);
 });
 
 test("decision support dashboard stays read-only and covers required insight areas", () => {

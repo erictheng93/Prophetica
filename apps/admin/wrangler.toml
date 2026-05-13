@@ -10,3 +10,8 @@ binding = "ASSETS"
 [[services]]
 binding = "WORKER_SELF_REFERENCE"
 service = "prophetica-admin-poc"
+
+# Admin and web must share this namespace so published FAQ content is live.
+[[kv_namespaces]]
+binding = "FAQ_CONTENT_KV"
+id = "prophetica_faq_content"

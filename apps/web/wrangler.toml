@@ -11,6 +11,11 @@ binding = "ASSETS"
 binding = "WORKER_SELF_REFERENCE"
 service = "prophetica-web-poc"
 
+# Admin and web must share this namespace so published FAQ content is live.
+[[kv_namespaces]]
+binding = "FAQ_CONTENT_KV"
+id = "prophetica_faq_content"
+
 [vars]
 KYC_SERVICE_BASE_URL = "http://127.0.0.1:8085"
 PROPHETICA_DEV_USER_ID = "user_01"

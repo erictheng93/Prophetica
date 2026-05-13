@@ -82,3 +82,31 @@ export type {
   PostTransactionResponse,
   WalletBalance,
 } from "./wallet/types.js";
+export {
+  FAQ_DEFAULT_LOCALE,
+  DEFAULT_FAQ_KV_KEY,
+  FAQ_SCHEMA_VERSION,
+  FAQ_SUPPORTED_LOCALES,
+  FaqCatalogValidationError,
+  InMemoryFaqCatalogStore,
+  KvFaqCatalogStore,
+  backfillFaqCatalogMissingLocalizedText,
+  createDefaultFaqCatalog,
+  faqCatalogToPublicSections,
+  normalizeFaqCatalog,
+  parseStoredFaqCatalog,
+  serializeFaqCatalog,
+} from "./support-faq/index.js";
+export type {
+  FaqCatalog,
+  FaqCatalogStore,
+  FaqKvNamespace,
+  FaqItem,
+  KvFaqCatalogStoreOptions,
+  FaqLocale,
+  FaqLocalizedText,
+  FaqSchemaVersion,
+  FaqSection,
+  PublicFaqItem,
+  PublicFaqSection,
+} from "./support-faq/index.js";

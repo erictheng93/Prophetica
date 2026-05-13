@@ -51,6 +51,9 @@ export function AdminShell({
   if (canAccess("/analytics", role)) {
     baseLinks.push({ key: "analytics", href: "/analytics", label: adminCopy.shell.analytics });
   }
+  if (canAccess("/faq", role)) {
+    baseLinks.push({ key: "faq", href: "/faq", label: adminCopy.shell.faq });
+  }
   if (canAccess("/me/affiliate", role)) {
     baseLinks.push({ key: "me-affiliate", href: "/me/affiliate", label: adminCopy.affiliatePortal.title });
   }

@@ -25,6 +25,10 @@
     "./kyc-provider": {
       "types": "./src/kyc-provider/index.ts",
       "import": "./src/kyc-provider/index.ts"
+    },
+    "./support-faq": {
+      "types": "./src/support-faq/index.ts",
+      "import": "./src/support-faq/index.ts"
     }
   },
   "scripts": {

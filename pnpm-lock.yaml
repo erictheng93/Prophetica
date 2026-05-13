@@ -38,6 +38,9 @@ importers:
       '@prophetica/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@prophetica/ts-sdk':
+        specifier: workspace:*
+        version: link:../../packages/ts-sdk
       '@prophetica/ui':
         specifier: workspace:*
         version: link:../../packages/ui
