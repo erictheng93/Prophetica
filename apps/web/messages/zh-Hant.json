@@ -2153,7 +2153,7 @@
       "signin": {
         "identifier": {
           "label": "Email 或手機號碼",
-          "placeholder": "you@example.com 或 0912345698",
+          "placeholder": "Email 或手機號碼",
           "hint": "台灣手機號碼可輸入 0912345698，也可省略前導 0 為 912345698。"
         },
         "password": "密碼",

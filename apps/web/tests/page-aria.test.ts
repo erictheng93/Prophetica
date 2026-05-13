@@ -77,6 +77,7 @@ test("sign-in copy explains phone numbers may include or omit the leading zero",
   );
   assert.ok(identifier, "missing auth.signIn.signin.identifier copy");
   assert.equal(identifier.label, "Email 或手機號碼");
+  assert.equal(identifier.placeholder, "Email 或手機號碼");
   assert.match(String(identifier.hint), /0912345698/);
   assert.match(String(identifier.hint), /912345698/);
 });
