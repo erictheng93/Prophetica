@@ -504,5 +504,17 @@
     "headline": "Hindi makakonekta sa Prophetica",
     "body": "Suriin ang Wi-Fi o mobile data, pagkatapos ay subukang muli sa ibaba. Para maiwasan ang lumang data, hindi namin kino-cache ang balances o order screens habang offline.",
     "retry": "Subukan muli"
+  },
+  "auth": {
+    "signIn": {
+      "signin": {
+        "status": {
+          "missing": "Ilagay ang Email o mobile number at password.",
+          "invalid": "Mali ang Email, mobile number, o password.",
+          "unavailable": "Pansamantalang hindi available ang sign-in. Subukan muli mamaya.",
+          "mfaRequired": "Kailangan ng account na ito ng two-step verification. Tapusin muna ang verification."
+        }
+      }
+    }
   }
 }

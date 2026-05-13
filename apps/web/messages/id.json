@@ -504,5 +504,17 @@
     "headline": "Tidak dapat terhubung ke Prophetica",
     "body": "Periksa Wi-Fi atau data seluler, lalu coba lagi di bawah. Untuk menghindari data usang, kami tidak menyimpan cache saldo atau layar order saat offline.",
     "retry": "Coba lagi"
+  },
+  "auth": {
+    "signIn": {
+      "signin": {
+        "status": {
+          "missing": "Masukkan Email atau nomor ponsel dan kata sandi.",
+          "invalid": "Email, nomor ponsel, atau kata sandi tidak benar.",
+          "unavailable": "Layanan masuk sementara tidak tersedia. Coba lagi nanti.",
+          "mfaRequired": "Akun ini memerlukan verifikasi dua langkah. Selesaikan verifikasi terlebih dahulu."
+        }
+      }
+    }
   }
 }

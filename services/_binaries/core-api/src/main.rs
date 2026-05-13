@@ -23,6 +23,7 @@ async fn run_stub_http(service_name: &'static str, default_port: u16) -> anyhow:
 
     let app = if service_name == user_service::SERVICE_NAME {
         service_stub::router(&config)
+            .merge(user_service::auth::auth_router())
             .merge(user_service::internal_contacts::internal_contacts_router())
     } else {
         service_stub::router(&config)

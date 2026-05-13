@@ -2158,7 +2158,13 @@
         "password": "密碼",
         "forgotPassword": "忘記密碼？",
         "remember": "在此裝置保持登入 14 天（公用裝置請勿勾選）",
-        "submit": "登入（後端待接）",
+        "status": {
+          "missing": "請輸入 Email 或手機號碼與密碼。",
+          "invalid": "Email、手機號碼或密碼不正確。",
+          "unavailable": "登入服務暫時無法使用，請稍後再試。",
+          "mfaRequired": "此帳號需要兩步驗證，請先完成驗證流程。"
+        },
+        "submit": "登入",
         "signupPrompt": "沒有帳戶？ <signupLink>註冊一個</signupLink>"
       },
       "signup": {

@@ -504,5 +504,17 @@
     "headline": "Cannot connect to Prophetica",
     "body": "Check Wi-Fi or mobile data, then retry below. To avoid showing stale data, we do not cache balances or order screens while offline.",
     "retry": "Retry"
+  },
+  "auth": {
+    "signIn": {
+      "signin": {
+        "status": {
+          "missing": "Enter your Email or mobile number and password.",
+          "invalid": "The Email, mobile number, or password is incorrect.",
+          "unavailable": "Sign-in is temporarily unavailable. Try again later.",
+          "mfaRequired": "This account requires two-step verification. Complete verification first."
+        }
+      }
+    }
   }
 }

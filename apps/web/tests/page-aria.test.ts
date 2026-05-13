@@ -74,7 +74,6 @@ test("static forms do not use unsupported aria-disabled attributes", () => {
   }
 });
 
-
 test("sign-in page does not render the legacy MFA notice paragraph", () => {
   const source = readFileSync(
     join(process.cwd(), "app/auth/sign-in/page.tsx"),
@@ -199,6 +198,15 @@ test("sign-in identifier field accepts email or phone login names", () => {
   assert.doesNotMatch(source, /type="email"/);
 });
 
+test("sign-in form submits through a server action and ships an enabled button", () => {
+  const source = signInFormSource();
+
+  assert.match(source, /<form action=\{submitSigninAction\}/);
+  assert.doesNotMatch(source, /<form action="#"/);
+  assert.doesNotMatch(source, /<button[\s\S]*?\sdisabled(?:\s|=)/);
+  assert.doesNotMatch(source, /後端待接/);
+});
+
 test("sign-in copy explains phone numbers may include or omit the leading zero", () => {
   const messages = JSON.parse(
     readFileSync(join(process.cwd(), "messages/zh-Hant.json"), "utf8"),
@@ -263,10 +271,7 @@ test("signup mode is an invite-only beta gate instead of a registration form", (
     messages.auth.signIn.signup.betaGate?.body?.includes("目前內測中"),
     true,
   );
-  assert.equal(
-    messages.auth.signIn.signup.betaGate?.lineCta,
-    "加入官方 LINE",
-  );
+  assert.equal(messages.auth.signIn.signup.betaGate?.lineCta, "加入官方 LINE");
 });
 
 test("action forms are not shipped disabled", () => {

@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { ProphLinkButton } from "@prophetica/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle, type ThemeToggleLabels } from "@/components/theme-toggle";
+import { getViewer } from "@/lib/session";
 
 // Shared site navigation — i18n-aware version (S commit).
 //
@@ -167,7 +168,12 @@ export async function MainNavLinks() {
 
 /** Account status + auth entry points; goes in `ProphSubNav.cta`. */
 export async function AuthCta() {
-  const t = await getTranslations("common.auth");
+  const [t, tPlayerNav, viewer] = await Promise.all([
+    getTranslations("common.auth"),
+    getTranslations("common.footer.columns.player.items"),
+    getViewer(),
+  ]);
+
   return (
     <div className="flex items-center gap-2 sm:gap-3">
       <LanguageSwitcher />
@@ -177,24 +183,39 @@ export async function AuthCta() {
       >
         <span className="inline-flex min-h-8 items-center gap-2 rounded-proph-pill border border-proph-hairline bg-proph-canvas px-3 font-text text-[13px] leading-[1.31] tracking-[0] text-proph-ink-muted-80">
           <span
-            className="h-1.5 w-1.5 rounded-proph-full bg-proph-ink-muted-48"
+            className={
+              "h-1.5 w-1.5 rounded-proph-full " +
+              (viewer ? "bg-proph-feedback-success" : "bg-proph-ink-muted-48")
+            }
             aria-hidden="true"
           />
-          {t("account.status.unauthenticated")}
+          {viewer ? viewer.userId : t("account.status.unauthenticated")}
         </span>
-        <a
-          href="/auth/sign-in"
-          className="font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink"
-        >
-          {t("signIn")}
-        </a>
-        <ProphLinkButton
-          variant="primary"
-          href="/auth/sign-in?mode=signup"
-          className="px-4 py-2 text-[14px] leading-[1.29] tracking-[-0.224px]"
-        >
-          {t("signUp")}
-        </ProphLinkButton>
+        {viewer ? (
+          <ProphLinkButton
+            variant="primary"
+            href="/portfolio"
+            className="px-4 py-2 text-[14px] leading-[1.29] tracking-[-0.224px]"
+          >
+            {tPlayerNav("portfolio")}
+          </ProphLinkButton>
+        ) : (
+          <>
+            <a
+              href="/auth/sign-in"
+              className="font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-ink/70 transition-colors hover:text-proph-ink"
+            >
+              {t("signIn")}
+            </a>
+            <ProphLinkButton
+              variant="primary"
+              href="/auth/sign-in?mode=signup"
+              className="px-4 py-2 text-[14px] leading-[1.29] tracking-[-0.224px]"
+            >
+              {t("signUp")}
+            </ProphLinkButton>
+          </>
+        )}
       </nav>
       <SiteThemeToggle />
     </div>

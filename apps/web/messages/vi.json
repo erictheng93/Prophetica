@@ -504,5 +504,17 @@
     "headline": "Không thể kết nối với Prophetica",
     "body": "Kiểm tra Wi-Fi hoặc dữ liệu di động, rồi thử lại bên dưới. Để tránh dữ liệu cũ, chúng tôi không lưu cache số dư hoặc màn hình đặt lệnh khi ngoại tuyến.",
     "retry": "Thử lại"
+  },
+  "auth": {
+    "signIn": {
+      "signin": {
+        "status": {
+          "missing": "Nhập Email hoặc số điện thoại và mật khẩu.",
+          "invalid": "Email, số điện thoại hoặc mật khẩu không đúng.",
+          "unavailable": "Dịch vụ đăng nhập tạm thời không khả dụng. Vui lòng thử lại sau.",
+          "mfaRequired": "Tài khoản này cần xác minh hai bước. Vui lòng hoàn tất xác minh trước."
+        }
+      }
+    }
   }
 }

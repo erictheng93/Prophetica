@@ -11,6 +11,7 @@
   },
   "include": [
     "tests/**/*.ts",
+    "lib/auth.ts",
     "lib/api-gateway.ts",
     "lib/engine-api.ts",
     "lib/idempotency.ts",

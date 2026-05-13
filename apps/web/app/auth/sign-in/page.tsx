@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { redirect } from "next/navigation";
 import { ProphFooter, ProphSubNav, ProphTile } from "@prophetica/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { authenticateWithPassword } from "@/lib/auth";
+import { setViewerSession } from "@/lib/session";
 import {
   Brand,
   FooterLegalRow,
@@ -11,10 +14,14 @@ import {
 } from "@/lib/site-nav";
 
 interface PageProps {
-  searchParams: Promise<{ mode?: string | string[] }>;
+  searchParams: Promise<{
+    mode?: string | string[];
+    login?: string | string[];
+  }>;
 }
 
 type AuthCopy = Awaited<ReturnType<typeof getTranslations<"auth.signIn">>>;
+type SigninStatusKey = "missing" | "invalid" | "unavailable" | "mfaRequired";
 
 const officialLineHref =
   process.env.NEXT_PUBLIC_OFFICIAL_LINE_URL ||
@@ -39,6 +46,7 @@ export default async function AuthPage({ searchParams }: PageProps) {
   ]);
   const raw = Array.isArray(params.mode) ? params.mode[0] : params.mode;
   const mode: "signin" | "signup" = raw === "signup" ? "signup" : "signin";
+  const signinStatus = signinStatusFromParam(params.login);
 
   return (
     <main className="min-h-screen bg-proph-canvas">
@@ -67,18 +75,61 @@ export default async function AuthPage({ searchParams }: PageProps) {
 
       <ModeToggle mode={mode} t={t} />
 
-      {mode === "signup" ? <SignupForm t={t} /> : <SigninForm t={t} />}
+      {mode === "signup" ? (
+        <SignupForm t={t} />
+      ) : (
+        <SigninForm t={t} status={signinStatus} />
+      )}
 
       <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
     </main>
   );
 }
 
+async function submitSigninAction(formData: FormData) {
+  "use server";
+
+  const identifier = readFormValue(formData, "identifier");
+  const password = readFormValue(formData, "password");
+  const remember = formData.get("remember") === "on";
+
+  if (!identifier.trim() || !password) {
+    redirect("/auth/sign-in?login=missing");
+  }
+
+  const result = await authenticateWithPassword({
+    identifier,
+    password,
+    remember,
+  });
+
+  if (result.status === "authenticated") {
+    await setViewerSession({ userId: result.userId, remember });
+    redirect("/portfolio");
+  }
+
+  if (result.status === "mfa_required") {
+    redirect("/auth/sign-in?login=mfa-required");
+  }
+
+  if (
+    result.status === "invalid_identifier" ||
+    result.status === "invalid_credentials"
+  ) {
+    redirect("/auth/sign-in?login=invalid");
+  }
+
+  redirect("/auth/sign-in?login=unavailable");
+}
 function ModeToggle({ mode, t }: { mode: "signin" | "signup"; t: AuthCopy }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-6 md:px-10">
-        <div role="tablist" aria-label={t("modeToggle.ariaLabel")} className="flex gap-2">
+        <div
+          role="tablist"
+          aria-label={t("modeToggle.ariaLabel")}
+          className="flex gap-2"
+        >
           <a
             role="tab"
             aria-selected={mode === "signin"}
@@ -111,11 +162,13 @@ function ModeToggle({ mode, t }: { mode: "signin" | "signup"; t: AuthCopy }) {
   );
 }
 
-function SigninForm({ t }: { t: AuthCopy }) {
+function SigninForm({ t, status }: { t: AuthCopy; status?: SigninStatusKey }) {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
-        <form action="#" className="space-y-6">
+        <form action={submitSigninAction} className="space-y-6">
+          {status ? <SigninStatusBanner t={t} status={status} /> : null}
+
           <label className="block">
             <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
               {t("signin.identifier.label")}
@@ -128,6 +181,7 @@ function SigninForm({ t }: { t: AuthCopy }) {
               autoCapitalize="none"
               enterKeyHint="next"
               spellCheck={false}
+              required
               aria-describedby="signin-identifier-hint"
               placeholder={t("signin.identifier.placeholder")}
               className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
@@ -157,20 +211,24 @@ function SigninForm({ t }: { t: AuthCopy }) {
               name="password"
               autoComplete="current-password"
               placeholder="********"
+              required
               className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
             />
           </label>
 
           <label className="flex min-h-11 items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
-            <input type="checkbox" name="remember" className="h-4 w-4 accent-proph-primary" />
+            <input
+              type="checkbox"
+              name="remember"
+              className="h-4 w-4 accent-proph-primary"
+            />
             {t("signin.remember")}
           </label>
 
           <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
             <button
               type="submit"
-              disabled
-              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
+              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary transition-colors hover:bg-proph-primary-focus"
             >
               {t("signin.submit")}
             </button>
@@ -179,7 +237,10 @@ function SigninForm({ t }: { t: AuthCopy }) {
           <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
             {t.rich("signin.signupPrompt", {
               signupLink: (chunks) => (
-                <a href="/auth/sign-in?mode=signup" className="text-proph-primary underline">
+                <a
+                  href="/auth/sign-in?mode=signup"
+                  className="text-proph-primary underline"
+                >
                   {chunks}
                 </a>
               ),
@@ -188,6 +249,24 @@ function SigninForm({ t }: { t: AuthCopy }) {
         </form>
       </div>
     </section>
+  );
+}
+
+function SigninStatusBanner({
+  t,
+  status,
+}: {
+  t: AuthCopy;
+  status: SigninStatusKey;
+}) {
+  return (
+    <p
+      role="alert"
+      aria-live="polite"
+      className="rounded-proph-md border border-proph-feedback-error/40 bg-proph-feedback-error/10 px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink"
+    >
+      {t(`signin.status.${status}`)}
+    </p>
   );
 }
 
@@ -231,4 +310,26 @@ function SignupForm({ t }: { t: AuthCopy }) {
       </div>
     </section>
   );
+}
+
+function signinStatusFromParam(
+  value: string | string[] | undefined,
+): SigninStatusKey | undefined {
+  const status = Array.isArray(value) ? value[0] : value;
+
+  switch (status) {
+    case "missing":
+    case "invalid":
+    case "unavailable":
+      return status;
+    case "mfa-required":
+      return "mfaRequired";
+    default:
+      return undefined;
+  }
+}
+
+function readFormValue(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
 }
