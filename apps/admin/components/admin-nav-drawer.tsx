@@ -4,11 +4,13 @@ import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@prophetica/ui";
+import { findActiveNavChildKey, isNavPathActive } from "@/lib/admin-nav-active";
 
 interface AdminNavLink {
   href: string;
   label: string;
   key: string;
+  children?: AdminNavLink[];
 }
 
 interface AdminNavDrawerProps {
@@ -32,7 +34,12 @@ interface AdminNavDrawerProps {
  *   - Body scroll locked while open (iOS Safari rubber-band guard)
  */
 
-export function AdminNavDrawer({ ariaLabel, links, signOutLabel, roleLabel }: AdminNavDrawerProps) {
+export function AdminNavDrawer({
+  ariaLabel,
+  links,
+  signOutLabel,
+  roleLabel,
+}: AdminNavDrawerProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -130,16 +137,26 @@ export function AdminNavDrawer({ ariaLabel, links, signOutLabel, roleLabel }: Ad
               </svg>
             </button>
           </div>
-          <nav aria-label={ariaLabel} className="flex-1 overflow-y-auto px-3 py-4">
+          <nav
+            aria-label={ariaLabel}
+            className="flex-1 overflow-y-auto px-3 py-4"
+          >
             <ul className="flex flex-col gap-1">
               {links.map((link) => {
-                const isActive =
-                  link.href === "/" ? pathname === "/" : pathname === link.href || pathname?.startsWith(`${link.href}/`);
+                const isExactActive = pathname === link.href;
+                const isActive = isNavPathActive(pathname, link.href);
+                const activeChildKey = link.children
+                  ? findActiveNavChildKey(pathname, link.children)
+                  : undefined;
                 return (
                   <li key={link.key}>
                     <Link
                       href={link.href}
-                      aria-current={isActive ? "page" : undefined}
+                      aria-current={
+                        isExactActive && !link.children?.length
+                          ? "page"
+                          : undefined
+                      }
                       onClick={() => setOpen(false)}
                       className={cn(
                         "flex min-h-12 items-center rounded-proph-sm px-4 py-3 text-[17px] leading-[1.24] tracking-[-0.374px]",
@@ -150,6 +167,36 @@ export function AdminNavDrawer({ ariaLabel, links, signOutLabel, roleLabel }: Ad
                     >
                       {link.label}
                     </Link>
+                    {link.children && link.children.length > 0 && (
+                      <ul
+                        aria-label={`${link.label} 子導覽`}
+                        className="mt-1 flex flex-col gap-1 border-l border-proph-hairline pl-3"
+                      >
+                        {link.children.map((child) => {
+                          const isChildActive = activeChildKey === child.key;
+
+                          return (
+                            <li key={child.key}>
+                              <Link
+                                href={child.href}
+                                aria-current={
+                                  isChildActive ? "page" : undefined
+                                }
+                                onClick={() => setOpen(false)}
+                                className={cn(
+                                  "flex min-h-11 items-center rounded-proph-sm px-4 py-2 text-[15px] leading-[1.29] tracking-[-0.224px]",
+                                  isChildActive
+                                    ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
+                                    : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
+                                )}
+                              >
+                                {child.label}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                   </li>
                 );
               })}

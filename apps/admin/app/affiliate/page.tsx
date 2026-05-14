@@ -2,6 +2,7 @@ import { AdminShell } from "@/components/admin-shell";
 import { AffiliateList } from "@/components/affiliate-list";
 import { DomainScope } from "@/components/domain-scope";
 import { RoleGate } from "@/components/role-gate";
+import { adminCopy } from "@/lib/admin-copy";
 import { getAffiliatesSnapshot } from "@/lib/affiliates";
 import { getOpsRoute } from "@/lib/ops-facade";
 
@@ -12,7 +13,12 @@ export default function AffiliatePage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
       {(viewer) => (
-        <AdminShell title={route.label} description={route.summary} role={viewer.role}>
+        <AdminShell
+          eyebrow={route.label}
+          title={adminCopy.affiliateAdmin.listHeading}
+          description={adminCopy.affiliateAdmin.listDescription}
+          role={viewer.role}
+        >
           <div className="space-y-8">
             <DomainScope domain={route.domain} role={viewer.role} />
             <AffiliateList affiliates={affiliates} />

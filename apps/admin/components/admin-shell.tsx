@@ -43,23 +43,44 @@ export function AdminShell({
   const visibleRoutes = filterRoutes(routes, role);
   const baseLinks: { key: string; href: string; label: string }[] = [];
   if (canAccess("/", role)) {
-    baseLinks.push({ key: "overview", href: "/", label: adminCopy.shell.overview });
+    baseLinks.push({
+      key: "overview",
+      href: "/",
+      label: adminCopy.shell.overview,
+    });
   }
   if (canAccess("/dashboard", role)) {
-    baseLinks.push({ key: "dashboard", href: "/dashboard", label: adminCopy.shell.dashboard });
+    baseLinks.push({
+      key: "dashboard",
+      href: "/dashboard",
+      label: adminCopy.shell.dashboard,
+    });
   }
   if (canAccess("/analytics", role)) {
-    baseLinks.push({ key: "analytics", href: "/analytics", label: adminCopy.shell.analytics });
+    baseLinks.push({
+      key: "analytics",
+      href: "/analytics",
+      label: adminCopy.shell.analytics,
+    });
   }
   if (canAccess("/faq", role)) {
     baseLinks.push({ key: "faq", href: "/faq", label: adminCopy.shell.faq });
   }
   if (canAccess("/me/affiliate", role)) {
-    baseLinks.push({ key: "me-affiliate", href: "/me/affiliate", label: adminCopy.affiliatePortal.title });
+    baseLinks.push({
+      key: "me-affiliate",
+      href: "/me/affiliate",
+      label: adminCopy.affiliatePortal.title,
+    });
   }
   const navLinks = [
     ...baseLinks,
-    ...visibleRoutes.map((route) => ({ key: route.domain, href: route.href, label: route.label })),
+    ...visibleRoutes.map((route) => ({
+      key: route.domain,
+      href: route.href,
+      label: route.label,
+      children: route.children,
+    })),
   ];
 
   return (

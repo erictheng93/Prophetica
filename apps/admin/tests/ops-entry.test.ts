@@ -30,6 +30,23 @@ test("admin operations entry page reads from the server-side ops facade", () => 
   assert.match(source, /\bgetAdminOperationsSnapshot\b/);
 });
 
+test("admin affiliate operations are grouped under the management area", () => {
+  const facadeSource = readAdminFile("lib/ops-facade.ts");
+  const shellSource = readAdminFile("components/admin-shell.tsx");
+  const sidebarSource = readAdminFile("components/admin-nav.tsx");
+  const drawerSource = readAdminFile("components/admin-nav-drawer.tsx");
+
+  assert.match(facadeSource, /代理管理區/);
+  assert.match(facadeSource, /代理清單/);
+  assert.match(facadeSource, /佣金管理/);
+  assert.match(facadeSource, /撥款管理/);
+  assert.match(facadeSource, /\/affiliate\/commissions/);
+  assert.match(facadeSource, /\/affiliate\/payouts/);
+  assert.match(shellSource, /children:\s*route\.children/);
+  assert.match(sidebarSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
+  assert.match(drawerSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
+});
+
 test("admin pages do not ship forms with unsupported aria-disabled", () => {
   const pageFiles = [
     "app/page.tsx",

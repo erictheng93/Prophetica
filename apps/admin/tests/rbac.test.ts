@@ -10,6 +10,8 @@ const internalRoutes = [
   "/members",
   "/points",
   "/affiliate",
+  "/affiliate/commissions",
+  "/affiliate/payouts",
   "/kyc-risk",
   "/compensation",
   "/approvals",
@@ -63,7 +65,12 @@ test("FAQ catalog route is limited to admin and manager sessions", () => {
 });
 
 test("admin and manager can reach /affiliate/[id] detail; affiliate cannot", () => {
-  for (const path of ["/affiliate/AFF-001", "/affiliate/AFF-022"]) {
+  for (const path of [
+    "/affiliate/AFF-001",
+    "/affiliate/AFF-022",
+    "/affiliate/commissions/AFF-001",
+    "/affiliate/payouts/PAYOUT-001",
+  ]) {
     assert.equal(canAccess(path, "admin"), true, `admin -> ${path}`);
     assert.equal(canAccess(path, "manager"), true, `manager -> ${path}`);
     assert.equal(canAccess(path, "affiliate"), false, `affiliate -> ${path}`);

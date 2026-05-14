@@ -110,7 +110,15 @@ export const adminCopy = {
   affiliateAdmin: {
     listHeading: "代理清單",
     listDescription:
-      "全平台已啟用的代理夥伴。點擊一列以查看推薦鏈、佣金歷史與管理動作。",
+      "全平台代理的註冊與管控清單。Admin 和 Manager 可進行代理資料的新增、查詢、調整與停用審查。",
+    commissionsTitle: "佣金管理",
+    commissionsDescription:
+      "管理代理可領取佣金的增減、調整原因與審查紀錄。所有變更都需要保留稽核脈絡。",
+    payoutsTitle: "撥款管理",
+    payoutsDescription:
+      "代理可申請領取佣金；Admin 和 Manager 於此審查申請並標記 approved 或 rejected。",
+    modulePlaceholder:
+      "Phase 3 串接 referral-service 與 payout-service 後啟用；目前提供管理資訊架構與唯讀審查殼。",
     detailEyebrow: "代理檔案",
     detailBackToList: "返回代理清單",
     statusActive: "啟用",
@@ -176,10 +184,10 @@ export const adminCopy = {
   overview: {
     title: "管理操作入口",
     description:
-      "集中處理會員、帳戶點數、代理抽佣、KYC / 風控事件、補償與人工審批。此頁只提供操作入口與審批脈絡，實際寫入仍由核准後的系統紀錄完成。",
+      "集中處理會員、帳戶點數、代理管理、KYC / 風控事件、補償與人工審批。此頁只提供操作入口與審批脈絡，實際寫入仍由核准後的系統紀錄完成。",
     domainsHeading: "操作領域",
     domainsDescription:
-      "會員、點數例外、代理審查、KYC / 風控、補償與人工核准工作區。",
+      "會員、點數例外、代理管理、KYC / 風控、補償與人工核准工作區。",
   },
   dashboard: {
     eyebrow: "決策支援",

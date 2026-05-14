@@ -17,6 +17,13 @@ export interface OpsRoute {
   owner: string;
   openItems: number;
   tone: OpsTone;
+  children?: OpsRouteChild[];
+}
+
+export interface OpsRouteChild {
+  href: string;
+  label: string;
+  key: string;
 }
 
 export interface OpsQueueItem {
@@ -73,7 +80,8 @@ const routes: OpsRoute[] = [
     label: "會員管理",
     domain: "member-management",
     summary: "查詢會員狀態、限制、聯絡資料與帳戶摘要。",
-    scope: "用於客服與營運人員確認會員基本資料、帳戶狀態與待處理案件，不提供直接停權或刪除。",
+    scope:
+      "用於客服與營運人員確認會員基本資料、帳戶狀態與待處理案件，不提供直接停權或刪除。",
     owner: "Member Ops",
     openItems: 18,
     tone: "neutral",
@@ -83,27 +91,43 @@ const routes: OpsRoute[] = [
     label: "帳戶點數例外",
     domain: "points-exceptions",
     summary: "追蹤點數入帳延遲、人工調整、凍結與對帳例外。",
-    scope: "所有點數補償與修正需經雙人審批；此入口只建立審查脈絡，不直接寫入帳本。",
+    scope:
+      "所有點數補償與修正需經雙人審批；此入口只建立審查脈絡，不直接寫入帳本。",
     owner: "Wallet Ops",
     openItems: 7,
     tone: "warning",
   },
   {
     href: "/affiliate",
-    label: "代理抽佣審查",
+    label: "代理管理區",
     domain: "affiliate-review",
-    summary: "檢查推薦鏈、佣金層級、待撥款與異常節點。",
-    scope: "用於確認 sponsor、佣金規則與風控標記，佣金率變更需保留 audit trail。",
+    summary: "管理代理註冊、管控、佣金與撥款審查。",
+    scope:
+      "Admin 與 Manager 可管理代理資料、佣金增減與撥款審查；佣金率與撥款處分需保留 audit trail。",
     owner: "Commission Ops",
     openItems: 11,
     tone: "neutral",
+    children: [
+      { key: "affiliate-list", href: "/affiliate", label: "代理清單" },
+      {
+        key: "affiliate-commissions",
+        href: "/affiliate/commissions",
+        label: "佣金管理",
+      },
+      {
+        key: "affiliate-payouts",
+        href: "/affiliate/payouts",
+        label: "撥款管理",
+      },
+    ],
   },
   {
     href: "/kyc-risk",
     label: "KYC / 風控事件",
     domain: "kyc-risk-events",
     summary: "覆核 KYC 狀態、制裁命中、PEP、裝置與交易風險事件。",
-    scope: "高風險案件需由風控與合規共同處理，必要時凍結帳戶功能並保留既有持倉。",
+    scope:
+      "高風險案件需由風控與合規共同處理，必要時凍結帳戶功能並保留既有持倉。",
     owner: "Risk Ops",
     openItems: 23,
     tone: "critical",
@@ -113,7 +137,8 @@ const routes: OpsRoute[] = [
     label: "補償審批",
     domain: "compensation-reviews",
     summary: "處理客服補償、服務事件 credit 與人工點數提案。",
-    scope: "補償提案必須具備 ticket、原因、金額與兩名不同核准人，入帳前不可視為完成。",
+    scope:
+      "補償提案必須具備 ticket、原因、金額與兩名不同核准人，入帳前不可視為完成。",
     owner: "Support Finance",
     openItems: 5,
     tone: "success",
@@ -134,7 +159,12 @@ const summaries: OpsQueueSummary[] = [
   { label: "未結項目", value: "78", detail: "全部操作領域", tone: "neutral" },
   { label: "高風險", value: "9", detail: "需合規或風控升級", tone: "critical" },
   { label: "待審批", value: "16", detail: "等待第二核准人", tone: "warning" },
-  { label: "可處理", value: "31", detail: "資料齊備，可進入下一步", tone: "success" },
+  {
+    label: "可處理",
+    value: "31",
+    detail: "資料齊備，可進入下一步",
+    tone: "success",
+  },
 ];
 
 const queue: OpsQueueItem[] = [
