@@ -79,9 +79,9 @@ const routes: OpsRoute[] = [
     href: "/members",
     label: "會員管理",
     domain: "member-management",
-    summary: "查詢會員狀態、限制、聯絡資料與帳戶摘要。",
+    summary: "查詢與管理會員狀態、KYC、來源代理與帳戶摘要。",
     scope:
-      "用於客服與營運人員確認會員基本資料、帳戶狀態與待處理案件，不提供直接停權或刪除。",
+      "用於客服、營運與代理管理會員基本資料、帳戶狀態、KYC 狀態與來源歸屬；新增會員需先完成 KYC 綠燈才會激活。",
     owner: "Member Ops",
     openItems: 18,
     tone: "neutral",

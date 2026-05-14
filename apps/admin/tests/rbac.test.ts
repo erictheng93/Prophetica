@@ -33,8 +33,17 @@ test("admin and manager can reach every internal route", () => {
 
 test("affiliate cannot reach any internal route", () => {
   for (const path of internalRoutes) {
+    if (path === "/members") {
+      continue;
+    }
     assert.equal(canAccess(path, "affiliate"), false, `affiliate -> ${path}`);
   }
+});
+
+test("affiliate can reach scoped member management routes", () => {
+  assert.equal(canAccess("/members", "affiliate"), true);
+  assert.equal(canAccess("/api/members", "affiliate"), true);
+  assert.equal(canAccess("/api/members/MEM-001/summary", "affiliate"), true);
 });
 
 test("only affiliate can reach /me/affiliate and its descendants", () => {
@@ -99,9 +108,9 @@ test("admin and manager can reach /affiliate/[id] detail; affiliate cannot", () 
 
 test("/me prefix does not bleed into /members or /me-anything", () => {
   // Regression: an earlier middleware build used pathname.startsWith("/me")
-  // which returned true for /members. canAccess must still 403 those paths
-  // for affiliate so the redirect logic can route them correctly.
-  assert.equal(canAccess("/members", "affiliate"), false);
+  // which returned true for /members. canAccess must still classify /members
+  // through its own explicit member-management rule.
+  assert.equal(canAccess("/members", "affiliate"), true);
   assert.equal(canAccess("/me-something", "affiliate"), false);
   assert.equal(canAccess("/me", "affiliate"), false);
 });
@@ -131,7 +140,7 @@ test("defaultLandingFor sends affiliate to /me/affiliate", () => {
   assert.equal(defaultLandingFor("affiliate"), "/me/affiliate");
 });
 
-test("filterRoutes hides every internal domain from affiliate", () => {
+test("filterRoutes limits affiliate to scoped member management", () => {
   const routes: OpsRoute[] = [
     {
       href: "/members",
@@ -157,5 +166,8 @@ test("filterRoutes hides every internal domain from affiliate", () => {
 
   assert.equal(filterRoutes(routes, "admin").length, 2);
   assert.equal(filterRoutes(routes, "manager").length, 2);
-  assert.equal(filterRoutes(routes, "affiliate").length, 0);
+  assert.deepEqual(
+    filterRoutes(routes, "affiliate").map((route) => route.href),
+    ["/members"],
+  );
 });

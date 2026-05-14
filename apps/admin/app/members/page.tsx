@@ -8,12 +8,15 @@ export default function MembersPage() {
   const route = getOpsRoute("member-management");
 
   return (
-    <RoleGate allow={["admin", "manager"]}>
+    <RoleGate allow={["admin", "manager", "affiliate"]}>
       {(viewer) => (
         <AdminShell title={route.label} description={route.summary} role={viewer.role}>
           <div className="space-y-8">
             <DomainScope domain={route.domain} role={viewer.role} />
-            <MemberManagement viewerRole={viewer.role} />
+            <MemberManagement
+              viewerAffiliateId={viewer.affiliateId}
+              viewerRole={viewer.role}
+            />
           </div>
         </AdminShell>
       )}

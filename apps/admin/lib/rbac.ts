@@ -29,13 +29,13 @@ const routeRules: readonly RouteRule[] = [
   { path: "/403", allow: ALL_ROLES },
   { path: "/api/points/wallets", isPrefix: true, allow: ALL_ROLES },
   { path: "/api/points/manual-adjustments", allow: ALL_ROLES },
-  { path: "/api/members", isPrefix: true, allow: ["admin", "manager"] },
+  { path: "/api/members", isPrefix: true, allow: ALL_ROLES },
   { path: "/api/analytics", isPrefix: true, allow: ["admin", "manager"] },
   { path: "/api/faq/catalog", allow: ["admin", "manager"] },
   { path: "/", allow: ["admin", "manager"] },
   { path: "/dashboard", allow: ["admin", "manager"] },
   { path: "/faq", allow: ["admin", "manager"] },
-  { path: "/members", allow: ["admin", "manager"] },
+  { path: "/members", allow: ALL_ROLES },
   { path: "/points", allow: ["admin", "manager"] },
   { path: "/affiliate", isPrefix: true, allow: ["admin", "manager"] },
   { path: "/analytics", isPrefix: true, allow: ["admin", "manager"] },
@@ -95,7 +95,9 @@ const domainCapabilityByRole: Record<
     "compensation-reviews": "propose",
     "manual-approvals": "propose",
   },
-  affiliate: {},
+  affiliate: {
+    "member-management": "propose",
+  },
 };
 
 export function capabilityFor(

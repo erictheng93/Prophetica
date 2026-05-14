@@ -1,4 +1,4 @@
-export type MemberStatus = "active" | "restricted" | "suspended";
+export type MemberStatus = "inactive" | "active" | "restricted" | "suspended";
 export type KycStatus = "verified" | "review_required" | "pending";
 export type RiskLevel = "low" | "medium" | "high";
 
@@ -58,12 +58,49 @@ export interface MemberAuditSummary {
   latest_admin_action_at: string | null;
 }
 
+export interface MemberSourceSummary {
+  channel: "direct" | "affiliate";
+  affiliate_id: string | null;
+  affiliate_name: string;
+}
+
 export interface MemberManagementSummary {
   member: MemberIdentitySummary;
   account: MemberAccountSummary;
   kyc_risk: MemberKycRiskSummary;
   open_cases: MemberOpenCaseSummary[];
   audit: MemberAuditSummary;
+  source: MemberSourceSummary;
+}
+
+export interface MemberCreateRequest {
+  user_id: string;
+  display_name: string;
+  email: string;
+  phone: string;
+  line_id?: string;
+  country: string;
+  timezone: string;
+  tier: string;
+  affiliate_id?: string;
+}
+
+export interface MemberUpdateRequest {
+  display_name?: string;
+  email?: string;
+  phone?: string;
+  line_id?: string | null;
+  country?: string;
+  timezone?: string;
+  tier?: string;
+  affiliate_id?: string | null;
+  kyc_status?: KycStatus;
+  risk_level?: RiskLevel;
+  risk_score?: number;
+}
+
+export interface MemberDeleteResponse {
+  user_id: string;
 }
 
 export interface MemberActionRequest {

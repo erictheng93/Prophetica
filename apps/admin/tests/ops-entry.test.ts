@@ -36,6 +36,7 @@ test("members page exposes complete member management operations", () => {
   const componentSource = readAdminFile("components/member-management.tsx");
   const bffSource = readAdminFile("lib/member-management-bff.ts");
   const modelSource = readAdminFile("lib/member-management.ts");
+  const storeSource = readAdminFile("lib/member-management-store.ts");
   const rbacSource = readAdminFile("lib/rbac.ts");
 
   assert.match(source, /MemberManagement/);
@@ -47,7 +48,9 @@ test("members page exposes complete member management operations", () => {
   assert.match(componentSource, /\/api\/members/);
   assert.match(bffSource, /proxyMemberSummaryRequest/);
   assert.match(bffSource, /proxyMemberActionRequest/);
-  assert.match(modelSource, /MEM-1042/);
+  assert.match(modelSource, /listMemberSummaries/);
+  assert.match(storeSource, /MEM-1042/);
+  assert.match(storeSource, /sourceForAffiliate/);
   assert.match(rbacSource, /\/api\/members/);
 });
 
@@ -129,6 +132,19 @@ test("admin dev server allows configured LAN origins", async () => {
     "192.168.68.93",
     "172.20.10.6",
   ]);
+});
+
+test("admin service worker is disabled during local development", () => {
+  const registrationSource = readAdminFile(
+    "components/service-worker-registration.tsx",
+  );
+  const workerSource = readAdminFile("public/sw.js");
+
+  assert.match(registrationSource, /process\.env\.NODE_ENV !== "production"/);
+  assert.match(registrationSource, /\.getRegistrations\(\)/);
+  assert.match(registrationSource, /\.unregister\(\)/);
+  assert.match(workerSource, /DEV_HOSTNAMES/);
+  assert.match(workerSource, /self\.registration\.unregister\(\)/);
 });
 
 test("decision support dashboard stays read-only and covers required insight areas", () => {

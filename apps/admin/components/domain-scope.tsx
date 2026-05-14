@@ -21,6 +21,10 @@ export function DomainScope({ domain, role }: DomainScopeProps) {
   const route = snapshot.routes.find((item) => item.domain === domain);
   const items = snapshot.queue.filter((item) => item.domain === domain);
   const capability = capabilityFor(role, domain);
+  const scopeNote =
+    domain === "member-management"
+      ? "此工作區可新增與編輯會員；admin / manager 可刪除，affiliate 僅能管理自己代理鏈歸屬範圍內的會員。"
+      : adminCopy.components.readOnlyScope;
 
   if (!route) {
     return null;
@@ -38,7 +42,7 @@ export function DomainScope({ domain, role }: DomainScopeProps) {
         <h2 className="mt-4 text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">{adminCopy.components.operationalScope}</h2>
         <p className="mt-2 max-w-3xl text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">{route.scope}</p>
         <p className="mt-4 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-          {adminCopy.components.readOnlyScope}
+          {scopeNote}
         </p>
         {capability && (
           <p className="mt-3 max-w-3xl rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink">
