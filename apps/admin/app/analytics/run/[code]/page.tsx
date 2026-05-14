@@ -6,6 +6,7 @@ import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
 import { fetchTemplates } from "@/lib/analytics-reporting";
+import { analyticsServerFetchOptions } from "@/lib/analytics-server-fetch";
 
 interface RunPageProps {
   params: Promise<{ code: string }>;
@@ -17,7 +18,9 @@ export default async function AnalyticsRunPage({ params }: RunPageProps) {
   return (
     <RoleGate allow={["admin", "manager"]}>
       {async (viewer) => {
-        const template = (await fetchTemplates()).find((row) => row.code === code);
+        const template = (
+          await fetchTemplates(await analyticsServerFetchOptions())
+        ).find((row) => row.code === code);
         if (!template) {
           notFound();
         }
@@ -44,11 +47,21 @@ export default async function AnalyticsRunPage({ params }: RunPageProps) {
 
               <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill tone={template.retention.category === "legal_audit" ? "warning" : "neutral"}>
+                  <StatusPill
+                    tone={
+                      template.retention.category === "legal_audit"
+                        ? "warning"
+                        : "neutral"
+                    }
+                  >
                     {template.schemaVersion}
                   </StatusPill>
-                  <span className="font-mono text-[12px] tracking-[-0.12px] text-proph-ink-muted-80">{template.code}</span>
-                  <span className="text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">{retentionLabel}</span>
+                  <span className="font-mono text-[12px] tracking-[-0.12px] text-proph-ink-muted-80">
+                    {template.code}
+                  </span>
+                  <span className="text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
+                    {retentionLabel}
+                  </span>
                 </div>
                 <h2 className="mt-3 text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-proph-ink">
                   {template.name}

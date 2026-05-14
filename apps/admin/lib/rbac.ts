@@ -4,7 +4,10 @@ export const ALL_ROLES = ["admin", "manager", "affiliate"] as const;
 export type Role = (typeof ALL_ROLES)[number];
 
 export function isRole(value: unknown): value is Role {
-  return typeof value === "string" && (ALL_ROLES as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (ALL_ROLES as readonly string[]).includes(value)
+  );
 }
 
 /*
@@ -26,6 +29,7 @@ const routeRules: readonly RouteRule[] = [
   { path: "/403", allow: ALL_ROLES },
   { path: "/api/points/wallets", isPrefix: true, allow: ALL_ROLES },
   { path: "/api/points/manual-adjustments", allow: ALL_ROLES },
+  { path: "/api/analytics", isPrefix: true, allow: ["admin", "manager"] },
   { path: "/api/faq/catalog", allow: ["admin", "manager"] },
   { path: "/", allow: ["admin", "manager"] },
   { path: "/dashboard", allow: ["admin", "manager"] },
@@ -41,13 +45,17 @@ const routeRules: readonly RouteRule[] = [
 ];
 
 export function canAccess(pathname: string, role: Role): boolean {
-  const exact = routeRules.find((rule) => !rule.isPrefix && rule.path === pathname);
+  const exact = routeRules.find(
+    (rule) => !rule.isPrefix && rule.path === pathname,
+  );
   if (exact) {
     return exact.allow.includes(role);
   }
 
   const prefix = routeRules.find(
-    (rule) => rule.isPrefix && (pathname === rule.path || pathname.startsWith(`${rule.path}/`)),
+    (rule) =>
+      rule.isPrefix &&
+      (pathname === rule.path || pathname.startsWith(`${rule.path}/`)),
   );
   if (prefix) {
     return prefix.allow.includes(role);
@@ -66,7 +74,10 @@ export function defaultLandingFor(role: Role): string {
  */
 type DomainCapability = "approve" | "propose" | "view";
 
-const domainCapabilityByRole: Record<Role, Partial<Record<OpsDomainId, DomainCapability>>> = {
+const domainCapabilityByRole: Record<
+  Role,
+  Partial<Record<OpsDomainId, DomainCapability>>
+> = {
   admin: {
     "member-management": "approve",
     "points-exceptions": "approve",
@@ -86,7 +97,10 @@ const domainCapabilityByRole: Record<Role, Partial<Record<OpsDomainId, DomainCap
   affiliate: {},
 };
 
-export function capabilityFor(role: Role, domain: OpsDomainId): DomainCapability | undefined {
+export function capabilityFor(
+  role: Role,
+  domain: OpsDomainId,
+): DomainCapability | undefined {
   return domainCapabilityByRole[role][domain];
 }
 
@@ -94,6 +108,9 @@ export function canApprove(role: Role, domain: OpsDomainId): boolean {
   return capabilityFor(role, domain) === "approve";
 }
 
-export function filterRoutes(routes: readonly OpsRoute[], role: Role): OpsRoute[] {
+export function filterRoutes(
+  routes: readonly OpsRoute[],
+  role: Role,
+): OpsRoute[] {
   return routes.filter((route) => canAccess(route.href, role));
 }

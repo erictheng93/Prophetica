@@ -4,6 +4,7 @@ import { AdminShell } from "@/components/admin-shell";
 import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
+import { analyticsServerFetchOptions } from "@/lib/analytics-server-fetch";
 import {
   fetchJobDetail,
   type ReportFormat,
@@ -27,7 +28,10 @@ export default async function AnalyticsJobDetailPage({ params }: JobPageProps) {
   return (
     <RoleGate allow={["admin", "manager"]}>
       {async (viewer) => {
-        const detail = await fetchJobDetail(id);
+        const detail = await fetchJobDetail(
+          id,
+          await analyticsServerFetchOptions(),
+        );
         const job = detail.job;
         if (!job) {
           notFound();
@@ -71,9 +75,21 @@ function ParamsCard({ job }: { job: ReportJob }) {
         {adminCopy.analytics.detailParamsHeading}
       </h2>
       <dl className="mt-4 grid gap-4 md:grid-cols-2">
-        <KeyValue label={adminCopy.analytics.fieldStartAt} value={job.params.startAt} mono />
-        <KeyValue label={adminCopy.analytics.fieldEndAt} value={job.params.endAt} mono />
-        <KeyValue label={adminCopy.analytics.fieldTimezone} value={job.params.timezone} mono />
+        <KeyValue
+          label={adminCopy.analytics.fieldStartAt}
+          value={job.params.startAt}
+          mono
+        />
+        <KeyValue
+          label={adminCopy.analytics.fieldEndAt}
+          value={job.params.endAt}
+          mono
+        />
+        <KeyValue
+          label={adminCopy.analytics.fieldTimezone}
+          value={job.params.timezone}
+          mono
+        />
         <KeyValue
           label={adminCopy.analytics.fieldSortBy}
           value={`${job.params.sortBy} · ${job.params.sortDirection === "asc" ? adminCopy.analytics.fieldSortAsc : adminCopy.analytics.fieldSortDesc}`}
@@ -83,7 +99,10 @@ function ParamsCard({ job }: { job: ReportJob }) {
         <KeyValue label="Version" value={job.version} mono />
         <KeyValue label="Generated at" value={job.generatedAt} mono />
         <KeyValue label="Row hash" value={job.rowHash} mono />
-        <KeyValue label={adminCopy.analytics.jobOutputRowsColumn} value={String(job.outputRows)} />
+        <KeyValue
+          label={adminCopy.analytics.jobOutputRowsColumn}
+          value={String(job.outputRows)}
+        />
         <KeyValue
           label={adminCopy.analytics.jobRetentionColumn}
           value={`${job.retention.category} · ${job.retention.expiresAt}`}
@@ -171,11 +190,15 @@ function DownloadCard({ job }: { job: ReportJob }) {
 }
 
 function RevealCard({ job, viewerRole }: { job: ReportJob; viewerRole: Role }) {
-  const hasSensitive = job.params.columns.some((column) => column.endsWith("_email") || column.endsWith("_id"));
+  const hasSensitive = job.params.columns.some(
+    (column) => column.endsWith("_email") || column.endsWith("_id"),
+  );
   if (!hasSensitive) return null;
   const unlocked = job.rows.some((row) => {
     const email = row["member_email"];
-    return typeof email === "string" && email.includes("@") && !email.includes("***");
+    return (
+      typeof email === "string" && email.includes("@") && !email.includes("***")
+    );
   });
   return (
     <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
@@ -183,7 +206,9 @@ function RevealCard({ job, viewerRole }: { job: ReportJob; viewerRole: Role }) {
         {adminCopy.analytics.detailRevealHeading}
       </h2>
       <p className="mt-3 rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink">
-        {unlocked ? adminCopy.analytics.detailRevealUnlocked : adminCopy.analytics.detailRevealLocked}
+        {unlocked
+          ? adminCopy.analytics.detailRevealUnlocked
+          : adminCopy.analytics.detailRevealLocked}
       </p>
       {viewerRole === "admin" && !unlocked && (
         <p className="mt-3 text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-48">
@@ -215,7 +240,16 @@ function RerunCard() {
   );
 }
 
-function AuditCard({ audit }: { audit: { action: string; actorId: string; actionAt: string; details: Record<string, string> }[] }) {
+function AuditCard({
+  audit,
+}: {
+  audit: {
+    action: string;
+    actorId: string;
+    actionAt: string;
+    details: Record<string, string>;
+  }[];
+}) {
   return (
     <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
       <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
@@ -251,10 +285,20 @@ function AuditCard({ audit }: { audit: { action: string; actorId: string; action
   );
 }
 
-function KeyValue({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function KeyValue({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="text-[11px] uppercase tracking-[0.08em] text-proph-ink-muted-48">{label}</dt>
+      <dt className="text-[11px] uppercase tracking-[0.08em] text-proph-ink-muted-48">
+        {label}
+      </dt>
       <dd
         className={
           mono

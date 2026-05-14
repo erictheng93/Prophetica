@@ -141,6 +141,43 @@ export interface AnalyticsReportingSnapshot {
 
 const BFF_BASE = "/api/analytics";
 
+export interface AnalyticsFetchOptions {
+  baseUrl?: string;
+  headers?: HeadersInit;
+}
+
+function bffUrl(path: string, options?: AnalyticsFetchOptions): string {
+  const relativePath = `${BFF_BASE}${path}`;
+  return options?.baseUrl
+    ? new URL(relativePath, options.baseUrl).toString()
+    : relativePath;
+}
+
+function headersFor(
+  options?: AnalyticsFetchOptions,
+  extra?: Record<string, string>,
+): Record<string, string> | undefined {
+  const headers: Record<string, string> = {};
+
+  if (options?.headers instanceof Headers) {
+    for (const [key, value] of options.headers) {
+      headers[key] = value;
+    }
+  } else if (Array.isArray(options?.headers)) {
+    for (const [key, value] of options.headers) {
+      headers[key] = value;
+    }
+  } else if (options?.headers) {
+    Object.assign(headers, options.headers);
+  }
+
+  if (extra) {
+    Object.assign(headers, extra);
+  }
+
+  return Object.keys(headers).length > 0 ? headers : undefined;
+}
+
 async function jsonOrThrow(response: Response): Promise<unknown> {
   if (!response.ok) {
     throw new Error(`analytics bff ${response.status}`);
@@ -151,18 +188,24 @@ async function jsonOrThrow(response: Response): Promise<unknown> {
   return response.json();
 }
 
-export async function fetchTemplates(): Promise<ReportTemplate[]> {
-  const response = await fetch(`${BFF_BASE}/templates`, { cache: "no-store" });
+export async function fetchTemplates(
+  options?: AnalyticsFetchOptions,
+): Promise<ReportTemplate[]> {
+  const response = await fetch(bffUrl("/templates", options), {
+    cache: "no-store",
+    headers: headersFor(options),
+  });
   return (await jsonOrThrow(response)) as ReportTemplate[];
 }
 
 export async function createJob(
   req: CreateReportJobRequest,
+  options?: AnalyticsFetchOptions,
 ): Promise<ReportJob> {
-  const response = await fetch(`${BFF_BASE}/jobs`, {
+  const response = await fetch(bffUrl("/jobs", options), {
     method: "POST",
     cache: "no-store",
-    headers: { "content-type": "application/json" },
+    headers: headersFor(options, { "content-type": "application/json" }),
     body: JSON.stringify(req),
   });
   const payload = (await jsonOrThrow(response)) as
@@ -171,24 +214,33 @@ export async function createJob(
   return "job" in payload ? payload.job : payload;
 }
 
-export async function fetchJobs(filter?: {
-  templateCode?: string;
-}): Promise<ReportJob[]> {
+export async function fetchJobs(
+  filter?: {
+    templateCode?: string;
+  },
+  options?: AnalyticsFetchOptions,
+): Promise<ReportJob[]> {
   const query = new URLSearchParams();
   if (filter?.templateCode) query.set("template_code", filter.templateCode);
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  const response = await fetch(`${BFF_BASE}/jobs${suffix}`, {
+  const response = await fetch(bffUrl(`/jobs${suffix}`, options), {
     cache: "no-store",
+    headers: headersFor(options),
   });
   return (await jsonOrThrow(response)) as ReportJob[];
 }
 
 export async function fetchJobDetail(
   id: string,
+  options?: AnalyticsFetchOptions,
 ): Promise<{ job: ReportJob; audit: ReportAuditRecord[] }> {
-  const response = await fetch(`${BFF_BASE}/jobs/${encodeURIComponent(id)}`, {
-    cache: "no-store",
-  });
+  const response = await fetch(
+    bffUrl(`/jobs/${encodeURIComponent(id)}`, options),
+    {
+      cache: "no-store",
+      headers: headersFor(options),
+    },
+  );
   return (await jsonOrThrow(response)) as {
     job: ReportJob;
     audit: ReportAuditRecord[];
@@ -198,11 +250,16 @@ export async function fetchJobDetail(
 export async function exportJob(
   id: string,
   format: ReportFormat,
+  options?: AnalyticsFetchOptions,
 ): Promise<Response> {
   return fetch(
-    `${BFF_BASE}/jobs/${encodeURIComponent(id)}/export?format=${encodeURIComponent(format)}`,
+    bffUrl(
+      `/jobs/${encodeURIComponent(id)}/export?format=${encodeURIComponent(format)}`,
+      options,
+    ),
     {
       cache: "no-store",
+      headers: headersFor(options),
     },
   );
 }
@@ -210,36 +267,46 @@ export async function exportJob(
 export async function recordExportDeletion(
   id: string,
   req: RecordExportDeletionRequest,
+  options?: AnalyticsFetchOptions,
 ): Promise<void> {
   const response = await fetch(
-    `${BFF_BASE}/jobs/${encodeURIComponent(id)}/deletions`,
+    bffUrl(`/jobs/${encodeURIComponent(id)}/deletions`, options),
     {
       method: "POST",
       cache: "no-store",
-      headers: { "content-type": "application/json" },
+      headers: headersFor(options, { "content-type": "application/json" }),
       body: JSON.stringify(req),
     },
   );
   await jsonOrThrow(response);
 }
 
-export async function fetchSchedules(): Promise<ReportScheduleHint[]> {
-  const response = await fetch(`${BFF_BASE}/schedules`, { cache: "no-store" });
+export async function fetchSchedules(
+  options?: AnalyticsFetchOptions,
+): Promise<ReportScheduleHint[]> {
+  const response = await fetch(bffUrl("/schedules", options), {
+    cache: "no-store",
+    headers: headersFor(options),
+  });
   return (await jsonOrThrow(response)) as ReportScheduleHint[];
 }
 
-export async function fetchDashboardMetrics(): Promise<
-  AnalyticsReportingMetric[]
-> {
-  const response = await fetch(`${BFF_BASE}/dashboard-metrics`, {
+export async function fetchDashboardMetrics(
+  options?: AnalyticsFetchOptions,
+): Promise<AnalyticsReportingMetric[]> {
+  const response = await fetch(bffUrl("/dashboard-metrics", options), {
     cache: "no-store",
+    headers: headersFor(options),
   });
   return (await jsonOrThrow(response)) as AnalyticsReportingMetric[];
 }
 
-export async function fetchLatestJobsPerTemplate(): Promise<ReportJob[]> {
-  const response = await fetch(`${BFF_BASE}/jobs/latest-per-template`, {
+export async function fetchLatestJobsPerTemplate(
+  options?: AnalyticsFetchOptions,
+): Promise<ReportJob[]> {
+  const response = await fetch(bffUrl("/jobs/latest-per-template", options), {
     cache: "no-store",
+    headers: headersFor(options),
   });
   return (await jsonOrThrow(response)) as ReportJob[];
 }

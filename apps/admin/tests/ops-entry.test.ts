@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 
-const readAdminFile = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
+const readAdminFile = (path: string) =>
+  readFileSync(join(process.cwd(), path), "utf8");
 
 const operationalDomains = [
   "member-management",
@@ -70,7 +71,10 @@ test("admin test script typechecks then runs compiled node tests", () => {
     scripts?: Record<string, string>;
   };
 
-  assert.match(packageJson.scripts?.test ?? "", /tsc --project tsconfig\.test\.json/);
+  assert.match(
+    packageJson.scripts?.test ?? "",
+    /tsc --project tsconfig\.test\.json/,
+  );
   assert.match(
     packageJson.scripts?.test ?? "",
     /node .*--test \.test-out\/tests\/\*\.test\.js/,
@@ -109,8 +113,10 @@ test("admin dev server allows configured LAN origins", async () => {
 
 test("decision support dashboard stays read-only and covers required insight areas", () => {
   const dashboardSource = readAdminFile("app/dashboard/page.tsx");
+  const copySource = readAdminFile("lib/admin-copy.ts");
 
   assert.match(dashboardSource, /@\/lib\/analytics-reporting/);
+  assert.match(dashboardSource, /AnalyticsUnavailableState/);
   assert.match(dashboardSource, /decision-support/);
   assert.match(dashboardSource, /kpi/);
   assert.match(dashboardSource, /alerts/);
@@ -119,7 +125,23 @@ test("decision support dashboard stays read-only and covers required insight are
   assert.match(dashboardSource, /availableFormats/);
   assert.match(dashboardSource, /retention/);
   assert.match(dashboardSource, /rowHash/);
+  assert.match(copySource, /unavailableTitle/);
   assert.doesNotMatch(dashboardSource, /<form\b/);
+});
+
+test("analytics templates page has an unavailable state for disconnected reporting services", () => {
+  const analyticsSource = readAdminFile("app/analytics/page.tsx");
+  const copySource = readAdminFile("lib/admin-copy.ts");
+
+  assert.match(analyticsSource, /AnalyticsUnavailableState/);
+  assert.match(analyticsSource, /templatesUnavailableTitle/);
+  assert.match(copySource, /templatesUnavailableTitle/);
+});
+
+test("server-side analytics fetch forwards the production internal mTLS header", () => {
+  const serverFetchSource = readAdminFile("lib/analytics-server-fetch.ts");
+
+  assert.match(serverFetchSource, /x-internal-mtls/);
 });
 
 test("admin copy defaults to Traditional Chinese with an i18n-ready copy module", () => {

@@ -18,13 +18,14 @@ export const adminCopy = {
   },
   login: {
     eyebrow: "管理後台登入",
-    title: "登入 Prophetica 管理後台",
+    title: "Prophetica 管理後台",
     description:
       "限平台管理員、主管與授權代理使用。所有登入動作均寫入稽核紀錄；嘗試以無效憑證登入將被風控系統標記。",
     emailLabel: "電子郵件",
     passwordLabel: "密碼",
     submit: "登入",
     submitting: "登入中…",
+    successRedirect: "登入成功，正在進入後台。",
     invalid: "電子郵件或密碼錯誤。",
     unknownError: "登入失敗，請稍後再試。",
     devHintTitle: "開發環境憑證",
@@ -43,6 +44,9 @@ export const adminCopy = {
     listTitle: "分析報表模板",
     listDescription:
       "依角色顯示可使用的報表模板。所有報表帶有 schema 版本、generated_at 與 row hash，符合 SPEC-020 §5 重複性與留存要求。",
+    templatesUnavailableTitle: "分析報表服務尚未連線",
+    templatesUnavailableDescription:
+      "目前無法讀取報表模板。請確認 API_GATEWAY_URL、api-gateway 與 analytics-reporting-service 已啟動後重新整理。",
     categoryOps: "營運",
     categoryRisk: "風控",
     categoryFinance: "財務審核",
@@ -203,6 +207,9 @@ export const adminCopy = {
     auditHeading: "稽核查詢",
     auditDescription:
       "提供 evidence lookup 的固定查詢名稱，讓審批、補償、代理與 KYC 事件能被追蹤。",
+    unavailableTitle: "分析報表服務尚未連線",
+    unavailableDescription:
+      "目前無法讀取 KPI 與版本化報表。請確認 API_GATEWAY_URL、api-gateway 與 analytics-reporting-service 已啟動後重新整理。",
   },
   faq: {
     eyebrow: "客服內容",

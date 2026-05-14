@@ -3,8 +3,10 @@ import { afterEach, test } from "node:test";
 import {
   createJob,
   exportJob,
+  fetchDashboardMetrics,
   fetchSchedules,
   fetchTemplates,
+  fetchLatestJobsPerTemplate,
   timezonesForRole,
 } from "../lib/analytics-reporting.js";
 
@@ -73,6 +75,39 @@ test("fetchSchedules calls the analytics schedules BFF route", async () => {
   await fetchSchedules();
 
   assert.equal(String(calls[0]?.[0]), "/api/analytics/schedules");
+});
+
+test("server-side analytics reads can target the absolute admin BFF and forward cookies", async () => {
+  const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+  globalThis.fetch = async (input, init) => {
+    calls.push([input, init]);
+    return jsonResponse([]);
+  };
+
+  const serverFetch = {
+    baseUrl: "http://localhost:3002",
+    headers: { cookie: "proph_admin_session=signed-session" },
+  };
+
+  await fetchDashboardMetrics(serverFetch);
+  await fetchLatestJobsPerTemplate(serverFetch);
+
+  assert.equal(
+    String(calls[0]?.[0]),
+    "http://localhost:3002/api/analytics/dashboard-metrics",
+  );
+  assert.equal(
+    (calls[0]?.[1]?.headers as Record<string, string>)["cookie"],
+    "proph_admin_session=signed-session",
+  );
+  assert.equal(
+    String(calls[1]?.[0]),
+    "http://localhost:3002/api/analytics/jobs/latest-per-template",
+  );
+  assert.equal(
+    (calls[1]?.[1]?.headers as Record<string, string>)["cookie"],
+    "proph_admin_session=signed-session",
+  );
 });
 
 test("only admin can select UTC report timezone", () => {

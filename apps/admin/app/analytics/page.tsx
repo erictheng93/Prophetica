@@ -4,6 +4,7 @@ import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
 import { fetchTemplates, type ReportTemplate } from "@/lib/analytics-reporting";
+import { analyticsServerFetchOptions } from "@/lib/analytics-server-fetch";
 
 const categoryLabel: Record<ReportTemplate["category"], string> = {
   read_only_operations: adminCopy.analytics.categoryOps,
@@ -15,7 +16,22 @@ export default function AnalyticsTemplatesPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
       {async (viewer) => {
-        const templates = await fetchTemplates();
+        let templates: ReportTemplate[];
+        try {
+          templates = await fetchTemplates(await analyticsServerFetchOptions());
+        } catch {
+          return (
+            <AdminShell
+              eyebrow={adminCopy.analytics.eyebrow}
+              title={adminCopy.analytics.listTitle}
+              description={adminCopy.analytics.listDescription}
+              role={viewer.role}
+            >
+              <AnalyticsUnavailableState />
+            </AdminShell>
+          );
+        }
+
         return (
           <AdminShell
             eyebrow={adminCopy.analytics.eyebrow}
@@ -35,6 +51,33 @@ export default function AnalyticsTemplatesPage() {
   );
 }
 
+function AnalyticsUnavailableState() {
+  return (
+    <section
+      aria-labelledby="analytics-templates-unavailable-title"
+      className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPill tone="warning">
+          {adminCopy.components.status.blocked}
+        </StatusPill>
+        <span className="font-mono text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-80">
+          API_GATEWAY_URL
+        </span>
+      </div>
+      <h2
+        id="analytics-templates-unavailable-title"
+        className="mt-3 text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
+      >
+        {adminCopy.analytics.templatesUnavailableTitle}
+      </h2>
+      <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+        {adminCopy.analytics.templatesUnavailableDescription}
+      </p>
+    </section>
+  );
+}
+
 function TemplateCard({ template }: { template: ReportTemplate }) {
   const hasSensitive = template.fields.some((field) => field.sensitive);
   const retentionLabel =
@@ -45,7 +88,13 @@ function TemplateCard({ template }: { template: ReportTemplate }) {
   return (
     <article className="flex flex-col gap-4 rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusPill tone={template.retention.category === "legal_audit" ? "warning" : "neutral"}>
+        <StatusPill
+          tone={
+            template.retention.category === "legal_audit"
+              ? "warning"
+              : "neutral"
+          }
+        >
           {categoryLabel[template.category]}
         </StatusPill>
         <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48">
@@ -66,8 +115,14 @@ function TemplateCard({ template }: { template: ReportTemplate }) {
         </p>
       </header>
       <dl className="grid gap-3 text-[14px] leading-[1.43] tracking-[-0.224px]">
-        <KeyValue label="輸出欄位" value={template.fields.map((field) => field.label).join("、")} />
-        <KeyValue label="保留" value={`${retentionLabel}（到 ${template.retention.expiresAt.slice(0, 10)}）`} />
+        <KeyValue
+          label="輸出欄位"
+          value={template.fields.map((field) => field.label).join("、")}
+        />
+        <KeyValue
+          label="保留"
+          value={`${retentionLabel}（到 ${template.retention.expiresAt.slice(0, 10)}）`}
+        />
         <KeyValue label="最近一次預設快照" value={template.generatedAt} />
       </dl>
       <div className="mt-auto flex items-center justify-end">
@@ -85,7 +140,9 @@ function TemplateCard({ template }: { template: ReportTemplate }) {
 function KeyValue({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="text-[11px] uppercase tracking-[0.08em] text-proph-ink-muted-48">{label}</dt>
+      <dt className="text-[11px] uppercase tracking-[0.08em] text-proph-ink-muted-48">
+        {label}
+      </dt>
       <dd className="text-proph-ink">{value}</dd>
     </div>
   );

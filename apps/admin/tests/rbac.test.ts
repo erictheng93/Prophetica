@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ALL_ROLES, canAccess, canApprove, capabilityFor, defaultLandingFor, filterRoutes } from "../lib/rbac.js";
+import {
+  ALL_ROLES,
+  canAccess,
+  canApprove,
+  capabilityFor,
+  defaultLandingFor,
+  filterRoutes,
+} from "../lib/rbac.js";
 import type { OpsRoute } from "../lib/ops-facade.js";
 
 const internalRoutes = [
@@ -62,6 +69,19 @@ test("FAQ catalog route is limited to admin and manager sessions", () => {
   assert.equal(canAccess("/api/faq/catalog", "admin"), true);
   assert.equal(canAccess("/api/faq/catalog", "manager"), true);
   assert.equal(canAccess("/api/faq/catalog", "affiliate"), false);
+});
+
+test("analytics BFF routes are limited to admin and manager sessions", () => {
+  for (const path of [
+    "/api/analytics/templates",
+    "/api/analytics/dashboard-metrics",
+    "/api/analytics/jobs/latest-per-template",
+    "/api/analytics/jobs/rpt-job-000001/export",
+  ]) {
+    assert.equal(canAccess(path, "admin"), true, `admin -> ${path}`);
+    assert.equal(canAccess(path, "manager"), true, `manager -> ${path}`);
+    assert.equal(canAccess(path, "affiliate"), false, `affiliate -> ${path}`);
+  }
 });
 
 test("admin and manager can reach /affiliate/[id] detail; affiliate cannot", () => {

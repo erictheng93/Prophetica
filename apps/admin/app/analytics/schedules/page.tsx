@@ -3,12 +3,15 @@ import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
 import { fetchSchedules } from "@/lib/analytics-reporting";
+import { analyticsServerFetchOptions } from "@/lib/analytics-server-fetch";
 
 export default function AnalyticsSchedulesPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
       {async (viewer) => {
-        const schedules = await fetchSchedules();
+        const schedules = await fetchSchedules(
+          await analyticsServerFetchOptions(),
+        );
         return (
           <AdminShell
             eyebrow={adminCopy.analytics.eyebrow}
@@ -44,9 +47,20 @@ export default function AnalyticsSchedulesPage() {
                           </span>
                         </div>
                         <div className="flex flex-wrap items-start gap-x-4 gap-y-2 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-                          <Cell label={adminCopy.analytics.schedulesCron} value={row.cron} mono />
-                          <Cell label={adminCopy.analytics.schedulesNextFire} value={row.nextFireHint} mono />
-                          <Cell label={adminCopy.analytics.schedulesOwner} value={row.owner} />
+                          <Cell
+                            label={adminCopy.analytics.schedulesCron}
+                            value={row.cron}
+                            mono
+                          />
+                          <Cell
+                            label={adminCopy.analytics.schedulesNextFire}
+                            value={row.nextFireHint}
+                            mono
+                          />
+                          <Cell
+                            label={adminCopy.analytics.schedulesOwner}
+                            value={row.owner}
+                          />
                           <Cell
                             label={adminCopy.analytics.jobRetentionColumn}
                             value={
@@ -57,7 +71,9 @@ export default function AnalyticsSchedulesPage() {
                           />
                         </div>
                         <div className="flex flex-col items-start gap-2 md:items-end">
-                          <StatusPill tone={status === "enabled" ? "success" : "warning"}>
+                          <StatusPill
+                            tone={status === "enabled" ? "success" : "warning"}
+                          >
                             {status === "enabled"
                               ? adminCopy.analytics.schedulesStatusEnabled
                               : adminCopy.analytics.schedulesStatusPaused}
@@ -87,11 +103,23 @@ export default function AnalyticsSchedulesPage() {
   );
 }
 
-function Cell({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Cell({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
     <span className="inline-flex flex-col">
-      <span className="text-[11px] uppercase tracking-[0.08em] text-proph-ink-muted-48">{label}</span>
-      <span className={mono ? "font-mono text-proph-ink" : "text-proph-ink"}>{value}</span>
+      <span className="text-[11px] uppercase tracking-[0.08em] text-proph-ink-muted-48">
+        {label}
+      </span>
+      <span className={mono ? "font-mono text-proph-ink" : "text-proph-ink"}>
+        {value}
+      </span>
     </span>
   );
 }
