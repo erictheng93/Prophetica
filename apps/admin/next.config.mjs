@@ -1,4 +1,13 @@
+import { networkInterfaces } from "node:os";
+
 const DEFAULT_ALLOWED_DEV_ORIGINS = ["192.168.68.93"];
+
+function getLocalIpv4DevOrigins() {
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((entry) => entry?.family === "IPv4" && !entry.internal)
+    .map((entry) => entry.address);
+}
 
 function normalizeAllowedDevOrigin(value) {
   const trimmed = value.trim();
@@ -15,13 +24,22 @@ function normalizeAllowedDevOrigin(value) {
   return trimmed.replace(/:\d+$/, "").toLowerCase();
 }
 
-export function parseAllowedDevOrigins(value = process.env.NEXT_ALLOWED_DEV_ORIGINS) {
+export function parseAllowedDevOrigins(
+  value = process.env.NEXT_ALLOWED_DEV_ORIGINS,
+  localOrigins = getLocalIpv4DevOrigins(),
+) {
   const configuredOrigins = (value ?? "")
     .split(",")
     .map(normalizeAllowedDevOrigin)
     .filter(Boolean);
 
-  return Array.from(new Set([...DEFAULT_ALLOWED_DEV_ORIGINS, ...configuredOrigins]));
+  return Array.from(
+    new Set([
+      ...DEFAULT_ALLOWED_DEV_ORIGINS,
+      ...localOrigins,
+      ...configuredOrigins,
+    ]),
+  );
 }
 
 /** @type {import('next').NextConfig} */

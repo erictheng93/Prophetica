@@ -89,13 +89,21 @@ test("admin dev server allows configured LAN origins", async () => {
   nextConfigUrl.search = `test=${Date.now()}`;
   const nextConfig = (await import(nextConfigUrl.href)) as {
     default: { allowedDevOrigins?: string[] };
-    parseAllowedDevOrigins: (value?: string) => string[];
+    parseAllowedDevOrigins: (
+      value?: string,
+      localOrigins?: string[],
+    ) => string[];
   };
 
   assert.ok(nextConfig.default.allowedDevOrigins?.includes("192.168.68.93"));
-  assert.deepEqual(nextConfig.parseAllowedDevOrigins("http://192.168.68.94:3002"), [
+  assert.ok(nextConfig.default.allowedDevOrigins?.some((origin) => origin.length > 0));
+  assert.deepEqual(
+    nextConfig.parseAllowedDevOrigins("http://192.168.68.94:3002", []),
+    ["192.168.68.93", "192.168.68.94"],
+  );
+  assert.deepEqual(nextConfig.parseAllowedDevOrigins(undefined, ["172.20.10.6"]), [
     "192.168.68.93",
-    "192.168.68.94",
+    "172.20.10.6",
   ]);
 });
 
