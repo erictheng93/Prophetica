@@ -7,6 +7,18 @@ export function ServiceWorkerRegistration() {
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
 
+    if (process.env.NODE_ENV !== "production") {
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) =>
+          Promise.all(registrations.map((registration) => registration.unregister())),
+        )
+        .catch((err) => {
+          console.warn("[admin sw] unregister failed", err);
+        });
+      return;
+    }
+
     const register = () => {
       navigator.serviceWorker
         .register("/sw.js", { scope: "/" })

@@ -2,10 +2,26 @@ const VERSION = "admin-v1";
 const STATIC_CACHE = `proph-admin-static-${VERSION}`;
 const OFFLINE_URL = "/offline";
 const PRECACHE_URLS = [OFFLINE_URL, "/manifest.webmanifest"];
+const DEV_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+async function disableOnDevOrigin() {
+  if (!DEV_HOSTNAMES.has(self.location.hostname)) return false;
+
+  const keys = await caches.keys();
+  await Promise.all(keys.map((key) => caches.delete(key)));
+  await self.registration.unregister();
+  const clients = await self.clients.matchAll({ type: "window" });
+  for (const client of clients) {
+    client.navigate(client.url);
+  }
+  return true;
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
+      if (await disableOnDevOrigin()) return;
+
       const cache = await caches.open(STATIC_CACHE);
       await Promise.all(
         PRECACHE_URLS.map((url) =>
@@ -22,6 +38,8 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
+      if (await disableOnDevOrigin()) return;
+
       const keys = await caches.keys();
       await Promise.all(
         keys
@@ -59,6 +77,7 @@ async function cacheFirst(request) {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
+  if (DEV_HOSTNAMES.has(url.hostname)) return;
   if (url.origin !== self.location.origin) return;
   if (request.method !== "GET") return;
 
