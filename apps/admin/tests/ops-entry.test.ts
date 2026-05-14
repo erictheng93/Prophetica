@@ -31,6 +31,26 @@ test("admin operations entry page reads from the server-side ops facade", () => 
   assert.match(source, /\bgetAdminOperationsSnapshot\b/);
 });
 
+test("members page exposes complete member management operations", () => {
+  const source = readAdminFile("app/members/page.tsx");
+  const componentSource = readAdminFile("components/member-management.tsx");
+  const bffSource = readAdminFile("lib/member-management-bff.ts");
+  const modelSource = readAdminFile("lib/member-management.ts");
+  const rbacSource = readAdminFile("lib/rbac.ts");
+
+  assert.match(source, /MemberManagement/);
+  assert.match(componentSource, /會員查詢/);
+  assert.match(componentSource, /聯絡資料/);
+  assert.match(componentSource, /帳戶摘要/);
+  assert.match(componentSource, /狀態與風控/);
+  assert.match(componentSource, /提交處理動作/);
+  assert.match(componentSource, /\/api\/members/);
+  assert.match(bffSource, /proxyMemberSummaryRequest/);
+  assert.match(bffSource, /proxyMemberActionRequest/);
+  assert.match(modelSource, /MEM-1042/);
+  assert.match(rbacSource, /\/api\/members/);
+});
+
 test("admin affiliate operations are grouped under the management area", () => {
   const facadeSource = readAdminFile("lib/ops-facade.ts");
   const shellSource = readAdminFile("components/admin-shell.tsx");
