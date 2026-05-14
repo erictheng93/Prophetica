@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
-import { findMockUser } from "@/lib/mock-users";
-import { defaultLandingFor } from "@/lib/rbac";
+import { defaultLandingFor, type Role } from "@/lib/rbac";
 import { setSessionCookie } from "@/lib/session";
 
 interface LoginBody {
   email?: unknown;
   password?: unknown;
+}
+
+interface UserServiceLoginResponse {
+  user_id?: unknown;
+  role?: unknown;
+  affiliate_id?: unknown;
+  session_token?: unknown;
+}
+
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL ?? "http://localhost:8084";
+
+function toAdminRole(value: unknown): Role | null {
+  return value === "admin" || value === "manager" || value === "affiliate" ? value : null;
 }
 
 export async function POST(request: Request) {
@@ -22,19 +34,53 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "missing_credentials" }, { status: 400 });
   }
 
-  const user = findMockUser(email, password);
-  if (!user) {
+  const upstream = await fetch(new URL("/api/auth/login", USER_SERVICE_URL), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      identifier: email,
+      identifier_kind: "email",
+      password,
+      remember: false,
+    }),
+    cache: "no-store",
+  }).catch(() => null);
+
+  if (!upstream) {
+    return NextResponse.json({ error: "auth_service_unavailable" }, { status: 503 });
+  }
+
+  if (upstream.status === 401) {
     return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
   }
 
+  if (!upstream.ok) {
+    return NextResponse.json({ error: "auth_service_error" }, { status: upstream.status });
+  }
+
+  let user: UserServiceLoginResponse;
+  try {
+    user = (await upstream.json()) as UserServiceLoginResponse;
+  } catch {
+    return NextResponse.json({ error: "invalid_auth_response" }, { status: 502 });
+  }
+
+  const sub = typeof user.user_id === "string" ? user.user_id : "";
+  const role = toAdminRole(user.role);
+  const affiliateId = typeof user.affiliate_id === "string" ? user.affiliate_id : undefined;
+
+  if (!sub || !role || typeof user.session_token !== "string") {
+    return NextResponse.json({ error: "admin_access_denied" }, { status: 403 });
+  }
+
   await setSessionCookie({
-    sub: user.sub,
-    role: user.role,
-    ...(user.affiliateId ? { affiliateId: user.affiliateId } : {}),
+    sub,
+    role,
+    ...(affiliateId ? { affiliateId } : {}),
   });
 
   return NextResponse.json({
-    role: user.role,
-    redirect: defaultLandingFor(user.role),
+    role,
+    redirect: defaultLandingFor(role),
   });
 }

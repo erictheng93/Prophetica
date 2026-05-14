@@ -36,6 +36,7 @@ async fn login_accepts_email_or_canonical_taiwan_mobile() {
 
     assert_eq!(email_response.status, StatusCode::OK);
     assert_eq!(email_response.body["user_id"], json!("user_42"));
+    assert_eq!(email_response.body["role"], json!("manager"));
     assert_eq!(phone_response.status, StatusCode::OK);
     assert_eq!(phone_response.body["user_id"], json!("user_42"));
     assert!(phone_response.body["session_token"].as_str().is_some());
@@ -128,7 +129,8 @@ struct LoginTestResponse {
 
 fn config_with_fixture() -> AuthConfig {
     let account = LocalLoginAccount::new("user_42", "member@example.com", "0912345698", "member")
-        .expect("fixture account is valid");
+        .expect("fixture account is valid")
+        .with_profile("manager", None);
 
     AuthConfig::new(vec![account])
 }

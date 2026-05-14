@@ -16,10 +16,9 @@ test("second affiliate login maps to the AFF-014 mock affiliate", () => {
   assert.equal(user?.affiliateId, "AFF-014");
 });
 
-test("login development hint lists every mock account without an incorrect shared password claim", () => {
-  for (const user of mockUsers) {
-    const escapedPair = `${user.email}/${user.password}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    assert.match(adminCopy.login.devHintBody, new RegExp(escapedPair));
-  }
-  assert.doesNotMatch(adminCopy.login.devHintBody, /密碼皆為 dev/);
+test("login development hint points operators to user-service local-login configuration", () => {
+  assert.match(adminCopy.login.devHintBody, /user-service/);
+  assert.match(adminCopy.login.devHintBody, /USER_SERVICE_LOCAL_LOGIN_EMAIL\/PASSWORD\/ROLE/);
+  assert.match(adminCopy.login.devHintBody, /admin、manager 或 affiliate/);
+  assert.doesNotMatch(adminCopy.login.devHintBody, /Phase 2/);
 });

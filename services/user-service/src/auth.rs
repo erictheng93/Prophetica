@@ -27,6 +27,8 @@ pub struct LocalLoginAccount {
     email: String,
     phone: String,
     password: String,
+    role: String,
+    affiliate_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +46,9 @@ struct LoginRequest {
 #[derive(Debug, Serialize)]
 struct LoginResponse {
     user_id: String,
+    role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    affiliate_id: Option<String>,
     session_token: String,
     expires_at_epoch_seconds: u64,
 }
@@ -88,8 +93,11 @@ impl AuthConfig {
             env::var("USER_SERVICE_LOCAL_LOGIN_PHONE").unwrap_or_else(|_| "0912345698".to_owned());
         let password =
             env::var("USER_SERVICE_LOCAL_LOGIN_PASSWORD").unwrap_or_else(|_| "member".to_owned());
+        let role = env::var("USER_SERVICE_LOCAL_LOGIN_ROLE").unwrap_or_else(|_| "player".to_owned());
+        let affiliate_id = env::var("USER_SERVICE_LOCAL_LOGIN_AFFILIATE_ID").ok();
 
         let accounts = LocalLoginAccount::new(user_id, email, phone, password)
+            .map(|account| account.with_profile(role, affiliate_id))
             .map_or_else(Vec::new, |account| vec![account]);
 
         Self::new(accounts)
@@ -118,7 +126,26 @@ impl LocalLoginAccount {
             email,
             phone,
             password,
+            role: "player".to_owned(),
+            affiliate_id: None,
         })
+    }
+
+    #[must_use]
+    pub fn with_profile(mut self, role: impl Into<String>, affiliate_id: Option<String>) -> Self {
+        let role = role.into();
+        if !role.trim().is_empty() {
+            self.role = role;
+        }
+        self.affiliate_id = affiliate_id.and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_owned())
+            }
+        });
+        self
     }
 }
 
@@ -169,6 +196,8 @@ fn successful_login(account: &LocalLoginAccount, remember: bool) -> Response {
 
     Json(LoginResponse {
         user_id: account.user_id.clone(),
+        role: account.role.clone(),
+        affiliate_id: account.affiliate_id.clone(),
         session_token: format!(
             "local-user-service:{scope}:{}:{expires_at_epoch_seconds}",
             account.user_id
