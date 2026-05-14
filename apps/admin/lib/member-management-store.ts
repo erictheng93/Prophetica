@@ -4,6 +4,9 @@ import type {
   MemberCreateRequest,
   MemberDeleteResponse,
   MemberManagementSummary,
+  MemberPendingCase,
+  MemberPendingCasesQuery,
+  MemberPendingCasesResponse,
   MemberSourceSummary,
   MemberUpdateRequest,
   RiskLevel,
@@ -189,6 +192,38 @@ export function findMemberSummary(
   return cloneSummary(summary);
 }
 
+export function listMemberPendingCases(
+  query: MemberPendingCasesQuery = {},
+): MemberPendingCasesResponse {
+  const page = Math.max(1, Math.trunc(query.page ?? 1));
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(query.pageSize ?? 10)));
+  const search = query.query?.trim().toLowerCase() ?? "";
+  const status = query.status === "all" ? undefined : query.status;
+  const restriction = query.restriction?.trim();
+  const allItems = Object.values(summaries)
+    .flatMap(toPendingCase)
+    .filter((item) => {
+      const matchesStatus = !status || item.status === status;
+      const matchesRestriction =
+        !restriction || item.restriction_reason === restriction;
+      const matchesSearch =
+        !search ||
+        item.member_id.toLowerCase().includes(search) ||
+        item.display_name.toLowerCase().includes(search) ||
+        item.contact.email_masked.toLowerCase().includes(search) ||
+        item.contact.phone_masked.toLowerCase().includes(search);
+      return matchesStatus && matchesRestriction && matchesSearch;
+    });
+  const start = (page - 1) * pageSize;
+  return {
+    items: allItems.slice(start, start + pageSize),
+    page,
+    page_size: pageSize,
+    total: allItems.length,
+    source: "mock",
+  };
+}
+
 export function createMember(
   request: MemberCreateRequest,
   viewer: SessionPayload | null,
@@ -336,6 +371,27 @@ function canReadSummary(
 ): boolean {
   if (viewer.role === "admin" || viewer.role === "manager") return true;
   return summary.source.affiliate_id === viewer.affiliateId;
+}
+
+function toPendingCase(summary: MemberManagementSummary): MemberPendingCase[] {
+  const restrictionReason = summary.kyc_risk.restrictions[0];
+  if (!restrictionReason && summary.member.status === "active") return [];
+  return [
+    {
+      member_id: summary.member.user_id,
+      display_name: summary.member.display_name,
+      restriction_reason:
+        restrictionReason ??
+        (summary.member.status === "inactive" ? "kyc_pending" : "manual_review_required"),
+      contact: {
+        email_masked: summary.member.contact.email_masked,
+        phone_masked: summary.member.contact.phone_masked,
+      },
+      status: summary.member.status,
+      kyc_status: summary.kyc_risk.kyc_status,
+      affiliate_id: summary.source.affiliate_id,
+    },
+  ];
 }
 
 function affiliateIdForWrite(

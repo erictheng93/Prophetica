@@ -103,6 +103,35 @@ export interface MemberDeleteResponse {
   user_id: string;
 }
 
+export interface MemberPendingCase {
+  member_id: string;
+  display_name: string;
+  restriction_reason: string;
+  contact: {
+    email_masked: string;
+    phone_masked: string;
+  };
+  status: MemberStatus;
+  kyc_status: KycStatus;
+  affiliate_id: string | null;
+}
+
+export interface MemberPendingCasesQuery {
+  query?: string;
+  status?: MemberStatus | "all";
+  restriction?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface MemberPendingCasesResponse {
+  items: MemberPendingCase[];
+  page: number;
+  page_size: number;
+  total: number;
+  source: "mock" | "api-gateway";
+}
+
 export interface MemberActionRequest {
   target_user_id: string;
   action_type: MemberActionType;

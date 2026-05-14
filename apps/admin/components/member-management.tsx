@@ -8,6 +8,7 @@ import {
   type MemberActionResponse,
   type MemberActionType,
   type MemberManagementSummary,
+  type MemberPendingCasesResponse,
   type MemberStatus,
   type RiskLevel,
 } from "@/lib/member-management-shared";
@@ -87,6 +88,14 @@ export function MemberManagement({
   const [memberMutationError, setMemberMutationError] = useState<string | null>(null);
   const [memberMutationResult, setMemberMutationResult] = useState<string | null>(null);
   const [memberMutationLoading, setMemberMutationLoading] = useState(false);
+  const [pendingCases, setPendingCases] =
+    useState<MemberPendingCasesResponse | null>(null);
+  const [pendingCasesError, setPendingCasesError] = useState<string | null>(null);
+  const [pendingCasesLoading, setPendingCasesLoading] = useState(false);
+  const [pendingQuery, setPendingQuery] = useState("");
+  const [pendingStatus, setPendingStatus] = useState<MemberStatus | "all">("all");
+  const [pendingRestriction, setPendingRestriction] = useState("");
+  const [pendingPage, setPendingPage] = useState(1);
 
   const [actionType, setActionType] =
     useState<MemberActionType>("add_note");
@@ -108,6 +117,40 @@ export function MemberManagement({
   useEffect(() => {
     void refreshMembers();
   }, []);
+
+  useEffect(() => {
+    void refreshPendingCases();
+  }, [pendingPage, pendingStatus, pendingRestriction]);
+
+  async function refreshPendingCases(nextPage = pendingPage) {
+    setPendingCasesLoading(true);
+    setPendingCasesError(null);
+    const params = new URLSearchParams({
+      page: String(nextPage),
+      page_size: "5",
+    });
+    if (pendingQuery.trim()) params.set("q", pendingQuery.trim());
+    if (pendingStatus !== "all") params.set("status", pendingStatus);
+    if (pendingRestriction.trim()) {
+      params.set("restriction", pendingRestriction.trim());
+    }
+    try {
+      const response = await fetch(`/api/members/pending-cases?${params}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        setPendingCases(null);
+        setPendingCasesError(`載入待處理會員失敗：${await errorText(response)}`);
+        return;
+      }
+      setPendingCases((await response.json()) as MemberPendingCasesResponse);
+    } catch {
+      setPendingCases(null);
+      setPendingCasesError("載入待處理會員失敗：無法連線至會員待處理 API。");
+    } finally {
+      setPendingCasesLoading(false);
+    }
+  }
 
   async function refreshMembers() {
     setMemberListLoading(true);
@@ -319,6 +362,30 @@ export function MemberManagement({
 
   return (
     <div className="space-y-6">
+      <PendingCasesPanel
+        cases={pendingCases}
+        error={pendingCasesError}
+        loading={pendingCasesLoading}
+        query={pendingQuery}
+        restriction={pendingRestriction}
+        status={pendingStatus}
+        onNextPage={() => setPendingPage((page) => page + 1)}
+        onPreviousPage={() => setPendingPage((page) => Math.max(1, page - 1))}
+        onQueryChange={setPendingQuery}
+        onRefresh={() => {
+          setPendingPage(1);
+          void refreshPendingCases(1);
+        }}
+        onRestrictionChange={(value) => {
+          setPendingRestriction(value);
+          setPendingPage(1);
+        }}
+        onStatusChange={(value) => {
+          setPendingStatus(value);
+          setPendingPage(1);
+        }}
+      />
+
       <MemberDirectory
         canDelete={canDelete}
         loading={memberListLoading}
@@ -429,6 +496,138 @@ export function MemberManagement({
         </section>
       )}
     </div>
+  );
+}
+
+function PendingCasesPanel(props: {
+  cases: MemberPendingCasesResponse | null;
+  error: string | null;
+  loading: boolean;
+  query: string;
+  restriction: string;
+  status: MemberStatus | "all";
+  onNextPage: () => void;
+  onPreviousPage: () => void;
+  onQueryChange: (value: string) => void;
+  onRefresh: () => void;
+  onRestrictionChange: (value: string) => void;
+  onStatusChange: (value: MemberStatus | "all") => void;
+}) {
+  const page = props.cases?.page ?? 1;
+  const pageSize = props.cases?.page_size ?? 5;
+  const total = props.cases?.total ?? 0;
+  const hasNext = page * pageSize < total;
+  const sourceLabel =
+    props.cases?.source === "api-gateway"
+      ? "api-gateway"
+      : "mock fallback";
+
+  return (
+    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+            會員待處理 API
+          </h2>
+          <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+            可視化會員 ID、限制原因、聯絡資料與狀態；有 API_GATEWAY_URL 時優先讀取後端，否則顯示 mock fallback。
+          </p>
+        </div>
+        <span className="inline-flex h-8 items-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-3 font-mono text-[12px] text-proph-ink-muted-80">
+          source: {sourceLabel}
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_180px_220px_auto]">
+        <input
+          value={props.query}
+          onChange={(event) => props.onQueryChange(event.target.value)}
+          className="h-11 rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] outline-none focus:border-proph-primary-focus"
+          placeholder="搜尋會員 ID / 聯絡資料"
+        />
+        <select
+          value={props.status}
+          onChange={(event) => props.onStatusChange(event.target.value as MemberStatus | "all")}
+          className="h-11 rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] outline-none focus:border-proph-primary-focus"
+        >
+          <option value="all">全部狀態</option>
+          <option value="inactive">未激活</option>
+          <option value="restricted">限制中</option>
+          <option value="suspended">停權</option>
+          <option value="active">正常</option>
+        </select>
+        <input
+          value={props.restriction}
+          onChange={(event) => props.onRestrictionChange(event.target.value)}
+          className="h-11 rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] outline-none focus:border-proph-primary-focus"
+          placeholder="限制原因"
+        />
+        <button
+          type="button"
+          onClick={props.onRefresh}
+          disabled={props.loading}
+          className="inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 text-[14px] font-semibold text-proph-on-primary disabled:opacity-50"
+        >
+          {props.loading ? "載入中" : "套用"}
+        </button>
+      </div>
+
+      {props.error && <Alert tone="error">{props.error}</Alert>}
+
+      <div className="mt-5 overflow-hidden rounded-proph-lg border border-proph-hairline">
+        <div className="grid grid-cols-[1fr_1.1fr_1.1fr_0.8fr] bg-proph-canvas-parchment px-4 py-3 text-[12px] font-semibold text-proph-ink-muted-80">
+          <span>會員 ID</span>
+          <span>限制原因</span>
+          <span>聯絡資料</span>
+          <span>狀態</span>
+        </div>
+        {props.cases?.items.length ? (
+          props.cases.items.map((item) => (
+            <div
+              key={`${item.member_id}-${item.restriction_reason}`}
+              className="grid grid-cols-[1fr_1.1fr_1.1fr_0.8fr] gap-3 border-t border-proph-hairline bg-proph-canvas px-4 py-3 text-[13px]"
+            >
+              <span className="font-mono text-proph-ink">{item.member_id}</span>
+              <span className="font-mono text-proph-ink-muted-80">
+                {item.restriction_reason}
+              </span>
+              <span className="font-mono text-proph-ink-muted-80">
+                {item.contact.email_masked} / {item.contact.phone_masked}
+              </span>
+              <span>{statusLabels[item.status]} / {item.kyc_status}</span>
+            </div>
+          ))
+        ) : (
+          <p className="border-t border-proph-hairline bg-proph-canvas px-4 py-4 text-[14px] text-proph-ink-muted-80">
+            沒有符合條件的待處理會員。
+          </p>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-[13px] text-proph-ink-muted-80">
+        <span>
+          第 {page} 頁，每頁 {pageSize} 筆，共 {total} 筆
+        </span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={props.onPreviousPage}
+            disabled={page <= 1 || props.loading}
+            className="rounded-proph-pill border border-proph-hairline px-4 py-2 disabled:opacity-50"
+          >
+            上一頁
+          </button>
+          <button
+            type="button"
+            onClick={props.onNextPage}
+            disabled={!hasNext || props.loading}
+            className="rounded-proph-pill border border-proph-hairline px-4 py-2 disabled:opacity-50"
+          >
+            下一頁
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 

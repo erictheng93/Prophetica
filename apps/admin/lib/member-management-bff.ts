@@ -1,11 +1,13 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
+import { signInternalCall } from "./internal-call.js";
 import type { SessionPayload } from "./session-crypto.js";
 import {
   createMember,
   deleteMember,
   findMemberSummary,
   isMemberActionType,
+  listMemberPendingCases,
   listMemberSummaries,
   updateMember,
   type MemberCreateRequest,
@@ -13,9 +15,21 @@ import {
   type MemberActionResponse,
   type MemberUpdateRequest,
 } from "./member-management.js";
+import type {
+  MemberPendingCase,
+  MemberPendingCasesResponse,
+} from "./member-management-shared.js";
 
 export interface ProxyMemberListInput {
   viewer: SessionPayload | null;
+}
+
+export interface ProxyMemberPendingCasesInput {
+  viewer: SessionPayload | null;
+  searchParams?: URLSearchParams;
+  gatewayUrl?: string;
+  secret?: string;
+  fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 export interface ProxyMemberSummaryInput {
@@ -52,6 +66,61 @@ export async function proxyMemberListRequest(
   }
 
   return Response.json({ members: listMemberSummaries(input.viewer) }, { status: 200 });
+}
+
+export async function proxyMemberPendingCasesRequest(
+  input: ProxyMemberPendingCasesInput,
+): Promise<Response> {
+  if (!canReadMemberManagement(input.viewer)) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const gatewayUrl = input.gatewayUrl ?? process.env.API_GATEWAY_URL;
+  if (gatewayUrl) {
+    const query = input.searchParams?.toString();
+    const adminPath = `/api/internal/admin/members/pending-cases${query ? `?${query}` : ""}`;
+    const signaturePath = adminPath.split("?")[0] ?? adminPath;
+    const headers = signInternalCall({
+      method: "GET",
+      path: signaturePath,
+      body: "",
+      actorId: input.viewer.sub,
+      role: input.viewer.role,
+      secret: input.secret,
+    });
+    const upstream = await (input.fetchImpl ?? fetch)(
+      new URL(adminPath, gatewayUrl),
+      {
+        method: "GET",
+        headers: {
+          ...headers,
+          "x-request-id": crypto.randomUUID(),
+        },
+        cache: "no-store",
+      },
+    );
+    if (upstream.ok) {
+      const body = (await upstream.json()) as GatewayPendingCasesResponse;
+      return Response.json(normalizeGatewayPendingCases(body), { status: 200 });
+    }
+    if (upstream.status !== 404 && upstream.status !== 501) {
+      return Response.json(
+        { error: "pending_cases_upstream_error" },
+        { status: upstream.status },
+      );
+    }
+  }
+
+  return Response.json(
+    listMemberPendingCases({
+      query: input.searchParams?.get("q") ?? undefined,
+      status: parseStatus(input.searchParams?.get("status")),
+      restriction: input.searchParams?.get("restriction") ?? undefined,
+      page: parsePositiveInt(input.searchParams?.get("page")),
+      pageSize: parsePositiveInt(input.searchParams?.get("page_size")),
+    }),
+    { status: 200 },
+  );
 }
 
 export async function proxyMemberSummaryRequest(
@@ -160,6 +229,75 @@ function canReadMemberManagement(
   viewer: SessionPayload | null,
 ): viewer is SessionPayload {
   return viewer?.role === "admin" || viewer?.role === "manager" || viewer?.role === "affiliate";
+}
+
+function parsePositiveInt(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseStatus(value: string | null | undefined) {
+  if (
+    value === "inactive" ||
+    value === "active" ||
+    value === "restricted" ||
+    value === "suspended" ||
+    value === "all"
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+interface GatewayPendingCasesResponse {
+  items: Array<{
+    member_id: string;
+    display_name: string;
+    restriction_reason: string;
+    contact: {
+      email_masked: string;
+      phone_masked: string;
+    };
+    status: string;
+    kyc_status: string;
+    affiliate_id?: string | null;
+  }>;
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+function normalizeGatewayPendingCases(
+  body: GatewayPendingCasesResponse,
+): MemberPendingCasesResponse {
+  return {
+    items: body.items.map((item): MemberPendingCase => ({
+      member_id: item.member_id,
+      display_name: item.display_name,
+      restriction_reason: item.restriction_reason,
+      contact: {
+        email_masked: item.contact.email_masked,
+        phone_masked: item.contact.phone_masked,
+      },
+      status:
+        item.status === "active" ||
+        item.status === "restricted" ||
+        item.status === "suspended"
+          ? item.status
+          : "inactive",
+      kyc_status:
+        item.kyc_status === "verified" ||
+        item.kyc_status === "review_required"
+          ? item.kyc_status
+          : "pending",
+      affiliate_id: item.affiliate_id ?? null,
+    })),
+    page: body.page,
+    page_size: body.page_size,
+    total: body.total,
+    source: "api-gateway",
+  };
 }
 
 function canWriteMemberManagement(

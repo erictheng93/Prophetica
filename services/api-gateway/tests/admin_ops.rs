@@ -45,6 +45,35 @@ async fn summary_returns_aggregate_shape() {
 }
 
 #[tokio::test]
+async fn pending_member_cases_filter_and_paginate() {
+    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/internal/admin/members/pending-cases?status=restricted&page=1&page_size=1")
+                .body(Body::empty())
+                .unwrap_or_else(|error| panic!("request should build: {error}")),
+        )
+        .await
+        .expect("pending cases request should be handled");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["page"], json!(1));
+    assert_eq!(body["page_size"], json!(1));
+    assert_eq!(body["total"], json!(1));
+    assert_eq!(body["items"][0]["member_id"], json!("MEM-1042"));
+    assert_eq!(
+        body["items"][0]["restriction_reason"],
+        json!("withdrawals_locked")
+    );
+    assert_eq!(body["items"][0]["contact"]["email_masked"], json!("c***@example.net"));
+    assert_eq!(body["items"][0]["status"], json!("restricted"));
+}
+
+#[tokio::test]
 async fn compensation_rejects_missing_or_invalid_amount() {
     let app = internal_admin_router(InMemoryAdminOpsStore::default());
 

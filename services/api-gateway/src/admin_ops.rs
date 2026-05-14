@@ -5,13 +5,23 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 
 pub trait AdminOpsStore {
+    /// Lists members that need operational attention.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the backing store cannot be read.
+    fn pending_member_cases(
+        &self,
+        query: PendingMemberCasesQuery,
+    ) -> Result<PendingMemberCasesResponse, AdminOpsStoreError>;
+
     /// Builds the internal admin member summary facade.
     ///
     /// # Errors
@@ -29,6 +39,41 @@ pub trait AdminOpsStore {
         user_id: &str,
         request: CompensationProposalRequest,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PendingMemberCasesQuery {
+    pub q: Option<String>,
+    pub status: Option<String>,
+    pub restriction: Option<String>,
+    pub page: Option<usize>,
+    pub page_size: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PendingMemberCasesResponse {
+    pub items: Vec<PendingMemberCase>,
+    pub page: usize,
+    pub page_size: usize,
+    pub total: usize,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PendingMemberCase {
+    pub member_id: String,
+    pub display_name: String,
+    pub restriction_reason: String,
+    pub contact: PendingMemberContact,
+    pub status: String,
+    pub kyc_status: String,
+    pub affiliate_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PendingMemberContact {
+    pub email_masked: String,
+    pub phone_masked: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -182,6 +227,10 @@ where
 {
     Router::new()
         .route(
+            "/api/internal/admin/members/pending-cases",
+            get(pending_member_cases::<S>),
+        )
+        .route(
             "/api/internal/admin/members/:user_id/summary",
             get(member_summary::<S>),
         )
@@ -190,6 +239,19 @@ where
             post(create_compensation_proposal::<S>),
         )
         .with_state(store)
+}
+
+async fn pending_member_cases<S>(
+    State(store): State<S>,
+    Query(query): Query<PendingMemberCasesQuery>,
+) -> Result<Json<PendingMemberCasesResponse>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    store
+        .pending_member_cases(query)
+        .map(Json)
+        .map_err(|_| internal_error())
 }
 
 async fn member_summary<S>(
@@ -294,6 +356,64 @@ impl InMemoryAdminOpsStore {
 }
 
 impl AdminOpsStore for InMemoryAdminOpsStore {
+    fn pending_member_cases(
+        &self,
+        query: PendingMemberCasesQuery,
+    ) -> Result<PendingMemberCasesResponse, AdminOpsStoreError> {
+        let page = query.page.unwrap_or(1).max(1);
+        let page_size = query.page_size.unwrap_or(10).clamp(1, 50);
+        let q = query.q.as_deref().map_or("", str::trim).to_lowercase();
+        let status = query.status.as_deref().map_or("", str::trim);
+        let restriction = query.restriction.as_deref().map_or("", str::trim);
+        let mut rows = vec![
+            PendingMemberCase {
+                member_id: "MEM-1042".to_owned(),
+                display_name: "陳柏安".to_owned(),
+                restriction_reason: "withdrawals_locked".to_owned(),
+                contact: PendingMemberContact {
+                    email_masked: "c***@example.net".to_owned(),
+                    phone_masked: "0987***112".to_owned(),
+                },
+                status: "restricted".to_owned(),
+                kyc_status: "review_required".to_owned(),
+                affiliate_id: Some("AFF-014".to_owned()),
+            },
+            PendingMemberCase {
+                member_id: "user_123".to_owned(),
+                display_name: "Member user_123".to_owned(),
+                restriction_reason: "kyc_pending".to_owned(),
+                contact: PendingMemberContact {
+                    email_masked: "m***@example.com".to_owned(),
+                    phone_masked: "0900***123".to_owned(),
+                },
+                status: "inactive".to_owned(),
+                kyc_status: "pending".to_owned(),
+                affiliate_id: Some("AFF-001".to_owned()),
+            },
+        ];
+
+        rows.retain(|item| {
+            (status.is_empty() || item.status == status)
+                && (restriction.is_empty() || item.restriction_reason == restriction)
+                && (q.is_empty()
+                    || item.member_id.to_lowercase().contains(&q)
+                    || item.display_name.to_lowercase().contains(&q)
+                    || item.contact.email_masked.to_lowercase().contains(&q)
+                    || item.contact.phone_masked.to_lowercase().contains(&q))
+        });
+        let total = rows.len();
+        let start = page.saturating_sub(1) * page_size;
+        let items = rows.into_iter().skip(start).take(page_size).collect();
+
+        Ok(PendingMemberCasesResponse {
+            items,
+            page,
+            page_size,
+            total,
+            source: "api-gateway:admin-ops".to_owned(),
+        })
+    }
+
     fn member_summary(&self, user_id: &str) -> Result<MemberSummaryResponse, AdminOpsStoreError> {
         Ok(MemberSummaryResponse {
             member: MemberIdentitySummary {
