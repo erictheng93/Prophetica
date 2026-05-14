@@ -1,12 +1,15 @@
 #![allow(clippy::expect_used)]
 
-use api_gateway::admin_ops::{InMemoryAdminOpsStore, internal_admin_router};
+use api_gateway::admin_ops::{HttpAdminOpsStore, InMemoryAdminOpsStore, internal_admin_router};
 use axum::{
+    Json, Router,
     body::Body,
     http::{Request, StatusCode},
+    routing::get,
 };
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
+use tokio::net::TcpListener;
 use tower::ServiceExt;
 
 #[tokio::test]
@@ -71,6 +74,58 @@ async fn pending_member_cases_filter_and_paginate() {
     );
     assert_eq!(body["items"][0]["contact"]["email_masked"], json!("c***@example.net"));
     assert_eq!(body["items"][0]["status"], json!("restricted"));
+}
+
+#[tokio::test]
+async fn pending_member_cases_proxy_to_kyc_service() {
+    let upstream = Router::new().route(
+        "/v1/internal/admin/members/pending-cases",
+        get(|| async {
+            Json(json!({
+                "items": [{
+                    "member_id": "member_from_kyc",
+                    "display_name": "Member member_from_kyc",
+                    "restriction_reason": "kyc_pending",
+                    "contact": {
+                        "email_masked": "not_available",
+                        "phone_masked": "not_available"
+                    },
+                    "status": "inactive",
+                    "kyc_status": "pending",
+                    "affiliate_id": null
+                }],
+                "page": 1,
+                "page_size": 10,
+                "total": 1,
+                "source": "kyc-service:kyc-store"
+            }))
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind upstream");
+    let upstream_url = format!("http://{}", listener.local_addr().expect("local addr"));
+    tokio::spawn(async move {
+        axum::serve(listener, upstream).await.expect("serve upstream");
+    });
+
+    let store = HttpAdminOpsStore::new(upstream_url).expect("store config");
+    let app = internal_admin_router(store);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/internal/admin/members/pending-cases?q=member_from_kyc")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("handled");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["source"], "kyc-service:kyc-store");
+    assert_eq!(body["items"][0]["member_id"], "member_from_kyc");
 }
 
 #[tokio::test]

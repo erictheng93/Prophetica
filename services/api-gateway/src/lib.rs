@@ -1272,7 +1272,11 @@ pub async fn run_http() -> anyhow::Result<()> {
                 |_| analytics_reporting::unconfigured_router(),
                 analytics_reporting::proxy_router,
             ),
-        );
+        )
+        .merge(admin_ops::internal_admin_router(
+            admin_ops::HttpAdminOpsStore::from_env()
+                .map_err(|error| anyhow::anyhow!(error.message().to_owned()))?,
+        ));
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "api gateway listening");
 

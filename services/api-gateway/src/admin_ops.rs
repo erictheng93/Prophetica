@@ -3,21 +3,24 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
+#[async_trait]
 pub trait AdminOpsStore {
     /// Lists members that need operational attention.
     ///
     /// # Errors
     ///
     /// Returns an error when the backing store cannot be read.
-    fn pending_member_cases(
+    async fn pending_member_cases(
         &self,
         query: PendingMemberCasesQuery,
     ) -> Result<PendingMemberCasesResponse, AdminOpsStoreError>;
@@ -27,14 +30,17 @@ pub trait AdminOpsStore {
     /// # Errors
     ///
     /// Returns an error when the backing store cannot be read.
-    fn member_summary(&self, user_id: &str) -> Result<MemberSummaryResponse, AdminOpsStoreError>;
+    async fn member_summary(
+        &self,
+        user_id: &str,
+    ) -> Result<MemberSummaryResponse, AdminOpsStoreError>;
 
     /// Persists a compensation proposal without posting a ledger transaction.
     ///
     /// # Errors
     ///
     /// Returns an error when the proposal or audit record cannot be persisted.
-    fn create_compensation_proposal(
+    async fn create_compensation_proposal(
         &self,
         user_id: &str,
         request: CompensationProposalRequest,
@@ -50,7 +56,7 @@ pub struct PendingMemberCasesQuery {
     pub page_size: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingMemberCasesResponse {
     pub items: Vec<PendingMemberCase>,
     pub page: usize,
@@ -59,7 +65,7 @@ pub struct PendingMemberCasesResponse {
     pub source: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingMemberCase {
     pub member_id: String,
     pub display_name: String,
@@ -70,7 +76,7 @@ pub struct PendingMemberCase {
     pub affiliate_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingMemberContact {
     pub email_masked: String,
     pub phone_masked: String,
@@ -250,6 +256,7 @@ where
 {
     store
         .pending_member_cases(query)
+        .await
         .map(Json)
         .map_err(|_| internal_error())
 }
@@ -263,6 +270,7 @@ where
 {
     store
         .member_summary(&user_id)
+        .await
         .map(Json)
         .map_err(|_| internal_error())
 }
@@ -278,6 +286,7 @@ where
     validate_compensation_proposal(&request)?;
     store
         .create_compensation_proposal(&user_id, request)
+        .await
         .map(Json)
         .map_err(|_| internal_error())
 }
@@ -334,6 +343,109 @@ fn internal_error() -> (StatusCode, Json<ErrorResponse>) {
     )
 }
 
+#[derive(Debug, Clone)]
+pub struct HttpAdminOpsStore {
+    client: reqwest::Client,
+    kyc_service_url: Url,
+}
+
+impl HttpAdminOpsStore {
+    /// Creates an admin ops store backed by production service APIs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the upstream base URL is invalid.
+    pub fn new(kyc_service_url: impl AsRef<str>) -> Result<Self, AdminOpsStoreError> {
+        let kyc_service_url = Url::parse(kyc_service_url.as_ref())
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(Self {
+            client: reqwest::Client::new(),
+            kyc_service_url,
+        })
+    }
+
+    /// Loads upstream service URLs from the process environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configured KYC service URL is invalid.
+    pub fn from_env() -> Result<Self, AdminOpsStoreError> {
+        let kyc_service_url =
+            std::env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned());
+        Self::new(kyc_service_url)
+    }
+
+    fn pending_cases_url(
+        &self,
+        query: &PendingMemberCasesQuery,
+    ) -> Result<Url, AdminOpsStoreError> {
+        let mut url = self
+            .kyc_service_url
+            .join("/v1/internal/admin/members/pending-cases")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(value) = query.q.as_deref() {
+                pairs.append_pair("q", value);
+            }
+            if let Some(value) = query.status.as_deref() {
+                pairs.append_pair("status", value);
+            }
+            if let Some(value) = query.restriction.as_deref() {
+                pairs.append_pair("restriction", value);
+            }
+            if let Some(value) = query.page {
+                pairs.append_pair("page", &value.to_string());
+            }
+            if let Some(value) = query.page_size {
+                pairs.append_pair("page_size", &value.to_string());
+            }
+        }
+        Ok(url)
+    }
+}
+
+#[async_trait]
+impl AdminOpsStore for HttpAdminOpsStore {
+    async fn pending_member_cases(
+        &self,
+        query: PendingMemberCasesQuery,
+    ) -> Result<PendingMemberCasesResponse, AdminOpsStoreError> {
+        let response = self
+            .client
+            .get(self.pending_cases_url(&query)?)
+            .send()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .json::<PendingMemberCasesResponse>()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+
+        Ok(response)
+    }
+
+    async fn member_summary(
+        &self,
+        _user_id: &str,
+    ) -> Result<MemberSummaryResponse, AdminOpsStoreError> {
+        Err(AdminOpsStoreError::new(
+            "member summary production source is not connected",
+        ))
+    }
+
+    async fn create_compensation_proposal(
+        &self,
+        _user_id: &str,
+        _request: CompensationProposalRequest,
+    ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
+        Err(AdminOpsStoreError::new(
+            "compensation proposal production source is not connected",
+        ))
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryAdminOpsStore {
     state: Arc<Mutex<AdminOpsState>>,
@@ -355,8 +467,9 @@ impl InMemoryAdminOpsStore {
     }
 }
 
+#[async_trait]
 impl AdminOpsStore for InMemoryAdminOpsStore {
-    fn pending_member_cases(
+    async fn pending_member_cases(
         &self,
         query: PendingMemberCasesQuery,
     ) -> Result<PendingMemberCasesResponse, AdminOpsStoreError> {
@@ -414,7 +527,10 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         })
     }
 
-    fn member_summary(&self, user_id: &str) -> Result<MemberSummaryResponse, AdminOpsStoreError> {
+    async fn member_summary(
+        &self,
+        user_id: &str,
+    ) -> Result<MemberSummaryResponse, AdminOpsStoreError> {
         Ok(MemberSummaryResponse {
             member: MemberIdentitySummary {
                 user_id: user_id.to_owned(),
@@ -458,7 +574,7 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         })
     }
 
-    fn create_compensation_proposal(
+    async fn create_compensation_proposal(
         &self,
         user_id: &str,
         request: CompensationProposalRequest,

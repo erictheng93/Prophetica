@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { signInternalCall } from "./internal-call.js";
+import { allowsMemberMockFallback } from "./member-management-runtime.js";
 import type { SessionPayload } from "./session-crypto.js";
 import {
   createMember,
@@ -76,6 +77,7 @@ export async function proxyMemberPendingCasesRequest(
   }
 
   const gatewayUrl = input.gatewayUrl ?? process.env.API_GATEWAY_URL;
+  const allowMockFallback = allowsMemberMockFallback();
   if (gatewayUrl) {
     const query = input.searchParams?.toString();
     const adminPath = `/api/internal/admin/members/pending-cases${query ? `?${query}` : ""}`;
@@ -109,6 +111,14 @@ export async function proxyMemberPendingCasesRequest(
         { status: upstream.status },
       );
     }
+    if (!allowMockFallback) {
+      return Response.json(
+        { error: "pending_cases_upstream_unimplemented" },
+        { status: 502 },
+      );
+    }
+  } else if (!allowMockFallback) {
+    return Response.json({ error: "gateway_unconfigured" }, { status: 500 });
   }
 
   return Response.json(

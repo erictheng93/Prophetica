@@ -4,6 +4,7 @@ import {
   listMemberPendingCases,
   resetMemberManagementStoreForTests,
 } from "../lib/member-management.js";
+import { allowsMemberMockFallback } from "../lib/member-management-runtime.js";
 
 beforeEach(() => {
   resetMemberManagementStoreForTests();
@@ -37,4 +38,10 @@ test("pending member cases can filter by member id or contact text", () => {
     byContact.items.map((item) => item.member_id),
     ["user_123"],
   );
+});
+
+test("pending member cases mock fallback is disabled in production", () => {
+  assert.equal(allowsMemberMockFallback({ PROPHETICA_ENV: "production" }), false);
+  assert.equal(allowsMemberMockFallback({ NODE_ENV: "production" }), false);
+  assert.equal(allowsMemberMockFallback({ PROPHETICA_ENV: "dev" }), true);
 });

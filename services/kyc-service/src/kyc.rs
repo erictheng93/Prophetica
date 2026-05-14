@@ -144,6 +144,41 @@ pub struct ScreeningRescanOutcome {
     pub edd_users: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PendingMemberCasesQuery {
+    pub q: Option<String>,
+    pub status: Option<String>,
+    pub restriction: Option<String>,
+    pub page: Option<usize>,
+    pub page_size: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PendingMemberCasesResponse {
+    pub items: Vec<PendingMemberCase>,
+    pub page: usize,
+    pub page_size: usize,
+    pub total: usize,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PendingMemberCase {
+    pub member_id: String,
+    pub display_name: String,
+    pub restriction_reason: String,
+    pub contact: PendingMemberContact,
+    pub status: String,
+    pub kyc_status: String,
+    pub affiliate_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PendingMemberContact {
+    pub email_masked: String,
+    pub phone_masked: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReviewAnswer {
     Green,
@@ -186,6 +221,11 @@ pub trait KycStore: Clone + Send + Sync + 'static {
         &self,
         matches: Vec<ScreeningMatchDraft>,
     ) -> Result<ScreeningRescanOutcome, KycStoreError>;
+
+    async fn pending_member_cases(
+        &self,
+        query: PendingMemberCasesQuery,
+    ) -> Result<PendingMemberCasesResponse, KycStoreError>;
 
     async fn start_upgrade(
         &self,
@@ -642,6 +682,33 @@ impl KycStore for PostgresKycStore {
         })
     }
 
+    async fn pending_member_cases(
+        &self,
+        query: PendingMemberCasesQuery,
+    ) -> Result<PendingMemberCasesResponse, KycStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT DISTINCT ON (user_id)
+                   id, user_id, tier, status, provider, provider_applicant_id, document_id_hash,
+                   country, declared_monthly_income, submitted_at::text AS submitted_at,
+                   reviewed_at::text AS reviewed_at, expires_at::text AS expires_at,
+                   idempotency_key
+            FROM user_kyc_records
+            WHERE status <> 'passed'
+            ORDER BY user_id, tier DESC, id DESC
+            ",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        let records = rows
+            .iter()
+            .map(row_to_kyc_record)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(paginate_pending_member_cases(records, &query))
+    }
+
     async fn start_upgrade(
         &self,
         draft: StartUpgradeDraft,
@@ -983,6 +1050,35 @@ impl KycStore for InMemoryKycStore {
         })
     }
 
+    async fn pending_member_cases(
+        &self,
+        query: PendingMemberCasesQuery,
+    ) -> Result<PendingMemberCasesResponse, KycStoreError> {
+        let records = self
+            .records
+            .lock()
+            .map_err(|_| KycStoreError::Unavailable)?;
+        let mut latest = HashMap::<String, KycRecord>::new();
+        for record in records
+            .iter()
+            .filter(|record| record.status != KycStatus::Passed)
+        {
+            latest
+                .entry(record.user_id.clone())
+                .and_modify(|existing| {
+                    if (record.tier.rank(), record.id) > (existing.tier.rank(), existing.id) {
+                        *existing = record.clone();
+                    }
+                })
+                .or_insert_with(|| record.clone());
+        }
+
+        Ok(paginate_pending_member_cases(
+            latest.into_values().collect(),
+            &query,
+        ))
+    }
+
     async fn start_upgrade(
         &self,
         draft: StartUpgradeDraft,
@@ -1072,6 +1168,66 @@ impl KycStatus {
             Self::Expired => "expired",
             Self::Frozen => "frozen",
         }
+    }
+}
+
+fn paginate_pending_member_cases(
+    records: Vec<KycRecord>,
+    query: &PendingMemberCasesQuery,
+) -> PendingMemberCasesResponse {
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(10).clamp(1, 50);
+    let q = query.q.as_deref().map_or("", str::trim).to_lowercase();
+    let status = query.status.as_deref().map_or("", str::trim);
+    let restriction = query.restriction.as_deref().map_or("", str::trim);
+    let mut rows = records
+        .into_iter()
+        .map(pending_case_from_record)
+        .filter(|item| {
+            (status.is_empty() || item.status == status)
+                && (restriction.is_empty() || item.restriction_reason == restriction)
+                && (q.is_empty()
+                    || item.member_id.to_lowercase().contains(&q)
+                    || item.display_name.to_lowercase().contains(&q)
+                    || item.contact.email_masked.to_lowercase().contains(&q)
+                    || item.contact.phone_masked.to_lowercase().contains(&q))
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| left.member_id.cmp(&right.member_id));
+
+    let total = rows.len();
+    let start = page.saturating_sub(1) * page_size;
+    let items = rows.into_iter().skip(start).take(page_size).collect();
+
+    PendingMemberCasesResponse {
+        items,
+        page,
+        page_size,
+        total,
+        source: "kyc-service:kyc-store".to_owned(),
+    }
+}
+
+fn pending_case_from_record(record: KycRecord) -> PendingMemberCase {
+    let (restriction_reason, status) = match record.status {
+        KycStatus::Pending => ("kyc_pending", "inactive"),
+        KycStatus::Rejected => ("kyc_rejected", "restricted"),
+        KycStatus::Expired => ("kyc_expired", "inactive"),
+        KycStatus::Frozen => ("kyc_frozen", "restricted"),
+        KycStatus::Passed => ("none", "active"),
+    };
+
+    PendingMemberCase {
+        display_name: format!("Member {}", record.user_id),
+        member_id: record.user_id,
+        restriction_reason: restriction_reason.to_owned(),
+        contact: PendingMemberContact {
+            email_masked: "not_available".to_owned(),
+            phone_masked: "not_available".to_owned(),
+        },
+        status: status.to_owned(),
+        kyc_status: record.status.as_str().to_owned(),
+        affiliate_id: None,
     }
 }
 

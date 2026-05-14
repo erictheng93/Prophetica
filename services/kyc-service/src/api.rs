@@ -13,8 +13,8 @@ use sha2::{Digest, Sha256};
 use crate::SecretConfig;
 use crate::kyc::{
     AmlEventDraft, KycRecord, KycStatus, KycStore, KycStoreError, KycTier, ReviewAnswer,
-    ScreeningMatchDraft, ScreeningMatchType, StartUpgradeDraft, SumsubWebhookDraft,
-    TierOneVerificationDraft, is_supported_tier_one_document,
+    PendingMemberCasesQuery, PendingMemberCasesResponse, ScreeningMatchDraft, ScreeningMatchType,
+    StartUpgradeDraft, SumsubWebhookDraft, TierOneVerificationDraft, is_supported_tier_one_document,
 };
 
 #[derive(Debug, Deserialize)]
@@ -189,6 +189,10 @@ where
         .route("/internal/aml/events", post(record_aml_event::<S>))
         .route("/internal/screening/rescans", post(screening_rescan::<S>))
         .route("/internal/reports/kyc/monthly", get(monthly_report::<S>))
+        .route(
+            "/v1/internal/admin/members/pending-cases",
+            get(pending_member_cases::<S>),
+        )
         .with_state(state)
 }
 
@@ -217,6 +221,21 @@ where
         record.as_ref(),
         tier_one_record.as_ref(),
     )))
+}
+
+async fn pending_member_cases<S>(
+    State(state): State<ApiState<S>>,
+    Query(query): Query<PendingMemberCasesQuery>,
+) -> Result<Json<PendingMemberCasesResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: KycStore,
+{
+    state
+        .store
+        .pending_member_cases(query)
+        .await
+        .map(Json)
+        .map_err(store_error)
 }
 
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state, request))]
