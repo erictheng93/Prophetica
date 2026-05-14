@@ -40,6 +40,14 @@ export default async function LoginPage() {
             <p className="mt-2 font-mono text-[12px] leading-[1.43] tracking-[-0.12px] text-proph-ink-muted-80">
               {adminCopy.login.devHintBody}
             </p>
+            <p className="mt-2 font-semibold text-[12px] tracking-[-0.12px] text-proph-ink-muted-80">
+              {adminCopy.login.devHintCredentialsHeading}
+            </p>
+            <ul className="mt-1 list-disc pl-5 font-mono text-[12px] leading-[1.43] tracking-[-0.12px] text-proph-ink-muted-80">
+              {adminCopy.login.devHintCredentials.map((account) => (
+                <li key={account}>{account}</li>
+              ))}
+            </ul>
           </aside>
         )}
       </div>

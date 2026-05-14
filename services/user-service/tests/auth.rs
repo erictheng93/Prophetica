@@ -121,6 +121,58 @@ async fn login_fails_closed_when_no_auth_provider_is_configured() {
     );
 }
 
+#[tokio::test]
+async fn login_accepts_multiple_local_accounts_from_json_config() {
+    let accounts = AuthConfig::from_local_login_accounts_json(
+        r#"[
+          {
+            "user_id": "U-ADMIN-001",
+            "email": "admin@prophetica.local",
+            "phone": "0912345601",
+            "password": "admin",
+            "role": "admin"
+          },
+          {
+            "user_id": "U-AFF-001",
+            "email": "affiliate@prophetica.local",
+            "phone": "0912345603",
+            "password": "affiliate",
+            "role": "affiliate",
+            "affiliate_id": "AFF-001"
+          }
+        ]"#,
+    )
+    .expect("json accounts parse");
+    let app = auth_router_with_config(AuthConfig::new(accounts));
+
+    let admin_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "admin@prophetica.local",
+            "identifier_kind": "email",
+            "password": "admin"
+        }),
+    )
+    .await;
+    let affiliate_response = post_login(
+        app,
+        json!({
+            "identifier": "0912345603",
+            "identifier_kind": "phone",
+            "password": "affiliate"
+        }),
+    )
+    .await;
+
+    assert_eq!(admin_response.status, StatusCode::OK);
+    assert_eq!(admin_response.body["user_id"], json!("U-ADMIN-001"));
+    assert_eq!(admin_response.body["role"], json!("admin"));
+    assert_eq!(affiliate_response.status, StatusCode::OK);
+    assert_eq!(affiliate_response.body["user_id"], json!("U-AFF-001"));
+    assert_eq!(affiliate_response.body["role"], json!("affiliate"));
+    assert_eq!(affiliate_response.body["affiliate_id"], json!("AFF-001"));
+}
+
 #[derive(Debug)]
 struct LoginTestResponse {
     status: StatusCode,

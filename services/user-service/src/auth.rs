@@ -21,6 +21,19 @@ pub struct AuthConfig {
     accounts: Arc<[LocalLoginAccount]>,
 }
 
+#[derive(Debug, Deserialize)]
+struct LocalLoginAccountSpec {
+    user_id: String,
+    email: String,
+    #[serde(default)]
+    phone: Option<String>,
+    password: String,
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    affiliate_id: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct LocalLoginAccount {
     user_id: String,
@@ -85,6 +98,10 @@ impl AuthConfig {
             return Self::new(Vec::new());
         }
 
+        if let Some(accounts) = Self::from_local_login_accounts_json_env() {
+            return Self::new(accounts);
+        }
+
         let user_id =
             env::var("USER_SERVICE_LOCAL_LOGIN_USER_ID").unwrap_or_else(|_| "user_42".to_owned());
         let email = env::var("USER_SERVICE_LOCAL_LOGIN_EMAIL")
@@ -101,6 +118,30 @@ impl AuthConfig {
             .map_or_else(Vec::new, |account| vec![account]);
 
         Self::new(accounts)
+    }
+
+    fn from_local_login_accounts_json_env() -> Option<Vec<LocalLoginAccount>> {
+        Self::from_local_login_accounts_json(&env::var("USER_SERVICE_LOCAL_LOGIN_ACCOUNTS").ok()?)
+    }
+
+    #[must_use]
+    pub fn from_local_login_accounts_json(raw_accounts: &str) -> Option<Vec<LocalLoginAccount>> {
+        let specs: Vec<LocalLoginAccountSpec> = serde_json::from_str(raw_accounts).ok()?;
+        let accounts = specs
+            .into_iter()
+            .filter_map(|spec| {
+                let phone = spec.phone.unwrap_or_else(|| "0912345698".to_owned());
+                let role = spec.role.unwrap_or_else(|| "player".to_owned());
+                LocalLoginAccount::new(spec.user_id, spec.email, phone, spec.password)
+                    .map(|account| account.with_profile(role, spec.affiliate_id))
+            })
+            .collect::<Vec<_>>();
+
+        if accounts.is_empty() {
+            None
+        } else {
+            Some(accounts)
+        }
     }
 }
 

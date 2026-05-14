@@ -30,7 +30,13 @@ export const adminCopy = {
     unknownError: "登入失敗，請稍後再試。",
     devHintTitle: "開發環境憑證",
     devHintBody:
-      "管理後台登入會呼叫 user-service。請先啟動後端並設定 USER_SERVICE_LOCAL_LOGIN_EMAIL/PASSWORD/ROLE；ROLE 需為 admin、manager 或 affiliate。",
+      "管理後台登入會呼叫 user-service。請先啟動後端並設定 USER_SERVICE_LOCAL_LOGIN_ACCOUNTS（JSON 陣列）或 USER_SERVICE_LOCAL_LOGIN_EMAIL/PASSWORD/ROLE；ROLE 需為 admin、manager 或 affiliate。",
+    devHintCredentials: [
+      "admin@prophetica.local / admin",
+      "manager@prophetica.local / manager",
+      "affiliate@prophetica.local / affiliate",
+    ],
+    devHintCredentialsHeading: "開發憑證（本機）：",
     mfaPlaceholder: "MFA 將於 Phase 3 上線（SPEC-010 §9.3.3）。",
   },
   forbidden: {

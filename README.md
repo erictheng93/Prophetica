@@ -159,7 +159,8 @@ make dev
 # admin: http://localhost:3002
 ```
 
-The admin app uses local mock users for the MVP loop:
+The admin app uses `user-service` local-login accounts configured via
+`USER_SERVICE_LOCAL_LOGIN_ACCOUNTS` (or legacy single-account mode):
 
 - `admin@prophetica.local` / `admin`
 - `manager@prophetica.local` / `manager`

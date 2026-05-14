@@ -18,7 +18,10 @@ test("second affiliate login maps to the AFF-014 mock affiliate", () => {
 
 test("login development hint points operators to user-service local-login configuration", () => {
   assert.match(adminCopy.login.devHintBody, /user-service/);
-  assert.match(adminCopy.login.devHintBody, /USER_SERVICE_LOCAL_LOGIN_EMAIL\/PASSWORD\/ROLE/);
+  assert.match(
+    adminCopy.login.devHintBody,
+    /USER_SERVICE_LOCAL_LOGIN_ACCOUNTS|USER_SERVICE_LOCAL_LOGIN_EMAIL\/PASSWORD\/ROLE/,
+  );
   assert.match(adminCopy.login.devHintBody, /admin、manager 或 affiliate/);
   assert.doesNotMatch(adminCopy.login.devHintBody, /Phase 2/);
 });
