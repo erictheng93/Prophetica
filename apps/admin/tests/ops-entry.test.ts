@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 
 const readAdminFile = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 
@@ -64,6 +65,21 @@ test("admin worker has the shared FAQ content KV binding", () => {
 
   assert.match(wranglerConfig, /^\[\[kv_namespaces\]\]$/m);
   assert.match(wranglerConfig, /^binding = ["']FAQ_CONTENT_KV["']$/m);
+});
+
+test("admin dev server allows configured LAN origins", async () => {
+  const nextConfigUrl = pathToFileURL(join(process.cwd(), "next.config.mjs"));
+  nextConfigUrl.search = `test=${Date.now()}`;
+  const nextConfig = (await import(nextConfigUrl.href)) as {
+    default: { allowedDevOrigins?: string[] };
+    parseAllowedDevOrigins: (value?: string) => string[];
+  };
+
+  assert.ok(nextConfig.default.allowedDevOrigins?.includes("192.168.68.93"));
+  assert.deepEqual(nextConfig.parseAllowedDevOrigins("http://192.168.68.94:3002"), [
+    "192.168.68.93",
+    "192.168.68.94",
+  ]);
 });
 
 test("decision support dashboard stays read-only and covers required insight areas", () => {
