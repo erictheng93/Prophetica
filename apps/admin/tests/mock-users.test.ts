@@ -18,7 +18,8 @@ test("second affiliate login maps to the AFF-014 mock affiliate", () => {
 
 test("login development hint lists every mock account without an incorrect shared password claim", () => {
   for (const user of mockUsers) {
-    assert.match(adminCopy.login.devHintBody, new RegExp(user.email.replaceAll(".", "\\.")));
+    const escapedPair = `${user.email}/${user.password}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(adminCopy.login.devHintBody, new RegExp(escapedPair));
   }
   assert.doesNotMatch(adminCopy.login.devHintBody, /密碼皆為 dev/);
 });
