@@ -72,7 +72,10 @@ async fn pending_member_cases_filter_and_paginate() {
         body["items"][0]["restriction_reason"],
         json!("withdrawals_locked")
     );
-    assert_eq!(body["items"][0]["contact"]["email_masked"], json!("c***@example.net"));
+    assert_eq!(
+        body["items"][0]["contact"]["email_masked"],
+        json!("c***@example.net")
+    );
     assert_eq!(body["items"][0]["status"], json!("restricted"));
 }
 
@@ -82,24 +85,24 @@ async fn pending_member_cases_proxy_to_kyc_service() {
         .route(
             "/v1/internal/admin/members/pending-cases",
             get(|| async {
-            Json(json!({
-                "items": [{
-                    "member_id": "member_from_kyc",
-                    "display_name": "Member member_from_kyc",
-                    "restriction_reason": "kyc_pending",
-                    "contact": {
-                        "email_masked": "not_available",
-                        "phone_masked": "not_available"
-                    },
-                    "status": "inactive",
-                    "kyc_status": "pending",
-                    "affiliate_id": null
-                }],
-                "page": 1,
-                "page_size": 10,
-                "total": 1,
-                "source": "kyc-service:kyc-store"
-            }))
+                Json(json!({
+                    "items": [{
+                        "member_id": "member_from_kyc",
+                        "display_name": "Member member_from_kyc",
+                        "restriction_reason": "kyc_pending",
+                        "contact": {
+                            "email_masked": "not_available",
+                            "phone_masked": "not_available"
+                        },
+                        "status": "inactive",
+                        "kyc_status": "pending",
+                        "affiliate_id": null
+                    }],
+                    "page": 1,
+                    "page_size": 10,
+                    "total": 1,
+                    "source": "kyc-service:kyc-store"
+                }))
             }),
         )
         .route(
@@ -119,7 +122,9 @@ async fn pending_member_cases_proxy_to_kyc_service() {
         .expect("bind upstream");
     let upstream_url = format!("http://{}", listener.local_addr().expect("local addr"));
     tokio::spawn(async move {
-        axum::serve(listener, upstream).await.expect("serve upstream");
+        axum::serve(listener, upstream)
+            .await
+            .expect("serve upstream");
     });
 
     let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
@@ -139,7 +144,10 @@ async fn pending_member_cases_proxy_to_kyc_service() {
     let body = response_json(response).await;
     assert_eq!(body["source"], "kyc-service:kyc-store");
     assert_eq!(body["items"][0]["member_id"], "member_from_kyc");
-    assert_eq!(body["items"][0]["contact"]["email_masked"], "r***@example.com");
+    assert_eq!(
+        body["items"][0]["contact"]["email_masked"],
+        "r***@example.com"
+    );
 }
 
 #[tokio::test]
@@ -183,7 +191,9 @@ async fn member_management_proxy_to_user_service() {
         .expect("bind upstream");
     let upstream_url = format!("http://{}", listener.local_addr().expect("local addr"));
     tokio::spawn(async move {
-        axum::serve(listener, upstream).await.expect("serve upstream");
+        axum::serve(listener, upstream)
+            .await
+            .expect("serve upstream");
     });
 
     let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
@@ -191,7 +201,9 @@ async fn member_management_proxy_to_user_service() {
 
     let list = app
         .clone()
-        .oneshot(empty_get("/api/internal/admin/members?affiliate_id=AFF-001"))
+        .oneshot(empty_get(
+            "/api/internal/admin/members?affiliate_id=AFF-001",
+        ))
         .await
         .expect("handled");
     let summary = app
@@ -230,7 +242,10 @@ async fn member_management_proxy_to_user_service() {
         .await
         .expect("handled");
 
-    assert_eq!(response_json(list).await["source"], "user-service:member-store");
+    assert_eq!(
+        response_json(list).await["source"],
+        "user-service:member-store"
+    );
     assert_eq!(response_json(summary).await["member"]["user_id"], "MEM-900");
     assert_eq!(response_json(created).await["user_id"], "MEM-901");
     assert_eq!(response_json(updated).await["display_name"], "Updated");
@@ -360,10 +375,73 @@ async fn compensation_accepts_two_distinct_approvals_and_records_audit_metadata(
     assert_eq!(records[0].correlation_id, "admin-compensation-TICKET-3-1");
 }
 
+#[tokio::test]
+async fn member_action_accepts_admin_context_and_records_audit_metadata() {
+    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+
+    let response = app
+        .oneshot(json_post(
+            "/api/internal/admin/members/actions",
+            &json!({
+                "target_user_id": "user_123",
+                "action_type": "restrict_withdrawals",
+                "ticket_id": "TICKET-4",
+                "reason": "risk review hold",
+                "correlation_id": "case-kyc-123"
+            }),
+        ))
+        .await
+        .expect("valid member action request should be handled");
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let body = response_json(response).await;
+    assert_eq!(body["action_id"], json!("mem-act-000001"));
+    assert_eq!(body["target_user_id"], json!("user_123"));
+    assert_eq!(body["status"], json!("pending_second_approval"));
+    assert_eq!(body["requires_second_approval"], json!(true));
+    assert_eq!(body["audit"]["actor_user_id"], json!("admin-1"));
+    assert_eq!(body["audit"]["actor_role"], json!("admin"));
+    assert_eq!(body["audit"]["correlation_id"], json!("case-kyc-123"));
+    assert_eq!(body["audit"]["ledger_transaction_posted"], json!(false));
+}
+
+#[tokio::test]
+async fn member_action_requires_actor_context() {
+    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/internal/admin/members/actions")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "target_user_id": "user_123",
+                        "action_type": "add_note",
+                        "ticket_id": "TICKET-5",
+                        "reason": "review note"
+                    })
+                    .to_string(),
+                ))
+                .expect("request builds"),
+        )
+        .await
+        .expect("missing context request should be handled");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        response_json(response).await["error"],
+        json!("ERROR_CODE_MISSING_ADMIN_CONTEXT")
+    );
+}
+
 fn json_post(uri: &str, body: &Value) -> Request<Body> {
     Request::builder()
         .method("POST")
         .uri(uri)
+        .header("x-actor-id", "admin-1")
+        .header("x-operator-role", "admin")
         .header("content-type", "application/json")
         .body(Body::from(body.to_string()))
         .unwrap_or_else(|error| panic!("request should build: {error}"))

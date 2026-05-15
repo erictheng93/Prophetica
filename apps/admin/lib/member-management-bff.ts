@@ -266,7 +266,26 @@ export async function proxyMemberActionRequest(
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
-  if (!findMemberSummary(parsed.value.target_user_id)) {
+  const gatewaySummary = await fetchGatewayMemberSummary(
+    input.viewer,
+    parsed.value.target_user_id,
+  );
+  if (gatewaySummary.response) return gatewaySummary.response;
+  if (
+    gatewaySummary.summary &&
+    !canReadGatewaySummary(gatewaySummary.summary, input.viewer)
+  ) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const gatewayResponse = await proxyMemberGatewayRequest(input.viewer, {
+    method: "POST",
+    adminPath: "/api/internal/admin/members/actions",
+    body: JSON.stringify(parsed.value),
+  });
+  if (gatewayResponse) return gatewayResponse;
+
+  if (!findMemberSummary(parsed.value.target_user_id, input.viewer)) {
     return Response.json({ error: "member_not_found" }, { status: 404 });
   }
 

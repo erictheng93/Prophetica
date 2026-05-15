@@ -520,7 +520,7 @@ function PendingCasesPanel(props: {
   const sourceLabel =
     props.cases?.source === "api-gateway"
       ? "api-gateway"
-      : "mock fallback";
+      : "dev fallback";
 
   return (
     <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
@@ -530,7 +530,7 @@ function PendingCasesPanel(props: {
             會員待處理 API
           </h2>
           <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-            可視化會員 ID、限制原因、聯絡資料與狀態；有 API_GATEWAY_URL 時優先讀取後端，否則顯示 mock fallback。
+            可視化會員 ID、限制原因、聯絡資料與狀態；production 必須讀取 API gateway，只有明確開啟 dev fallback 才會使用本機資料。
           </p>
         </div>
         <span className="inline-flex h-8 items-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-3 font-mono text-[12px] text-proph-ink-muted-80">

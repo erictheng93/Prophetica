@@ -1,5 +1,5 @@
 export function allowsMemberMockFallback(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  return env.PROPHETICA_ENV !== "production" && env.NODE_ENV !== "production";
+  return env.MEMBER_MANAGEMENT_ALLOW_MOCK_FALLBACK === "true";
 }

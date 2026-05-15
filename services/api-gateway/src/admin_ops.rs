@@ -7,12 +7,13 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     routing::{delete, get, patch, post},
 };
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 
 #[async_trait]
@@ -27,20 +28,14 @@ pub trait AdminOpsStore {
         query: PendingMemberCasesQuery,
     ) -> Result<PendingMemberCasesResponse, AdminOpsStoreError>;
 
-    async fn list_members(
-        &self,
-        query: MemberListQuery,
-    ) -> Result<Value, AdminOpsStoreError>;
+    async fn list_members(&self, query: MemberListQuery) -> Result<Value, AdminOpsStoreError>;
 
     /// Builds the internal admin member summary facade.
     ///
     /// # Errors
     ///
     /// Returns an error when the backing store cannot be read.
-    async fn member_summary(
-        &self,
-        user_id: &str,
-    ) -> Result<Value, AdminOpsStoreError>;
+    async fn member_summary(&self, user_id: &str) -> Result<Value, AdminOpsStoreError>;
 
     async fn create_member(&self, request: Value) -> Result<Value, AdminOpsStoreError>;
 
@@ -52,6 +47,12 @@ pub trait AdminOpsStore {
 
     async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError>;
 
+    async fn create_member_action(
+        &self,
+        request: MemberActionRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<MemberActionResponse, AdminOpsStoreError>;
+
     /// Persists a compensation proposal without posting a ledger transaction.
     ///
     /// # Errors
@@ -61,7 +62,16 @@ pub trait AdminOpsStore {
         &self,
         user_id: &str,
         request: CompensationProposalRequest,
+        _context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminOpsRequestContext {
+    pub actor_user_id: String,
+    pub actor_role: String,
+    pub request_id: Option<String>,
+    pub idempotency_key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -177,12 +187,41 @@ pub struct AuditPostureSummary {
     pub latest_admin_action_at_epoch_seconds: Option<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CompensationProposalRequest {
     pub ticket_id: Option<String>,
     pub reason: Option<String>,
     pub amount_minor_units: Option<i64>,
     pub approvals: Option<Vec<CompensationApprovalRequest>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MemberActionRequest {
+    pub target_user_id: String,
+    pub action_type: String,
+    pub ticket_id: String,
+    pub reason: String,
+    pub correlation_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberActionResponse {
+    pub action_id: String,
+    pub target_user_id: String,
+    pub action_type: String,
+    pub status: String,
+    pub requires_second_approval: bool,
+    pub audit: MemberActionAuditMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberActionAuditMetadata {
+    pub actor_user_id: String,
+    pub actor_role: String,
+    pub target_user_id: String,
+    pub ticket_id: String,
+    pub correlation_id: String,
+    pub ledger_transaction_posted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -272,6 +311,10 @@ where
         .route(
             "/api/internal/admin/members/:user_id",
             delete(delete_member::<S>),
+        )
+        .route(
+            "/api/internal/admin/members/actions",
+            post(create_member_action::<S>),
         )
         .route(
             "/api/internal/admin/members/:user_id/compensation-proposals",
@@ -365,8 +408,26 @@ where
         .map_err(|_| internal_error())
 }
 
+async fn create_member_action<S>(
+    State(store): State<S>,
+    headers: HeaderMap,
+    Json(request): Json<MemberActionRequest>,
+) -> Result<(StatusCode, Json<MemberActionResponse>), (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    validate_member_action(&request)?;
+    let context = request_context(&headers)?;
+    store
+        .create_member_action(request, context)
+        .await
+        .map(|body| (StatusCode::ACCEPTED, Json(body)))
+        .map_err(|_| internal_error())
+}
+
 async fn create_compensation_proposal<S>(
     State(store): State<S>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
     Json(request): Json<CompensationProposalRequest>,
 ) -> Result<Json<CompensationProposalResponse>, (StatusCode, Json<ErrorResponse>)>
@@ -374,11 +435,67 @@ where
     S: AdminOpsStore,
 {
     validate_compensation_proposal(&request)?;
+    let context = request_context(&headers)?;
     store
-        .create_compensation_proposal(&user_id, request)
+        .create_compensation_proposal(&user_id, request, context)
         .await
         .map(Json)
         .map_err(|_| internal_error())
+}
+
+fn validate_member_action(
+    request: &MemberActionRequest,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if request.target_user_id.trim().is_empty()
+        || request.ticket_id.trim().is_empty()
+        || request.reason.trim().is_empty()
+        || !matches!(
+            request.action_type.as_str(),
+            "add_note" | "request_kyc_review" | "restrict_withdrawals" | "escalate_case"
+        )
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_INVALID_MEMBER_ACTION",
+            }),
+        ));
+    }
+    Ok(())
+}
+
+fn request_context(
+    headers: &HeaderMap,
+) -> Result<AdminOpsRequestContext, (StatusCode, Json<ErrorResponse>)> {
+    let actor_user_id = required_header(headers, "x-actor-id")?;
+    let actor_role = required_header(headers, "x-operator-role")?;
+    Ok(AdminOpsRequestContext {
+        actor_user_id,
+        actor_role,
+        request_id: optional_header(headers, "x-request-id"),
+        idempotency_key: optional_header(headers, "idempotency-key"),
+    })
+}
+
+fn required_header(
+    headers: &HeaderMap,
+    name: &'static str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    optional_header(headers, name).ok_or((
+        StatusCode::UNAUTHORIZED,
+        Json(ErrorResponse {
+            error: "ERROR_CODE_MISSING_ADMIN_CONTEXT",
+        }),
+    ))
+}
+
+fn optional_header(headers: &HeaderMap, name: &'static str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
 }
 
 fn validate_compensation_proposal(
@@ -597,6 +714,37 @@ fn url_encode_path_segment(value: &str) -> String {
     value.replace('/', "%2F")
 }
 
+fn request_hash<T: Serialize>(request: &T) -> Result<String, AdminOpsStoreError> {
+    let body =
+        serde_json::to_vec(request).map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    Ok(format!("{:x}", Sha256::digest(body)))
+}
+
+fn member_action_response(
+    action_id: String,
+    request: MemberActionRequest,
+    status: &str,
+    requires_second_approval: bool,
+    context: AdminOpsRequestContext,
+    correlation_id: String,
+) -> MemberActionResponse {
+    MemberActionResponse {
+        action_id,
+        target_user_id: request.target_user_id.clone(),
+        action_type: request.action_type,
+        status: status.to_owned(),
+        requires_second_approval,
+        audit: MemberActionAuditMetadata {
+            actor_user_id: context.actor_user_id,
+            actor_role: context.actor_role,
+            target_user_id: request.target_user_id,
+            ticket_id: request.ticket_id,
+            correlation_id,
+            ledger_transaction_posted: false,
+        },
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProductionAdminOpsStore {
     upstream: HttpAdminOpsStore,
@@ -625,10 +773,7 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         self.upstream.pending_member_cases(query).await
     }
 
-    async fn list_members(
-        &self,
-        query: MemberListQuery,
-    ) -> Result<Value, AdminOpsStoreError> {
+    async fn list_members(&self, query: MemberListQuery) -> Result<Value, AdminOpsStoreError> {
         self.upstream.list_members(query).await
     }
 
@@ -652,13 +797,24 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         self.upstream.delete_member(user_id).await
     }
 
+    async fn create_member_action(
+        &self,
+        request: MemberActionRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<MemberActionResponse, AdminOpsStoreError> {
+        self.compensation
+            .create_member_action(request, context)
+            .await
+    }
+
     async fn create_compensation_proposal(
         &self,
         user_id: &str,
         request: CompensationProposalRequest,
+        context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
         self.compensation
-            .create_compensation_proposal(user_id, request)
+            .create_compensation_proposal(user_id, request, context)
             .await
     }
 }
@@ -674,11 +830,82 @@ impl PostgresCompensationProposalStore {
         Self { pool }
     }
 
+    async fn find_compensation_by_idempotency_key(
+        &self,
+        idempotency_key: &str,
+        request_hash: &str,
+    ) -> Result<Option<CompensationProposalResponse>, AdminOpsStoreError> {
+        let Some(row) = sqlx::query(
+            r"
+            SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
+                   status, ledger_transaction_posted, correlation_id, request_hash
+            FROM admin_compensation_proposals
+            WHERE idempotency_key = $1
+            ",
+        )
+        .bind(idempotency_key)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let stored_hash: Option<String> = row
+            .try_get("request_hash")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        if stored_hash.as_deref() != Some(request_hash) {
+            return Err(AdminOpsStoreError::new("idempotency key payload mismatch"));
+        }
+        compensation_response_from_row(&self.pool, &row)
+            .await
+            .map(Some)
+    }
+
+    async fn find_member_action_by_idempotency_key(
+        &self,
+        idempotency_key: &str,
+        request_hash: &str,
+    ) -> Result<Option<MemberActionResponse>, AdminOpsStoreError> {
+        let Some(row) = sqlx::query(
+            r"
+            SELECT action_id, target_user_id, action_type, ticket_id, status,
+                   requires_second_approval, actor_user_id, actor_role, correlation_id,
+                   ledger_transaction_posted, request_hash
+            FROM admin_member_actions
+            WHERE idempotency_key = $1
+            ",
+        )
+        .bind(idempotency_key)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let stored_hash: Option<String> = row
+            .try_get("request_hash")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        if stored_hash.as_deref() != Some(request_hash) {
+            return Err(AdminOpsStoreError::new("idempotency key payload mismatch"));
+        }
+        member_action_response_from_row(&row).map(Some)
+    }
+
     async fn create_compensation_proposal(
         &self,
         user_id: &str,
         request: CompensationProposalRequest,
+        context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
+        let request_hash = request_hash(&request)?;
+        if let Some(idempotency_key) = context.idempotency_key.as_deref() {
+            if let Some(existing) = self
+                .find_compensation_by_idempotency_key(idempotency_key, &request_hash)
+                .await?
+            {
+                return Ok(existing);
+            }
+        }
         let ticket_id = request
             .ticket_id
             .ok_or_else(|| AdminOpsStoreError::new("validated ticket id is missing"))?;
@@ -706,9 +933,10 @@ impl PostgresCompensationProposalStore {
             r"
             INSERT INTO admin_compensation_proposals (
                 id, subject_user_id, ticket_id, reason, amount_minor_units, status,
-                ledger_transaction_posted, correlation_id, actor_user_id, actor_role
+                ledger_transaction_posted, correlation_id, actor_user_id, actor_role,
+                idempotency_key, request_hash
             )
-            VALUES ($1, $2, $3, $4, $5, 'approved_ready_for_ledger', FALSE, $6, 'admin_ops', 'system')
+            VALUES ($1, $2, $3, $4, $5, 'approved_ready_for_ledger', FALSE, $6, $7, $8, $9, $10)
             RETURNING id, proposal_id
             ",
         )
@@ -718,6 +946,10 @@ impl PostgresCompensationProposalStore {
         .bind(&reason)
         .bind(amount_minor_units)
         .bind(&correlation_id)
+        .bind(&context.actor_user_id)
+        .bind(&context.actor_role)
+        .bind(&context.idempotency_key)
+        .bind(&request_hash)
         .fetch_one(&mut *tx)
         .await
         .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
@@ -740,34 +972,97 @@ impl PostgresCompensationProposalStore {
             &ticket_id,
             &correlation_id,
             &approval_roles,
+            &context,
         )
         .await?;
         tx.commit()
             .await
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
 
-        let audit = CompensationAuditMetadata {
-            action: "compensation_proposal_created".to_owned(),
-            subject_user_id: user_id.to_owned(),
-            ticket_id: ticket_id.clone(),
-            correlation_id,
-            approval_roles,
-            ledger_transaction_posted: false,
-        };
-
-        Ok(CompensationProposalResponse {
-            proposal: CompensationProposal {
+        Ok(compensation_proposal_response(
+            CompensationProposalResponseParts {
                 proposal_id,
                 user_id: user_id.to_owned(),
                 ticket_id,
                 reason,
                 amount_minor_units,
-                status: CompensationProposalStatus::ApprovedReadyForLedger,
                 approvals,
-                ledger_transaction_posted: false,
+                correlation_id,
+                approval_roles,
             },
-            audit,
-        })
+        ))
+    }
+
+    async fn create_member_action(
+        &self,
+        request: MemberActionRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<MemberActionResponse, AdminOpsStoreError> {
+        let request_hash = request_hash(&request)?;
+        if let Some(idempotency_key) = context.idempotency_key.as_deref() {
+            if let Some(existing) = self
+                .find_member_action_by_idempotency_key(idempotency_key, &request_hash)
+                .await?
+            {
+                return Ok(existing);
+            }
+        }
+        let requires_second_approval = request.action_type != "add_note";
+        let status = if requires_second_approval {
+            "pending_second_approval"
+        } else {
+            "submitted"
+        };
+        let correlation_id = request
+            .correlation_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map_or_else(
+                || {
+                    let suffix = context
+                        .request_id
+                        .as_deref()
+                        .unwrap_or(request.ticket_id.as_str());
+                    format!("admin-member-action-{suffix}")
+                },
+                str::to_owned,
+            );
+        let row = sqlx::query(
+            r"
+            INSERT INTO admin_member_actions (
+                target_user_id, action_type, ticket_id, reason, status,
+                requires_second_approval, actor_user_id, actor_role, correlation_id,
+                idempotency_key, request_hash
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING action_id
+            ",
+        )
+        .bind(&request.target_user_id)
+        .bind(&request.action_type)
+        .bind(&request.ticket_id)
+        .bind(&request.reason)
+        .bind(status)
+        .bind(requires_second_approval)
+        .bind(&context.actor_user_id)
+        .bind(&context.actor_role)
+        .bind(&correlation_id)
+        .bind(&context.idempotency_key)
+        .bind(&request_hash)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let action_id = row
+            .try_get("action_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(member_action_response(
+            action_id,
+            request,
+            status,
+            requires_second_approval,
+            context,
+            correlation_id,
+        ))
     }
 }
 
@@ -805,6 +1100,7 @@ async fn insert_compensation_audit_event(
     ticket_id: &str,
     correlation_id: &str,
     approval_roles: &[String],
+    context: &AdminOpsRequestContext,
 ) -> Result<(), AdminOpsStoreError> {
     sqlx::query(
         r"
@@ -813,12 +1109,14 @@ async fn insert_compensation_audit_event(
             ticket_id, correlation_id, metadata
         )
         VALUES (
-            $1, 'compensation_proposal_created', 'admin_ops', 'system', $2,
-            $3, $4, $5
+            $1, 'compensation_proposal_created', $2, $3, $4,
+            $5, $6, $7
         )
         ",
     )
     .bind(proposal_row_id)
+    .bind(&context.actor_user_id)
+    .bind(&context.actor_role)
     .bind(user_id)
     .bind(ticket_id)
     .bind(correlation_id)
@@ -827,6 +1125,168 @@ async fn insert_compensation_audit_event(
     .await
     .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
     Ok(())
+}
+
+struct CompensationProposalResponseParts {
+    proposal_id: String,
+    user_id: String,
+    ticket_id: String,
+    reason: String,
+    amount_minor_units: i64,
+    approvals: Vec<CompensationApprovalRequest>,
+    correlation_id: String,
+    approval_roles: Vec<String>,
+}
+
+fn compensation_proposal_response(
+    parts: CompensationProposalResponseParts,
+) -> CompensationProposalResponse {
+    CompensationProposalResponse {
+        proposal: CompensationProposal {
+            proposal_id: parts.proposal_id,
+            user_id: parts.user_id.clone(),
+            ticket_id: parts.ticket_id.clone(),
+            reason: parts.reason,
+            amount_minor_units: parts.amount_minor_units,
+            status: CompensationProposalStatus::ApprovedReadyForLedger,
+            approvals: parts.approvals,
+            ledger_transaction_posted: false,
+        },
+        audit: CompensationAuditMetadata {
+            action: "compensation_proposal_created".to_owned(),
+            subject_user_id: parts.user_id,
+            ticket_id: parts.ticket_id,
+            correlation_id: parts.correlation_id,
+            approval_roles: parts.approval_roles,
+            ledger_transaction_posted: false,
+        },
+    }
+}
+
+async fn compensation_response_from_row(
+    pool: &PgPool,
+    row: &sqlx::postgres::PgRow,
+) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
+    let row_id: i64 = row
+        .try_get("id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let approvals = sqlx::query(
+        r"
+        SELECT approver_user_id, role
+        FROM admin_compensation_proposal_approvals
+        WHERE proposal_id = $1
+        ORDER BY ordinal
+        ",
+    )
+    .bind(row_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+    .iter()
+    .map(|row| {
+        Ok(CompensationApprovalRequest {
+            approver_user_id: row
+                .try_get("approver_user_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            role: row
+                .try_get("role")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        })
+    })
+    .collect::<Result<Vec<_>, AdminOpsStoreError>>()?;
+    let approval_roles = approvals
+        .iter()
+        .map(|approval| approval.role.clone())
+        .collect::<Vec<_>>();
+    let status: String = row
+        .try_get("status")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    Ok(CompensationProposalResponse {
+        proposal: CompensationProposal {
+            proposal_id: row
+                .try_get("proposal_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            user_id: row
+                .try_get("subject_user_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            ticket_id: row
+                .try_get("ticket_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            reason: row
+                .try_get("reason")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            amount_minor_units: row
+                .try_get("amount_minor_units")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            status: if status == "pending_approval" {
+                CompensationProposalStatus::PendingApproval
+            } else {
+                CompensationProposalStatus::ApprovedReadyForLedger
+            },
+            approvals,
+            ledger_transaction_posted: row
+                .try_get("ledger_transaction_posted")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        },
+        audit: CompensationAuditMetadata {
+            action: "compensation_proposal_created".to_owned(),
+            subject_user_id: row
+                .try_get("subject_user_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            ticket_id: row
+                .try_get("ticket_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            correlation_id: row
+                .try_get("correlation_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            approval_roles,
+            ledger_transaction_posted: row
+                .try_get("ledger_transaction_posted")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        },
+    })
+}
+
+fn member_action_response_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<MemberActionResponse, AdminOpsStoreError> {
+    Ok(MemberActionResponse {
+        action_id: row
+            .try_get("action_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        target_user_id: row
+            .try_get("target_user_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        action_type: row
+            .try_get("action_type")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        status: row
+            .try_get("status")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        requires_second_approval: row
+            .try_get("requires_second_approval")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        audit: MemberActionAuditMetadata {
+            actor_user_id: row
+                .try_get("actor_user_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            actor_role: row
+                .try_get("actor_role")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            target_user_id: row
+                .try_get("target_user_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            ticket_id: row
+                .try_get("ticket_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            correlation_id: row
+                .try_get("correlation_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            ledger_transaction_posted: row
+                .try_get("ledger_transaction_posted")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        },
+    })
 }
 
 #[async_trait]
@@ -851,18 +1311,12 @@ impl AdminOpsStore for HttpAdminOpsStore {
         Ok(response)
     }
 
-    async fn list_members(
-        &self,
-        query: MemberListQuery,
-    ) -> Result<Value, AdminOpsStoreError> {
+    async fn list_members(&self, query: MemberListQuery) -> Result<Value, AdminOpsStoreError> {
         self.user_service_json(self.client.get(self.list_members_url(&query)?))
             .await
     }
 
-    async fn member_summary(
-        &self,
-        user_id: &str,
-    ) -> Result<Value, AdminOpsStoreError> {
+    async fn member_summary(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
         let path = format!(
             "/v1/internal/admin/members/{}/summary",
             url_encode_path_segment(user_id)
@@ -889,8 +1343,12 @@ impl AdminOpsStore for HttpAdminOpsStore {
             "/v1/internal/admin/members/{}",
             url_encode_path_segment(user_id)
         );
-        self.user_service_json(self.client.patch(self.user_members_url(&path)?).json(&request))
-            .await
+        self.user_service_json(
+            self.client
+                .patch(self.user_members_url(&path)?)
+                .json(&request),
+        )
+        .await
     }
 
     async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
@@ -906,9 +1364,20 @@ impl AdminOpsStore for HttpAdminOpsStore {
         &self,
         _user_id: &str,
         _request: CompensationProposalRequest,
+        _context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
         Err(AdminOpsStoreError::new(
             "compensation proposal production source is not connected",
+        ))
+    }
+
+    async fn create_member_action(
+        &self,
+        _request: MemberActionRequest,
+        _context: AdminOpsRequestContext,
+    ) -> Result<MemberActionResponse, AdminOpsStoreError> {
+        Err(AdminOpsStoreError::new(
+            "member action production source is not connected",
         ))
     }
 }
@@ -921,6 +1390,7 @@ pub struct InMemoryAdminOpsStore {
 #[derive(Debug, Default)]
 struct AdminOpsState {
     next_proposal_number: u64,
+    next_action_number: u64,
     audit_records: Vec<CompensationAuditMetadata>,
 }
 
@@ -994,10 +1464,7 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         })
     }
 
-    async fn member_summary(
-        &self,
-        user_id: &str,
-    ) -> Result<Value, AdminOpsStoreError> {
+    async fn member_summary(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
         let summary = MemberSummaryResponse {
             member: MemberIdentitySummary {
                 user_id: user_id.to_owned(),
@@ -1042,10 +1509,7 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         serde_json::to_value(summary).map_err(|error| AdminOpsStoreError::new(error.to_string()))
     }
 
-    async fn list_members(
-        &self,
-        _query: MemberListQuery,
-    ) -> Result<Value, AdminOpsStoreError> {
+    async fn list_members(&self, _query: MemberListQuery) -> Result<Value, AdminOpsStoreError> {
         Ok(json!({
             "members": [],
             "source": "api-gateway:admin-ops"
@@ -1072,6 +1536,7 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         &self,
         user_id: &str,
         request: CompensationProposalRequest,
+        _context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
         let mut state = self
             .state
@@ -1120,5 +1585,39 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
             },
             audit,
         })
+    }
+
+    async fn create_member_action(
+        &self,
+        request: MemberActionRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<MemberActionResponse, AdminOpsStoreError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        state.next_action_number += 1;
+        let requires_second_approval = request.action_type != "add_note";
+        let status = if requires_second_approval {
+            "pending_second_approval"
+        } else {
+            "submitted"
+        };
+        let correlation_id = request
+            .correlation_id
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map_or_else(
+                || format!("admin-member-action-{}", state.next_action_number),
+                str::to_owned,
+            );
+        Ok(member_action_response(
+            format!("mem-act-{number:06}", number = state.next_action_number),
+            request,
+            status,
+            requires_second_approval,
+            context,
+            correlation_id,
+        ))
     }
 }
