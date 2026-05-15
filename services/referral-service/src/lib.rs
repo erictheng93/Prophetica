@@ -15,6 +15,7 @@ use sdk::{
     referral::code::ReferralCodeError,
 };
 use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
 use thiserror::Error;
 
 const QUALIFICATION_DEPOSIT_MINOR_UNITS: i64 = 50_000;
@@ -246,6 +247,91 @@ pub struct AffiliateDashboardResponse {
     pub referrals: Vec<AffiliateReferralListItem>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateSummary {
+    pub id: String,
+    pub display_name: String,
+    pub email_masked: String,
+    pub status: String,
+    pub owner_sponsor_id: Option<String>,
+    pub commission_rate_bps: i32,
+    pub tier: i16,
+    pub sub_tree_size: i32,
+    pub active_sub_count: i32,
+    pub pending_payout_minor: i64,
+    pub pending_payout_currency: String,
+    pub last_activity_at: String,
+    pub risk_flags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliatePayoutRow {
+    pub id: String,
+    pub amount_minor: i64,
+    pub currency: String,
+    pub settled_at: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateRateChange {
+    pub effective_at: String,
+    pub previous_bps: i32,
+    pub next_bps: i32,
+    pub changed_by: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateCreditAccountSummary {
+    pub id: String,
+    pub status: String,
+    pub credit_limit_minor_units: i64,
+    pub used_minor_units: i64,
+    pub expires_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateCreditProfile {
+    pub rating: String,
+    pub status: String,
+    pub max_active_credit_accounts: i32,
+    pub active_credit_accounts: i64,
+    pub total_credit_limit_minor_units: i64,
+    pub per_account_limit_minor_units: i64,
+    pub review_expires_at: Option<String>,
+    pub last_changed_by: String,
+    pub last_changed_at: String,
+    pub audit_correlation_ids: Vec<String>,
+    pub accounts: Vec<AffiliateCreditAccountSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateSubTreeBreakdown {
+    pub tier: i16,
+    pub count: i32,
+    pub active_count: i32,
+    pub mtd_contribution_minor: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateDetail {
+    #[serde(flatten)]
+    pub summary: AffiliateSummary,
+    pub sub_tree_breakdown: Vec<AffiliateSubTreeBreakdown>,
+    pub recent_payouts: Vec<AffiliatePayoutRow>,
+    pub rate_history: Vec<AffiliateRateChange>,
+    pub audit_correlation_ids: Vec<String>,
+    pub credit_profile: AffiliateCreditProfile,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AffiliateQuery {
     pub limit: Option<usize>,
@@ -271,6 +357,13 @@ pub trait AffiliateDashboardStore {
         &self,
         referrer_id: &str,
     ) -> Result<AffiliateCommissionSummary, ReferralStoreError>;
+
+    async fn list_admin_affiliates(&self) -> Result<Vec<AffiliateSummary>, ReferralStoreError>;
+
+    async fn admin_affiliate_detail(
+        &self,
+        affiliate_id: &str,
+    ) -> Result<AffiliateDetail, ReferralStoreError>;
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -344,6 +437,29 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
                 last_12m_commission_minor_units: 0,
             }))
     }
+
+    async fn list_admin_affiliates(&self) -> Result<Vec<AffiliateSummary>, ReferralStoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn admin_affiliate_detail(
+        &self,
+        _affiliate_id: &str,
+    ) -> Result<AffiliateDetail, ReferralStoreError> {
+        Err(ReferralStoreError::NotFound)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PostgresAffiliateStore {
+    pool: PgPool,
+}
+
+impl PostgresAffiliateStore {
+    #[must_use]
+    pub const fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 pub fn router<S>(store: S) -> Router
@@ -363,6 +479,14 @@ where
         .route(
             "/internal/referrals/users/:user_id/commission-summary",
             get(get_affiliate_commission_summary::<S>),
+        )
+        .route(
+            "/internal/admin/affiliates",
+            get(list_admin_affiliates::<S>),
+        )
+        .route(
+            "/internal/admin/affiliates/:affiliate_id",
+            get(get_admin_affiliate_detail::<S>),
         )
         .with_state(state)
 }
@@ -428,6 +552,33 @@ where
     Ok(Json(summary))
 }
 
+async fn list_admin_affiliates<S>(
+    State(store): State<Arc<S>>,
+) -> Result<Json<Vec<AffiliateSummary>>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let affiliates = store
+        .list_admin_affiliates()
+        .await
+        .map_err(|error| api_error(&error))?;
+    Ok(Json(affiliates))
+}
+
+async fn get_admin_affiliate_detail<S>(
+    State(store): State<Arc<S>>,
+    Path(affiliate_id): Path<String>,
+) -> Result<Json<AffiliateDetail>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let affiliate = store
+        .admin_affiliate_detail(&affiliate_id)
+        .await
+        .map_err(|error| api_error(&error))?;
+    Ok(Json(affiliate))
+}
+
 fn api_error(error: &ReferralStoreError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
         ReferralStoreError::NotFound => (
@@ -445,6 +596,374 @@ fn api_error(error: &ReferralStoreError) -> (StatusCode, Json<ApiErrorResponse>)
             }),
         ),
     }
+}
+
+#[async_trait]
+impl AffiliateDashboardStore for PostgresAffiliateStore {
+    async fn referral_code_for_user(&self, user_id: &str) -> Result<String, ReferralStoreError> {
+        let row = sqlx::query("SELECT affiliate_id FROM affiliate_profiles WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlx_error)?;
+        row.map(|row| row.try_get("affiliate_id"))
+            .transpose()
+            .map_err(sqlx_error)?
+            .ok_or(ReferralStoreError::NotFound)
+    }
+
+    async fn list_referrals_for_referrer(
+        &self,
+        referrer_id: &str,
+        limit: usize,
+    ) -> Result<Vec<AffiliateReferralListItem>, ReferralStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT referred_id,
+                   referred_id AS masked_username,
+                   FLOOR(EXTRACT(EPOCH FROM referred_at) / 86400)::BIGINT AS referred_at_day,
+                   status,
+                   COALESCE((
+                       SELECT SUM(commission_amount)
+                       FROM commission_accruals
+                       WHERE commission_accruals.referred_id = referrals.referred_id
+                   ), 0)::BIGINT AS cumulative_commission_minor_units
+            FROM referrals
+            WHERE referrer_id = $1
+            ORDER BY referred_at DESC
+            LIMIT $2
+            ",
+        )
+        .bind(referrer_id)
+        .bind(
+            i64::try_from(limit)
+                .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+
+        rows.iter().map(referral_item_from_row).collect()
+    }
+
+    async fn commission_summary_for_referrer(
+        &self,
+        referrer_id: &str,
+    ) -> Result<AffiliateCommissionSummary, ReferralStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT
+                COALESCE(COUNT(*) FILTER (WHERE referrals.status = 'qualified'), 0)::INT AS successful_referrals_count,
+                COALESCE(SUM(commission_amount), 0)::BIGINT AS trade_commission_minor_units,
+                COALESCE(SUM(commission_amount) FILTER (WHERE accrued_at >= now() - INTERVAL '30 days'), 0)::BIGINT AS last_30d_commission_minor_units,
+                COALESCE(SUM(commission_amount) FILTER (WHERE accrued_at >= now() - INTERVAL '365 days'), 0)::BIGINT AS last_12m_commission_minor_units
+            FROM referrals
+            LEFT JOIN commission_accruals USING (referred_id)
+            WHERE referrals.referrer_id = $1
+            ",
+        )
+        .bind(referrer_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        let successful_referrals_count: i32 = row
+            .try_get("successful_referrals_count")
+            .map_err(sqlx_error)?;
+        let trade_commission_minor_units = row
+            .try_get("trade_commission_minor_units")
+            .map_err(sqlx_error)?;
+        let signup_bonus_minor_units =
+            i64::from(successful_referrals_count) * QUALIFICATION_BONUS_MINOR_UNITS;
+        Ok(AffiliateCommissionSummary {
+            successful_referrals_count: u32::try_from(successful_referrals_count)
+                .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
+            signup_bonus_minor_units,
+            trade_commission_minor_units,
+            total_rewards_minor_units: signup_bonus_minor_units + trade_commission_minor_units,
+            last_30d_commission_minor_units: row
+                .try_get("last_30d_commission_minor_units")
+                .map_err(sqlx_error)?,
+            last_12m_commission_minor_units: row
+                .try_get("last_12m_commission_minor_units")
+                .map_err(sqlx_error)?,
+        })
+    }
+
+    async fn list_admin_affiliates(&self) -> Result<Vec<AffiliateSummary>, ReferralStoreError> {
+        let rows = sqlx::query(&admin_affiliate_summary_sql(
+            "",
+            "ORDER BY p.last_activity_at DESC",
+        ))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        rows.iter().map(affiliate_summary_from_row).collect()
+    }
+
+    async fn admin_affiliate_detail(
+        &self,
+        affiliate_id: &str,
+    ) -> Result<AffiliateDetail, ReferralStoreError> {
+        let row = sqlx::query(&admin_affiliate_summary_sql(
+            "WHERE p.affiliate_id = $1",
+            "",
+        ))
+        .bind(affiliate_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(ReferralStoreError::NotFound)?;
+        let summary = affiliate_summary_from_row(&row)?;
+        let sub_tree_breakdown = fetch_sub_tree_breakdown(&self.pool, affiliate_id).await?;
+        let recent_payouts = fetch_affiliate_payouts(&self.pool, affiliate_id).await?;
+        let rate_history = fetch_rate_history(&self.pool, affiliate_id).await?;
+        let credit_profile = fetch_credit_profile(&self.pool, affiliate_id).await?;
+        let audit_correlation_ids = credit_profile.audit_correlation_ids.clone();
+        Ok(AffiliateDetail {
+            summary,
+            sub_tree_breakdown,
+            recent_payouts,
+            rate_history,
+            audit_correlation_ids,
+            credit_profile,
+        })
+    }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn sqlx_error(error: sqlx::Error) -> ReferralStoreError {
+    ReferralStoreError::Unavailable(error.to_string())
+}
+
+fn admin_affiliate_summary_sql(pre_group: &str, post_group: &str) -> String {
+    format!(
+        r#"
+        SELECT p.affiliate_id, p.display_name, p.email_masked, p.status, p.owner_sponsor_id,
+               p.commission_rate_bps, p.tier, to_char(p.last_activity_at, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS last_activity_at,
+               p.risk_flags,
+               COALESCE(SUM(s.count), 0)::INT AS sub_tree_size,
+               COALESCE(SUM(s.active_count), 0)::INT AS active_sub_count,
+               COALESCE((
+                   SELECT SUM(amount_minor)
+                   FROM affiliate_payouts
+                   WHERE affiliate_payouts.affiliate_id = p.affiliate_id
+                     AND affiliate_payouts.status = 'pending'
+               ), 0)::BIGINT AS pending_payout_minor,
+               COALESCE((
+                   SELECT currency
+                   FROM affiliate_payouts
+                   WHERE affiliate_payouts.affiliate_id = p.affiliate_id
+                   ORDER BY created_at DESC
+                   LIMIT 1
+               ), 'USDT') AS pending_payout_currency
+        FROM affiliate_profiles p
+        LEFT JOIN affiliate_sub_tree_stats s ON s.affiliate_id = p.affiliate_id
+        {pre_group}
+        GROUP BY p.affiliate_id
+        {post_group}
+        "#
+    )
+}
+
+fn affiliate_summary_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<AffiliateSummary, ReferralStoreError> {
+    Ok(AffiliateSummary {
+        id: row.try_get("affiliate_id").map_err(sqlx_error)?,
+        display_name: row.try_get("display_name").map_err(sqlx_error)?,
+        email_masked: row.try_get("email_masked").map_err(sqlx_error)?,
+        status: row.try_get("status").map_err(sqlx_error)?,
+        owner_sponsor_id: row.try_get("owner_sponsor_id").map_err(sqlx_error)?,
+        commission_rate_bps: row.try_get("commission_rate_bps").map_err(sqlx_error)?,
+        tier: row.try_get("tier").map_err(sqlx_error)?,
+        sub_tree_size: row.try_get("sub_tree_size").map_err(sqlx_error)?,
+        active_sub_count: row.try_get("active_sub_count").map_err(sqlx_error)?,
+        pending_payout_minor: row.try_get("pending_payout_minor").map_err(sqlx_error)?,
+        pending_payout_currency: row.try_get("pending_payout_currency").map_err(sqlx_error)?,
+        last_activity_at: row.try_get("last_activity_at").map_err(sqlx_error)?,
+        risk_flags: row.try_get("risk_flags").map_err(sqlx_error)?,
+    })
+}
+
+fn referral_item_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<AffiliateReferralListItem, ReferralStoreError> {
+    Ok(AffiliateReferralListItem {
+        referred_id: row.try_get("referred_id").map_err(sqlx_error)?,
+        masked_username: row.try_get("masked_username").map_err(sqlx_error)?,
+        referred_at_day: row.try_get("referred_at_day").map_err(sqlx_error)?,
+        status: row.try_get("status").map_err(sqlx_error)?,
+        cumulative_commission_minor_units: row
+            .try_get("cumulative_commission_minor_units")
+            .map_err(sqlx_error)?,
+    })
+}
+
+async fn fetch_sub_tree_breakdown(
+    pool: &PgPool,
+    affiliate_id: &str,
+) -> Result<Vec<AffiliateSubTreeBreakdown>, ReferralStoreError> {
+    let rows = sqlx::query(
+        r"
+        SELECT tier, count, active_count, mtd_contribution_minor
+        FROM affiliate_sub_tree_stats
+        WHERE affiliate_id = $1
+        ORDER BY tier
+        ",
+    )
+    .bind(affiliate_id)
+    .fetch_all(pool)
+    .await
+    .map_err(sqlx_error)?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(AffiliateSubTreeBreakdown {
+                tier: row.try_get("tier").map_err(sqlx_error)?,
+                count: row.try_get("count").map_err(sqlx_error)?,
+                active_count: row.try_get("active_count").map_err(sqlx_error)?,
+                mtd_contribution_minor: row
+                    .try_get("mtd_contribution_minor")
+                    .map_err(sqlx_error)?,
+            })
+        })
+        .collect()
+}
+
+async fn fetch_affiliate_payouts(
+    pool: &PgPool,
+    affiliate_id: &str,
+) -> Result<Vec<AffiliatePayoutRow>, ReferralStoreError> {
+    let rows = sqlx::query(
+        r"
+        SELECT payout_id, amount_minor, currency, to_char(settled_at, 'YYYY-MM-DD') AS settled_at, status
+        FROM affiliate_payouts
+        WHERE affiliate_id = $1
+        ORDER BY settled_at DESC
+        LIMIT 20
+        ",
+    )
+    .bind(affiliate_id)
+    .fetch_all(pool)
+    .await
+    .map_err(sqlx_error)?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(AffiliatePayoutRow {
+                id: row.try_get("payout_id").map_err(sqlx_error)?,
+                amount_minor: row.try_get("amount_minor").map_err(sqlx_error)?,
+                currency: row.try_get("currency").map_err(sqlx_error)?,
+                settled_at: row.try_get("settled_at").map_err(sqlx_error)?,
+                status: row.try_get("status").map_err(sqlx_error)?,
+            })
+        })
+        .collect()
+}
+
+async fn fetch_rate_history(
+    pool: &PgPool,
+    affiliate_id: &str,
+) -> Result<Vec<AffiliateRateChange>, ReferralStoreError> {
+    let rows = sqlx::query(
+        r"
+        SELECT to_char(effective_at, 'YYYY-MM-DD') AS effective_at, previous_bps, next_bps, changed_by, reason
+        FROM affiliate_rate_changes
+        WHERE affiliate_id = $1
+        ORDER BY effective_at DESC
+        LIMIT 20
+        ",
+    )
+    .bind(affiliate_id)
+    .fetch_all(pool)
+    .await
+    .map_err(sqlx_error)?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(AffiliateRateChange {
+                effective_at: row.try_get("effective_at").map_err(sqlx_error)?,
+                previous_bps: row.try_get("previous_bps").map_err(sqlx_error)?,
+                next_bps: row.try_get("next_bps").map_err(sqlx_error)?,
+                changed_by: row.try_get("changed_by").map_err(sqlx_error)?,
+                reason: row.try_get("reason").map_err(sqlx_error)?,
+            })
+        })
+        .collect()
+}
+
+async fn fetch_credit_profile(
+    pool: &PgPool,
+    affiliate_id: &str,
+) -> Result<AffiliateCreditProfile, ReferralStoreError> {
+    let row = sqlx::query(
+        r#"
+        SELECT credit_rating, credit_status, max_active_credit_accounts,
+               (SELECT COUNT(*) FROM affiliate_credit_accounts WHERE affiliate_id = affiliate_profiles.affiliate_id AND status IN ('active', 'limited'))::BIGINT AS active_credit_accounts,
+               total_credit_limit_minor_units, per_account_limit_minor_units,
+               to_char(credit_review_expires_at, 'YYYY-MM-DD') AS review_expires_at,
+               credit_last_changed_by,
+               to_char(credit_last_changed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS last_changed_at,
+               credit_audit_correlation_ids
+        FROM affiliate_profiles
+        WHERE affiliate_id = $1
+        "#,
+    )
+    .bind(affiliate_id)
+    .fetch_one(pool)
+    .await
+    .map_err(sqlx_error)?;
+    let accounts = fetch_credit_accounts(pool, affiliate_id).await?;
+    Ok(AffiliateCreditProfile {
+        rating: row.try_get("credit_rating").map_err(sqlx_error)?,
+        status: row.try_get("credit_status").map_err(sqlx_error)?,
+        max_active_credit_accounts: row
+            .try_get("max_active_credit_accounts")
+            .map_err(sqlx_error)?,
+        active_credit_accounts: row.try_get("active_credit_accounts").map_err(sqlx_error)?,
+        total_credit_limit_minor_units: row
+            .try_get("total_credit_limit_minor_units")
+            .map_err(sqlx_error)?,
+        per_account_limit_minor_units: row
+            .try_get("per_account_limit_minor_units")
+            .map_err(sqlx_error)?,
+        review_expires_at: row.try_get("review_expires_at").map_err(sqlx_error)?,
+        last_changed_by: row.try_get("credit_last_changed_by").map_err(sqlx_error)?,
+        last_changed_at: row.try_get("last_changed_at").map_err(sqlx_error)?,
+        audit_correlation_ids: row
+            .try_get("credit_audit_correlation_ids")
+            .map_err(sqlx_error)?,
+        accounts,
+    })
+}
+
+async fn fetch_credit_accounts(
+    pool: &PgPool,
+    affiliate_id: &str,
+) -> Result<Vec<AffiliateCreditAccountSummary>, ReferralStoreError> {
+    let rows = sqlx::query(
+        r"
+        SELECT account_id, status, credit_limit_minor_units, used_minor_units,
+               to_char(expires_at, 'YYYY-MM-DD') AS expires_at
+        FROM affiliate_credit_accounts
+        WHERE affiliate_id = $1
+        ORDER BY account_id
+        ",
+    )
+    .bind(affiliate_id)
+    .fetch_all(pool)
+    .await
+    .map_err(sqlx_error)?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(AffiliateCreditAccountSummary {
+                id: row.try_get("account_id").map_err(sqlx_error)?,
+                status: row.try_get("status").map_err(sqlx_error)?,
+                credit_limit_minor_units: row
+                    .try_get("credit_limit_minor_units")
+                    .map_err(sqlx_error)?,
+                used_minor_units: row.try_get("used_minor_units").map_err(sqlx_error)?,
+                expires_at: row.try_get("expires_at").map_err(sqlx_error)?,
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Default)]

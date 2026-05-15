@@ -1,48 +1,63 @@
 import { AffiliateShell } from "@/components/affiliate-shell";
 import { RoleGate } from "@/components/role-gate";
 import { adminCopy } from "@/lib/admin-copy";
-
-const placeholderTiers = [
-  { tier: "Tier 1（直推）", count: 12, active: 8, contribution: "USDT 612.00" },
-  { tier: "Tier 2", count: 28, active: 15, contribution: "USDT 415.20" },
-  { tier: "Tier 3", count: 41, active: 19, contribution: "USDT 256.80" },
-];
+import { fetchAffiliateDashboard } from "@/lib/affiliate-management-bff";
+import { formatMinor } from "@/lib/affiliates";
 
 export default function AffiliateSubTreePage() {
   return (
     <RoleGate allow={["affiliate"]}>
-      {(viewer) => (
-        <AffiliateShell affiliateId={viewer.affiliateId ?? "—"} active="sub-tree">
-          <section
-            aria-labelledby="sub-tree-title"
-            className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+      {async (viewer) => {
+        const dashboard = await fetchAffiliateDashboard(viewer);
+        return (
+          <AffiliateShell
+            affiliateId={viewer.affiliateId ?? dashboard?.referral_code ?? "—"}
+            active="sub-tree"
           >
-            <h2 id="sub-tree-title" className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
-              {adminCopy.affiliatePortal.subTreeHeading}
-            </h2>
-            <p className="mt-1 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-              {adminCopy.affiliatePortal.subTreeDescription}
-            </p>
-            <ul className="mt-5 grid gap-3 md:grid-cols-3">
-              {placeholderTiers.map((tier) => (
-                <li
-                  key={tier.tier}
-                  className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5"
-                >
-                  <h3 className="text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]">{tier.tier}</h3>
-                  <p className="mt-3 text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">{tier.count}</p>
-                  <p className="mt-2 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-                    活躍 {tier.active} · 本月貢獻 {tier.contribution}
-                  </p>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-6 rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-              {adminCopy.affiliatePortal.placeholder}
-            </p>
-          </section>
-        </AffiliateShell>
-      )}
+            <section
+              aria-labelledby="sub-tree-title"
+              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+            >
+              <h2
+                id="sub-tree-title"
+                className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
+              >
+                {adminCopy.affiliatePortal.subTreeHeading}
+              </h2>
+              <p className="mt-1 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+                {adminCopy.affiliatePortal.subTreeDescription}
+              </p>
+              {dashboard ? (
+                <ul className="mt-5 divide-y divide-proph-hairline">
+                  {dashboard.referrals.map((referral) => (
+                    <li
+                      key={referral.referred_id}
+                      className="grid gap-2 py-3 md:grid-cols-[1fr_auto_auto]"
+                    >
+                      <span className="font-mono text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
+                        {referral.masked_username}
+                      </span>
+                      <span className="text-[17px] font-semibold tracking-[-0.374px]">
+                        {formatMinor(
+                          referral.cumulative_commission_minor_units,
+                          "USDT",
+                        )}
+                      </span>
+                      <span className="text-[14px] tracking-[-0.224px] text-proph-ink-muted-80 md:text-right">
+                        Day {referral.referred_at_day} · {referral.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-6 rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+                  referral-service 尚未連線，無法讀取推薦鏈。
+                </p>
+              )}
+            </section>
+          </AffiliateShell>
+        );
+      }}
     </RoleGate>
   );
 }

@@ -5,7 +5,7 @@ import { getViewer, type SessionPayload } from "@/lib/session";
 
 interface RoleGateProps {
   allow: readonly Role[];
-  children: (viewer: SessionPayload) => ReactNode;
+  children: (viewer: SessionPayload) => ReactNode | Promise<ReactNode>;
 }
 
 /*
@@ -20,7 +20,9 @@ export async function RoleGate({ allow, children }: RoleGateProps) {
     redirect("/login");
   }
   if (!allow.includes(viewer.role)) {
-    redirect(viewer.role === "affiliate" ? defaultLandingFor("affiliate") : "/403");
+    redirect(
+      viewer.role === "affiliate" ? defaultLandingFor("affiliate") : "/403",
+    );
   }
   return <>{children(viewer)}</>;
 }

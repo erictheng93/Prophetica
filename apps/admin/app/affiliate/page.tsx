@@ -3,28 +3,30 @@ import { AffiliateList } from "@/components/affiliate-list";
 import { DomainScope } from "@/components/domain-scope";
 import { RoleGate } from "@/components/role-gate";
 import { adminCopy } from "@/lib/admin-copy";
-import { getAffiliatesSnapshot } from "@/lib/affiliates";
+import { fetchAdminAffiliateList } from "@/lib/affiliate-management-bff";
 import { getOpsRoute } from "@/lib/ops-facade";
 
 export default function AffiliatePage() {
   const route = getOpsRoute("affiliate-review");
-  const affiliates = getAffiliatesSnapshot();
 
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {(viewer) => (
-        <AdminShell
-          eyebrow={route.label}
-          title={adminCopy.affiliateAdmin.listHeading}
-          description={adminCopy.affiliateAdmin.listDescription}
-          role={viewer.role}
-        >
-          <div className="space-y-8">
-            <DomainScope domain={route.domain} role={viewer.role} />
-            <AffiliateList affiliates={affiliates} />
-          </div>
-        </AdminShell>
-      )}
+      {async (viewer) => {
+        const affiliates = await fetchAdminAffiliateList(viewer);
+        return (
+          <AdminShell
+            eyebrow={route.label}
+            title={adminCopy.affiliateAdmin.listHeading}
+            description={adminCopy.affiliateAdmin.listDescription}
+            role={viewer.role}
+          >
+            <div className="space-y-8">
+              <DomainScope domain={route.domain} role={viewer.role} />
+              <AffiliateList affiliates={affiliates} />
+            </div>
+          </AdminShell>
+        );
+      }}
     </RoleGate>
   );
 }

@@ -371,6 +371,13 @@ pub trait ReferralClient {
         &self,
         user_id: &str,
     ) -> Result<AffiliateCommissionSummary, ApiError>;
+
+    async fn list_admin_affiliates(&self) -> Result<serde_json::Value, ApiError>;
+
+    async fn get_admin_affiliate_detail(
+        &self,
+        affiliate_id: &str,
+    ) -> Result<serde_json::Value, ApiError>;
 }
 
 #[derive(Debug, Clone)]
@@ -730,6 +737,43 @@ impl ReferralClient for HttpReferralClient {
             .await
             .map_err(|error| ApiError::referral_service(error.to_string()))
     }
+
+    async fn list_admin_affiliates(&self) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join("/internal/admin/affiliates")
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
+
+    async fn get_admin_affiliate_detail(
+        &self,
+        affiliate_id: &str,
+    ) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/internal/admin/affiliates/{affiliate_id}"))
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
 }
 
 async fn decode_engine_response<T>(response: reqwest::Response) -> Result<T, ApiError>
@@ -905,6 +949,14 @@ where
         .route(
             "/v1/account/affiliate/commission-summary",
             get(get_my_affiliate_commission_summary::<W, E, R>),
+        )
+        .route(
+            "/api/internal/admin/affiliates",
+            get(list_admin_affiliates::<W, E, R>),
+        )
+        .route(
+            "/api/internal/admin/affiliates/:affiliate_id",
+            get(get_admin_affiliate_detail::<W, E, R>),
         )
         .with_state(Arc::new(AppStateWithServices::new(
             wallet_ledger,
@@ -1246,6 +1298,34 @@ where
         .get_affiliate_commission_summary(&auth.user_id)
         .await?;
     Ok(Json(summary))
+}
+
+async fn list_admin_affiliates<W, E, R>(
+    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+) -> Result<Json<serde_json::Value>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+{
+    let affiliates = state.referral.list_admin_affiliates().await?;
+    Ok(Json(affiliates))
+}
+
+async fn get_admin_affiliate_detail<W, E, R>(
+    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+    Path(affiliate_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+{
+    let affiliate = state
+        .referral
+        .get_admin_affiliate_detail(&affiliate_id)
+        .await?;
+    Ok(Json(affiliate))
 }
 
 /// Runs the API gateway HTTP server.
@@ -1972,6 +2052,23 @@ mod tests {
                 .unwrap_or_else(|error| panic!("summary reads lock should not poison: {error}"))
                 .push(user_id.to_owned());
             Ok(sample_affiliate_summary())
+        }
+
+        async fn list_admin_affiliates(&self) -> Result<serde_json::Value, ApiError> {
+            Ok(serde_json::json!([{
+                "id": "AFF-001",
+                "displayName": "Crescent Partners"
+            }]))
+        }
+
+        async fn get_admin_affiliate_detail(
+            &self,
+            affiliate_id: &str,
+        ) -> Result<serde_json::Value, ApiError> {
+            Ok(serde_json::json!({
+                "id": affiliate_id,
+                "displayName": "Crescent Partners"
+            }))
         }
     }
 

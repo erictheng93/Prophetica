@@ -85,9 +85,29 @@ async fn run_referral_http() -> anyhow::Result<()> {
         referral_service::SERVICE_NAME,
         referral_service::DEFAULT_PORT,
     )?;
-    let app = service_stub::router(&config).merge(referral_service::router(
-        referral_service::InMemoryAffiliateDashboardStore::default(),
-    ));
+    let prophetica_env = env::var("PROPHETICA_ENV").unwrap_or_else(|_| "dev".to_owned());
+    let mode = store_mode(env::var("REFERRAL_SERVICE_STORE").ok().as_deref());
+    validate_referral_service_store_mode(&prophetica_env, mode)?;
+    let app = if mode == "postgres" {
+        let database_url = env::var("REFERRAL_SERVICE_DATABASE_URL")
+            .or_else(|_| env::var("DATABASE_URL"))
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "REFERRAL_SERVICE_DATABASE_URL or DATABASE_URL is required when REFERRAL_SERVICE_STORE=postgres"
+                )
+            })?;
+        let pool = sqlx::PgPool::connect(&database_url).await?;
+        sqlx::migrate!("../../referral-service/migrations")
+            .run(&pool)
+            .await?;
+        service_stub::router(&config).merge(referral_service::router(
+            referral_service::PostgresAffiliateStore::new(pool),
+        ))
+    } else {
+        service_stub::router(&config).merge(referral_service::router(
+            referral_service::InMemoryAffiliateDashboardStore::default(),
+        ))
+    };
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "referral service listening inside core-api");
 
@@ -104,9 +124,18 @@ async fn shutdown_signal(service_name: &'static str) {
     }
 }
 
+fn validate_referral_service_store_mode(prophetica_env: &str, mode: &str) -> anyhow::Result<()> {
+    if prophetica_env.eq_ignore_ascii_case("production") && mode != "postgres" {
+        anyhow::bail!("REFERRAL_SERVICE_STORE=postgres is required when PROPHETICA_ENV=production");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{store_mode, validate_user_service_store_mode};
+    use super::{
+        store_mode, validate_referral_service_store_mode, validate_user_service_store_mode,
+    };
 
     #[test]
     fn store_mode_defaults_to_memory() {
@@ -135,6 +164,20 @@ mod tests {
         assert_eq!(
             error.as_deref(),
             Some("USER_SERVICE_STORE=postgres is required when PROPHETICA_ENV=production")
+        );
+    }
+
+    #[test]
+    fn production_requires_referral_postgres_store() {
+        assert!(validate_referral_service_store_mode("production", "postgres").is_ok());
+        assert!(validate_referral_service_store_mode("dev", "memory").is_ok());
+
+        let result = validate_referral_service_store_mode("production", "memory");
+        assert!(result.is_err());
+        let error = result.err().map(|error| error.to_string());
+        assert_eq!(
+            error.as_deref(),
+            Some("REFERRAL_SERVICE_STORE=postgres is required when PROPHETICA_ENV=production")
         );
     }
 }

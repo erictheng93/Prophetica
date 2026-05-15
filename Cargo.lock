@@ -2178,6 +2178,7 @@ dependencies = [
  "sdk",
  "serde",
  "serde_json",
+ "sqlx",
  "thiserror 1.0.69",
  "tokio",
  "tower 0.5.3",
