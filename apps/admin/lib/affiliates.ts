@@ -19,6 +19,7 @@ export type AffiliateCreditAccountStatus =
 
 export interface AffiliateSummary {
   id: string;
+  userId?: string | null;
   displayName: string;
   emailMasked: string;
   status: AffiliateStatus;

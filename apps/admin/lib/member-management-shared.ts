@@ -144,7 +144,7 @@ export interface MemberActionResponse {
   action_id: string;
   target_user_id: string;
   action_type: MemberActionType;
-  status: "submitted" | "pending_second_approval";
+  status: MemberActionStatus;
   requires_second_approval: boolean;
   audit: {
     actor_user_id: string;
@@ -154,6 +154,39 @@ export interface MemberActionResponse {
     correlation_id: string;
     ledger_transaction_posted: false;
   };
+}
+
+export type MemberActionStatus =
+  | "submitted"
+  | "pending_second_approval"
+  | "approved"
+  | "rejected";
+
+export interface MemberActionRecord {
+  action_id: string;
+  target_user_id: string;
+  action_type: MemberActionType;
+  ticket_id: string;
+  reason: string;
+  status: MemberActionStatus;
+  requires_second_approval: boolean;
+  actor_user_id: string;
+  actor_role: string;
+  correlation_id: string;
+  review: null | {
+    reviewer_user_id: string;
+    reviewer_role: string;
+    decision: "approve" | "reject";
+    reason: string;
+    reviewed_at: string;
+  };
+  side_effects: string[];
+  created_at: string;
+}
+
+export interface MemberActionListResponse {
+  actions: MemberActionRecord[];
+  source: "api-gateway";
 }
 
 export const memberSearchHints = ["MEM-001", "MEM-1042", "user_123"] as const;

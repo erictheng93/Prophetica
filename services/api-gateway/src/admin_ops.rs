@@ -47,11 +47,23 @@ pub trait AdminOpsStore {
 
     async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError>;
 
+    async fn list_member_actions(
+        &self,
+        query: MemberActionListQuery,
+    ) -> Result<MemberActionListResponse, AdminOpsStoreError>;
+
     async fn create_member_action(
         &self,
         request: MemberActionRequest,
         context: AdminOpsRequestContext,
     ) -> Result<MemberActionResponse, AdminOpsStoreError>;
+
+    async fn review_member_action(
+        &self,
+        action_id: &str,
+        request: MemberActionReviewRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<MemberActionRecord, AdminOpsStoreError>;
 
     /// Persists a compensation proposal without posting a ledger transaction.
     ///
@@ -87,6 +99,12 @@ pub struct PendingMemberCasesQuery {
 pub struct MemberListQuery {
     pub q: Option<String>,
     pub affiliate_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct MemberActionListQuery {
+    pub status: Option<String>,
+    pub target_user_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +222,12 @@ pub struct MemberActionRequest {
     pub correlation_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct MemberActionReviewRequest {
+    pub decision: String,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberActionResponse {
     pub action_id: String,
@@ -212,6 +236,38 @@ pub struct MemberActionResponse {
     pub status: String,
     pub requires_second_approval: bool,
     pub audit: MemberActionAuditMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberActionListResponse {
+    pub actions: Vec<MemberActionRecord>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberActionRecord {
+    pub action_id: String,
+    pub target_user_id: String,
+    pub action_type: String,
+    pub ticket_id: String,
+    pub reason: String,
+    pub status: String,
+    pub requires_second_approval: bool,
+    pub actor_user_id: String,
+    pub actor_role: String,
+    pub correlation_id: String,
+    pub review: Option<MemberActionReviewSummary>,
+    pub side_effects: Vec<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemberActionReviewSummary {
+    pub reviewer_user_id: String,
+    pub reviewer_role: String,
+    pub decision: String,
+    pub reason: String,
+    pub reviewed_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -314,7 +370,15 @@ where
         )
         .route(
             "/api/internal/admin/members/actions",
+            get(list_member_actions::<S>),
+        )
+        .route(
+            "/api/internal/admin/members/actions",
             post(create_member_action::<S>),
+        )
+        .route(
+            "/api/internal/admin/members/actions/:action_id/reviews",
+            post(review_member_action::<S>),
         )
         .route(
             "/api/internal/admin/members/:user_id/compensation-proposals",
@@ -425,6 +489,38 @@ where
         .map_err(|_| internal_error())
 }
 
+async fn list_member_actions<S>(
+    State(store): State<S>,
+    Query(query): Query<MemberActionListQuery>,
+) -> Result<Json<MemberActionListResponse>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    store
+        .list_member_actions(query)
+        .await
+        .map(Json)
+        .map_err(|_| internal_error())
+}
+
+async fn review_member_action<S>(
+    State(store): State<S>,
+    headers: HeaderMap,
+    Path(action_id): Path<String>,
+    Json(request): Json<MemberActionReviewRequest>,
+) -> Result<Json<MemberActionRecord>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    validate_member_action_review(&request)?;
+    let context = request_context(&headers)?;
+    store
+        .review_member_action(&action_id, request, context)
+        .await
+        .map(Json)
+        .map_err(|error| review_error(&error))
+}
+
 async fn create_compensation_proposal<S>(
     State(store): State<S>,
     headers: HeaderMap,
@@ -441,6 +537,22 @@ where
         .await
         .map(Json)
         .map_err(|_| internal_error())
+}
+
+fn validate_member_action_review(
+    request: &MemberActionReviewRequest,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if request.reason.trim().is_empty()
+        || !matches!(request.decision.as_str(), "approve" | "reject")
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_INVALID_MEMBER_ACTION_REVIEW",
+            }),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_member_action(
@@ -548,6 +660,22 @@ fn internal_error() -> (StatusCode, Json<ErrorResponse>) {
             error: "ERROR_CODE_INTERNAL",
         }),
     )
+}
+
+fn review_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>) {
+    let (status, code) = match error.message() {
+        "member action self approval is not allowed" => (
+            StatusCode::CONFLICT,
+            "ERROR_CODE_MEMBER_ACTION_SELF_APPROVAL",
+        ),
+        "member action cannot be reviewed in its current status" => (
+            StatusCode::CONFLICT,
+            "ERROR_CODE_MEMBER_ACTION_NOT_REVIEWABLE",
+        ),
+        "member action not found" => (StatusCode::NOT_FOUND, "ERROR_CODE_MEMBER_ACTION_NOT_FOUND"),
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, "ERROR_CODE_INTERNAL"),
+    };
+    (status, Json(ErrorResponse { error: code }))
 }
 
 #[derive(Debug, Clone)]
@@ -745,6 +873,34 @@ fn member_action_response(
     }
 }
 
+fn member_action_response_from_record(record: &MemberActionRecord) -> MemberActionResponse {
+    MemberActionResponse {
+        action_id: record.action_id.clone(),
+        target_user_id: record.target_user_id.clone(),
+        action_type: record.action_type.clone(),
+        status: record.status.clone(),
+        requires_second_approval: record.requires_second_approval,
+        audit: MemberActionAuditMetadata {
+            actor_user_id: record.actor_user_id.clone(),
+            actor_role: record.actor_role.clone(),
+            target_user_id: record.target_user_id.clone(),
+            ticket_id: record.ticket_id.clone(),
+            correlation_id: record.correlation_id.clone(),
+            ledger_transaction_posted: false,
+        },
+    }
+}
+
+fn action_side_effects(action_type: &str) -> Vec<String> {
+    match action_type {
+        "add_note" => vec!["case_note:recorded".to_owned()],
+        "request_kyc_review" => vec!["kyc_review_task:requested".to_owned()],
+        "restrict_withdrawals" => vec!["member_restriction:withdrawals_locked".to_owned()],
+        "escalate_case" => vec!["case_queue:escalated".to_owned()],
+        _ => Vec::new(),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProductionAdminOpsStore {
     upstream: HttpAdminOpsStore,
@@ -797,6 +953,13 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         self.upstream.delete_member(user_id).await
     }
 
+    async fn list_member_actions(
+        &self,
+        query: MemberActionListQuery,
+    ) -> Result<MemberActionListResponse, AdminOpsStoreError> {
+        self.compensation.list_member_actions(query).await
+    }
+
     async fn create_member_action(
         &self,
         request: MemberActionRequest,
@@ -804,6 +967,17 @@ impl AdminOpsStore for ProductionAdminOpsStore {
     ) -> Result<MemberActionResponse, AdminOpsStoreError> {
         self.compensation
             .create_member_action(request, context)
+            .await
+    }
+
+    async fn review_member_action(
+        &self,
+        action_id: &str,
+        request: MemberActionReviewRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<MemberActionRecord, AdminOpsStoreError> {
+        self.compensation
+            .review_member_action(action_id, request, context)
             .await
     }
 
@@ -1064,6 +1238,125 @@ impl PostgresCompensationProposalStore {
             correlation_id,
         ))
     }
+
+    async fn list_member_actions(
+        &self,
+        query: MemberActionListQuery,
+    ) -> Result<MemberActionListResponse, AdminOpsStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT action_id, target_user_id, action_type, ticket_id, reason, status,
+                   requires_second_approval, actor_user_id, actor_role, correlation_id,
+                   reviewer_user_id, reviewer_role, review_decision, review_reason,
+                   reviewed_at::text AS reviewed_at, side_effects, created_at::text AS created_at
+            FROM admin_member_actions
+            WHERE ($1::TEXT IS NULL OR status = $1)
+              AND ($2::TEXT IS NULL OR target_user_id = $2)
+            ORDER BY created_at DESC
+            LIMIT 200
+            ",
+        )
+        .bind(query.status.as_deref())
+        .bind(query.target_user_id.as_deref())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(MemberActionListResponse {
+            actions: rows
+                .iter()
+                .map(member_action_record_from_row)
+                .collect::<Result<Vec<_>, _>>()?,
+            source: "api-gateway:admin-ops".to_owned(),
+        })
+    }
+
+    async fn review_member_action(
+        &self,
+        action_id: &str,
+        request: MemberActionReviewRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<MemberActionRecord, AdminOpsStoreError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let Some(existing) = sqlx::query(
+            r"
+            SELECT action_id, action_type, status, actor_user_id
+            FROM admin_member_actions
+            WHERE action_id = $1
+            FOR UPDATE
+            ",
+        )
+        .bind(action_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+        else {
+            return Err(AdminOpsStoreError::new("member action not found"));
+        };
+        let actor_user_id: String = existing
+            .try_get("actor_user_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        if actor_user_id == context.actor_user_id {
+            return Err(AdminOpsStoreError::new(
+                "member action self approval is not allowed",
+            ));
+        }
+        let current_status: String = existing
+            .try_get("status")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        if current_status != "pending_second_approval" {
+            return Err(AdminOpsStoreError::new(
+                "member action cannot be reviewed in its current status",
+            ));
+        }
+        let action_type: String = existing
+            .try_get("action_type")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let next_status = if request.decision == "approve" {
+            "approved"
+        } else {
+            "rejected"
+        };
+        let side_effects = if request.decision == "approve" {
+            action_side_effects(&action_type)
+        } else {
+            Vec::new()
+        };
+        let row = sqlx::query(
+            r"
+            UPDATE admin_member_actions
+            SET status = $2,
+                reviewer_user_id = $3,
+                reviewer_role = $4,
+                review_decision = $5,
+                review_reason = $6,
+                reviewed_at = now(),
+                side_effects = $7
+            WHERE action_id = $1
+            RETURNING action_id, target_user_id, action_type, ticket_id, reason, status,
+                      requires_second_approval, actor_user_id, actor_role, correlation_id,
+                      reviewer_user_id, reviewer_role, review_decision, review_reason,
+                      reviewed_at::text AS reviewed_at, side_effects, created_at::text AS created_at
+            ",
+        )
+        .bind(action_id)
+        .bind(next_status)
+        .bind(&context.actor_user_id)
+        .bind(&context.actor_role)
+        .bind(&request.decision)
+        .bind(&request.reason)
+        .bind(serde_json::json!(side_effects))
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        tx.commit()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        member_action_record_from_row(&row)
+    }
 }
 
 async fn insert_compensation_approvals(
@@ -1289,6 +1582,75 @@ fn member_action_response_from_row(
     })
 }
 
+fn member_action_record_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<MemberActionRecord, AdminOpsStoreError> {
+    let side_effects_value: Value = row
+        .try_get("side_effects")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let side_effects = serde_json::from_value::<Vec<String>>(side_effects_value)
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let review_decision: Option<String> = row
+        .try_get("review_decision")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let review = if let Some(decision) = review_decision {
+        Some(MemberActionReviewSummary {
+            reviewer_user_id: row
+                .try_get("reviewer_user_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            reviewer_role: row
+                .try_get("reviewer_role")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            decision,
+            reason: row
+                .try_get("review_reason")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            reviewed_at: row
+                .try_get("reviewed_at")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        })
+    } else {
+        None
+    };
+    Ok(MemberActionRecord {
+        action_id: row
+            .try_get("action_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        target_user_id: row
+            .try_get("target_user_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        action_type: row
+            .try_get("action_type")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        ticket_id: row
+            .try_get("ticket_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        reason: row
+            .try_get("reason")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        status: row
+            .try_get("status")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        requires_second_approval: row
+            .try_get("requires_second_approval")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        actor_user_id: row
+            .try_get("actor_user_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        actor_role: row
+            .try_get("actor_role")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        correlation_id: row
+            .try_get("correlation_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        review,
+        side_effects,
+        created_at: row
+            .try_get("created_at")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+    })
+}
+
 #[async_trait]
 impl AdminOpsStore for HttpAdminOpsStore {
     async fn pending_member_cases(
@@ -1360,6 +1722,15 @@ impl AdminOpsStore for HttpAdminOpsStore {
             .await
     }
 
+    async fn list_member_actions(
+        &self,
+        _query: MemberActionListQuery,
+    ) -> Result<MemberActionListResponse, AdminOpsStoreError> {
+        Err(AdminOpsStoreError::new(
+            "member action production source is not connected",
+        ))
+    }
+
     async fn create_compensation_proposal(
         &self,
         _user_id: &str,
@@ -1380,6 +1751,17 @@ impl AdminOpsStore for HttpAdminOpsStore {
             "member action production source is not connected",
         ))
     }
+
+    async fn review_member_action(
+        &self,
+        _action_id: &str,
+        _request: MemberActionReviewRequest,
+        _context: AdminOpsRequestContext,
+    ) -> Result<MemberActionRecord, AdminOpsStoreError> {
+        Err(AdminOpsStoreError::new(
+            "member action production source is not connected",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1392,6 +1774,7 @@ struct AdminOpsState {
     next_proposal_number: u64,
     next_action_number: u64,
     audit_records: Vec<CompensationAuditMetadata>,
+    member_actions: Vec<MemberActionRecord>,
 }
 
 impl InMemoryAdminOpsStore {
@@ -1532,6 +1915,35 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         Ok(json!({ "user_id": user_id }))
     }
 
+    async fn list_member_actions(
+        &self,
+        query: MemberActionListQuery,
+    ) -> Result<MemberActionListResponse, AdminOpsStoreError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let actions = state
+            .member_actions
+            .iter()
+            .filter(|action| {
+                query
+                    .status
+                    .as_deref()
+                    .is_none_or(|status| action.status == status)
+                    && query
+                        .target_user_id
+                        .as_deref()
+                        .is_none_or(|user_id| action.target_user_id == user_id)
+            })
+            .cloned()
+            .collect();
+        Ok(MemberActionListResponse {
+            actions,
+            source: "api-gateway:admin-ops".to_owned(),
+        })
+    }
+
     async fn create_compensation_proposal(
         &self,
         user_id: &str,
@@ -1611,13 +2023,72 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
                 || format!("admin-member-action-{}", state.next_action_number),
                 str::to_owned,
             );
-        Ok(member_action_response(
-            format!("mem-act-{number:06}", number = state.next_action_number),
-            request,
-            status,
+        let side_effects = if requires_second_approval {
+            Vec::new()
+        } else {
+            action_side_effects(&request.action_type)
+        };
+        let record = MemberActionRecord {
+            action_id: format!("mem-act-{number:06}", number = state.next_action_number),
+            target_user_id: request.target_user_id,
+            action_type: request.action_type,
+            ticket_id: request.ticket_id,
+            reason: request.reason,
+            status: status.to_owned(),
             requires_second_approval,
-            context,
+            actor_user_id: context.actor_user_id,
+            actor_role: context.actor_role,
             correlation_id,
-        ))
+            review: None,
+            side_effects,
+            created_at: "now".to_owned(),
+        };
+        state.member_actions.push(record.clone());
+        Ok(member_action_response_from_record(&record))
+    }
+
+    async fn review_member_action(
+        &self,
+        action_id: &str,
+        request: MemberActionReviewRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<MemberActionRecord, AdminOpsStoreError> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let action = state
+            .member_actions
+            .iter_mut()
+            .find(|action| action.action_id == action_id)
+            .ok_or_else(|| AdminOpsStoreError::new("member action not found"))?;
+        if action.actor_user_id == context.actor_user_id {
+            return Err(AdminOpsStoreError::new(
+                "member action self approval is not allowed",
+            ));
+        }
+        if action.status != "pending_second_approval" {
+            return Err(AdminOpsStoreError::new(
+                "member action cannot be reviewed in its current status",
+            ));
+        }
+        action.status = if request.decision == "approve" {
+            "approved".to_owned()
+        } else {
+            "rejected".to_owned()
+        };
+        action.side_effects = if request.decision == "approve" {
+            action_side_effects(&action.action_type)
+        } else {
+            Vec::new()
+        };
+        action.review = Some(MemberActionReviewSummary {
+            reviewer_user_id: context.actor_user_id,
+            reviewer_role: context.actor_role,
+            decision: request.decision,
+            reason: request.reason,
+            reviewed_at: "now".to_owned(),
+        });
+        Ok(action.clone())
     }
 }

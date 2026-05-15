@@ -95,6 +95,14 @@ export function AffiliateDetailView({
             <p className="mt-1 font-mono text-[13px] tracking-[-0.224px] text-proph-ink-muted-80">
               {affiliate.id} · {affiliate.emailMasked}
             </p>
+            {affiliate.userId && (
+              <Link
+                href={`/members?query=${encodeURIComponent(affiliate.userId)}`}
+                className="mt-3 inline-flex min-h-9 items-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-3 text-[13px] font-semibold text-proph-primary hover:border-proph-primary-focus"
+              >
+                查看對應會員帳戶
+              </Link>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <AffiliateStatusPill status={affiliate.status} />

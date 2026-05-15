@@ -1,6 +1,16 @@
 import type { NextRequest } from "next/server";
 import { getViewer } from "@/lib/session";
-import { proxyMemberActionRequest } from "@/lib/member-management-bff";
+import {
+  proxyMemberActionListRequest,
+  proxyMemberActionRequest,
+} from "@/lib/member-management-bff";
+
+export async function GET(request: NextRequest) {
+  return proxyMemberActionListRequest({
+    viewer: await getViewer(),
+    searchParams: request.nextUrl.searchParams,
+  });
+}
 
 export async function POST(request: NextRequest) {
   let payload: unknown;

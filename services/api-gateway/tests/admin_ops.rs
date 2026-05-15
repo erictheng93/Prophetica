@@ -406,6 +406,119 @@ async fn member_action_accepts_admin_context_and_records_audit_metadata() {
 }
 
 #[tokio::test]
+async fn member_action_lists_pending_actions_and_second_approver_can_approve() {
+    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+
+    let created = app
+        .clone()
+        .oneshot(json_post(
+            "/api/internal/admin/members/actions",
+            &json!({
+                "target_user_id": "user_123",
+                "action_type": "restrict_withdrawals",
+                "ticket_id": "TICKET-6",
+                "reason": "risk review hold",
+                "correlation_id": "case-risk-456"
+            }),
+        ))
+        .await
+        .expect("valid member action request should be handled");
+    assert_eq!(created.status(), StatusCode::ACCEPTED);
+
+    let list = app
+        .clone()
+        .oneshot(empty_get(
+            "/api/internal/admin/members/actions?status=pending_second_approval",
+        ))
+        .await
+        .expect("list request should be handled");
+    assert_eq!(list.status(), StatusCode::OK);
+    let body = response_json(list).await;
+    assert_eq!(body["source"], "api-gateway:admin-ops");
+    assert_eq!(body["actions"].as_array().map(Vec::len), Some(1));
+    assert_eq!(body["actions"][0]["action_id"], json!("mem-act-000001"));
+    assert_eq!(
+        body["actions"][0]["status"],
+        json!("pending_second_approval")
+    );
+
+    let approved = app
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/actions/mem-act-000001/reviews",
+            "manager-2",
+            "manager",
+            &json!({
+                "decision": "approve",
+                "reason": "second reviewer confirmed the risk hold"
+            }),
+        ))
+        .await
+        .expect("approval request should be handled");
+    assert_eq!(approved.status(), StatusCode::OK);
+    let body = response_json(approved).await;
+    assert_eq!(body["status"], json!("approved"));
+    assert_eq!(body["review"]["reviewer_user_id"], json!("manager-2"));
+    assert_eq!(
+        body["side_effects"],
+        json!(["member_restriction:withdrawals_locked"])
+    );
+}
+
+#[tokio::test]
+async fn member_action_rejects_self_approval_and_supports_rejection() {
+    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+
+    let created = app
+        .clone()
+        .oneshot(json_post(
+            "/api/internal/admin/members/actions",
+            &json!({
+                "target_user_id": "user_123",
+                "action_type": "request_kyc_review",
+                "ticket_id": "TICKET-7",
+                "reason": "document mismatch"
+            }),
+        ))
+        .await
+        .expect("valid member action request should be handled");
+    assert_eq!(created.status(), StatusCode::ACCEPTED);
+
+    let self_approval = app
+        .clone()
+        .oneshot(json_post(
+            "/api/internal/admin/members/actions/mem-act-000001/reviews",
+            &json!({
+                "decision": "approve",
+                "reason": "same person tries to approve"
+            }),
+        ))
+        .await
+        .expect("self approval request should be handled");
+    assert_eq!(self_approval.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        response_json(self_approval).await["error"],
+        json!("ERROR_CODE_MEMBER_ACTION_SELF_APPROVAL")
+    );
+
+    let rejected = app
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/actions/mem-act-000001/reviews",
+            "manager-2",
+            "manager",
+            &json!({
+                "decision": "reject",
+                "reason": "insufficient evidence"
+            }),
+        ))
+        .await
+        .expect("rejection request should be handled");
+    assert_eq!(rejected.status(), StatusCode::OK);
+    let body = response_json(rejected).await;
+    assert_eq!(body["status"], json!("rejected"));
+    assert_eq!(body["side_effects"], json!([]));
+}
+
+#[tokio::test]
 async fn member_action_requires_actor_context() {
     let app = internal_admin_router(InMemoryAdminOpsStore::default());
 
@@ -437,11 +550,15 @@ async fn member_action_requires_actor_context() {
 }
 
 fn json_post(uri: &str, body: &Value) -> Request<Body> {
+    json_post_as(uri, "admin-1", "admin", body)
+}
+
+fn json_post_as(uri: &str, actor_id: &str, role: &str, body: &Value) -> Request<Body> {
     Request::builder()
         .method("POST")
         .uri(uri)
-        .header("x-actor-id", "admin-1")
-        .header("x-operator-role", "admin")
+        .header("x-actor-id", actor_id)
+        .header("x-operator-role", role)
         .header("content-type", "application/json")
         .body(Body::from(body.to_string()))
         .unwrap_or_else(|error| panic!("request should build: {error}"))

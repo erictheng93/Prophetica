@@ -12,6 +12,7 @@ import {
   listMemberSummaries,
   updateMember,
   type MemberCreateRequest,
+  type MemberActionListResponse,
   type MemberActionRequest,
   type MemberActionResponse,
   type MemberUpdateRequest,
@@ -31,7 +32,10 @@ export interface ProxyMemberPendingCasesInput {
   searchParams?: URLSearchParams;
   gatewayUrl?: string;
   secret?: string;
-  fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  fetchImpl?: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Promise<Response>;
 }
 
 export interface ProxyMemberSummaryInput {
@@ -60,6 +64,17 @@ export interface ProxyMemberActionInput {
   request: unknown;
 }
 
+export interface ProxyMemberActionListInput {
+  viewer: SessionPayload | null;
+  searchParams?: URLSearchParams;
+}
+
+export interface ProxyMemberActionReviewInput {
+  viewer: SessionPayload | null;
+  actionId: string;
+  request: unknown;
+}
+
 export async function proxyMemberListRequest(
   input: ProxyMemberListInput,
 ): Promise<Response> {
@@ -73,7 +88,10 @@ export async function proxyMemberListRequest(
   });
   if (gatewayResponse) return gatewayResponse;
 
-  return Response.json({ members: listMemberSummaries(input.viewer) }, { status: 200 });
+  return Response.json(
+    { members: listMemberSummaries(input.viewer) },
+    { status: 200 },
+  );
 }
 
 export async function proxyMemberPendingCasesRequest(
@@ -213,7 +231,10 @@ export async function proxyMemberUpdateRequest(
   if ("error" in parsed) {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
-  const gatewaySummary = await fetchGatewayMemberSummary(input.viewer, input.userId);
+  const gatewaySummary = await fetchGatewayMemberSummary(
+    input.viewer,
+    input.userId,
+  );
   if (gatewaySummary.response) return gatewaySummary.response;
   if (
     gatewaySummary.summary &&
@@ -311,10 +332,54 @@ export async function proxyMemberActionRequest(
   return Response.json(response, { status: 202 });
 }
 
+export async function proxyMemberActionListRequest(
+  input: ProxyMemberActionListInput,
+): Promise<Response> {
+  if (!canUseMemberActions(input.viewer)) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const query = input.searchParams?.toString();
+  const gatewayResponse = await proxyMemberGatewayRequest(input.viewer, {
+    method: "GET",
+    adminPath: `/api/internal/admin/members/actions${query ? `?${query}` : ""}`,
+  });
+  if (gatewayResponse) return gatewayResponse;
+
+  return Response.json(
+    { actions: [], source: "api-gateway" } satisfies MemberActionListResponse,
+    { status: 200 },
+  );
+}
+
+export async function proxyMemberActionReviewRequest(
+  input: ProxyMemberActionReviewInput,
+): Promise<Response> {
+  if (!canUseMemberActions(input.viewer)) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+  const parsed = parseMemberActionReview(input.request);
+  if ("error" in parsed) {
+    return Response.json({ error: parsed.error }, { status: 400 });
+  }
+  const gatewayResponse = await proxyMemberGatewayRequest(input.viewer, {
+    method: "POST",
+    adminPath: `/api/internal/admin/members/actions/${encodeURIComponent(input.actionId)}/reviews`,
+    body: JSON.stringify(parsed.value),
+  });
+  if (gatewayResponse) return gatewayResponse;
+
+  return Response.json({ error: "gateway_unconfigured" }, { status: 500 });
+}
+
 function canReadMemberManagement(
   viewer: SessionPayload | null,
 ): viewer is SessionPayload {
-  return viewer?.role === "admin" || viewer?.role === "manager" || viewer?.role === "affiliate";
+  return (
+    viewer?.role === "admin" ||
+    viewer?.role === "manager" ||
+    viewer?.role === "affiliate"
+  );
 }
 
 function memberListAdminPath(viewer: SessionPayload): string {
@@ -360,7 +425,10 @@ async function proxyMemberGatewayRequest(
     body: body.length > 0 ? body : undefined,
     cache: "no-store",
   });
-  if ((upstream.status === 404 || upstream.status === 501) && allowMockFallback) {
+  if (
+    (upstream.status === 404 || upstream.status === 501) &&
+    allowMockFallback
+  ) {
     return null;
   }
 
@@ -373,7 +441,10 @@ async function proxyMemberGatewayRequest(
 async function fetchGatewayMemberSummary(
   viewer: SessionPayload,
   userId: string,
-): Promise<{ summary: MemberManagementSummary | null; response: Response | null }> {
+): Promise<{
+  summary: MemberManagementSummary | null;
+  response: Response | null;
+}> {
   const response = await proxyMemberGatewayRequest(viewer, {
     method: "GET",
     adminPath: `/api/internal/admin/members/${encodeURIComponent(userId)}/summary`,
@@ -403,7 +474,9 @@ function copyGatewayHeaders(headers: Headers): Headers {
   return next;
 }
 
-function parsePositiveInt(value: string | null | undefined): number | undefined {
+function parsePositiveInt(
+  value: string | null | undefined,
+): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
@@ -444,27 +517,29 @@ function normalizeGatewayPendingCases(
   body: GatewayPendingCasesResponse,
 ): MemberPendingCasesResponse {
   return {
-    items: body.items.map((item): MemberPendingCase => ({
-      member_id: item.member_id,
-      display_name: item.display_name,
-      restriction_reason: item.restriction_reason,
-      contact: {
-        email_masked: item.contact.email_masked,
-        phone_masked: item.contact.phone_masked,
-      },
-      status:
-        item.status === "active" ||
-        item.status === "restricted" ||
-        item.status === "suspended"
-          ? item.status
-          : "inactive",
-      kyc_status:
-        item.kyc_status === "verified" ||
-        item.kyc_status === "review_required"
-          ? item.kyc_status
-          : "pending",
-      affiliate_id: item.affiliate_id ?? null,
-    })),
+    items: body.items.map(
+      (item): MemberPendingCase => ({
+        member_id: item.member_id,
+        display_name: item.display_name,
+        restriction_reason: item.restriction_reason,
+        contact: {
+          email_masked: item.contact.email_masked,
+          phone_masked: item.contact.phone_masked,
+        },
+        status:
+          item.status === "active" ||
+          item.status === "restricted" ||
+          item.status === "suspended"
+            ? item.status
+            : "inactive",
+        kyc_status:
+          item.kyc_status === "verified" ||
+          item.kyc_status === "review_required"
+            ? item.kyc_status
+            : "pending",
+        affiliate_id: item.affiliate_id ?? null,
+      }),
+    ),
     page: body.page,
     page_size: body.page_size,
     total: body.total,
@@ -475,7 +550,11 @@ function normalizeGatewayPendingCases(
 function canWriteMemberManagement(
   viewer: SessionPayload | null,
 ): viewer is SessionPayload {
-  return viewer?.role === "admin" || viewer?.role === "manager" || viewer?.role === "affiliate";
+  return (
+    viewer?.role === "admin" ||
+    viewer?.role === "manager" ||
+    viewer?.role === "affiliate"
+  );
 }
 
 function canDeleteMemberManagement(
@@ -525,7 +604,8 @@ function parseMemberCreate(
           ? candidate.line_id.trim()
           : undefined,
       affiliate_id:
-        typeof candidate.affiliate_id === "string" && candidate.affiliate_id.trim()
+        typeof candidate.affiliate_id === "string" &&
+        candidate.affiliate_id.trim()
           ? candidate.affiliate_id.trim()
           : undefined,
     },
@@ -574,7 +654,10 @@ function parseMemberUpdate(
   ) {
     result.risk_level = candidate.risk_level;
   }
-  if (typeof candidate.risk_score === "number" && Number.isFinite(candidate.risk_score)) {
+  if (
+    typeof candidate.risk_score === "number" &&
+    Number.isFinite(candidate.risk_score)
+  ) {
     result.risk_score = candidate.risk_score;
   }
   return { value: result };
@@ -617,6 +700,29 @@ function parseMemberAction(
         typeof candidate.correlation_id === "string"
           ? candidate.correlation_id.trim()
           : undefined,
+    },
+  };
+}
+
+function parseMemberActionReview(
+  value: unknown,
+):
+  | { value: { decision: "approve" | "reject"; reason: string } }
+  | { error: string } {
+  if (!value || typeof value !== "object") {
+    return { error: "invalid_request" };
+  }
+  const candidate = value as Record<string, unknown>;
+  if (candidate.decision !== "approve" && candidate.decision !== "reject") {
+    return { error: "invalid_decision" };
+  }
+  if (typeof candidate.reason !== "string" || candidate.reason.trim() === "") {
+    return { error: "invalid_reason" };
+  }
+  return {
+    value: {
+      decision: candidate.decision,
+      reason: candidate.reason.trim(),
     },
   };
 }

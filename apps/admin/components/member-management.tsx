@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import Link from "next/link";
 import { StatusPill } from "@/components/status-pill";
 import {
   formatMinorUnitsAsMemberPoints,
   memberSearchHints,
+  type MemberActionListResponse,
+  type MemberActionRecord,
   type MemberActionResponse,
+  type MemberActionStatus,
   type MemberActionType,
   type MemberManagementSummary,
   type MemberPendingCasesResponse,
@@ -15,6 +25,7 @@ import {
 import type { Role } from "@/lib/rbac";
 
 interface MemberManagementProps {
+  initialQuery?: string;
   viewerRole: Role;
   viewerAffiliateId?: string;
 }
@@ -70,10 +81,11 @@ const emptyMemberForm: MemberFormState = {
 };
 
 export function MemberManagement({
+  initialQuery,
   viewerAffiliateId,
   viewerRole,
 }: MemberManagementProps) {
-  const [lookupUserId, setLookupUserId] = useState("MEM-001");
+  const [lookupUserId, setLookupUserId] = useState(initialQuery ?? "MEM-001");
   const [members, setMembers] = useState<MemberManagementSummary[]>([]);
   const [memberListError, setMemberListError] = useState<string | null>(null);
   const [memberListLoading, setMemberListLoading] = useState(false);
@@ -82,29 +94,47 @@ export function MemberManagement({
   const [lookupLoading, setLookupLoading] = useState(false);
   const [memberForm, setMemberForm] = useState<MemberFormState>({
     ...emptyMemberForm,
-    affiliate_id: viewerRole === "affiliate" ? viewerAffiliateId ?? "" : "",
+    affiliate_id: viewerRole === "affiliate" ? (viewerAffiliateId ?? "") : "",
   });
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [memberMutationError, setMemberMutationError] = useState<string | null>(null);
-  const [memberMutationResult, setMemberMutationResult] = useState<string | null>(null);
+  const [memberMutationError, setMemberMutationError] = useState<string | null>(
+    null,
+  );
+  const [memberMutationResult, setMemberMutationResult] = useState<
+    string | null
+  >(null);
   const [memberMutationLoading, setMemberMutationLoading] = useState(false);
   const [pendingCases, setPendingCases] =
     useState<MemberPendingCasesResponse | null>(null);
-  const [pendingCasesError, setPendingCasesError] = useState<string | null>(null);
+  const [pendingCasesError, setPendingCasesError] = useState<string | null>(
+    null,
+  );
   const [pendingCasesLoading, setPendingCasesLoading] = useState(false);
   const [pendingQuery, setPendingQuery] = useState("");
-  const [pendingStatus, setPendingStatus] = useState<MemberStatus | "all">("all");
+  const [pendingStatus, setPendingStatus] = useState<MemberStatus | "all">(
+    "all",
+  );
   const [pendingRestriction, setPendingRestriction] = useState("");
   const [pendingPage, setPendingPage] = useState(1);
 
-  const [actionType, setActionType] =
-    useState<MemberActionType>("add_note");
+  const [actionType, setActionType] = useState<MemberActionType>("add_note");
   const [ticketId, setTicketId] = useState("OPS-");
   const [reason, setReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
-  const [actionResult, setActionResult] =
-    useState<MemberActionResponse | null>(null);
+  const [actionResult, setActionResult] = useState<MemberActionResponse | null>(
+    null,
+  );
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionQueue, setActionQueue] =
+    useState<MemberActionListResponse | null>(null);
+  const [actionQueueError, setActionQueueError] = useState<string | null>(null);
+  const [actionQueueLoading, setActionQueueLoading] = useState(false);
+  const [actionReviewReasons, setActionReviewReasons] = useState<
+    Record<string, string>
+  >({});
+  const [actionReviewLoading, setActionReviewLoading] = useState<string | null>(
+    null,
+  );
 
   const canDelete = viewerRole === "admin" || viewerRole === "manager";
   const canSubmit = viewerRole === "admin" || viewerRole === "manager";
@@ -116,7 +146,12 @@ export function MemberManagement({
 
   useEffect(() => {
     void refreshMembers();
+    if (initialQuery) void lookupMemberById(initialQuery);
   }, []);
+
+  useEffect(() => {
+    if (canSubmit) void refreshActionQueue();
+  }, [canSubmit]);
 
   useEffect(() => {
     void refreshPendingCases();
@@ -140,7 +175,9 @@ export function MemberManagement({
       });
       if (!response.ok) {
         setPendingCases(null);
-        setPendingCasesError(`載入待處理會員失敗：${await errorText(response)}`);
+        setPendingCasesError(
+          `載入待處理會員失敗：${await errorText(response)}`,
+        );
         return;
       }
       setPendingCases((await response.json()) as MemberPendingCasesResponse);
@@ -162,7 +199,9 @@ export function MemberManagement({
         setMemberListError(`載入會員清單失敗：${await errorText(response)}`);
         return;
       }
-      const body = (await response.json()) as { members: MemberManagementSummary[] };
+      const body = (await response.json()) as {
+        members: MemberManagementSummary[];
+      };
       setMembers(body.members);
     } catch {
       setMembers([]);
@@ -180,6 +219,10 @@ export function MemberManagement({
       return;
     }
 
+    await lookupMemberById(userId);
+  }
+
+  async function lookupMemberById(userId: string) {
     setLookupLoading(true);
     setLookupError(null);
     setActionError(null);
@@ -219,7 +262,7 @@ export function MemberManagement({
     setMemberMutationResult(null);
     setMemberForm({
       ...emptyMemberForm,
-      affiliate_id: viewerRole === "affiliate" ? viewerAffiliateId ?? "" : "",
+      affiliate_id: viewerRole === "affiliate" ? (viewerAffiliateId ?? "") : "",
     });
   }
 
@@ -353,10 +396,65 @@ export function MemberManagement({
         return;
       }
       setActionResult((await response.json()) as MemberActionResponse);
+      await refreshActionQueue();
     } catch {
       setActionError("提交失敗：無法連線至會員管理 BFF。");
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  async function refreshActionQueue() {
+    setActionQueueLoading(true);
+    setActionQueueError(null);
+    try {
+      const response = await fetch("/api/members/actions", {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        setActionQueue(null);
+        setActionQueueError(`載入工單失敗：${await errorText(response)}`);
+        return;
+      }
+      setActionQueue((await response.json()) as MemberActionListResponse);
+    } catch {
+      setActionQueue(null);
+      setActionQueueError("載入工單失敗：無法連線至會員管理 BFF。");
+    } finally {
+      setActionQueueLoading(false);
+    }
+  }
+
+  async function reviewAction(
+    actionId: string,
+    decision: "approve" | "reject",
+  ) {
+    const reason = actionReviewReasons[actionId]?.trim();
+    if (!reason) {
+      setActionQueueError("請先填寫審批原因。");
+      return;
+    }
+    setActionReviewLoading(`${actionId}:${decision}`);
+    setActionQueueError(null);
+    try {
+      const response = await fetch(
+        `/api/members/actions/${encodeURIComponent(actionId)}/reviews`,
+        {
+          method: "POST",
+          cache: "no-store",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ decision, reason }),
+        },
+      );
+      if (!response.ok) {
+        setActionQueueError(`審批失敗：${await errorText(response)}`);
+        return;
+      }
+      await refreshActionQueue();
+    } catch {
+      setActionQueueError("審批失敗：無法連線至會員管理 BFF。");
+    } finally {
+      setActionReviewLoading(null);
     }
   }
 
@@ -400,6 +498,24 @@ export function MemberManagement({
       />
       {memberListError && <Alert tone="error">{memberListError}</Alert>}
 
+      {canSubmit && (
+        <ActionQueuePanel
+          actions={actionQueue?.actions ?? []}
+          error={actionQueueError}
+          loading={actionQueueLoading}
+          reviewLoading={actionReviewLoading}
+          reviewReasons={actionReviewReasons}
+          onRefresh={refreshActionQueue}
+          onReview={reviewAction}
+          onReviewReasonChange={(actionId, value) =>
+            setActionReviewReasons((current) => ({
+              ...current,
+              [actionId]: value,
+            }))
+          }
+        />
+      )}
+
       <MemberEditor
         canDelete={canDelete}
         editingUserId={editingUserId}
@@ -439,7 +555,10 @@ export function MemberManagement({
           </div>
         </div>
 
-        <form className="mt-5 flex flex-col gap-3 sm:flex-row" onSubmit={lookupMember}>
+        <form
+          className="mt-5 flex flex-col gap-3 sm:flex-row"
+          onSubmit={lookupMember}
+        >
           <label className="min-w-0 flex-1">
             <span className="text-[13px] font-semibold text-proph-ink-muted-80">
               會員 ID
@@ -518,9 +637,7 @@ function PendingCasesPanel(props: {
   const total = props.cases?.total ?? 0;
   const hasNext = page * pageSize < total;
   const sourceLabel =
-    props.cases?.source === "api-gateway"
-      ? "api-gateway"
-      : "dev fallback";
+    props.cases?.source === "api-gateway" ? "api-gateway" : "dev fallback";
 
   return (
     <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
@@ -530,7 +647,8 @@ function PendingCasesPanel(props: {
             會員待處理 API
           </h2>
           <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-            可視化會員 ID、限制原因、聯絡資料與狀態；production 必須讀取 API gateway，只有明確開啟 dev fallback 才會使用本機資料。
+            可視化會員 ID、限制原因、聯絡資料與狀態；production 必須讀取 API
+            gateway，只有明確開啟 dev fallback 才會使用本機資料。
           </p>
         </div>
         <span className="inline-flex h-8 items-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-3 font-mono text-[12px] text-proph-ink-muted-80">
@@ -547,7 +665,9 @@ function PendingCasesPanel(props: {
         />
         <select
           value={props.status}
-          onChange={(event) => props.onStatusChange(event.target.value as MemberStatus | "all")}
+          onChange={(event) =>
+            props.onStatusChange(event.target.value as MemberStatus | "all")
+          }
           className="h-11 rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] outline-none focus:border-proph-primary-focus"
         >
           <option value="all">全部狀態</option>
@@ -594,7 +714,9 @@ function PendingCasesPanel(props: {
               <span className="font-mono text-proph-ink-muted-80">
                 {item.contact.email_masked} / {item.contact.phone_masked}
               </span>
-              <span>{statusLabels[item.status]} / {item.kyc_status}</span>
+              <span>
+                {statusLabels[item.status]} / {item.kyc_status}
+              </span>
             </div>
           ))
         ) : (
@@ -675,7 +797,11 @@ function MemberDirectory(props: {
             >
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusPill tone={member.member.status === "active" ? "success" : "neutral"}>
+                  <StatusPill
+                    tone={
+                      member.member.status === "active" ? "success" : "neutral"
+                    }
+                  >
                     {statusLabels[member.member.status]}
                   </StatusPill>
                   <span className="font-mono text-[12px] text-proph-ink-muted-48">
@@ -687,7 +813,19 @@ function MemberDirectory(props: {
                 </h3>
                 <p className="mt-1 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
                   客戶來源：{member.source.affiliate_name}
-                  {member.source.affiliate_id ? ` (${member.source.affiliate_id})` : ""}
+                  {member.source.affiliate_id ? (
+                    <>
+                      {" "}
+                      (
+                      <Link
+                        href={`/affiliate/${encodeURIComponent(member.source.affiliate_id)}`}
+                        className="font-mono text-proph-primary underline-offset-4 hover:underline"
+                      >
+                        {member.source.affiliate_id}
+                      </Link>
+                      )
+                    </>
+                  ) : null}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -710,6 +848,153 @@ function MemberDirectory(props: {
       </div>
     </section>
   );
+}
+
+function ActionQueuePanel(props: {
+  actions: MemberActionRecord[];
+  error: string | null;
+  loading: boolean;
+  reviewLoading: string | null;
+  reviewReasons: Record<string, string>;
+  onRefresh: () => void;
+  onReview: (actionId: string, decision: "approve" | "reject") => void;
+  onReviewReasonChange: (actionId: string, value: string) => void;
+}) {
+  const pending = props.actions.filter(
+    (action) => action.status === "pending_second_approval",
+  );
+  const history = props.actions.filter(
+    (action) => action.status !== "pending_second_approval",
+  );
+
+  return (
+    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+            會員工單審批
+          </h2>
+          <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+            待二次審批的會員操作在此核准或駁回；核准後會記錄對應的執行效果。
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={props.onRefresh}
+          disabled={props.loading}
+          className="inline-flex h-11 items-center justify-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-4 text-[14px] font-semibold text-proph-ink disabled:opacity-50"
+        >
+          {props.loading ? "更新中" : "重新整理"}
+        </button>
+      </div>
+      {props.error && <Alert tone="error">{props.error}</Alert>}
+
+      <div className="mt-5 grid gap-4">
+        {pending.length === 0 ? (
+          <p className="rounded-proph-sm border border-dashed border-proph-divider-soft bg-proph-surface-pearl p-4 text-[14px] text-proph-ink-muted-80">
+            目前沒有待二次審批的會員工單。
+          </p>
+        ) : (
+          pending.map((action) => (
+            <article
+              key={action.action_id}
+              className="rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-4"
+            >
+              <ActionRecordHeader action={action} />
+              <textarea
+                value={props.reviewReasons[action.action_id] ?? ""}
+                onChange={(event) =>
+                  props.onReviewReasonChange(
+                    action.action_id,
+                    event.target.value,
+                  )
+                }
+                className="mt-3 min-h-20 w-full rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 text-[14px] outline-none focus:border-proph-primary-focus"
+                placeholder="審批原因"
+              />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => props.onReview(action.action_id, "approve")}
+                  disabled={props.reviewLoading !== null}
+                  className="inline-flex h-10 items-center rounded-proph-pill bg-proph-primary px-4 text-[13px] font-semibold text-proph-on-primary disabled:opacity-50"
+                >
+                  {props.reviewLoading === `${action.action_id}:approve`
+                    ? "核准中"
+                    : "核准"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => props.onReview(action.action_id, "reject")}
+                  disabled={props.reviewLoading !== null}
+                  className="inline-flex h-10 items-center rounded-proph-pill border border-proph-feedback-error px-4 text-[13px] font-semibold text-proph-feedback-error disabled:opacity-50"
+                >
+                  {props.reviewLoading === `${action.action_id}:reject`
+                    ? "駁回中"
+                    : "駁回"}
+                </button>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+
+      {history.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-[15px] font-semibold text-proph-ink">
+            近期工單歷史
+          </h3>
+          <div className="mt-3 grid gap-3">
+            {history.slice(0, 8).map((action) => (
+              <article
+                key={action.action_id}
+                className="rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-4"
+              >
+                <ActionRecordHeader action={action} />
+                {action.review && (
+                  <p className="mt-2 text-[13px] text-proph-ink-muted-80">
+                    審批：{action.review.decision} /{" "}
+                    {action.review.reviewer_user_id} / {action.review.reason}
+                  </p>
+                )}
+                {action.side_effects.length > 0 && (
+                  <p className="mt-2 font-mono text-[12px] text-proph-ink-muted-48">
+                    effects: {action.side_effects.join(", ")}
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ActionRecordHeader({ action }: { action: MemberActionRecord }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h3 className="font-mono text-[13px] font-semibold text-proph-ink">
+          {action.action_id}
+        </h3>
+        <p className="mt-1 text-[14px] text-proph-ink-muted-80">
+          {actionLabels[action.action_type]} / {action.target_user_id} /{" "}
+          {action.ticket_id}
+        </p>
+        <p className="mt-1 text-[13px] text-proph-ink-muted-48">
+          建立者：{action.actor_user_id} / {action.reason}
+        </p>
+      </div>
+      <StatusPill tone={actionTone(action.status)}>{action.status}</StatusPill>
+    </div>
+  );
+}
+
+function actionTone(status: MemberActionStatus) {
+  if (status === "approved" || status === "submitted") return "success";
+  if (status === "rejected") return "critical";
+  return "warning";
 }
 
 function MemberEditor(props: {
@@ -739,7 +1024,8 @@ function MemberEditor(props: {
             {props.editingUserId ? "編輯會員" : "新增會員"}
           </h2>
           <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-            新增會員會先建立為未激活；KYC 狀態為 verified 且風險為低風險時才會自動激活。
+            新增會員會先建立為未激活；KYC 狀態為 verified
+            且風險為低風險時才會自動激活。
           </p>
         </div>
         <button
@@ -843,7 +1129,11 @@ function MemberEditor(props: {
             disabled={props.loading}
             className="inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 text-[14px] font-semibold text-proph-on-primary disabled:opacity-50"
           >
-            {props.loading ? "儲存中" : props.editingUserId ? "儲存變更" : "新增會員"}
+            {props.loading
+              ? "儲存中"
+              : props.editingUserId
+                ? "儲存變更"
+                : "新增會員"}
           </button>
           {props.canDelete && props.selectedSummary && (
             <button
@@ -859,20 +1149,27 @@ function MemberEditor(props: {
       </form>
 
       {props.mutationError && <Alert tone="error">{props.mutationError}</Alert>}
-      {props.mutationResult && <Alert tone="success">{props.mutationResult}</Alert>}
+      {props.mutationResult && (
+        <Alert tone="success">{props.mutationResult}</Alert>
+      )}
     </section>
   );
 }
 
 function MemberOverview({ summary }: { summary: MemberManagementSummary }) {
   const statusTone = summary.member.status === "active" ? "success" : "warning";
-  const riskTone = summary.kyc_risk.risk_level === "high" ? "critical" : "neutral";
+  const riskTone =
+    summary.kyc_risk.risk_level === "high" ? "critical" : "neutral";
 
   return (
     <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
       <div className="flex flex-wrap items-center gap-3">
-        <StatusPill tone={statusTone}>{statusLabels[summary.member.status]}</StatusPill>
-        <StatusPill tone={riskTone}>{riskLabels[summary.kyc_risk.risk_level]}</StatusPill>
+        <StatusPill tone={statusTone}>
+          {statusLabels[summary.member.status]}
+        </StatusPill>
+        <StatusPill tone={riskTone}>
+          {riskLabels[summary.kyc_risk.risk_level]}
+        </StatusPill>
         <span className="font-mono text-[12px] text-proph-ink-muted-48">
           {summary.member.user_id}
         </span>
@@ -881,33 +1178,73 @@ function MemberOverview({ summary }: { summary: MemberManagementSummary }) {
         {summary.member.display_name}
       </h2>
       <p className="mt-1 text-[14px] text-proph-ink-muted-80">
-        {summary.member.tier} / 註冊於 {formatDateTime(summary.member.registered_at)}
+        {summary.member.tier} / 註冊於{" "}
+        {formatDateTime(summary.member.registered_at)}
       </p>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <InfoCard title="聯絡資料">
           <Metric label="Email" value={summary.member.contact.email_masked} />
           <Metric label="手機" value={summary.member.contact.phone_masked} />
-          <Metric label="LINE" value={summary.member.contact.line_id_masked ?? "未綁定"} />
-          <Metric label="地區" value={`${summary.member.contact.country} / ${summary.member.contact.timezone}`} />
+          <Metric
+            label="LINE"
+            value={summary.member.contact.line_id_masked ?? "未綁定"}
+          />
+          <Metric
+            label="地區"
+            value={`${summary.member.contact.country} / ${summary.member.contact.timezone}`}
+          />
         </InfoCard>
         <InfoCard title="帳戶摘要">
-          <Metric label="可用點數" value={formatMinorUnitsAsMemberPoints(summary.account.available_minor_units)} />
-          <Metric label="鎖定點數" value={formatMinorUnitsAsMemberPoints(summary.account.locked_minor_units)} />
-          <Metric label="凍結點數" value={formatMinorUnitsAsMemberPoints(summary.account.frozen_minor_units)} />
-          <Metric label="2FA" value={summary.account.two_factor_enabled ? "已啟用" : "未啟用"} />
+          <Metric
+            label="可用點數"
+            value={formatMinorUnitsAsMemberPoints(
+              summary.account.available_minor_units,
+            )}
+          />
+          <Metric
+            label="鎖定點數"
+            value={formatMinorUnitsAsMemberPoints(
+              summary.account.locked_minor_units,
+            )}
+          />
+          <Metric
+            label="凍結點數"
+            value={formatMinorUnitsAsMemberPoints(
+              summary.account.frozen_minor_units,
+            )}
+          />
+          <Metric
+            label="2FA"
+            value={summary.account.two_factor_enabled ? "已啟用" : "未啟用"}
+          />
         </InfoCard>
         <InfoCard title="狀態與風控">
           <Metric label="KYC" value={summary.kyc_risk.kyc_status} />
-          <Metric label="風險分數" value={String(summary.kyc_risk.risk_score)} />
-          <Metric label="限制" value={summary.kyc_risk.restrictions.join(", ") || "無"} />
-          <Metric label="最近覆核" value={formatOptionalDateTime(summary.kyc_risk.last_reviewed_at)} />
+          <Metric
+            label="風險分數"
+            value={String(summary.kyc_risk.risk_score)}
+          />
+          <Metric
+            label="限制"
+            value={summary.kyc_risk.restrictions.join(", ") || "無"}
+          />
+          <Metric
+            label="最近覆核"
+            value={formatOptionalDateTime(summary.kyc_risk.last_reviewed_at)}
+          />
         </InfoCard>
         <InfoCard title="登入與裝置">
-          <Metric label="最近登入" value={formatOptionalDateTime(summary.account.last_login_at)} />
+          <Metric
+            label="最近登入"
+            value={formatOptionalDateTime(summary.account.last_login_at)}
+          />
           <Metric label="裝置數" value={`${summary.account.device_count} 台`} />
           <Metric label="幣別" value={summary.account.currency} />
-          <Metric label="會員狀態" value={statusLabels[summary.member.status]} />
+          <Metric
+            label="會員狀態"
+            value={statusLabels[summary.member.status]}
+          />
           <Metric label="客戶來源" value={summary.source.affiliate_name} />
         </InfoCard>
       </div>
@@ -915,14 +1252,20 @@ function MemberOverview({ summary }: { summary: MemberManagementSummary }) {
   );
 }
 
-function OpenCases({ cases }: { cases: MemberManagementSummary["open_cases"] }) {
+function OpenCases({
+  cases,
+}: {
+  cases: MemberManagementSummary["open_cases"];
+}) {
   return (
     <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
       <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
         待處理案件
       </h2>
       {cases.length === 0 ? (
-        <p className="mt-4 text-[14px] text-proph-ink-muted-80">目前沒有未結案件。</p>
+        <p className="mt-4 text-[14px] text-proph-ink-muted-80">
+          目前沒有未結案件。
+        </p>
       ) : (
         <div className="mt-4 grid gap-3">
           {cases.map((item) => (
@@ -934,7 +1277,9 @@ function OpenCases({ cases }: { cases: MemberManagementSummary["open_cases"] }) 
                 <h3 className="font-mono text-[13px] font-semibold text-proph-ink">
                   {item.case_id}
                 </h3>
-                <StatusPill tone={item.status === "blocked" ? "warning" : "neutral"}>
+                <StatusPill
+                  tone={item.status === "blocked" ? "warning" : "neutral"}
+                >
                   {item.status}
                 </StatusPill>
               </div>
@@ -975,20 +1320,28 @@ function ActionPanel(props: {
       <form className="mt-5 grid gap-4" onSubmit={props.onSubmit}>
         <Metric label="目標會員" value={props.selectedUserId || "未選擇"} />
         <label className="block">
-          <span className="text-[13px] font-semibold text-proph-ink-muted-80">動作</span>
+          <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            動作
+          </span>
           <select
             value={props.actionType}
-            onChange={(event) => props.onActionTypeChange(event.target.value as MemberActionType)}
+            onChange={(event) =>
+              props.onActionTypeChange(event.target.value as MemberActionType)
+            }
             disabled={!props.canSubmit || props.actionLoading}
             className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus disabled:opacity-60"
           >
             {Object.entries(actionLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+              <option key={value} value={value}>
+                {label}
+              </option>
             ))}
           </select>
         </label>
         <label className="block">
-          <span className="text-[13px] font-semibold text-proph-ink-muted-80">工單 ID</span>
+          <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            工單 ID
+          </span>
           <input
             value={props.ticketId}
             onChange={(event) => props.onTicketIdChange(event.target.value)}
@@ -998,7 +1351,9 @@ function ActionPanel(props: {
           />
         </label>
         <label className="block">
-          <span className="text-[13px] font-semibold text-proph-ink-muted-80">處理原因</span>
+          <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            處理原因
+          </span>
           <textarea
             value={props.reason}
             onChange={(event) => props.onReasonChange(event.target.value)}
@@ -1021,7 +1376,9 @@ function ActionPanel(props: {
       {props.error && <Alert tone="error">{props.error}</Alert>}
       {props.actionResult && (
         <Alert tone="success">
-          已提交 {props.actionResult.action_id}，狀態：{props.actionResult.status}，correlation id：{props.actionResult.audit.correlation_id}
+          已提交 {props.actionResult.action_id}，狀態：
+          {props.actionResult.status}，correlation id：
+          {props.actionResult.audit.correlation_id}
         </Alert>
       )}
     </section>
@@ -1037,8 +1394,14 @@ function AuditPanel({ summary }: { summary: MemberManagementSummary }) {
       <div className="mt-4 grid gap-3">
         <Metric label="來源" value={summary.audit.source} />
         <Metric label="Correlation ID" value={summary.audit.correlation_id} />
-        <Metric label="需稽核" value={summary.audit.audit_required ? "是" : "否"} />
-        <Metric label="最近管理動作" value={formatOptionalDateTime(summary.audit.latest_admin_action_at)} />
+        <Metric
+          label="需稽核"
+          value={summary.audit.audit_required ? "是" : "否"}
+        />
+        <Metric
+          label="最近管理動作"
+          value={formatOptionalDateTime(summary.audit.latest_admin_action_at)}
+        />
       </div>
     </section>
   );
@@ -1047,7 +1410,9 @@ function AuditPanel({ summary }: { summary: MemberManagementSummary }) {
 function InfoCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-4">
-      <h3 className="text-[15px] font-semibold leading-[1.29] text-proph-ink">{title}</h3>
+      <h3 className="text-[15px] font-semibold leading-[1.29] text-proph-ink">
+        {title}
+      </h3>
       <dl className="mt-3 grid gap-2">{children}</dl>
     </section>
   );
@@ -1056,8 +1421,12 @@ function InfoCard({ title, children }: { title: string; children: ReactNode }) {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4 rounded-proph-sm border border-proph-divider-soft bg-proph-canvas px-3 py-2">
-      <dt className="text-[12px] font-semibold text-proph-ink-muted-80">{label}</dt>
-      <dd className="text-right font-mono text-[13px] text-proph-ink">{value}</dd>
+      <dt className="text-[12px] font-semibold text-proph-ink-muted-80">
+        {label}
+      </dt>
+      <dd className="text-right font-mono text-[13px] text-proph-ink">
+        {value}
+      </dd>
     </div>
   );
 }
@@ -1111,10 +1480,21 @@ function SelectField<T extends string>(props: {
   );
 }
 
-function Alert({ children, tone }: { children: ReactNode; tone: "error" | "success" }) {
-  const border = tone === "error" ? "border-proph-feedback-error" : "border-proph-feedback-success";
+function Alert({
+  children,
+  tone,
+}: {
+  children: ReactNode;
+  tone: "error" | "success";
+}) {
+  const border =
+    tone === "error"
+      ? "border-proph-feedback-error"
+      : "border-proph-feedback-success";
   return (
-    <p className={`mt-4 rounded-proph-sm border ${border} bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink`}>
+    <p
+      className={`mt-4 rounded-proph-sm border ${border} bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink`}
+    >
       {children}
     </p>
   );

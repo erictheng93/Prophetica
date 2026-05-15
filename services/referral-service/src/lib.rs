@@ -251,6 +251,7 @@ pub struct AffiliateDashboardResponse {
 #[serde(rename_all = "camelCase")]
 pub struct AffiliateSummary {
     pub id: String,
+    pub user_id: Option<String>,
     pub display_name: String,
     pub email_masked: String,
     pub status: String,
@@ -868,7 +869,7 @@ fn sqlx_error(error: sqlx::Error) -> ReferralStoreError {
 fn admin_affiliate_summary_sql(pre_group: &str, post_group: &str) -> String {
     format!(
         r#"
-        SELECT p.affiliate_id, p.display_name, p.email_masked, p.status, p.owner_sponsor_id,
+        SELECT p.affiliate_id, p.user_id, p.display_name, p.email_masked, p.status, p.owner_sponsor_id,
                p.commission_rate_bps, p.tier, to_char(p.last_activity_at, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS last_activity_at,
                p.risk_flags,
                COALESCE(SUM(s.count), 0)::INT AS sub_tree_size,
@@ -900,6 +901,7 @@ fn affiliate_summary_from_row(
 ) -> Result<AffiliateSummary, ReferralStoreError> {
     Ok(AffiliateSummary {
         id: row.try_get("affiliate_id").map_err(sqlx_error)?,
+        user_id: row.try_get("user_id").map_err(sqlx_error)?,
         display_name: row.try_get("display_name").map_err(sqlx_error)?,
         email_masked: row.try_get("email_masked").map_err(sqlx_error)?,
         status: row.try_get("status").map_err(sqlx_error)?,
