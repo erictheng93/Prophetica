@@ -1,15 +1,3 @@
-/*
- * Phase 2 mock dataset for the admin affiliate-review surface.
- *
- * Phase 3 (TODO.md LG-7) will replace these getters with proxy calls into
- * referral-service via api-gateway. Until then, the UI is wired against
- * deterministic placeholder rows so admin / manager flows can be exercised
- * end-to-end without running the Rust services.
- *
- * Field semantics mirror the SPEC-011 affiliate domain so the swap to a
- * real backend is a fetch-shape change, not a rename.
- */
-
 export type AffiliateStatus = "active" | "review" | "frozen" | "onboarding";
 export type AffiliateRiskFlag =
   | "self-referral"
@@ -345,7 +333,17 @@ const affiliates: readonly AffiliateDetail[] = [
   },
 ];
 
-export function getAffiliatesSnapshot(): AffiliateSummary[] {
+export function allowsAffiliateMockFallback(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.AFFILIATE_ADMIN_ALLOW_MOCK_FALLBACK === "true";
+}
+
+export function getAffiliatesSnapshot(
+  env: Record<string, string | undefined> = process.env,
+): AffiliateSummary[] {
+  if (!allowsAffiliateMockFallback(env)) return [];
+
   return affiliates.map(
     ({
       subTreeBreakdown: _b,
@@ -358,7 +356,12 @@ export function getAffiliatesSnapshot(): AffiliateSummary[] {
   );
 }
 
-export function getAffiliateDetail(id: string): AffiliateDetail | undefined {
+export function getAffiliateDetail(
+  id: string,
+  env: Record<string, string | undefined> = process.env,
+): AffiliateDetail | undefined {
+  if (!allowsAffiliateMockFallback(env)) return undefined;
+
   return affiliates.find((row) => row.id === id);
 }
 

@@ -63,7 +63,7 @@ export const adminCopy = {
     runCta: "開始建立報表",
     builderTitle: "建立報表",
     builderDescription:
-      "選擇起訖時間、時區、欄位與排序後建立 report_job。Phase 2 為 mock 資料；Phase 3 將串接 analytics-service 後實際排程與寫入。",
+      "選擇起訖時間、時區、欄位與排序後建立 report_job。此操作會透過 API gateway 寫入 analytics-reporting-service。",
     fieldStartAt: "起始時間",
     fieldEndAt: "結束時間",
     fieldTimezone: "時區",

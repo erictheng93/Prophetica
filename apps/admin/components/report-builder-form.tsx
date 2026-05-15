@@ -16,17 +16,8 @@ interface ReportBuilderFormProps {
   viewerRole: Role;
 }
 
-/*
- * Phase 2 mock builder. The form is wired but does NOT call the
- * analytics-service yet — Phase 3 (TODO.md LG-9) will replace the
- * router.push() below with a server action that creates a real
- * report_job and redirects to its detail page. For now we redirect to
- * /analytics/jobs, where the deterministic snapshot already contains a
- * job with these same params, so reviewers can see the round-trip.
- *
- * SPEC-020 §3 reveal toggle: shown only to admin. Manager sees a note
- * but no checkbox, matching the "敏感欄位需二次授權" requirement.
- */
+// SPEC-020 §3 reveal toggle: shown only to admin. Manager sees a note
+// but no checkbox, matching the "敏感欄位需二次授權" requirement.
 export function ReportBuilderForm({
   template,
   viewerRole,

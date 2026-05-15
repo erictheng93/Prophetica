@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatTwdMinor, getAffiliateDetail } from "../lib/affiliates.js";
+import {
+  allowsAffiliateMockFallback,
+  formatTwdMinor,
+  getAffiliateDetail,
+} from "../lib/affiliates.js";
+
+const enabledFallback = {
+  AFFILIATE_ADMIN_ALLOW_MOCK_FALLBACK: "true",
+};
 
 test("affiliate detail exposes credit rating and credit account controls data", () => {
-  const active = getAffiliateDetail("AFF-001");
+  const active = getAffiliateDetail("AFF-001", enabledFallback);
   assert.equal(active?.creditProfile.rating, "A");
   assert.equal(active?.creditProfile.status, "active");
   assert.equal(active?.creditProfile.activeCreditAccounts, 18);
@@ -13,10 +21,16 @@ test("affiliate detail exposes credit rating and credit account controls data", 
     ),
   );
 
-  const frozen = getAffiliateDetail("AFF-022");
+  const frozen = getAffiliateDetail("AFF-022", enabledFallback);
   assert.equal(frozen?.creditProfile.rating, "suspended");
   assert.equal(frozen?.creditProfile.maxActiveCreditAccounts, 0);
   assert.equal(frozen?.creditProfile.accounts[0]?.status, "frozen");
+});
+
+test("affiliate mock fallback requires explicit opt in", () => {
+  assert.equal(allowsAffiliateMockFallback({}), false);
+  assert.equal(allowsAffiliateMockFallback(enabledFallback), true);
+  assert.equal(getAffiliateDetail("AFF-001", {}), undefined);
 });
 
 test("formatTwdMinor renders credit limits with two decimals", () => {

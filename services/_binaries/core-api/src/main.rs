@@ -36,7 +36,11 @@ async fn run_stub_http(service_name: &'static str, default_port: u16) -> anyhow:
 }
 
 async fn build_user_service_router(config: &ServiceConfig) -> anyhow::Result<axum::Router> {
-    if store_mode(env::var("USER_SERVICE_STORE").ok().as_deref()) == "postgres" {
+    let prophetica_env = env::var("PROPHETICA_ENV").unwrap_or_else(|_| "dev".to_owned());
+    let mode = store_mode(env::var("USER_SERVICE_STORE").ok().as_deref());
+    validate_user_service_store_mode(&prophetica_env, mode)?;
+
+    if mode == "postgres" {
         let database_url = env::var("USER_SERVICE_DATABASE_URL")
             .or_else(|_| env::var("DATABASE_URL"))
             .map_err(|_| {
@@ -69,6 +73,13 @@ fn store_mode(value: Option<&str>) -> &'static str {
     }
 }
 
+fn validate_user_service_store_mode(prophetica_env: &str, mode: &str) -> anyhow::Result<()> {
+    if prophetica_env.eq_ignore_ascii_case("production") && mode != "postgres" {
+        anyhow::bail!("USER_SERVICE_STORE=postgres is required when PROPHETICA_ENV=production");
+    }
+    Ok(())
+}
+
 async fn run_referral_http() -> anyhow::Result<()> {
     let config = ServiceConfig::from_env(
         referral_service::SERVICE_NAME,
@@ -90,5 +101,40 @@ async fn run_referral_http() -> anyhow::Result<()> {
 async fn shutdown_signal(service_name: &'static str) {
     if let Err(error) = signal::ctrl_c().await {
         tracing::warn!(service.name = service_name, %error, "failed to install ctrl-c handler");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{store_mode, validate_user_service_store_mode};
+
+    #[test]
+    fn store_mode_defaults_to_memory() {
+        assert_eq!(store_mode(None), "memory");
+    }
+
+    #[test]
+    fn store_mode_accepts_postgres() {
+        assert_eq!(store_mode(Some("postgres")), "postgres");
+    }
+
+    #[test]
+    fn store_mode_rejects_non_postgres_values() {
+        assert_eq!(store_mode(Some("memory")), "memory");
+        assert_eq!(store_mode(Some("postgres ")), "memory");
+    }
+
+    #[test]
+    fn production_requires_postgres_store() {
+        assert!(validate_user_service_store_mode("production", "postgres").is_ok());
+        assert!(validate_user_service_store_mode("dev", "memory").is_ok());
+
+        let result = validate_user_service_store_mode("production", "memory");
+        assert!(result.is_err());
+        let error = result.err().map(|error| error.to_string());
+        assert_eq!(
+            error.as_deref(),
+            Some("USER_SERVICE_STORE=postgres is required when PROPHETICA_ENV=production")
+        );
     }
 }
