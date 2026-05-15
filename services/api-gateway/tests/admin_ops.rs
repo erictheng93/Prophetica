@@ -5,7 +5,7 @@ use axum::{
     Json, Router,
     body::Body,
     http::{Request, StatusCode},
-    routing::get,
+    routing::{delete, get, patch, post},
 };
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -78,9 +78,10 @@ async fn pending_member_cases_filter_and_paginate() {
 
 #[tokio::test]
 async fn pending_member_cases_proxy_to_kyc_service() {
-    let upstream = Router::new().route(
-        "/v1/internal/admin/members/pending-cases",
-        get(|| async {
+    let upstream = Router::new()
+        .route(
+            "/v1/internal/admin/members/pending-cases",
+            get(|| async {
             Json(json!({
                 "items": [{
                     "member_id": "member_from_kyc",
@@ -99,8 +100,20 @@ async fn pending_member_cases_proxy_to_kyc_service() {
                 "total": 1,
                 "source": "kyc-service:kyc-store"
             }))
-        }),
-    );
+            }),
+        )
+        .route(
+            "/v1/internal/users/contacts:lookup-masked",
+            post(|| async {
+                Json(json!({
+                    "contacts": [{
+                        "id": "member_from_kyc",
+                        "email_masked": "r***@example.com",
+                        "phone_masked": "0912***999"
+                    }]
+                }))
+            }),
+        );
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind upstream");
@@ -109,7 +122,7 @@ async fn pending_member_cases_proxy_to_kyc_service() {
         axum::serve(listener, upstream).await.expect("serve upstream");
     });
 
-    let store = HttpAdminOpsStore::new(upstream_url).expect("store config");
+    let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
     let app = internal_admin_router(store);
     let response = app
         .oneshot(
@@ -126,6 +139,102 @@ async fn pending_member_cases_proxy_to_kyc_service() {
     let body = response_json(response).await;
     assert_eq!(body["source"], "kyc-service:kyc-store");
     assert_eq!(body["items"][0]["member_id"], "member_from_kyc");
+    assert_eq!(body["items"][0]["contact"]["email_masked"], "r***@example.com");
+}
+
+#[tokio::test]
+async fn member_management_proxy_to_user_service() {
+    let upstream = Router::new()
+        .route(
+            "/v1/internal/admin/members",
+            get(|| async {
+                Json(json!({
+                    "members": [{
+                        "member": { "user_id": "MEM-900", "display_name": "Real Member" },
+                        "source": { "affiliate_id": "AFF-001" }
+                    }],
+                    "source": "user-service:member-store"
+                }))
+            }),
+        )
+        .route(
+            "/v1/internal/admin/members",
+            post(|Json(body): Json<Value>| async move { Json(body) }),
+        )
+        .route(
+            "/v1/internal/admin/members/MEM-900/summary",
+            get(|| async {
+                Json(json!({
+                    "member": { "user_id": "MEM-900", "display_name": "Real Member" },
+                    "source": { "affiliate_id": "AFF-001" }
+                }))
+            }),
+        )
+        .route(
+            "/v1/internal/admin/members/MEM-900",
+            patch(|Json(body): Json<Value>| async move { Json(body) }),
+        )
+        .route(
+            "/v1/internal/admin/members/MEM-900",
+            delete(|| async { Json(json!({ "user_id": "MEM-900" })) }),
+        );
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind upstream");
+    let upstream_url = format!("http://{}", listener.local_addr().expect("local addr"));
+    tokio::spawn(async move {
+        axum::serve(listener, upstream).await.expect("serve upstream");
+    });
+
+    let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
+    let app = internal_admin_router(store);
+
+    let list = app
+        .clone()
+        .oneshot(empty_get("/api/internal/admin/members?affiliate_id=AFF-001"))
+        .await
+        .expect("handled");
+    let summary = app
+        .clone()
+        .oneshot(empty_get("/api/internal/admin/members/MEM-900/summary"))
+        .await
+        .expect("handled");
+    let created = app
+        .clone()
+        .oneshot(json_post(
+            "/api/internal/admin/members",
+            &json!({ "user_id": "MEM-901" }),
+        ))
+        .await
+        .expect("handled");
+    let updated = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/api/internal/admin/members/MEM-900")
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "display_name": "Updated" }).to_string()))
+                .expect("request builds"),
+        )
+        .await
+        .expect("handled");
+    let deleted = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/internal/admin/members/MEM-900")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("handled");
+
+    assert_eq!(response_json(list).await["source"], "user-service:member-store");
+    assert_eq!(response_json(summary).await["member"]["user_id"], "MEM-900");
+    assert_eq!(response_json(created).await["user_id"], "MEM-901");
+    assert_eq!(response_json(updated).await["display_name"], "Updated");
+    assert_eq!(response_json(deleted).await["user_id"], "MEM-900");
 }
 
 #[tokio::test]
@@ -257,6 +366,14 @@ fn json_post(uri: &str, body: &Value) -> Request<Body> {
         .uri(uri)
         .header("content-type", "application/json")
         .body(Body::from(body.to_string()))
+        .unwrap_or_else(|error| panic!("request should build: {error}"))
+}
+
+fn empty_get(uri: &str) -> Request<Body> {
+    Request::builder()
+        .method("GET")
+        .uri(uri)
+        .body(Body::empty())
         .unwrap_or_else(|error| panic!("request should build: {error}"))
 }
 

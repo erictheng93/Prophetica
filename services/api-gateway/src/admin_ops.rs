@@ -8,10 +8,11 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::{delete, get, patch, post},
 };
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 #[async_trait]
 pub trait AdminOpsStore {
@@ -25,6 +26,11 @@ pub trait AdminOpsStore {
         query: PendingMemberCasesQuery,
     ) -> Result<PendingMemberCasesResponse, AdminOpsStoreError>;
 
+    async fn list_members(
+        &self,
+        query: MemberListQuery,
+    ) -> Result<Value, AdminOpsStoreError>;
+
     /// Builds the internal admin member summary facade.
     ///
     /// # Errors
@@ -33,7 +39,17 @@ pub trait AdminOpsStore {
     async fn member_summary(
         &self,
         user_id: &str,
-    ) -> Result<MemberSummaryResponse, AdminOpsStoreError>;
+    ) -> Result<Value, AdminOpsStoreError>;
+
+    async fn create_member(&self, request: Value) -> Result<Value, AdminOpsStoreError>;
+
+    async fn update_member(
+        &self,
+        user_id: &str,
+        request: Value,
+    ) -> Result<Value, AdminOpsStoreError>;
+
+    async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError>;
 
     /// Persists a compensation proposal without posting a ledger transaction.
     ///
@@ -54,6 +70,12 @@ pub struct PendingMemberCasesQuery {
     pub restriction: Option<String>,
     pub page: Option<usize>,
     pub page_size: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct MemberListQuery {
+    pub q: Option<String>,
+    pub affiliate_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -232,6 +254,8 @@ where
     S: AdminOpsStore + Clone + Send + Sync + 'static,
 {
     Router::new()
+        .route("/api/internal/admin/members", get(list_members::<S>))
+        .route("/api/internal/admin/members", post(create_member::<S>))
         .route(
             "/api/internal/admin/members/pending-cases",
             get(pending_member_cases::<S>),
@@ -241,10 +265,32 @@ where
             get(member_summary::<S>),
         )
         .route(
+            "/api/internal/admin/members/:user_id",
+            patch(update_member::<S>),
+        )
+        .route(
+            "/api/internal/admin/members/:user_id",
+            delete(delete_member::<S>),
+        )
+        .route(
             "/api/internal/admin/members/:user_id/compensation-proposals",
             post(create_compensation_proposal::<S>),
         )
         .with_state(store)
+}
+
+async fn list_members<S>(
+    State(store): State<S>,
+    Query(query): Query<MemberListQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    store
+        .list_members(query)
+        .await
+        .map(Json)
+        .map_err(|_| internal_error())
 }
 
 async fn pending_member_cases<S>(
@@ -264,12 +310,55 @@ where
 async fn member_summary<S>(
     State(store): State<S>,
     Path(user_id): Path<String>,
-) -> Result<Json<MemberSummaryResponse>, (StatusCode, Json<ErrorResponse>)>
+) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)>
 where
     S: AdminOpsStore,
 {
     store
         .member_summary(&user_id)
+        .await
+        .map(Json)
+        .map_err(|_| internal_error())
+}
+
+async fn create_member<S>(
+    State(store): State<S>,
+    Json(request): Json<Value>,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    store
+        .create_member(request)
+        .await
+        .map(|body| (StatusCode::CREATED, Json(body)))
+        .map_err(|_| internal_error())
+}
+
+async fn update_member<S>(
+    State(store): State<S>,
+    Path(user_id): Path<String>,
+    Json(request): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    store
+        .update_member(&user_id, request)
+        .await
+        .map(Json)
+        .map_err(|_| internal_error())
+}
+
+async fn delete_member<S>(
+    State(store): State<S>,
+    Path(user_id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    store
+        .delete_member(&user_id)
         .await
         .map(Json)
         .map_err(|_| internal_error())
@@ -347,6 +436,7 @@ fn internal_error() -> (StatusCode, Json<ErrorResponse>) {
 pub struct HttpAdminOpsStore {
     client: reqwest::Client,
     kyc_service_url: Url,
+    user_service_url: Url,
 }
 
 impl HttpAdminOpsStore {
@@ -355,12 +445,18 @@ impl HttpAdminOpsStore {
     /// # Errors
     ///
     /// Returns an error when the upstream base URL is invalid.
-    pub fn new(kyc_service_url: impl AsRef<str>) -> Result<Self, AdminOpsStoreError> {
+    pub fn new(
+        kyc_service_url: impl AsRef<str>,
+        user_service_url: impl AsRef<str>,
+    ) -> Result<Self, AdminOpsStoreError> {
         let kyc_service_url = Url::parse(kyc_service_url.as_ref())
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let user_service_url = Url::parse(user_service_url.as_ref())
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         Ok(Self {
             client: reqwest::Client::new(),
             kyc_service_url,
+            user_service_url,
         })
     }
 
@@ -372,7 +468,9 @@ impl HttpAdminOpsStore {
     pub fn from_env() -> Result<Self, AdminOpsStoreError> {
         let kyc_service_url =
             std::env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned());
-        Self::new(kyc_service_url)
+        let user_service_url = std::env::var("USER_SERVICE_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:8084".to_owned());
+        Self::new(kyc_service_url, user_service_url)
     }
 
     fn pending_cases_url(
@@ -403,6 +501,99 @@ impl HttpAdminOpsStore {
         }
         Ok(url)
     }
+
+    fn user_members_url(&self, path: &str) -> Result<Url, AdminOpsStoreError> {
+        self.user_service_url
+            .join(path)
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))
+    }
+
+    fn list_members_url(&self, query: &MemberListQuery) -> Result<Url, AdminOpsStoreError> {
+        let mut url = self.user_members_url("/v1/internal/admin/members")?;
+        {
+            let mut pairs = url.query_pairs_mut();
+            if let Some(value) = query.q.as_deref() {
+                pairs.append_pair("q", value);
+            }
+            if let Some(value) = query.affiliate_id.as_deref() {
+                pairs.append_pair("affiliate_id", value);
+            }
+        }
+        Ok(url)
+    }
+
+    async fn user_service_json(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<Value, AdminOpsStoreError> {
+        request
+            .send()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .json::<Value>()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))
+    }
+
+    async fn enrich_pending_contacts(
+        &self,
+        response: &mut PendingMemberCasesResponse,
+    ) -> Result<(), AdminOpsStoreError> {
+        if response.items.is_empty() {
+            return Ok(());
+        }
+        let ids = response
+            .items
+            .iter()
+            .map(|item| item.member_id.clone())
+            .collect::<Vec<_>>();
+        let contacts = self
+            .client
+            .post(self.user_members_url("/v1/internal/users/contacts:lookup-masked")?)
+            .json(&LookupMaskedContactsRequest { ids })
+            .send()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .json::<LookupMaskedContactsResponse>()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        for item in &mut response.items {
+            if let Some(contact) = contacts
+                .contacts
+                .iter()
+                .find(|contact| contact.id == item.member_id)
+            {
+                item.contact.email_masked = contact.email_masked.clone();
+                item.contact.phone_masked = contact.phone_masked.clone();
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct LookupMaskedContactsRequest {
+    ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LookupMaskedContactsResponse {
+    contacts: Vec<LookupMaskedContact>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LookupMaskedContact {
+    id: String,
+    email_masked: String,
+    phone_masked: String,
+}
+
+fn url_encode_path_segment(value: &str) -> String {
+    value.replace('/', "%2F")
 }
 
 #[async_trait]
@@ -411,7 +602,7 @@ impl AdminOpsStore for HttpAdminOpsStore {
         &self,
         query: PendingMemberCasesQuery,
     ) -> Result<PendingMemberCasesResponse, AdminOpsStoreError> {
-        let response = self
+        let mut response = self
             .client
             .get(self.pending_cases_url(&query)?)
             .send()
@@ -423,16 +614,59 @@ impl AdminOpsStore for HttpAdminOpsStore {
             .await
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
 
+        self.enrich_pending_contacts(&mut response).await?;
         Ok(response)
+    }
+
+    async fn list_members(
+        &self,
+        query: MemberListQuery,
+    ) -> Result<Value, AdminOpsStoreError> {
+        self.user_service_json(self.client.get(self.list_members_url(&query)?))
+            .await
     }
 
     async fn member_summary(
         &self,
-        _user_id: &str,
-    ) -> Result<MemberSummaryResponse, AdminOpsStoreError> {
-        Err(AdminOpsStoreError::new(
-            "member summary production source is not connected",
-        ))
+        user_id: &str,
+    ) -> Result<Value, AdminOpsStoreError> {
+        let path = format!(
+            "/v1/internal/admin/members/{}/summary",
+            url_encode_path_segment(user_id)
+        );
+        self.user_service_json(self.client.get(self.user_members_url(&path)?))
+            .await
+    }
+
+    async fn create_member(&self, request: Value) -> Result<Value, AdminOpsStoreError> {
+        self.user_service_json(
+            self.client
+                .post(self.user_members_url("/v1/internal/admin/members")?)
+                .json(&request),
+        )
+        .await
+    }
+
+    async fn update_member(
+        &self,
+        user_id: &str,
+        request: Value,
+    ) -> Result<Value, AdminOpsStoreError> {
+        let path = format!(
+            "/v1/internal/admin/members/{}",
+            url_encode_path_segment(user_id)
+        );
+        self.user_service_json(self.client.patch(self.user_members_url(&path)?).json(&request))
+            .await
+    }
+
+    async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
+        let path = format!(
+            "/v1/internal/admin/members/{}",
+            url_encode_path_segment(user_id)
+        );
+        self.user_service_json(self.client.delete(self.user_members_url(&path)?))
+            .await
     }
 
     async fn create_compensation_proposal(
@@ -530,8 +764,8 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
     async fn member_summary(
         &self,
         user_id: &str,
-    ) -> Result<MemberSummaryResponse, AdminOpsStoreError> {
-        Ok(MemberSummaryResponse {
+    ) -> Result<Value, AdminOpsStoreError> {
+        let summary = MemberSummaryResponse {
             member: MemberIdentitySummary {
                 user_id: user_id.to_owned(),
                 display_name: format!("Member {user_id}"),
@@ -571,7 +805,34 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
                 audit_required: true,
                 latest_admin_action_at_epoch_seconds: None,
             },
-        })
+        };
+        serde_json::to_value(summary).map_err(|error| AdminOpsStoreError::new(error.to_string()))
+    }
+
+    async fn list_members(
+        &self,
+        _query: MemberListQuery,
+    ) -> Result<Value, AdminOpsStoreError> {
+        Ok(json!({
+            "members": [],
+            "source": "api-gateway:admin-ops"
+        }))
+    }
+
+    async fn create_member(&self, request: Value) -> Result<Value, AdminOpsStoreError> {
+        Ok(request)
+    }
+
+    async fn update_member(
+        &self,
+        _user_id: &str,
+        request: Value,
+    ) -> Result<Value, AdminOpsStoreError> {
+        Ok(request)
+    }
+
+    async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
+        Ok(json!({ "user_id": user_id }))
     }
 
     async fn create_compensation_proposal(

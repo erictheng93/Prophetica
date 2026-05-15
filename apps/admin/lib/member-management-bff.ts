@@ -17,6 +17,7 @@ import {
   type MemberUpdateRequest,
 } from "./member-management.js";
 import type {
+  MemberManagementSummary,
   MemberPendingCase,
   MemberPendingCasesResponse,
 } from "./member-management-shared.js";
@@ -65,6 +66,12 @@ export async function proxyMemberListRequest(
   if (!canReadMemberManagement(input.viewer)) {
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
+
+  const gatewayResponse = await proxyMemberGatewayRequest(input.viewer, {
+    method: "GET",
+    adminPath: memberListAdminPath(input.viewer),
+  });
+  if (gatewayResponse) return gatewayResponse;
 
   return Response.json({ members: listMemberSummaries(input.viewer) }, { status: 200 });
 }
@@ -145,6 +152,21 @@ export async function proxyMemberSummaryRequest(
     return Response.json({ error: "invalid_user_id" }, { status: 400 });
   }
 
+  const gatewayResponse = await proxyMemberGatewayRequest(input.viewer, {
+    method: "GET",
+    adminPath: `/api/internal/admin/members/${encodeURIComponent(userId)}/summary`,
+  });
+  if (gatewayResponse) {
+    if (!gatewayResponse.ok || input.viewer.role !== "affiliate") {
+      return gatewayResponse;
+    }
+    const summary = (await gatewayResponse.json()) as MemberManagementSummary;
+    if (!canReadGatewaySummary(summary, input.viewer)) {
+      return Response.json({ error: "member_not_found" }, { status: 404 });
+    }
+    return Response.json(summary, { status: 200 });
+  }
+
   const summary = findMemberSummary(userId, input.viewer);
   if (!summary) {
     return Response.json({ error: "member_not_found" }, { status: 404 });
@@ -163,6 +185,17 @@ export async function proxyMemberCreateRequest(
   if ("error" in parsed) {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
+  const request =
+    input.viewer.role === "affiliate"
+      ? { ...parsed.value, affiliate_id: input.viewer.affiliateId }
+      : parsed.value;
+  const gatewayResponse = await proxyMemberGatewayRequest(input.viewer, {
+    method: "POST",
+    adminPath: "/api/internal/admin/members",
+    body: JSON.stringify(request),
+  });
+  if (gatewayResponse) return gatewayResponse;
+
   const result = createMember(parsed.value, input.viewer);
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status });
@@ -180,6 +213,21 @@ export async function proxyMemberUpdateRequest(
   if ("error" in parsed) {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
+  const gatewaySummary = await fetchGatewayMemberSummary(input.viewer, input.userId);
+  if (gatewaySummary.response) return gatewaySummary.response;
+  if (
+    gatewaySummary.summary &&
+    !canReadGatewaySummary(gatewaySummary.summary, input.viewer)
+  ) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+  const gatewayResponse = await proxyMemberGatewayRequest(input.viewer, {
+    method: "PATCH",
+    adminPath: `/api/internal/admin/members/${encodeURIComponent(input.userId)}`,
+    body: JSON.stringify(parsed.value),
+  });
+  if (gatewayResponse) return gatewayResponse;
+
   const result = updateMember(input.userId, parsed.value, input.viewer);
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status });
@@ -190,6 +238,15 @@ export async function proxyMemberUpdateRequest(
 export async function proxyMemberDeleteRequest(
   input: ProxyMemberDeleteInput,
 ): Promise<Response> {
+  if (!canDeleteMemberManagement(input.viewer)) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+  const gatewayResponse = await proxyMemberGatewayRequest(input.viewer, {
+    method: "DELETE",
+    adminPath: `/api/internal/admin/members/${encodeURIComponent(input.userId)}`,
+  });
+  if (gatewayResponse) return gatewayResponse;
+
   const result = deleteMember(input.userId, input.viewer);
   if (!result.ok) {
     return Response.json({ error: result.error }, { status: result.status });
@@ -239,6 +296,92 @@ function canReadMemberManagement(
   viewer: SessionPayload | null,
 ): viewer is SessionPayload {
   return viewer?.role === "admin" || viewer?.role === "manager" || viewer?.role === "affiliate";
+}
+
+function memberListAdminPath(viewer: SessionPayload): string {
+  if (viewer.role !== "affiliate") return "/api/internal/admin/members";
+  const params = new URLSearchParams();
+  if (viewer.affiliateId) params.set("affiliate_id", viewer.affiliateId);
+  const query = params.toString();
+  return `/api/internal/admin/members${query ? `?${query}` : ""}`;
+}
+
+async function proxyMemberGatewayRequest(
+  viewer: SessionPayload,
+  input: { method: string; adminPath: string; body?: string },
+): Promise<Response | null> {
+  const gatewayUrl = process.env.API_GATEWAY_URL;
+  const allowMockFallback = allowsMemberMockFallback();
+  if (!gatewayUrl) {
+    return allowMockFallback
+      ? null
+      : Response.json({ error: "gateway_unconfigured" }, { status: 500 });
+  }
+
+  const body = input.body ?? "";
+  const signaturePath = input.adminPath.split("?")[0] ?? input.adminPath;
+  const headers = signInternalCall({
+    method: input.method,
+    path: signaturePath,
+    body,
+    actorId: viewer.sub,
+    role: viewer.role,
+  });
+  const requestHeaders: Record<string, string> = {
+    ...headers,
+    "x-request-id": crypto.randomUUID(),
+  };
+  if (body.length > 0) {
+    requestHeaders["content-type"] = "application/json";
+  }
+
+  const upstream = await fetch(new URL(input.adminPath, gatewayUrl), {
+    method: input.method,
+    headers: requestHeaders,
+    body: body.length > 0 ? body : undefined,
+    cache: "no-store",
+  });
+  if ((upstream.status === 404 || upstream.status === 501) && allowMockFallback) {
+    return null;
+  }
+
+  return new Response(await upstream.arrayBuffer(), {
+    status: upstream.status,
+    headers: copyGatewayHeaders(upstream.headers),
+  });
+}
+
+async function fetchGatewayMemberSummary(
+  viewer: SessionPayload,
+  userId: string,
+): Promise<{ summary: MemberManagementSummary | null; response: Response | null }> {
+  const response = await proxyMemberGatewayRequest(viewer, {
+    method: "GET",
+    adminPath: `/api/internal/admin/members/${encodeURIComponent(userId)}/summary`,
+  });
+  if (!response) return { summary: null, response: null };
+  if (!response.ok) return { summary: null, response };
+  return {
+    summary: (await response.json()) as MemberManagementSummary,
+    response: null,
+  };
+}
+
+function canReadGatewaySummary(
+  summary: MemberManagementSummary,
+  viewer: SessionPayload,
+): boolean {
+  return (
+    viewer.role !== "affiliate" ||
+    summary.source.affiliate_id === viewer.affiliateId
+  );
+}
+
+function copyGatewayHeaders(headers: Headers): Headers {
+  const next = new Headers();
+  const contentType = headers.get("content-type");
+  if (contentType) next.set("content-type", contentType);
+  return next;
 }
 
 function parsePositiveInt(value: string | null | undefined): number | undefined {
@@ -314,6 +457,12 @@ function canWriteMemberManagement(
   viewer: SessionPayload | null,
 ): viewer is SessionPayload {
   return viewer?.role === "admin" || viewer?.role === "manager" || viewer?.role === "affiliate";
+}
+
+function canDeleteMemberManagement(
+  viewer: SessionPayload | null,
+): viewer is SessionPayload {
+  return viewer?.role === "admin" || viewer?.role === "manager";
 }
 
 function canUseMemberActions(
