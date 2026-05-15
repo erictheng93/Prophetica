@@ -13,6 +13,7 @@ use axum::{
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sqlx::{PgPool, Row};
 
 #[async_trait]
 pub trait AdminOpsStore {
@@ -594,6 +595,238 @@ struct LookupMaskedContact {
 
 fn url_encode_path_segment(value: &str) -> String {
     value.replace('/', "%2F")
+}
+
+#[derive(Debug, Clone)]
+pub struct ProductionAdminOpsStore {
+    upstream: HttpAdminOpsStore,
+    compensation: PostgresCompensationProposalStore,
+}
+
+impl ProductionAdminOpsStore {
+    #[must_use]
+    pub const fn new(
+        upstream: HttpAdminOpsStore,
+        compensation: PostgresCompensationProposalStore,
+    ) -> Self {
+        Self {
+            upstream,
+            compensation,
+        }
+    }
+}
+
+#[async_trait]
+impl AdminOpsStore for ProductionAdminOpsStore {
+    async fn pending_member_cases(
+        &self,
+        query: PendingMemberCasesQuery,
+    ) -> Result<PendingMemberCasesResponse, AdminOpsStoreError> {
+        self.upstream.pending_member_cases(query).await
+    }
+
+    async fn list_members(
+        &self,
+        query: MemberListQuery,
+    ) -> Result<Value, AdminOpsStoreError> {
+        self.upstream.list_members(query).await
+    }
+
+    async fn member_summary(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
+        self.upstream.member_summary(user_id).await
+    }
+
+    async fn create_member(&self, request: Value) -> Result<Value, AdminOpsStoreError> {
+        self.upstream.create_member(request).await
+    }
+
+    async fn update_member(
+        &self,
+        user_id: &str,
+        request: Value,
+    ) -> Result<Value, AdminOpsStoreError> {
+        self.upstream.update_member(user_id, request).await
+    }
+
+    async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
+        self.upstream.delete_member(user_id).await
+    }
+
+    async fn create_compensation_proposal(
+        &self,
+        user_id: &str,
+        request: CompensationProposalRequest,
+    ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
+        self.compensation
+            .create_compensation_proposal(user_id, request)
+            .await
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PostgresCompensationProposalStore {
+    pool: PgPool,
+}
+
+impl PostgresCompensationProposalStore {
+    #[must_use]
+    pub const fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    async fn create_compensation_proposal(
+        &self,
+        user_id: &str,
+        request: CompensationProposalRequest,
+    ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
+        let ticket_id = request
+            .ticket_id
+            .ok_or_else(|| AdminOpsStoreError::new("validated ticket id is missing"))?;
+        let reason = request
+            .reason
+            .ok_or_else(|| AdminOpsStoreError::new("validated reason is missing"))?;
+        let amount_minor_units = request
+            .amount_minor_units
+            .ok_or_else(|| AdminOpsStoreError::new("validated amount is missing"))?;
+        let approvals = request
+            .approvals
+            .ok_or_else(|| AdminOpsStoreError::new("validated approvals are missing"))?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let correlation_seed: i64 =
+            sqlx::query_scalar("SELECT nextval('admin_compensation_proposals_id_seq')")
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let correlation_id = format!("admin-compensation-{ticket_id}-{correlation_seed}");
+        let row = sqlx::query(
+            r"
+            INSERT INTO admin_compensation_proposals (
+                id, subject_user_id, ticket_id, reason, amount_minor_units, status,
+                ledger_transaction_posted, correlation_id, actor_user_id, actor_role
+            )
+            VALUES ($1, $2, $3, $4, $5, 'approved_ready_for_ledger', FALSE, $6, 'admin_ops', 'system')
+            RETURNING id, proposal_id
+            ",
+        )
+        .bind(correlation_seed)
+        .bind(user_id)
+        .bind(&ticket_id)
+        .bind(&reason)
+        .bind(amount_minor_units)
+        .bind(&correlation_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let row_id: i64 = row
+            .try_get("id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let proposal_id: String = row
+            .try_get("proposal_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+
+        let approval_roles = approvals
+            .iter()
+            .map(|approval| approval.role.clone())
+            .collect::<Vec<_>>();
+        insert_compensation_approvals(&mut tx, row_id, &approvals).await?;
+        insert_compensation_audit_event(
+            &mut tx,
+            row_id,
+            user_id,
+            &ticket_id,
+            &correlation_id,
+            &approval_roles,
+        )
+        .await?;
+        tx.commit()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+
+        let audit = CompensationAuditMetadata {
+            action: "compensation_proposal_created".to_owned(),
+            subject_user_id: user_id.to_owned(),
+            ticket_id: ticket_id.clone(),
+            correlation_id,
+            approval_roles,
+            ledger_transaction_posted: false,
+        };
+
+        Ok(CompensationProposalResponse {
+            proposal: CompensationProposal {
+                proposal_id,
+                user_id: user_id.to_owned(),
+                ticket_id,
+                reason,
+                amount_minor_units,
+                status: CompensationProposalStatus::ApprovedReadyForLedger,
+                approvals,
+                ledger_transaction_posted: false,
+            },
+            audit,
+        })
+    }
+}
+
+async fn insert_compensation_approvals(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    proposal_row_id: i64,
+    approvals: &[CompensationApprovalRequest],
+) -> Result<(), AdminOpsStoreError> {
+    for (index, approval) in approvals.iter().enumerate() {
+        let ordinal =
+            i16::try_from(index + 1).map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        sqlx::query(
+            r"
+            INSERT INTO admin_compensation_proposal_approvals (
+                proposal_id, approver_user_id, role, ordinal
+            )
+            VALUES ($1, $2, $3, $4)
+            ",
+        )
+        .bind(proposal_row_id)
+        .bind(&approval.approver_user_id)
+        .bind(&approval.role)
+        .bind(ordinal)
+        .execute(&mut **tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    }
+    Ok(())
+}
+
+async fn insert_compensation_audit_event(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    proposal_row_id: i64,
+    user_id: &str,
+    ticket_id: &str,
+    correlation_id: &str,
+    approval_roles: &[String],
+) -> Result<(), AdminOpsStoreError> {
+    sqlx::query(
+        r"
+        INSERT INTO admin_compensation_audit_events (
+            proposal_id, action, actor_user_id, actor_role, subject_user_id,
+            ticket_id, correlation_id, metadata
+        )
+        VALUES (
+            $1, 'compensation_proposal_created', 'admin_ops', 'system', $2,
+            $3, $4, $5
+        )
+        ",
+    )
+    .bind(proposal_row_id)
+    .bind(user_id)
+    .bind(ticket_id)
+    .bind(correlation_id)
+    .bind(json!({ "approval_roles": approval_roles }))
+    .execute(&mut **tx)
+    .await
+    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    Ok(())
 }
 
 #[async_trait]

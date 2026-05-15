@@ -1273,10 +1273,7 @@ pub async fn run_http() -> anyhow::Result<()> {
                 analytics_reporting::proxy_router,
             ),
         )
-        .merge(admin_ops::internal_admin_router(
-            admin_ops::HttpAdminOpsStore::from_env()
-                .map_err(|error| anyhow::anyhow!(error.message().to_owned()))?,
-        ));
+        .merge(admin_ops_router().await?);
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "api gateway listening");
 
@@ -1285,6 +1282,28 @@ pub async fn run_http() -> anyhow::Result<()> {
         .await?;
 
     Ok(())
+}
+
+async fn admin_ops_router() -> anyhow::Result<Router> {
+    let upstream = admin_ops::HttpAdminOpsStore::from_env()
+        .map_err(|error| anyhow::anyhow!(error.message().to_owned()))?;
+    let database_url = env::var("ADMIN_OPS_DATABASE_URL").or_else(|_| env::var("DATABASE_URL"));
+    match database_url {
+        Ok(database_url) => {
+            let pool = sqlx::PgPool::connect(&database_url).await?;
+            sqlx::migrate!("./migrations").run(&pool).await?;
+            Ok(admin_ops::internal_admin_router(
+                admin_ops::ProductionAdminOpsStore::new(
+                    upstream,
+                    admin_ops::PostgresCompensationProposalStore::new(pool),
+                ),
+            ))
+        }
+        Err(_) if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") => {
+            anyhow::bail!("ADMIN_OPS_DATABASE_URL or DATABASE_URL is required in production")
+        }
+        Err(_) => Ok(admin_ops::internal_admin_router(upstream)),
+    }
 }
 
 async fn shutdown_signal() {

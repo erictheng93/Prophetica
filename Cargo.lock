@@ -73,6 +73,7 @@ dependencies = [
  "serde_json",
  "settlement-worker",
  "sha2",
+ "sqlx",
  "tokio",
  "tonic",
  "tower 0.5.3",

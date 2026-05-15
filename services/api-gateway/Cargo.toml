@@ -17,6 +17,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2 = "0.10"
 sdk = { path = "../../crates/sdk" }
+sqlx.workspace = true
 tokio.workspace = true
 tower = "0.5"
 tracing.workspace = true
