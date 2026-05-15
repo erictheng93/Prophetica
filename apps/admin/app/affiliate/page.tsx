@@ -1,4 +1,5 @@
 import { AdminShell } from "@/components/admin-shell";
+import { AffiliateCreateForm } from "@/components/affiliate-admin-forms";
 import { AffiliateList } from "@/components/affiliate-list";
 import { DomainScope } from "@/components/domain-scope";
 import { RoleGate } from "@/components/role-gate";
@@ -22,6 +23,7 @@ export default function AffiliatePage() {
           >
             <div className="space-y-8">
               <DomainScope domain={route.domain} role={viewer.role} />
+              <AffiliateCreateForm role={viewer.role} />
               <AffiliateList affiliates={affiliates} />
             </div>
           </AdminShell>

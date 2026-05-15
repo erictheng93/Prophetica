@@ -8,6 +8,7 @@ const toneByStatus: Record<AffiliateStatus, OpsTone> = {
   review: "warning",
   frozen: "critical",
   onboarding: "neutral",
+  archived: "neutral",
 };
 
 const labelByStatus: Record<AffiliateStatus, string> = {
@@ -15,6 +16,7 @@ const labelByStatus: Record<AffiliateStatus, string> = {
   review: adminCopy.affiliateAdmin.statusReview,
   frozen: adminCopy.affiliateAdmin.statusFrozen,
   onboarding: adminCopy.affiliateAdmin.statusOnboarding,
+  archived: "已封存",
 };
 
 interface AffiliateStatusPillProps {

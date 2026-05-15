@@ -379,9 +379,36 @@ pub trait ReferralClient {
         affiliate_id: &str,
     ) -> Result<serde_json::Value, ApiError>;
 
+    async fn create_admin_affiliate(
+        &self,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError>;
+
+    async fn update_admin_affiliate(
+        &self,
+        affiliate_id: &str,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError>;
+
+    async fn archive_admin_affiliate(
+        &self,
+        affiliate_id: &str,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError>;
+
     async fn list_commission_adjustment_reviews(&self) -> Result<serde_json::Value, ApiError>;
 
     async fn list_affiliate_payout_reviews(&self) -> Result<serde_json::Value, ApiError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminProxyContext {
+    pub actor_id: String,
+    pub role: String,
+    pub request_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -779,6 +806,77 @@ impl ReferralClient for HttpReferralClient {
             .map_err(|error| ApiError::referral_service(error.to_string()))
     }
 
+    async fn create_admin_affiliate(
+        &self,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join("/internal/admin/affiliates")
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .post(url)
+            .headers(admin_proxy_headers(context)?)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
+
+    async fn update_admin_affiliate(
+        &self,
+        affiliate_id: &str,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/internal/admin/affiliates/{affiliate_id}"))
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .patch(url)
+            .headers(admin_proxy_headers(context)?)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
+
+    async fn archive_admin_affiliate(
+        &self,
+        affiliate_id: &str,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/internal/admin/affiliates/{affiliate_id}"))
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .delete(url)
+            .headers(admin_proxy_headers(context)?)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
+
     async fn list_commission_adjustment_reviews(&self) -> Result<serde_json::Value, ApiError> {
         let url = self
             .base_url
@@ -831,6 +929,33 @@ where
         .json::<T>()
         .await
         .map_err(|error| ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string()))
+}
+
+fn admin_proxy_headers(context: AdminProxyContext) -> Result<reqwest::header::HeaderMap, ApiError> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "x-actor-id",
+        context
+            .actor_id
+            .parse()
+            .map_err(|error| ApiError::bad_request("invalid_admin_context", format!("{error}")))?,
+    );
+    headers.insert(
+        "x-operator-role",
+        context
+            .role
+            .parse()
+            .map_err(|error| ApiError::bad_request("invalid_admin_context", format!("{error}")))?,
+    );
+    if let Some(request_id) = context.request_id {
+        headers.insert(
+            "x-request-id",
+            request_id.parse().map_err(|error| {
+                ApiError::bad_request("invalid_admin_context", format!("{error}"))
+            })?,
+        );
+    }
+    Ok(headers)
 }
 
 impl IdempotencyStore {
@@ -990,11 +1115,13 @@ where
         )
         .route(
             "/api/internal/admin/affiliates",
-            get(list_admin_affiliates::<W, E, R>),
+            get(list_admin_affiliates::<W, E, R>).post(create_admin_affiliate::<W, E, R>),
         )
         .route(
             "/api/internal/admin/affiliates/:affiliate_id",
-            get(get_admin_affiliate_detail::<W, E, R>),
+            get(get_admin_affiliate_detail::<W, E, R>)
+                .patch(update_admin_affiliate::<W, E, R>)
+                .delete(archive_admin_affiliate::<W, E, R>),
         )
         .route(
             "/api/internal/admin/affiliate-commission-adjustments",
@@ -1374,6 +1501,83 @@ where
     Ok(Json(affiliate))
 }
 
+async fn create_admin_affiliate<W, E, R>(
+    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+    headers: HeaderMap,
+    Json(request): Json<serde_json::Value>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+{
+    let context = admin_proxy_context(&headers)?;
+    let affiliate = state
+        .referral
+        .create_admin_affiliate(request, context)
+        .await?;
+    Ok((StatusCode::CREATED, Json(affiliate)))
+}
+
+async fn update_admin_affiliate<W, E, R>(
+    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+    headers: HeaderMap,
+    Path(affiliate_id): Path<String>,
+    Json(request): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+{
+    let context = admin_proxy_context(&headers)?;
+    let affiliate = state
+        .referral
+        .update_admin_affiliate(&affiliate_id, request, context)
+        .await?;
+    Ok(Json(affiliate))
+}
+
+async fn archive_admin_affiliate<W, E, R>(
+    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+    headers: HeaderMap,
+    Path(affiliate_id): Path<String>,
+    Json(request): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+{
+    let context = admin_proxy_context(&headers)?;
+    let affiliate = state
+        .referral
+        .archive_admin_affiliate(&affiliate_id, request, context)
+        .await?;
+    Ok(Json(affiliate))
+}
+
+fn admin_proxy_context(headers: &HeaderMap) -> Result<AdminProxyContext, ApiError> {
+    let actor_id = header_string(headers, "x-actor-id")
+        .ok_or_else(|| ApiError::unauthorized("missing x-actor-id admin context"))?;
+    let role = header_string(headers, "x-operator-role")
+        .ok_or_else(|| ApiError::unauthorized("missing x-operator-role admin context"))?;
+    Ok(AdminProxyContext {
+        actor_id,
+        role,
+        request_id: header_string(headers, "x-request-id"),
+    })
+}
+
+fn header_string(headers: &HeaderMap, name: &'static str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
 async fn list_commission_adjustment_reviews<W, E, R>(
     State(state): State<Arc<AppStateWithServices<W, E, R>>>,
 ) -> Result<Json<serde_json::Value>, ApiError>
@@ -1475,10 +1679,10 @@ mod tests {
     use tower::ServiceExt;
 
     use super::{
-        AffiliateCommissionSummary, AffiliateDashboardResponse, AffiliateReferralListItem,
-        ApiError, BookLevel, BookSnapshotResponse, LedgerEntry, MatchingEngineClient,
-        OrderActionResponse, PlaceOrderRequest, ReferralClient, WalletBalance, WalletLedgerClient,
-        router, router_with_engine, router_with_services,
+        AdminProxyContext, AffiliateCommissionSummary, AffiliateDashboardResponse,
+        AffiliateReferralListItem, ApiError, BookLevel, BookSnapshotResponse, LedgerEntry,
+        MatchingEngineClient, OrderActionResponse, PlaceOrderRequest, ReferralClient,
+        WalletBalance, WalletLedgerClient, router, router_with_engine, router_with_services,
     };
 
     #[tokio::test]
@@ -1870,11 +2074,84 @@ mod tests {
         assert_eq!(body[0]["status"], json!("pending"));
     }
 
+    #[tokio::test]
+    async fn affiliate_admin_crud_proxies_actor_context() {
+        let app = router_with_services(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            InMemoryReferralClient::default(),
+        );
+
+        let created = app
+            .clone()
+            .oneshot(admin_json_request(
+                "POST",
+                "/api/internal/admin/affiliates",
+                &json!({
+                    "id": "AFF-200",
+                    "displayName": "Orion Partners",
+                    "reason": "onboarding",
+                    "authorizationBasis": "SPEC-011"
+                }),
+            ))
+            .await
+            .expect("create should be handled");
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let body = response_json(created).await;
+        assert_eq!(body["affiliate"]["id"], "AFF-200");
+        assert_eq!(body["auditCorrelationId"], "audit:affiliate-create:admin-1");
+
+        let updated = app
+            .clone()
+            .oneshot(admin_json_request(
+                "PATCH",
+                "/api/internal/admin/affiliates/AFF-200",
+                &json!({
+                    "commissionRateBps": 700,
+                    "reason": "rate adjustment",
+                    "authorizationBasis": "SPEC-011"
+                }),
+            ))
+            .await
+            .expect("update should be handled");
+        assert_eq!(updated.status(), StatusCode::OK);
+        assert_eq!(response_json(updated).await["affiliate"]["id"], "AFF-200");
+
+        let archived = app
+            .oneshot(admin_json_request(
+                "DELETE",
+                "/api/internal/admin/affiliates/AFF-200",
+                &json!({
+                    "reason": "offboarding",
+                    "authorizationBasis": "termination notice"
+                }),
+            ))
+            .await
+            .expect("delete should be handled");
+        assert_eq!(archived.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(archived).await["affiliate"]["status"],
+            "archived"
+        );
+    }
+
     fn empty_get(uri: &str) -> Request<Body> {
         Request::builder()
             .method("GET")
             .uri(uri)
             .body(Body::empty())
+            .unwrap_or_else(|error| panic!("request should build: {error}"))
+    }
+
+    fn admin_json_request(method: &str, uri: &str, body: &Value) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("x-actor-id", "admin-1")
+            .header("x-operator-role", "admin")
+            .header("x-request-id", "req-1")
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
             .unwrap_or_else(|error| panic!("request should build: {error}"))
     }
 
@@ -2168,6 +2445,47 @@ mod tests {
             Ok(serde_json::json!({
                 "id": affiliate_id,
                 "displayName": "Crescent Partners"
+            }))
+        }
+
+        async fn create_admin_affiliate(
+            &self,
+            request: serde_json::Value,
+            context: AdminProxyContext,
+        ) -> Result<serde_json::Value, ApiError> {
+            Ok(serde_json::json!({
+                "affiliate": request,
+                "auditCorrelationId": format!("audit:affiliate-create:{}", context.actor_id)
+            }))
+        }
+
+        async fn update_admin_affiliate(
+            &self,
+            affiliate_id: &str,
+            request: serde_json::Value,
+            context: AdminProxyContext,
+        ) -> Result<serde_json::Value, ApiError> {
+            Ok(serde_json::json!({
+                "affiliate": {
+                    "id": affiliate_id,
+                    "patch": request
+                },
+                "auditCorrelationId": format!("audit:affiliate-update:{}", context.actor_id)
+            }))
+        }
+
+        async fn archive_admin_affiliate(
+            &self,
+            affiliate_id: &str,
+            _request: serde_json::Value,
+            context: AdminProxyContext,
+        ) -> Result<serde_json::Value, ApiError> {
+            Ok(serde_json::json!({
+                "affiliate": {
+                    "id": affiliate_id,
+                    "status": "archived"
+                },
+                "auditCorrelationId": format!("audit:affiliate-archive:{}", context.actor_id)
             }))
         }
 

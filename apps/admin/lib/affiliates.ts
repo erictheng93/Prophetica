@@ -1,4 +1,9 @@
-export type AffiliateStatus = "active" | "review" | "frozen" | "onboarding";
+export type AffiliateStatus =
+  | "active"
+  | "review"
+  | "frozen"
+  | "onboarding"
+  | "archived";
 export type AffiliateRiskFlag =
   | "self-referral"
   | "burst-signup"
@@ -83,6 +88,32 @@ export interface AffiliateDetail extends AffiliateSummary {
   rateHistory: AffiliateRateChange[];
   auditCorrelationIds: string[];
   creditProfile: AffiliateCreditProfile;
+}
+
+export interface AffiliateMutationPayload {
+  id?: string;
+  userId?: string;
+  displayName?: string;
+  emailMasked?: string;
+  status?: AffiliateStatus;
+  ownerSponsorId?: string;
+  commissionRateBps?: number;
+  tier?: 1 | 2 | 3;
+  creditRating?: AffiliateCreditRating;
+  creditStatus?: AffiliateCreditAccountStatus;
+  maxActiveCreditAccounts?: number;
+  totalCreditLimitMinorUnits?: number;
+  perAccountLimitMinorUnits?: number;
+  creditReviewExpiresAt?: string;
+  reason: string;
+  authorizationBasis: string;
+  effectiveAt?: string;
+  expiresAt?: string;
+}
+
+export interface AffiliateMutationResponse {
+  affiliate: AffiliateDetail;
+  auditCorrelationId: string;
 }
 
 const affiliates: readonly AffiliateDetail[] = [

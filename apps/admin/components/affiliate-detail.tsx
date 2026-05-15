@@ -11,6 +11,10 @@ import {
   type AffiliateRiskFlag,
 } from "@/lib/affiliates";
 import type { Role } from "@/lib/rbac";
+import {
+  AffiliateArchiveForm,
+  AffiliateUpdateForm,
+} from "./affiliate-admin-forms";
 import { AffiliateStatusPill } from "./affiliate-status-pill";
 import { StatusPill } from "./status-pill";
 
@@ -82,6 +86,8 @@ export function AffiliateDetailView({
       >
         ← {adminCopy.affiliateAdmin.detailBackToList}
       </Link>
+
+      <AffiliateUpdateForm affiliate={affiliate} role={viewerRole} />
 
       <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -341,40 +347,12 @@ export function AffiliateDetailView({
             {adminCopy.affiliateAdmin.actionsManagerNote}
           </p>
         )}
-        <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <ActionButton
-            label={
-              affiliate.status === "frozen"
-                ? adminCopy.affiliateAdmin.actionUnfreezeLabel
-                : adminCopy.affiliateAdmin.actionFreezeLabel
-            }
-            disabled
-            tone={affiliate.status === "frozen" ? "primary" : "warning"}
-          />
-          <ActionButton
-            label={adminCopy.affiliateAdmin.actionAdjustRateLabel}
-            disabled
-            tone="primary"
-          />
-          <ActionButton
-            label={adminCopy.affiliateAdmin.actionAdjustCreditLabel}
-            disabled
-            tone="primary"
-          />
-          <ActionButton
-            label={adminCopy.affiliateAdmin.actionRestrictCreditLabel}
-            disabled
-            tone="warning"
-          />
-          <ActionButton
-            label={adminCopy.affiliateAdmin.actionRequestAuditLabel}
-            disabled
-            tone="neutral"
-          />
-        </div>
         <p className="mt-4 text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-          {adminCopy.affiliateAdmin.actionDisabledTooltip}
+          {isAdmin
+            ? "寫入 referral-service，並保留操作留痕。"
+            : adminCopy.affiliateAdmin.actionDisabledTooltip}
         </p>
+        {isAdmin && <AffiliateArchiveForm affiliate={affiliate} />}
       </section>
     </div>
   );
@@ -404,34 +382,5 @@ function KeyValue({
         {value}
       </dd>
     </div>
-  );
-}
-
-function ActionButton({
-  label,
-  disabled,
-  tone,
-}: {
-  label: string;
-  disabled?: boolean;
-  tone: "primary" | "warning" | "neutral";
-}) {
-  const toneClass =
-    tone === "primary"
-      ? "bg-proph-primary text-proph-on-primary"
-      : tone === "warning"
-        ? "bg-proph-canvas-parchment text-proph-ink border border-proph-feedback-warning"
-        : "bg-proph-surface-pearl text-proph-ink border border-proph-hairline";
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      title={
-        disabled ? adminCopy.affiliateAdmin.actionDisabledTooltip : undefined
-      }
-      className={`inline-flex h-11 items-center justify-center rounded-proph-pill px-5 text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${toneClass}`}
-    >
-      {label}
-    </button>
   );
 }

@@ -1,10 +1,11 @@
-import "server-only";
 import { signInternalCall } from "./internal-call.js";
 import type { SessionPayload } from "./session-crypto.js";
 import {
   allowsAffiliateMockFallback,
   getAffiliateDetail,
   getAffiliatesSnapshot,
+  type AffiliateMutationPayload,
+  type AffiliateMutationResponse,
   type AffiliateDetail,
   type AffiliateSummary,
 } from "./affiliates.js";
@@ -34,6 +35,50 @@ export async function fetchAdminAffiliateDetail(
   return allowsAffiliateMockFallback()
     ? (getAffiliateDetail(affiliateId) ?? null)
     : null;
+}
+
+export async function createAdminAffiliate(
+  viewer: SessionPayload,
+  payload: AffiliateMutationPayload,
+): Promise<AffiliateMutationResponse | null> {
+  if (viewer.role !== "admin" && viewer.role !== "manager") return null;
+  const response = await proxyAffiliateGatewayRequest(viewer, {
+    method: "POST",
+    adminPath: "/api/internal/admin/affiliates",
+    body: JSON.stringify(payload),
+  });
+  if (!response?.ok) return null;
+  return (await response.json()) as AffiliateMutationResponse;
+}
+
+export async function updateAdminAffiliate(
+  viewer: SessionPayload,
+  affiliateId: string,
+  payload: AffiliateMutationPayload,
+): Promise<AffiliateMutationResponse | null> {
+  if (viewer.role !== "admin" && viewer.role !== "manager") return null;
+  const response = await proxyAffiliateGatewayRequest(viewer, {
+    method: "PATCH",
+    adminPath: `/api/internal/admin/affiliates/${encodeURIComponent(affiliateId)}`,
+    body: JSON.stringify(payload),
+  });
+  if (!response?.ok) return null;
+  return (await response.json()) as AffiliateMutationResponse;
+}
+
+export async function archiveAdminAffiliate(
+  viewer: SessionPayload,
+  affiliateId: string,
+  payload: Pick<AffiliateMutationPayload, "reason" | "authorizationBasis">,
+): Promise<AffiliateMutationResponse | null> {
+  if (viewer.role !== "admin" && viewer.role !== "manager") return null;
+  const response = await proxyAffiliateGatewayRequest(viewer, {
+    method: "DELETE",
+    adminPath: `/api/internal/admin/affiliates/${encodeURIComponent(affiliateId)}`,
+    body: JSON.stringify(payload),
+  });
+  if (!response?.ok) return null;
+  return (await response.json()) as AffiliateMutationResponse;
 }
 
 export async function fetchCommissionAdjustmentReviews(
