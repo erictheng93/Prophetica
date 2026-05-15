@@ -378,6 +378,10 @@ pub trait ReferralClient {
         &self,
         affiliate_id: &str,
     ) -> Result<serde_json::Value, ApiError>;
+
+    async fn list_commission_adjustment_reviews(&self) -> Result<serde_json::Value, ApiError>;
+
+    async fn list_affiliate_payout_reviews(&self) -> Result<serde_json::Value, ApiError>;
 }
 
 #[derive(Debug, Clone)]
@@ -774,6 +778,40 @@ impl ReferralClient for HttpReferralClient {
             .await
             .map_err(|error| ApiError::referral_service(error.to_string()))
     }
+
+    async fn list_commission_adjustment_reviews(&self) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join("/internal/admin/affiliate-commission-adjustments")
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
+
+    async fn list_affiliate_payout_reviews(&self) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join("/internal/admin/affiliate-payouts")
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
 }
 
 async fn decode_engine_response<T>(response: reqwest::Response) -> Result<T, ApiError>
@@ -957,6 +995,14 @@ where
         .route(
             "/api/internal/admin/affiliates/:affiliate_id",
             get(get_admin_affiliate_detail::<W, E, R>),
+        )
+        .route(
+            "/api/internal/admin/affiliate-commission-adjustments",
+            get(list_commission_adjustment_reviews::<W, E, R>),
+        )
+        .route(
+            "/api/internal/admin/affiliate-payouts",
+            get(list_affiliate_payout_reviews::<W, E, R>),
         )
         .with_state(Arc::new(AppStateWithServices::new(
             wallet_ledger,
@@ -1326,6 +1372,30 @@ where
         .get_admin_affiliate_detail(&affiliate_id)
         .await?;
     Ok(Json(affiliate))
+}
+
+async fn list_commission_adjustment_reviews<W, E, R>(
+    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+) -> Result<Json<serde_json::Value>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+{
+    let reviews = state.referral.list_commission_adjustment_reviews().await?;
+    Ok(Json(reviews))
+}
+
+async fn list_affiliate_payout_reviews<W, E, R>(
+    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+) -> Result<Json<serde_json::Value>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+{
+    let reviews = state.referral.list_affiliate_payout_reviews().await?;
+    Ok(Json(reviews))
 }
 
 /// Runs the API gateway HTTP server.
@@ -1770,6 +1840,36 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn affiliate_admin_review_queues_proxy_referral_service() {
+        let app = router_with_services(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            InMemoryReferralClient::default(),
+        );
+
+        let commission_reviews = app
+            .clone()
+            .oneshot(empty_get(
+                "/api/internal/admin/affiliate-commission-adjustments",
+            ))
+            .await
+            .expect("request should be handled");
+        assert_eq!(commission_reviews.status(), StatusCode::OK);
+        let body = response_json(commission_reviews).await;
+        assert_eq!(body[0]["id"], json!("COM-2026-0514-001"));
+        assert_eq!(body[0]["affiliateId"], json!("AFF-001"));
+
+        let payout_reviews = app
+            .oneshot(empty_get("/api/internal/admin/affiliate-payouts"))
+            .await
+            .expect("request should be handled");
+        assert_eq!(payout_reviews.status(), StatusCode::OK);
+        let body = response_json(payout_reviews).await;
+        assert_eq!(body[0]["id"], json!("PAY-2026-0514-001"));
+        assert_eq!(body[0]["status"], json!("pending"));
+    }
+
     fn empty_get(uri: &str) -> Request<Body> {
         Request::builder()
             .method("GET")
@@ -2069,6 +2169,31 @@ mod tests {
                 "id": affiliate_id,
                 "displayName": "Crescent Partners"
             }))
+        }
+
+        async fn list_commission_adjustment_reviews(&self) -> Result<serde_json::Value, ApiError> {
+            Ok(serde_json::json!([{
+                "id": "COM-2026-0514-001",
+                "affiliateId": "AFF-001",
+                "adjustmentType": "credit",
+                "amountMinor": 42000,
+                "currency": "USDT",
+                "reason": "活動轉換補發",
+                "status": "pending",
+                "requestedBy": "admin_ops",
+                "requestedAt": "2026-05-14 09:20"
+            }]))
+        }
+
+        async fn list_affiliate_payout_reviews(&self) -> Result<serde_json::Value, ApiError> {
+            Ok(serde_json::json!([{
+                "id": "PAY-2026-0514-001",
+                "affiliateId": "AFF-001",
+                "amountMinor": 128_400,
+                "currency": "USDT",
+                "requestedAt": "2026-05-14 10:05",
+                "status": "pending"
+            }]))
         }
     }
 

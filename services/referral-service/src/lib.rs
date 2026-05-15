@@ -277,6 +277,31 @@ pub struct AffiliatePayoutRow {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AffiliateCommissionAdjustmentReview {
+    pub id: String,
+    pub affiliate_id: String,
+    pub adjustment_type: String,
+    pub amount_minor: i64,
+    pub currency: String,
+    pub reason: String,
+    pub status: String,
+    pub requested_by: String,
+    pub requested_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliatePayoutReview {
+    pub id: String,
+    pub affiliate_id: String,
+    pub amount_minor: i64,
+    pub currency: String,
+    pub requested_at: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AffiliateRateChange {
     pub effective_at: String,
     pub previous_bps: i32,
@@ -364,6 +389,12 @@ pub trait AffiliateDashboardStore {
         &self,
         affiliate_id: &str,
     ) -> Result<AffiliateDetail, ReferralStoreError>;
+
+    async fn list_commission_adjustment_reviews(
+        &self,
+    ) -> Result<Vec<AffiliateCommissionAdjustmentReview>, ReferralStoreError>;
+
+    async fn list_payout_reviews(&self) -> Result<Vec<AffiliatePayoutReview>, ReferralStoreError>;
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -379,6 +410,8 @@ pub struct InMemoryAffiliateDashboardStore {
     referral_codes_by_user: HashMap<String, String>,
     referrals_by_referrer: HashMap<String, Vec<AffiliateReferralListItem>>,
     summaries_by_referrer: HashMap<String, AffiliateCommissionSummary>,
+    commission_adjustment_reviews: Vec<AffiliateCommissionAdjustmentReview>,
+    payout_reviews: Vec<AffiliatePayoutReview>,
 }
 
 impl InMemoryAffiliateDashboardStore {
@@ -392,7 +425,20 @@ impl InMemoryAffiliateDashboardStore {
             referral_codes_by_user,
             referrals_by_referrer,
             summaries_by_referrer,
+            commission_adjustment_reviews: Vec::new(),
+            payout_reviews: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_admin_review_queues(
+        mut self,
+        commission_adjustment_reviews: Vec<AffiliateCommissionAdjustmentReview>,
+        payout_reviews: Vec<AffiliatePayoutReview>,
+    ) -> Self {
+        self.commission_adjustment_reviews = commission_adjustment_reviews;
+        self.payout_reviews = payout_reviews;
+        self
     }
 }
 
@@ -448,6 +494,16 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
     ) -> Result<AffiliateDetail, ReferralStoreError> {
         Err(ReferralStoreError::NotFound)
     }
+
+    async fn list_commission_adjustment_reviews(
+        &self,
+    ) -> Result<Vec<AffiliateCommissionAdjustmentReview>, ReferralStoreError> {
+        Ok(self.commission_adjustment_reviews.clone())
+    }
+
+    async fn list_payout_reviews(&self) -> Result<Vec<AffiliatePayoutReview>, ReferralStoreError> {
+        Ok(self.payout_reviews.clone())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -487,6 +543,14 @@ where
         .route(
             "/internal/admin/affiliates/:affiliate_id",
             get(get_admin_affiliate_detail::<S>),
+        )
+        .route(
+            "/internal/admin/affiliate-commission-adjustments",
+            get(list_commission_adjustment_reviews::<S>),
+        )
+        .route(
+            "/internal/admin/affiliate-payouts",
+            get(list_payout_reviews::<S>),
         )
         .with_state(state)
 }
@@ -577,6 +641,32 @@ where
         .await
         .map_err(|error| api_error(&error))?;
     Ok(Json(affiliate))
+}
+
+async fn list_commission_adjustment_reviews<S>(
+    State(store): State<Arc<S>>,
+) -> Result<Json<Vec<AffiliateCommissionAdjustmentReview>>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let reviews = store
+        .list_commission_adjustment_reviews()
+        .await
+        .map_err(|error| api_error(&error))?;
+    Ok(Json(reviews))
+}
+
+async fn list_payout_reviews<S>(
+    State(store): State<Arc<S>>,
+) -> Result<Json<Vec<AffiliatePayoutReview>>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let reviews = store
+        .list_payout_reviews()
+        .await
+        .map_err(|error| api_error(&error))?;
+    Ok(Json(reviews))
 }
 
 fn api_error(error: &ReferralStoreError) -> (StatusCode, Json<ApiErrorResponse>) {
@@ -728,6 +818,46 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
             credit_profile,
         })
     }
+
+    async fn list_commission_adjustment_reviews(
+        &self,
+    ) -> Result<Vec<AffiliateCommissionAdjustmentReview>, ReferralStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT adjustment_id, affiliate_id, adjustment_type, amount_minor, currency,
+                   reason, status, requested_by,
+                   to_char(requested_at, 'YYYY-MM-DD HH24:MI') AS requested_at
+            FROM affiliate_commission_adjustment_reviews
+            WHERE status IN ('pending', 'reviewing')
+            ORDER BY requested_at ASC
+            LIMIT 200
+            ",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+
+        rows.iter().map(commission_adjustment_from_row).collect()
+    }
+
+    async fn list_payout_reviews(&self) -> Result<Vec<AffiliatePayoutReview>, ReferralStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT payout_id, affiliate_id, amount_minor, currency,
+                   to_char(created_at, 'YYYY-MM-DD HH24:MI') AS requested_at,
+                   status
+            FROM affiliate_payouts
+            WHERE status IN ('pending', 'blocked')
+            ORDER BY created_at ASC
+            LIMIT 200
+            ",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+
+        rows.iter().map(payout_review_from_row).collect()
+    }
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -782,6 +912,35 @@ fn affiliate_summary_from_row(
         pending_payout_currency: row.try_get("pending_payout_currency").map_err(sqlx_error)?,
         last_activity_at: row.try_get("last_activity_at").map_err(sqlx_error)?,
         risk_flags: row.try_get("risk_flags").map_err(sqlx_error)?,
+    })
+}
+
+fn commission_adjustment_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<AffiliateCommissionAdjustmentReview, ReferralStoreError> {
+    Ok(AffiliateCommissionAdjustmentReview {
+        id: row.try_get("adjustment_id").map_err(sqlx_error)?,
+        affiliate_id: row.try_get("affiliate_id").map_err(sqlx_error)?,
+        adjustment_type: row.try_get("adjustment_type").map_err(sqlx_error)?,
+        amount_minor: row.try_get("amount_minor").map_err(sqlx_error)?,
+        currency: row.try_get("currency").map_err(sqlx_error)?,
+        reason: row.try_get("reason").map_err(sqlx_error)?,
+        status: row.try_get("status").map_err(sqlx_error)?,
+        requested_by: row.try_get("requested_by").map_err(sqlx_error)?,
+        requested_at: row.try_get("requested_at").map_err(sqlx_error)?,
+    })
+}
+
+fn payout_review_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<AffiliatePayoutReview, ReferralStoreError> {
+    Ok(AffiliatePayoutReview {
+        id: row.try_get("payout_id").map_err(sqlx_error)?,
+        affiliate_id: row.try_get("affiliate_id").map_err(sqlx_error)?,
+        amount_minor: row.try_get("amount_minor").map_err(sqlx_error)?,
+        currency: row.try_get("currency").map_err(sqlx_error)?,
+        requested_at: row.try_get("requested_at").map_err(sqlx_error)?,
+        status: row.try_get("status").map_err(sqlx_error)?,
     })
 }
 
@@ -1506,10 +1665,10 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        AffiliateCommissionEngine, AffiliateCommissionSummary, AffiliateKinshipSignals,
-        AffiliateReferralListItem, AntiAbuseFlags, CommissionEvent,
-        InMemoryAffiliateDashboardStore, QualificationEvent, ReferralError, ReferralRecord,
-        ReferralStatus, router,
+        AffiliateCommissionAdjustmentReview, AffiliateCommissionEngine, AffiliateCommissionSummary,
+        AffiliateKinshipSignals, AffiliatePayoutReview, AffiliateReferralListItem, AntiAbuseFlags,
+        CommissionEvent, InMemoryAffiliateDashboardStore, QualificationEvent, ReferralError,
+        ReferralRecord, ReferralStatus, router,
     };
     use axum::{
         body::Body,
@@ -1606,6 +1765,45 @@ mod tests {
             response_json(summary).await["trade_commission_minor_units"],
             json!(22_000)
         );
+    }
+
+    #[tokio::test]
+    async fn admin_review_queues_return_commission_adjustments_and_payouts() {
+        let app = router(sample_dashboard_store());
+
+        let commission_reviews = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/internal/admin/affiliate-commission-adjustments")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(commission_reviews.status(), StatusCode::OK);
+        let body = response_json(commission_reviews).await;
+        assert_eq!(body.as_array().map(Vec::len), Some(1));
+        assert_eq!(body[0]["id"], json!("COM-2026-0514-001"));
+        assert_eq!(body[0]["affiliateId"], json!("AFF-001"));
+        assert_eq!(body[0]["adjustmentType"], json!("credit"));
+
+        let payout_reviews = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/internal/admin/affiliate-payouts")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(payout_reviews.status(), StatusCode::OK);
+        let body = response_json(payout_reviews).await;
+        assert_eq!(body.as_array().map(Vec::len), Some(1));
+        assert_eq!(body[0]["id"], json!("PAY-2026-0514-001"));
+        assert_eq!(body[0]["status"], json!("pending"));
     }
 
     #[test]
@@ -1939,6 +2137,27 @@ mod tests {
                     last_12m_commission_minor_units: 42_000,
                 },
             )]),
+        )
+        .with_admin_review_queues(
+            vec![AffiliateCommissionAdjustmentReview {
+                id: "COM-2026-0514-001".to_owned(),
+                affiliate_id: "AFF-001".to_owned(),
+                adjustment_type: "credit".to_owned(),
+                amount_minor: 42_000,
+                currency: "USDT".to_owned(),
+                reason: "活動轉換補發".to_owned(),
+                status: "pending".to_owned(),
+                requested_by: "admin_ops".to_owned(),
+                requested_at: "2026-05-14 09:20".to_owned(),
+            }],
+            vec![AffiliatePayoutReview {
+                id: "PAY-2026-0514-001".to_owned(),
+                affiliate_id: "AFF-001".to_owned(),
+                amount_minor: 128_400,
+                currency: "USDT".to_owned(),
+                requested_at: "2026-05-14 10:05".to_owned(),
+                status: "pending".to_owned(),
+            }],
         )
     }
 

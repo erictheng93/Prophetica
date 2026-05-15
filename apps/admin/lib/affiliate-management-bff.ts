@@ -36,6 +36,30 @@ export async function fetchAdminAffiliateDetail(
     : null;
 }
 
+export async function fetchCommissionAdjustmentReviews(
+  viewer: SessionPayload,
+): Promise<AffiliateCommissionAdjustmentReview[]> {
+  if (viewer.role !== "admin" && viewer.role !== "manager") return [];
+  const response = await proxyAffiliateGatewayRequest(viewer, {
+    method: "GET",
+    adminPath: "/api/internal/admin/affiliate-commission-adjustments",
+  });
+  if (!response?.ok) return [];
+  return (await response.json()) as AffiliateCommissionAdjustmentReview[];
+}
+
+export async function fetchAffiliatePayoutReviews(
+  viewer: SessionPayload,
+): Promise<AffiliatePayoutReview[]> {
+  if (viewer.role !== "admin" && viewer.role !== "manager") return [];
+  const response = await proxyAffiliateGatewayRequest(viewer, {
+    method: "GET",
+    adminPath: "/api/internal/admin/affiliate-payouts",
+  });
+  if (!response?.ok) return [];
+  return (await response.json()) as AffiliatePayoutReview[];
+}
+
 export async function fetchAffiliateDashboard(
   viewer: SessionPayload,
 ): Promise<AffiliatePortalDashboard | null> {
@@ -110,4 +134,25 @@ export interface AffiliatePortalDashboard {
     status: string;
     cumulative_commission_minor_units: number;
   }>;
+}
+
+export interface AffiliateCommissionAdjustmentReview {
+  id: string;
+  affiliateId: string;
+  adjustmentType: "credit" | "debit" | string;
+  amountMinor: number;
+  currency: "USDT";
+  reason: string;
+  status: string;
+  requestedBy: string;
+  requestedAt: string;
+}
+
+export interface AffiliatePayoutReview {
+  id: string;
+  affiliateId: string;
+  amountMinor: number;
+  currency: "USDT";
+  requestedAt: string;
+  status: string;
 }
