@@ -11,7 +11,12 @@ async fn main() -> anyhow::Result<()> {
     let secrets = kyc_service::SecretConfig::from_env(&prophetica_env)?;
     tracing::info!(?config, "kyc service config loaded");
 
-    if store_mode(env::var("KYC_STORE").ok().as_deref()) == "postgres" {
+    let mode = store_mode(env::var("KYC_STORE").ok().as_deref());
+    if prophetica_env.eq_ignore_ascii_case("production") && mode != "postgres" {
+        anyhow::bail!("KYC_STORE=postgres is required when PROPHETICA_ENV=production");
+    }
+
+    if mode == "postgres" {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| anyhow::anyhow!("DATABASE_URL is required when KYC_STORE=postgres"))?;
         let pool = sqlx::PgPool::connect(&database_url).await?;
@@ -72,5 +77,11 @@ mod tests {
     #[test]
     fn store_mode_accepts_postgres() {
         assert_eq!(store_mode(Some("postgres")), "postgres");
+    }
+
+    #[test]
+    fn store_mode_rejects_non_postgres_values() {
+        assert_eq!(store_mode(Some("memory")), "memory");
+        assert_eq!(store_mode(Some("postgres ")), "memory");
     }
 }
