@@ -1,4 +1,5 @@
 use sdk::{config::ServiceConfig, service_stub};
+use std::env;
 use tokio::{net::TcpListener, signal};
 
 #[tokio::main(flavor = "multi_thread")]
@@ -22,9 +23,7 @@ async fn run_stub_http(service_name: &'static str, default_port: u16) -> anyhow:
     tracing::info!(service.name = service_name, addr = %config.bind_addr, "core-api member service listening");
 
     let app = if service_name == user_service::SERVICE_NAME {
-        service_stub::router(&config)
-            .merge(user_service::auth::auth_router())
-            .merge(user_service::internal_contacts::internal_contacts_router())
+        build_user_service_router(&config).await?
     } else {
         service_stub::router(&config)
     };
@@ -34,6 +33,40 @@ async fn run_stub_http(service_name: &'static str, default_port: u16) -> anyhow:
         .await?;
 
     Ok(())
+}
+
+async fn build_user_service_router(config: &ServiceConfig) -> anyhow::Result<axum::Router> {
+    if store_mode(env::var("USER_SERVICE_STORE").ok().as_deref()) == "postgres" {
+        let database_url = env::var("USER_SERVICE_DATABASE_URL")
+            .or_else(|_| env::var("DATABASE_URL"))
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "USER_SERVICE_DATABASE_URL or DATABASE_URL is required when USER_SERVICE_STORE=postgres"
+                )
+            })?;
+        let pool = sqlx::PgPool::connect(&database_url).await?;
+        sqlx::migrate!("../../user-service/migrations")
+            .run(&pool)
+            .await?;
+        Ok(service_stub::router(config)
+            .merge(user_service::auth::auth_router())
+            .merge(user_service::members::internal_members_router(
+                user_service::members::PostgresMemberStore::new(pool),
+            )))
+    } else {
+        Ok(service_stub::router(config)
+            .merge(user_service::auth::auth_router())
+            .merge(user_service::members::internal_members_router(
+                user_service::members::InMemoryMemberStore::default(),
+            )))
+    }
+}
+
+fn store_mode(value: Option<&str>) -> &'static str {
+    match value {
+        Some("postgres") => "postgres",
+        _ => "memory",
+    }
 }
 
 async fn run_referral_http() -> anyhow::Result<()> {

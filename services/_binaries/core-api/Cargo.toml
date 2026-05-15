@@ -14,6 +14,7 @@ market-service = { path = "../../market-service" }
 position-service = { path = "../../position-service" }
 referral-service = { path = "../../referral-service" }
 sdk = { path = "../../../crates/sdk" }
+sqlx.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 user-service = { path = "../../user-service" }
