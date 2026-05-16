@@ -1,6 +1,13 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { signSession, verifySession as verifySessionPure, type SessionPayload } from "./session-crypto";
+import {
+  resolveSessionJwks,
+  resolveSessionSecret,
+  signSession,
+  verifyEd25519JwsSession,
+  verifySession as verifySessionPure,
+  type SessionPayload,
+} from "./session-crypto";
 
 /*
  * SPEC-017 §6.3 amendment — Phase 2 mock session.
@@ -19,15 +26,17 @@ import { signSession, verifySession as verifySessionPure, type SessionPayload } 
  */
 
 export const SESSION_COOKIE_NAME = "proph_admin_session";
-const DEV_SECRET = "dev-only-admin-session-secret-do-not-use-in-prod";
 
 export type { SessionPayload } from "./session-crypto";
 
 function getSecret(): string {
-  return process.env.ADMIN_SESSION_SECRET ?? DEV_SECRET;
+  return resolveSessionSecret();
 }
 
 export async function verifySession(token: string): Promise<SessionPayload | null> {
+  if (token.split(".").length === 3) {
+    return verifyEd25519JwsSession(token, resolveSessionJwks());
+  }
   return verifySessionPure(token, getSecret());
 }
 

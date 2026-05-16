@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createServer, type ServerResponse } from "node:http";
+import { ADMIN_ORIGIN } from "../admin-env.js";
 import { signSession } from "../../lib/session-crypto.js";
 
 const SESSION_COOKIE_NAME = "proph_admin_session";
@@ -78,7 +79,7 @@ test("admin can submit and approve a member restriction action", async ({
         },
         DEV_SECRET,
       ),
-      url: "http://localhost:3002",
+      url: ADMIN_ORIGIN,
       httpOnly: true,
       sameSite: "Strict",
     },
@@ -104,10 +105,10 @@ test("admin can submit and approve a member restriction action", async ({
     await expect(page).toHaveTitle(/Prophetica Admin/);
     await expect(
       page.getByRole("heading", { name: "會員待處理 API" }),
-    ).toBeVisible();
+    ).toBeHidden();
     await expect(
       page.getByRole("heading", { name: "會員工單審批" }),
-    ).toBeVisible();
+    ).toBeHidden();
     await expect(
       page.getByRole("heading", { name: "提交處理動作" }),
     ).toBeVisible();
@@ -121,6 +122,8 @@ test("admin can submit and approve a member restriction action", async ({
     await actionPanel.getByRole("button", { name: "提交動作" }).click();
 
     await expect(page.getByText(/已提交 mem-act-000001/)).toBeVisible();
+
+    await page.goto("/approvals");
     await expect(
       page.getByText(/提交提款限制 \/ MEM-1042 \/ OPS-PW-1042/),
     ).toBeVisible();

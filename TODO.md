@@ -1,6 +1,6 @@
 # TODO
 
-Last updated: 2026-05-12
+Last updated: 2026-05-16
 
 ## MVP Phase 2: Local Infra And Observability Stack
 
@@ -87,20 +87,46 @@ Tracked here because Phase 2 (2026-05-10) ships only a mock auth surface
 inside `apps/admin/`. None of the items below can ride to production as-is.
 
 - Stand up real auth endpoints in `services/user-service` (`/v1/auth/login`,
-  `/v1/auth/logout`, `/v1/auth/me`); deprecate `apps/admin/app/api/auth/*`
-  mock and `apps/admin/lib/mock-users.ts`.
+  `/v1/auth/logout`, `/v1/auth/me`) is implemented for the local provider;
+  remaining work is deprecating `apps/admin/app/api/auth/*` mock and
+  `apps/admin/lib/mock-users.ts` once admin sessions move to the real provider.
 - Sign sessions with Ed25519 (private key in Vault per SPEC-010 §3.3); admin
   middleware verifies via JWKS endpoint instead of HMAC. Update
   `apps/admin/lib/session.ts` accordingly.
-- Hash affiliate passwords with Argon2id (memory ≥ 19 MiB, t=2, p=1 minimum).
+- Migrate affiliate passwords to Argon2id PHC hashes. Runtime verification with
+  minimum `m >= 19456, t >= 2, p >= 1` is implemented in `user-service`;
+  remaining work is credential migration / secret management.
 - Add hardware MFA across all roles per SPEC-010 §9.3.3 (TOTP + WebAuthn).
-  Session JWT must carry `mfa_at` claim; high-sensitivity actions (MS-3 /
-  MS-9 / MS-12) require `mfa_at` within the last 30 minutes.
+  `user-service` local auth can now fail closed for admin / manager /
+  affiliate accounts unless `USER_SERVICE_REQUIRE_HARDWARE_MFA=true` accounts
+  include hardware MFA evidence (`webauthn` / passkey / FIDO2 security-key
+  method plus `mfa_at_epoch_seconds`), and Ed25519 session JWTs carry `mfa_at`
+  plus `amr=["pwd","hwk"]`. Admin middleware now enforces 30-minute hardware
+  MFA step-up for mutating high-sensitivity paths using those claims.
+  `user-service` local auth now also supports TOTP step-up for accounts with
+  `totp_secret_base32`: login fails with `ERROR_CODE_MFA_REQUIRED` until a
+  valid TOTP code or configured recovery code is supplied, then signs a fresh
+  `mfa_at` claim with `amr=["pwd","otp"]` or recovery evidence. Recovery codes
+  are consumed once per `user-service` process so repeated use is rejected, and
+  can be persisted across process restarts through
+  `USER_SERVICE_RECOVERY_CODE_CONSUMED_PATH`.
+  Durable WebAuthn credential and challenge-state tables are defined in
+  `services/user-service/migrations/202605160003_create_webauthn_tables.sql`.
+  `services/user-service/src/webauthn_store.rs` defines the store trait and
+  in-memory lifecycle implementation for one-time challenge consumption and
+  credential revocation.
+  Remaining work is implementing real WebAuthn / passkey registration and
+  assertion endpoints against those tables, plus recovery-code rotation.
 - Configure Cloudflare Access with bypass policies for `/login` and
   `/me/affiliate/*` so external affiliates can reach the app surface, while
   `/`, `/dashboard`, and the six internal domain routes still require SSO.
+  Application-side path policy is implemented in admin middleware. Cloudflare
+  Zero Trust Terraform for the account-side policy now exists under
+  `infra/cloudflare/zero-trust`; remaining work is applying it in the target
+  account and capturing plan / apply evidence.
 - Replace `ADMIN_SESSION_SECRET` dev fallback in `lib/session.ts` with
-  fail-closed behavior (no default secret in production).
+  fail-closed behavior (no default secret in production) is implemented; local
+  development still gets an explicit dev-only fallback.
 - Remove the dev-credential hint block from `app/login/page.tsx` once real
   user-service is in place.
 
@@ -127,3 +153,142 @@ production deploy or backend coordination.
   placeholder "P" glyph against Action Blue. Brand will supply a final
   mark; swap into the same ImageResponse generators (or precomputed
   PNGs) without changing the manifest URLs.
+
+### LG-9: Affiliate / referral production readiness
+
+Current state as of 2026-05-16: SPEC-011 data models, referral-service
+migrations, admin affiliate CRUD, affiliate portal pages, RBAC, and frontend
+API clients exist. The remaining work below is ordered by production risk and
+dependency. Strict P0 completion evidence is tracked in
+`docs/affiliate-p0-completion-audit.md` and
+`docs/affiliate-p0-evidence-manifest.json`; the remaining WebAuthn / passkey
+contract is specified in `docs/webauthn-passkey-p0-contract.md`. Formal
+completion must pass `tools/scripts/check-affiliate-p0-complete.mjs`, which
+fails closed while blocking items remain.
+
+- P0: Fail closed for affiliate mock data in production. `apps/admin` must not
+  return static affiliate snapshots when `PROPHETICA_ENV=production`, even if
+  `AFFILIATE_ADMIN_ALLOW_MOCK_FALLBACK=true` is misconfigured.
+- P0: Complete production auth prerequisites that block external affiliates:
+  Argon2id PHC hash verification with minimum parameters
+  (`m >= 19456, t >= 2, p >= 1`) has landed in `user-service` local auth for
+  affiliate-capable accounts, and `/v1/auth/login`, `/v1/auth/me`,
+  `/v1/auth/logout` are available in `user-service`. App-side Ed25519 compact
+  JWS verification with configured JWKS / public JWK support has landed in
+  `apps/admin` while preserving local HMAC session compatibility. User-service
+  Ed25519 compact JWS issuance and JWKS publishing have landed behind
+  `USER_SERVICE_ED25519_SESSION_PRIVATE_JWK`, with local dev token fallback
+  preserved when no signer is configured. Strict credential policy
+  (`USER_SERVICE_REQUIRE_ARGON2ID_CREDENTIALS=true`) rejects plaintext
+  admin/manager/affiliate local-login credentials so configured affiliate
+  accounts must be Argon2id PHC hashes. Strict hardware MFA policy
+  (`USER_SERVICE_REQUIRE_HARDWARE_MFA=true`) rejects admin / manager /
+  affiliate local-login accounts without WebAuthn / passkey / FIDO2 security-key
+  evidence, and user-service session JWTs now emit `mfa_at` / `amr` claims.
+  Admin middleware enforces 30-minute hardware MFA step-up on mutating
+  high-sensitivity paths. TOTP step-up for configured local accounts is
+  implemented in `user-service`, including `ERROR_CODE_MFA_REQUIRED`, valid
+  TOTP verification, one-time recovery-code fallback, and fresh `mfa_at`
+  issuance. Consumed recovery codes can be persisted with
+  `USER_SERVICE_RECOVERY_CODE_CONSUMED_PATH` so reuse is rejected after service
+  restart. `apps/web` auth client forwards optional `mfa_code` /
+  `mfa_recovery_code` evidence to `user-service` so the frontend contract can
+  complete TOTP step-up; the sign-in page now exposes optional verification-code
+  and recovery-code fields with localized copy. `apps/admin` login form and
+  login API route also collect and forward optional MFA evidence to
+  `user-service` for admin / manager / affiliate sessions.
+  Cloudflare Zero Trust Terraform for the required `/login` and
+  `/me/affiliate*` bypass policies plus internal SSO / hardware-MFA policy is
+  available under `infra/cloudflare/zero-trust`, with a local structural
+  verifier in `tools/scripts/validate-cloudflare-admin-access.mjs` and an
+  evidence recorder in
+  `tools/scripts/record-cloudflare-admin-access-evidence.mjs`. Remaining work:
+  implement the real WebAuthn / passkey registration and assertion endpoints,
+  rotate recovery codes operationally, apply Cloudflare policy in the target
+  account, and capture real plan / apply evidence.
+- P0: Wire first-touch referral capture into all registration surfaces. Phase A
+  landed the referral-service capture API (`POST /internal/referrals/capture`)
+  with first-touch idempotency, self-referral rejection, and Postgres
+  `referred_id` conflict handling. Phase B landed api-gateway internal proxy
+  (`POST /api/internal/referrals/capture`) and admin/affiliate member creation
+  wiring so attributed member registration captures the first-touch referral.
+  Phase C landed persisted registration audit evidence for attributed
+  admin/affiliate member creation: `apps/admin` forwards
+  `registration_audit` metadata and `user-service` stores it in
+  `user_members.registration_audit`. Phase D landed public web first-touch
+  referral attribution capture: `apps/web` stores valid `referral_code`, `ref`,
+  or `affiliate_code` query values in a 30-day `proph_referral_code` cookie
+  without overwriting an existing cookie. Remaining work: when the public signup
+  form replaces the current closed-beta gate, submit the cookie value with the
+  registration request and call the existing referral capture path.
+- P0: Complete the 30-day qualification evaluator. Phase A landed the
+  referral-service evaluator API
+  (`POST /internal/referrals/qualification-evaluate`) for single-referral
+  matured evaluation, KYC / deposit / trade-count / anti-abuse enforcement,
+  Postgres status persistence, bonus amount calculation, and monthly/lifetime
+  signup cap enforcement that sends over-cap referrals to `pending_eddreview`.
+  Phase B landed batch selection for matured `pending` rows
+  (`GET /internal/referrals/qualification-due`). Phase C landed signup bonus
+  ledger finalization
+  (`POST /internal/referrals/signup-bonus-finalize`) so the worker can
+  idempotently record the successful ledger transaction id after posting. Phase
+  D landed a wallet-ledger compatible signup bonus draft endpoint
+  (`GET /internal/referrals/signup-bonus-ledger-draft/:referred_id`) with a
+  stable idempotency key and balanced referrer / referred bonus entries. Phase
+  E landed a trait-based daily worker orchestration path that selects due
+  referrals, asks an injected qualification input provider for fresh KYC /
+  deposit / trade inputs, evaluates the referral, posts the signup bonus via an
+  injected ledger poster, and finalizes the returned ledger transaction id.
+  Phase F landed the production wallet-ledger-service HTTP poster for
+  `/internal/ledger/transactions`, including `idempotency-key` forwarding and
+  returned transaction id parsing.
+  Phase G landed `referral-worker` daily-qualification mode plus cron scheduling
+  support; it pulls per-referral `QualificationEvent` data from
+  `REFERRAL_QUALIFICATION_INPUT_BASE_URL` or directly composes inputs from
+  `KYC_SERVICE_DATABASE_URL` and `WALLET_LEDGER_DATABASE_URL`, evaluates due
+  referrals, posts signup bonus ledger transactions, and finalizes returned
+  transaction ids. Phase H added Postgres-backed anti-abuse signals from KYC /
+  AML data for same KYC identity, chargeback / void flags, abnormal referrer
+  AML activity, same-IP flags, and same-device flags. The production KYC /
+  deposit / trade-count and AML input paths are implemented.
+- P0: Complete the trade commission accrual and payout pipeline. Phase A landed
+  referral-service single-trade accrual API
+  (`POST /internal/referrals/commission-accruals`) with qualified-referral
+  enforcement, anti-abuse checks, 12-month commission window, 10% fee
+  calculation, and `trade_id` idempotency / Postgres persistence. Phase I
+  landed `referral-worker` trade-accrual mode plus cron scheduling; it consumes
+  wallet-ledger `trade` / `settle` transactions for qualified referrals and
+  writes idempotent commission accruals with `trade_id=ledger:{txn_id}`.
+  Phase H landed the `referral-worker` binary plus
+  `infra/cron/referral-workers.cron` for scheduled daily commission payout
+  execution against Postgres referral data and wallet-ledger-service. Phase G landed the due payout selector
+  (`GET /internal/referrals/commission-accruals-payout-due`) so the daily
+  worker can enumerate referrers with unpaid accruals before posting payouts.
+  Phase F landed trait-based daily payout worker
+  orchestration that builds the payout draft, posts it through the same
+  wallet-ledger-service HTTP poster, and marks accruals paid with the returned
+  transaction id. Phase E landed a wallet-ledger compatible
+  commission payout draft endpoint
+  (`GET /internal/referrals/commission-accruals-payout-ledger-draft/:referrer_id`)
+  with a stable daily idempotency key, unpaid accrual aggregation, and balanced
+  payout entries. Phase D landed persisted `referrer_group_id` storage plus group monthly trade
+  commission cap enforcement in the accrual path. Phase C landed referrer
+  monthly trade commission cap enforcement before persistence. Phase B landed
+  mark-paid payout finalization
+  (`POST /internal/referrals/commission-accruals-payout`) that aggregates unpaid
+  accruals by referrer, requires a successful ledger transaction id from the
+  caller, marks rows paid, and is idempotent by `paid_out_txn_id`.
+- P1: Add admin approve / reject actions for affiliate commission adjustment
+  reviews and payout reviews. Current pages list queues but do not finalize
+  review decisions.
+- P1: Replace or strictly gate remaining affiliate demo/fallback surfaces.
+  Staging and production should make upstream unavailability explicit instead
+  of silently presenting static affiliate data.
+- P1: Align affiliate portal language with the single-level referral model.
+  Avoid product-facing "sub-tree" wording unless the page is explicitly an
+  internal B2B operational view and cannot imply MLM-style depth.
+- P1: Add end-to-end affiliate flow coverage: affiliate login, referred member
+  creation, qualification, commission accrual, payout review, and dashboard
+  display.
+- P2: Add operational evidence capture for affiliate audit logs, rate changes,
+  credit rating changes, credit account limits, and payout decisions.

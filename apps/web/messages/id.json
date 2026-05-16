@@ -594,6 +594,14 @@
   "auth": {
     "signIn": {
       "signin": {
+        "mfa": {
+          "legend": "Verifikasi dua langkah jika diperlukan",
+          "hint": "Jika akun Anda memerlukan verifikasi dua langkah, masukkan kode 6 digit atau gunakan kode pemulihan sekali pakai.",
+          "codeLabel": "Kode verifikasi",
+          "codePlaceholder": "123456",
+          "recoveryLabel": "Kode pemulihan",
+          "recoveryPlaceholder": "Contoh recover-once-1"
+        },
         "status": {
           "missing": "Masukkan Email atau nomor ponsel dan kata sandi.",
           "invalid": "Email, nomor ponsel, atau kata sandi tidak benar.",

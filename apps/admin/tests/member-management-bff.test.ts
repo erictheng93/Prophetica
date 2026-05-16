@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   proxyMemberActionRequest,
   proxyMemberActionReviewRequest,
+  proxyMemberCreateRequest,
   proxyMemberListRequest,
 } from "../lib/member-management-bff.js";
 
@@ -48,6 +49,119 @@ test("member list BFF forwards affiliate scope with signed admin context", async
     const headers = calls[0]?.[1]?.headers as Record<string, string>;
     assert.equal(headers["x-actor-id"], "U-AFF-001");
     assert.equal(headers["x-operator-role"], "affiliate");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("member create BFF overwrites affiliate source before forwarding", async () => {
+  process.env.API_GATEWAY_URL = "http://gateway.local";
+  process.env.ADMIN_INTERNAL_CALL_SECRET = SECRET;
+  const forwardedBodies: Record<string, unknown>[] = [];
+  const calls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input, init) => {
+    calls.push(String(input));
+    forwardedBodies.push(
+      JSON.parse(String(init?.body)) as Record<string, unknown>,
+    );
+    const isCapture = String(input).endsWith("/api/internal/referrals/capture");
+    return new Response(JSON.stringify({ member: { user_id: "MEM-BFF" } }), {
+      status: isCapture ? 200 : 201,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const response = await proxyMemberCreateRequest({
+      viewer: {
+        sub: "U-AFF-001",
+        role: "affiliate",
+        affiliateId: "AFF-001",
+        iat: 1,
+        exp: 2,
+      },
+      request: {
+        user_id: "MEM-BFF",
+        display_name: "BFF Member",
+        email: "bff@example.com",
+        phone: "0912345000",
+        country: "TW",
+        timezone: "Asia/Taipei",
+        tier: "Standard",
+        affiliate_id: "AFF-OTHER",
+      },
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(calls[0], "http://gateway.local/api/internal/admin/members");
+    assert.equal(
+      calls[1],
+      "http://gateway.local/api/internal/referrals/capture",
+    );
+    assert.equal(forwardedBodies[0]?.affiliate_id, "AFF-001");
+    assert.deepEqual(forwardedBodies[0]?.registration_audit, {
+      source: "apps-admin:member-create-bff",
+      referral_capture_required: true,
+      referral_code: "AFF-001",
+      referred_user_id: "MEM-BFF",
+      actor_user_id: "U-AFF-001",
+      actor_role: "affiliate",
+    });
+    assert.deepEqual(forwardedBodies[1], {
+      referral_code: "AFF-001",
+      referred_user_id: "MEM-BFF",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("member create BFF reports referral capture failure after attributed create", async () => {
+  process.env.API_GATEWAY_URL = "http://gateway.local";
+  process.env.ADMIN_INTERNAL_CALL_SECRET = SECRET;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input) => {
+    if (String(input).endsWith("/api/internal/referrals/capture")) {
+      return new Response(
+        JSON.stringify({ error: "invalid_affiliate_request" }),
+        {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }
+    return new Response(JSON.stringify({ member: { user_id: "MEM-BFF" } }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const response = await proxyMemberCreateRequest({
+      viewer: {
+        sub: "U-AFF-001",
+        role: "affiliate",
+        affiliateId: "AFF-001",
+        iat: 1,
+        exp: 2,
+      },
+      request: {
+        user_id: "MEM-BFF",
+        display_name: "BFF Member",
+        email: "bff@example.com",
+        phone: "0912345000",
+        country: "TW",
+        timezone: "Asia/Taipei",
+        tier: "Standard",
+        affiliate_id: "AFF-OTHER",
+      },
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      error: "referral_capture_failed",
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -594,6 +594,14 @@
   "auth": {
     "signIn": {
       "signin": {
+        "mfa": {
+          "legend": "Xác minh hai bước nếu cần",
+          "hint": "Nếu tài khoản cần xác minh hai bước, hãy nhập mã 6 chữ số hoặc dùng mã khôi phục một lần.",
+          "codeLabel": "Mã xác minh",
+          "codePlaceholder": "123456",
+          "recoveryLabel": "Mã khôi phục",
+          "recoveryPlaceholder": "Ví dụ recover-once-1"
+        },
         "status": {
           "missing": "Nhập Email hoặc số điện thoại và mật khẩu.",
           "invalid": "Email, số điện thoại hoặc mật khẩu không đúng.",

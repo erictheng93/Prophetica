@@ -15,6 +15,8 @@ export interface AuthenticateWithPasswordInput {
   identifier: string;
   password: string;
   remember: boolean;
+  mfaCode?: string;
+  mfaRecoveryCode?: string;
 }
 
 export type PasswordAuthResult =
@@ -125,6 +127,8 @@ export async function authenticateWithPassword(
         identifier_kind: identifier.kind,
         password: input.password,
         remember: input.remember,
+        mfa_code: nonEmptyString(input.mfaCode),
+        mfa_recovery_code: nonEmptyString(input.mfaRecoveryCode),
       }),
     });
 
@@ -311,4 +315,9 @@ function constantTimeEqual(left: string, right: string): boolean {
 
 function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function nonEmptyString(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }

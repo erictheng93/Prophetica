@@ -198,6 +198,28 @@ test("sign-in identifier field accepts email or phone login names", () => {
   assert.doesNotMatch(source, /type="email"/);
 });
 
+test("sign-in form exposes optional MFA step-up fields", () => {
+  const source = signInFormSource();
+  const messages = JSON.parse(
+    readFileSync(join(process.cwd(), "messages/zh-Hant.json"), "utf8"),
+  ) as {
+    auth: {
+      signIn: {
+        signin: {
+          mfa?: Record<string, unknown>;
+        };
+      };
+    };
+  };
+
+  assert.match(source, /name="mfaCode"/);
+  assert.match(source, /autoComplete="one-time-code"/);
+  assert.match(source, /pattern="\[0-9\]\{6\}"/);
+  assert.match(source, /name="mfaRecoveryCode"/);
+  assert.equal(messages.auth.signIn.signin.mfa?.codeLabel, "驗證碼");
+  assert.equal(messages.auth.signIn.signin.mfa?.recoveryLabel, "復原碼");
+});
+
 test("sign-in form submits through a server action and ships an enabled button", () => {
   const source = signInFormSource();
 

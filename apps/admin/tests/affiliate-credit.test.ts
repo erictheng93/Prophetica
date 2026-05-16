@@ -33,6 +33,16 @@ test("affiliate mock fallback requires explicit opt in", () => {
   assert.equal(getAffiliateDetail("AFF-001", {}), undefined);
 });
 
+test("affiliate mock fallback is disabled in production even when opted in", () => {
+  const productionEnv = {
+    AFFILIATE_ADMIN_ALLOW_MOCK_FALLBACK: "true",
+    PROPHETICA_ENV: "production",
+  };
+
+  assert.equal(allowsAffiliateMockFallback(productionEnv), false);
+  assert.equal(getAffiliateDetail("AFF-001", productionEnv), undefined);
+});
+
 test("formatTwdMinor renders credit limits with two decimals", () => {
   assert.equal(formatTwdMinor(1_234_500), "TWD 12,345.00");
   assert.equal(formatTwdMinor(0), "TWD 0.00");

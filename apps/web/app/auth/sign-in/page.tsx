@@ -91,6 +91,8 @@ async function submitSigninAction(formData: FormData) {
 
   const identifier = readFormValue(formData, "identifier");
   const password = readFormValue(formData, "password");
+  const mfaCode = readFormValue(formData, "mfaCode");
+  const mfaRecoveryCode = readFormValue(formData, "mfaRecoveryCode");
   const remember = formData.get("remember") === "on";
 
   if (!identifier.trim() || !password) {
@@ -101,6 +103,8 @@ async function submitSigninAction(formData: FormData) {
     identifier,
     password,
     remember,
+    mfaCode,
+    mfaRecoveryCode,
   });
 
   if (result.status === "authenticated") {
@@ -215,6 +219,42 @@ function SigninForm({ t, status }: { t: AuthCopy; status?: SigninStatusKey }) {
               className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
             />
           </label>
+
+          <fieldset className="space-y-3 rounded-proph-md border border-proph-hairline bg-proph-canvas-parchment/50 p-4">
+            <legend className="px-1 font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+              {t("signin.mfa.legend")}
+            </legend>
+            <p className="font-text text-[12px] leading-[1.33] tracking-[-0.12px] text-proph-ink-muted-48">
+              {t("signin.mfa.hint")}
+            </p>
+            <label className="block">
+              <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+                {t("signin.mfa.codeLabel")}
+              </span>
+              <input
+                type="text"
+                name="mfaCode"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                placeholder={t("signin.mfa.codePlaceholder")}
+                className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+                {t("signin.mfa.recoveryLabel")}
+              </span>
+              <input
+                type="text"
+                name="mfaRecoveryCode"
+                autoComplete="off"
+                placeholder={t("signin.mfa.recoveryPlaceholder")}
+                className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+              />
+            </label>
+          </fieldset>
 
           <label className="flex min-h-11 items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
             <input

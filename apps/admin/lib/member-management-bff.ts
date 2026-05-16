@@ -207,12 +207,39 @@ export async function proxyMemberCreateRequest(
     input.viewer.role === "affiliate"
       ? { ...parsed.value, affiliate_id: input.viewer.affiliateId }
       : parsed.value;
+  const gatewayCreateRequest = request.affiliate_id
+    ? {
+        ...request,
+        registration_audit: {
+          source: "apps-admin:member-create-bff",
+          referral_capture_required: true,
+          referral_code: request.affiliate_id,
+          referred_user_id: request.user_id,
+          actor_user_id: input.viewer.sub,
+          actor_role: input.viewer.role,
+        },
+      }
+    : request;
   const gatewayResponse = await proxyMemberGatewayRequest(input.viewer, {
     method: "POST",
     adminPath: "/api/internal/admin/members",
-    body: JSON.stringify(request),
+    body: JSON.stringify(gatewayCreateRequest),
   });
-  if (gatewayResponse) return gatewayResponse;
+  if (gatewayResponse) {
+    if (gatewayResponse.ok && request.affiliate_id) {
+      const captureResponse = await proxyReferralCaptureRequest(input.viewer, {
+        referralCode: request.affiliate_id,
+        referredUserId: request.user_id,
+      });
+      if (captureResponse && !captureResponse.ok) {
+        return Response.json(
+          { error: "referral_capture_failed" },
+          { status: captureResponse.status },
+        );
+      }
+    }
+    return gatewayResponse;
+  }
 
   const result = createMember(parsed.value, input.viewer);
   if (!result.ok) {
@@ -438,6 +465,38 @@ async function proxyMemberGatewayRequest(
   });
 }
 
+async function proxyReferralCaptureRequest(
+  viewer: SessionPayload,
+  input: { referralCode: string; referredUserId: string },
+): Promise<Response | null> {
+  const gatewayUrl = process.env.API_GATEWAY_URL;
+  if (!gatewayUrl) return null;
+
+  const adminPath = "/api/internal/referrals/capture";
+  const body = JSON.stringify({
+    referral_code: input.referralCode,
+    referred_user_id: input.referredUserId,
+  });
+  const headers = signInternalCall({
+    method: "POST",
+    path: adminPath,
+    body,
+    actorId: viewer.sub,
+    role: viewer.role,
+  });
+
+  return fetch(new URL(adminPath, gatewayUrl), {
+    method: "POST",
+    headers: {
+      ...headers,
+      "x-request-id": crypto.randomUUID(),
+      "content-type": "application/json",
+    },
+    body,
+    cache: "no-store",
+  }).catch(() => null);
+}
+
 async function fetchGatewayMemberSummary(
   viewer: SessionPayload,
   userId: string,
@@ -641,19 +700,19 @@ function parseMemberUpdate(
     result.line_id = null;
   }
   if (
+    candidate.kyc_status === "verified" ||
+    candidate.kyc_status === "review_required" ||
+    candidate.kyc_status === "pending"
+  ) {
+    result.kyc_status = candidate.kyc_status;
+  }
+  if (
     candidate.status === "inactive" ||
     candidate.status === "active" ||
     candidate.status === "restricted" ||
     candidate.status === "suspended"
   ) {
     result.status = candidate.status;
-  }
-  if (
-    candidate.kyc_status === "verified" ||
-    candidate.kyc_status === "review_required" ||
-    candidate.kyc_status === "pending"
-  ) {
-    result.kyc_status = candidate.kyc_status;
   }
   if (
     candidate.risk_level === "low" ||

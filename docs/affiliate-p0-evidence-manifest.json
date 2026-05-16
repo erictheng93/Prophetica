@@ -1,0 +1,114 @@
+{
+  "last_updated": "2026-05-16",
+  "scope": "LG-9 Affiliate / referral production readiness P0",
+  "status": "blocked",
+  "blocking_items": [
+    {
+      "id": "auth-webauthn-passkey",
+      "reason": "Real WebAuthn / passkey registration endpoints, assertion endpoints, and browser ceremony are not implemented. Durable credential and challenge-state tables exist.",
+      "contract": "docs/webauthn-passkey-p0-contract.md"
+    },
+    {
+      "id": "cloudflare-access-apply-evidence",
+      "reason": "Cloudflare Zero Trust Terraform is present and structurally validated, but has not been applied in the target account and no plan/apply evidence is archived.",
+      "terraform": "infra/cloudflare/zero-trust/admin-access.tf",
+      "verifier": "tools/scripts/validate-cloudflare-admin-access.mjs",
+      "evidence_recorder": "tools/scripts/record-cloudflare-admin-access-evidence.mjs"
+    },
+    {
+      "id": "public-signup-submit",
+      "reason": "Public signup is still a closed-beta gate. Referral attribution is preserved in a cookie, but there is no production registration submit path to attach it to.",
+      "attribution": "apps/web/lib/referral-attribution.ts"
+    }
+  ],
+  "completed_evidence": [
+    {
+      "id": "affiliate-mock-fail-closed",
+      "artifacts": [
+        "apps/admin/lib/affiliates.ts",
+        "apps/admin/tests/affiliate-credit.test.ts"
+      ],
+      "evidence": "Targeted admin affiliate-credit coverage from LG-9 pass."
+    },
+    {
+      "id": "user-service-auth-argon2-ed25519-mfa-totp-recovery",
+      "artifacts": [
+        "services/user-service/src/auth.rs",
+        "services/user-service/tests/auth.rs",
+        "services/user-service/migrations/202605160003_create_webauthn_tables.sql",
+        "services/user-service/src/webauthn_store.rs",
+        "services/user-service/tests/webauthn_store.rs"
+      ],
+      "evidence": "rtk cargo test -p user-service --test auth --locked => 13 passed; webauthn migration structural check passed; rtk cargo test -p user-service --test webauthn_store --locked => 2 passed"
+    },
+    {
+      "id": "admin-session-ed25519-and-step-up",
+      "artifacts": [
+        "apps/admin/lib/session-crypto.ts",
+        "apps/admin/lib/step-up-mfa-policy.ts",
+        "apps/admin/middleware.ts",
+        "apps/admin/tests/session.test.ts",
+        "apps/admin/tests/step-up-mfa-policy.test.ts"
+      ],
+      "evidence": "Targeted admin session / step-up test suite => 13 passed"
+    },
+    {
+      "id": "admin-login-mfa-forwarding",
+      "artifacts": [
+        "apps/admin/components/login-form.tsx",
+        "apps/admin/app/api/auth/login/route.ts",
+        "apps/admin/lib/admin-copy.ts",
+        "apps/admin/tests/login-redirect.test.ts"
+      ],
+      "evidence": "apps/admin login-redirect targeted test => 5 passed"
+    },
+    {
+      "id": "cloudflare-access-structural-policy",
+      "artifacts": [
+        "infra/cloudflare/zero-trust/admin-access.tf",
+        "infra/cloudflare/zero-trust/README.md",
+        "tools/scripts/validate-cloudflare-admin-access.mjs",
+        "tools/scripts/record-cloudflare-admin-access-evidence.mjs"
+      ],
+      "evidence": "rtk node tools/scripts/validate-cloudflare-admin-access.mjs => 9 checks passed; rtk node --check tools/scripts/record-cloudflare-admin-access-evidence.mjs => passed"
+    },
+    {
+      "id": "first-touch-referral-capture",
+      "artifacts": [
+        "services/referral-service/src/lib.rs",
+        "services/api-gateway/src/lib.rs",
+        "apps/admin/lib/member-management-bff.ts",
+        "services/user-service/src/members.rs"
+      ],
+      "evidence": "Referral-service admin_affiliates, api-gateway capture proxy, admin member-management BFF, and user-service members targeted tests passed earlier."
+    },
+    {
+      "id": "public-web-referral-attribution-cookie",
+      "artifacts": [
+        "apps/web/middleware.ts",
+        "apps/web/lib/referral-attribution.ts",
+        "apps/web/tests/referral-attribution.test.ts"
+      ],
+      "evidence": "apps/web referral attribution targeted test => 3 passed"
+    },
+    {
+      "id": "web-auth-client-mfa-forwarding",
+      "artifacts": [
+        "apps/web/lib/auth.ts",
+        "apps/web/tests/auth.test.ts",
+        "apps/web/app/auth/sign-in/page.tsx",
+        "apps/web/tests/page-aria.test.ts"
+      ],
+      "evidence": "apps/web auth targeted test => 8 passed; apps/web page-aria targeted test => 16 passed"
+    },
+    {
+      "id": "qualification-and-commission-workers",
+      "artifacts": [
+        "services/referral-service/src/lib.rs",
+        "services/_binaries/referral-worker/src/main.rs",
+        "infra/cron/referral-workers.cron"
+      ],
+      "evidence": "Referral-service admin_affiliates targeted test and referral-worker targeted check passed earlier."
+    }
+  ]
+}

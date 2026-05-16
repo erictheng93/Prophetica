@@ -28,6 +28,9 @@ interface MemberManagementProps {
   initialQuery?: string;
   initialPendingRestriction?: string;
   initialPendingStatus?: MemberStatus | "all";
+  showActionQueue?: boolean;
+  showMemberWorkspace?: boolean;
+  showPendingCases?: boolean;
   viewerRole: Role;
   viewerAffiliateId?: string;
 }
@@ -86,6 +89,9 @@ export function MemberManagement({
   initialQuery,
   initialPendingRestriction,
   initialPendingStatus,
+  showActionQueue = false,
+  showMemberWorkspace = true,
+  showPendingCases = false,
   viewerAffiliateId,
   viewerRole,
 }: MemberManagementProps) {
@@ -108,6 +114,7 @@ export function MemberManagement({
     string | null
   >(null);
   const [memberMutationLoading, setMemberMutationLoading] = useState(false);
+  const [memberEditorOpen, setMemberEditorOpen] = useState(false);
   const [pendingCases, setPendingCases] =
     useState<MemberPendingCasesResponse | null>(null);
   const [pendingCasesError, setPendingCasesError] = useState<string | null>(
@@ -151,17 +158,19 @@ export function MemberManagement({
   );
 
   useEffect(() => {
+    if (!showMemberWorkspace) return;
     void refreshMembers();
     if (initialQuery) void lookupMemberById(initialQuery);
-  }, []);
+  }, [showMemberWorkspace]);
 
   useEffect(() => {
-    if (canSubmit) void refreshActionQueue();
-  }, [canSubmit]);
+    if (canSubmit && showActionQueue) void refreshActionQueue();
+  }, [canSubmit, showActionQueue]);
 
   useEffect(() => {
+    if (!showPendingCases) return;
     void refreshPendingCases();
-  }, [pendingPage, pendingStatus, pendingRestriction]);
+  }, [pendingPage, pendingStatus, pendingRestriction, showPendingCases]);
 
   async function refreshPendingCases(nextPage = pendingPage) {
     setPendingCasesLoading(true);
@@ -272,6 +281,18 @@ export function MemberManagement({
     });
   }
 
+  function openCreateMemberEditor() {
+    resetMemberForm();
+    setMemberEditorOpen(true);
+  }
+
+  function openEditMemberEditor(nextSummary: MemberManagementSummary) {
+    setSummary(nextSummary);
+    setLookupUserId(nextSummary.member.user_id);
+    startEditing(nextSummary);
+    setMemberEditorOpen(true);
+  }
+
   function startEditing(nextSummary: MemberManagementSummary) {
     setEditingUserId(nextSummary.member.user_id);
     setMemberMutationError(null);
@@ -336,6 +357,7 @@ export function MemberManagement({
       setMemberMutationResult(
         editingUserId ? "會員資料已更新。" : "會員已新增，帳戶狀態為未激活。",
       );
+      setMemberEditorOpen(false);
       await refreshMembers();
     } catch {
       setMemberMutationError("儲存失敗：無法連線至會員管理 BFF。");
@@ -359,6 +381,7 @@ export function MemberManagement({
         return;
       }
       setMemberMutationResult(`已刪除會員 ${summary.member.user_id}。`);
+      setMemberEditorOpen(false);
       setSummary(null);
       resetMemberForm();
       await refreshMembers();
@@ -466,45 +489,179 @@ export function MemberManagement({
 
   return (
     <div className="space-y-6">
-      <PendingCasesPanel
-        cases={pendingCases}
-        error={pendingCasesError}
-        loading={pendingCasesLoading}
-        query={pendingQuery}
-        restriction={pendingRestriction}
-        status={pendingStatus}
-        onNextPage={() => setPendingPage((page) => page + 1)}
-        onPreviousPage={() => setPendingPage((page) => Math.max(1, page - 1))}
-        onQueryChange={setPendingQuery}
-        onRefresh={() => {
-          setPendingPage(1);
-          void refreshPendingCases(1);
-        }}
-        onRestrictionChange={(value) => {
-          setPendingRestriction(value);
-          setPendingPage(1);
-        }}
-        onStatusChange={(value) => {
-          setPendingStatus(value);
-          setPendingPage(1);
-        }}
-      />
+      {showMemberWorkspace && (
+        <>
+          <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+                  會員查詢
+                </h2>
+                <p className="mt-2 max-w-2xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+                  以會員 ID
+                  查詢聯絡資料遮罩、帳戶點數、風險狀態、限制與待處理案件。
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2" aria-label="可查詢範例">
+                {memberSearchHints.map((hint) => (
+                  <button
+                    key={hint}
+                    type="button"
+                    onClick={() => setLookupUserId(hint)}
+                    className="rounded-proph-pill border border-proph-divider-soft bg-proph-surface-pearl px-3 py-2 text-[12px] font-semibold text-proph-ink-muted-80 hover:border-proph-primary-focus hover:text-proph-ink"
+                  >
+                    {hint}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-      <MemberDirectory
-        canDelete={canDelete}
-        loading={memberListLoading}
-        members={members}
-        viewerRole={viewerRole}
-        onRefresh={refreshMembers}
-        onSelect={(nextSummary) => {
-          setSummary(nextSummary);
-          setLookupUserId(nextSummary.member.user_id);
-          startEditing(nextSummary);
-        }}
-      />
-      {memberListError && <Alert tone="error">{memberListError}</Alert>}
+            <form
+              className="mt-5 flex flex-col gap-3 sm:flex-row"
+              onSubmit={lookupMember}
+            >
+              <label className="min-w-0 flex-1">
+                <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+                  會員 ID
+                </span>
+                <input
+                  value={lookupUserId}
+                  onChange={(event) => setLookupUserId(event.target.value)}
+                  className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus"
+                  placeholder="MEM-001"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={lookupLoading}
+                className="mt-auto inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {lookupLoading ? "查詢中" : "查詢會員"}
+              </button>
+            </form>
 
-      {canSubmit && (
+            {lookupError && <Alert tone="error">{lookupError}</Alert>}
+          </section>
+
+          <MemberDirectory
+            canDelete={canDelete}
+            loading={memberListLoading}
+            members={members}
+            viewerRole={viewerRole}
+            onCreate={openCreateMemberEditor}
+            onRefresh={refreshMembers}
+            onSelect={openEditMemberEditor}
+          />
+          {memberListError && <Alert tone="error">{memberListError}</Alert>}
+          {memberMutationError && (
+            <Alert tone="error">{memberMutationError}</Alert>
+          )}
+          {memberMutationResult && (
+            <Alert tone="success">{memberMutationResult}</Alert>
+          )}
+
+          {summary ? (
+            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+              <section className="space-y-6">
+                <MemberOverview summary={summary} />
+                <OpenCases cases={summary.open_cases} />
+              </section>
+              <section className="space-y-6">
+                {canSubmit && (
+                  <ActionPanel
+                    actionType={actionType}
+                    actionLoading={actionLoading}
+                    actionResult={actionResult}
+                    canSubmit={canSubmit}
+                    correlationPreview={correlationPreview}
+                    error={actionError}
+                    reason={reason}
+                    selectedUserId={selectedUserId}
+                    ticketId={ticketId}
+                    onActionTypeChange={setActionType}
+                    onReasonChange={setReason}
+                    onSubmit={submitAction}
+                    onTicketIdChange={setTicketId}
+                  />
+                )}
+                <AuditPanel summary={summary} />
+              </section>
+            </div>
+          ) : (
+            <section className="rounded-proph-lg border border-dashed border-proph-divider-soft bg-proph-surface-pearl p-6 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+              輸入會員 ID 後即可檢視聯絡、帳戶、狀態與提交處理動作。
+            </section>
+          )}
+
+          {memberEditorOpen && (
+            <div
+              aria-modal="true"
+              className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-proph-ink/40 px-4 py-8"
+              role="dialog"
+            >
+              <div className="w-full max-w-4xl rounded-proph-lg bg-proph-canvas shadow-xl">
+                <div className="flex items-center justify-between gap-3 border-b border-proph-hairline px-6 py-4">
+                  <h2 className="text-[17px] font-semibold leading-[1.24] tracking-[-0.224px]">
+                    {editingUserId ? "編輯會員" : "新增會員"}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setMemberEditorOpen(false)}
+                    disabled={memberMutationLoading}
+                    className="inline-flex h-9 items-center justify-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-4 text-[13px] font-semibold text-proph-ink disabled:opacity-50"
+                  >
+                    關閉
+                  </button>
+                </div>
+                <div className="p-6">
+                  <MemberEditor
+                    canDelete={canDelete}
+                    editingUserId={editingUserId}
+                    form={memberForm}
+                    loading={memberMutationLoading}
+                    mutationResult={null}
+                    mutationError={null}
+                    selectedSummary={summary}
+                    viewerRole={viewerRole}
+                    onDelete={deleteSelectedMember}
+                    onReset={resetMemberForm}
+                    onSubmit={submitMemberMutation}
+                    onUpdate={updateMemberForm}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {showPendingCases && (
+        <PendingCasesPanel
+          cases={pendingCases}
+          error={pendingCasesError}
+          loading={pendingCasesLoading}
+          query={pendingQuery}
+          restriction={pendingRestriction}
+          status={pendingStatus}
+          onNextPage={() => setPendingPage((page) => page + 1)}
+          onPreviousPage={() => setPendingPage((page) => Math.max(1, page - 1))}
+          onQueryChange={setPendingQuery}
+          onRefresh={() => {
+            setPendingPage(1);
+            void refreshPendingCases(1);
+          }}
+          onRestrictionChange={(value) => {
+            setPendingRestriction(value);
+            setPendingPage(1);
+          }}
+          onStatusChange={(value) => {
+            setPendingStatus(value);
+            setPendingPage(1);
+          }}
+        />
+      )}
+
+      {canSubmit && showActionQueue && (
         <ActionQueuePanel
           actions={actionQueue?.actions ?? []}
           error={actionQueueError}
@@ -520,105 +677,6 @@ export function MemberManagement({
             }))
           }
         />
-      )}
-
-      <MemberEditor
-        canDelete={canDelete}
-        editingUserId={editingUserId}
-        form={memberForm}
-        loading={memberMutationLoading}
-        mutationResult={memberMutationResult}
-        mutationError={memberMutationError}
-        selectedSummary={summary}
-        viewerRole={viewerRole}
-        onDelete={deleteSelectedMember}
-        onReset={resetMemberForm}
-        onSubmit={submitMemberMutation}
-        onUpdate={updateMemberForm}
-      />
-
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
-              會員查詢
-            </h2>
-            <p className="mt-2 max-w-2xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-              以會員 ID 查詢聯絡資料遮罩、帳戶點數、風險狀態、限制與待處理案件。
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2" aria-label="可查詢範例">
-            {memberSearchHints.map((hint) => (
-              <button
-                key={hint}
-                type="button"
-                onClick={() => setLookupUserId(hint)}
-                className="rounded-proph-pill border border-proph-divider-soft bg-proph-surface-pearl px-3 py-2 text-[12px] font-semibold text-proph-ink-muted-80 hover:border-proph-primary-focus hover:text-proph-ink"
-              >
-                {hint}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <form
-          className="mt-5 flex flex-col gap-3 sm:flex-row"
-          onSubmit={lookupMember}
-        >
-          <label className="min-w-0 flex-1">
-            <span className="text-[13px] font-semibold text-proph-ink-muted-80">
-              會員 ID
-            </span>
-            <input
-              value={lookupUserId}
-              onChange={(event) => setLookupUserId(event.target.value)}
-              className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus"
-              placeholder="MEM-001"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={lookupLoading}
-            className="mt-auto inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {lookupLoading ? "查詢中" : "查詢會員"}
-          </button>
-        </form>
-
-        {lookupError && <Alert tone="error">{lookupError}</Alert>}
-      </section>
-
-      {summary ? (
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <section className="space-y-6">
-            <MemberOverview summary={summary} />
-            <OpenCases cases={summary.open_cases} />
-          </section>
-          <section className="space-y-6">
-            {canSubmit && (
-              <ActionPanel
-                actionType={actionType}
-                actionLoading={actionLoading}
-                actionResult={actionResult}
-                canSubmit={canSubmit}
-                correlationPreview={correlationPreview}
-                error={actionError}
-                reason={reason}
-                selectedUserId={selectedUserId}
-                ticketId={ticketId}
-                onActionTypeChange={setActionType}
-                onReasonChange={setReason}
-                onSubmit={submitAction}
-                onTicketIdChange={setTicketId}
-              />
-            )}
-            <AuditPanel summary={summary} />
-          </section>
-        </div>
-      ) : (
-        <section className="rounded-proph-lg border border-dashed border-proph-divider-soft bg-proph-surface-pearl p-6 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-          輸入會員 ID 後即可檢視聯絡、帳戶、狀態與提交處理動作。
-        </section>
       )}
     </div>
   );
@@ -764,6 +822,7 @@ function MemberDirectory(props: {
   loading: boolean;
   members: MemberManagementSummary[];
   viewerRole: Role;
+  onCreate: () => void;
   onRefresh: () => void;
   onSelect: (summary: MemberManagementSummary) => void;
 }) {
@@ -772,7 +831,7 @@ function MemberDirectory(props: {
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
-            會員清單與客戶來源
+            會員名單
           </h2>
           <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
             {props.viewerRole === "affiliate"
@@ -780,14 +839,23 @@ function MemberDirectory(props: {
               : "顯示所有會員，並標識直接註冊或由哪個代理帶入。"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={props.onRefresh}
-          disabled={props.loading}
-          className="inline-flex h-11 items-center justify-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-4 text-[14px] font-semibold text-proph-ink disabled:opacity-50"
-        >
-          {props.loading ? "更新中" : "重新整理"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={props.onCreate}
+            className="inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-4 text-[14px] font-semibold text-proph-on-primary"
+          >
+            新增會員
+          </button>
+          <button
+            type="button"
+            onClick={props.onRefresh}
+            disabled={props.loading}
+            className="inline-flex h-11 items-center justify-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-4 text-[14px] font-semibold text-proph-ink disabled:opacity-50"
+          >
+            {props.loading ? "更新中" : "重新整理"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-5 grid gap-3">

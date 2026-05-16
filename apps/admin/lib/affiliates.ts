@@ -368,6 +368,7 @@ const affiliates: readonly AffiliateDetail[] = [
 export function allowsAffiliateMockFallback(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
+  if (env.PROPHETICA_ENV?.toLowerCase() === "production") return false;
   return env.AFFILIATE_ADMIN_ALLOW_MOCK_FALLBACK === "true";
 }
 

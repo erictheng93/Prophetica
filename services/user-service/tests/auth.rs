@@ -1,11 +1,14 @@
 #![allow(clippy::expect_used)]
 
+use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version, password_hash::SaltString};
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use hmac::{Hmac, Mac};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
+use sha1::Sha1;
 use tower::ServiceExt;
 use user_service::auth::{AuthConfig, LocalLoginAccount, auth_router_with_config};
 
@@ -173,6 +176,408 @@ async fn login_accepts_multiple_local_accounts_from_json_config() {
     assert_eq!(affiliate_response.body["affiliate_id"], json!("AFF-001"));
 }
 
+#[tokio::test]
+async fn affiliate_login_accepts_argon2id_hash_and_rejects_weak_parameters() {
+    let strong_hash = argon2id_hash("affiliate", 19_456, 2, 1);
+    let weak_hash = argon2id_hash("affiliate", 4_096, 1, 1);
+    let accounts = AuthConfig::from_local_login_accounts_json(&format!(
+        r#"[
+          {{
+            "user_id": "U-AFF-001",
+            "email": "affiliate@prophetica.local",
+            "phone": "0912345603",
+            "password": "{strong_hash}",
+            "role": "affiliate",
+            "affiliate_id": "AFF-001"
+          }},
+          {{
+            "user_id": "U-AFF-WEAK",
+            "email": "weak-affiliate@prophetica.local",
+            "phone": "0912345604",
+            "password": "{weak_hash}",
+            "role": "affiliate",
+            "affiliate_id": "AFF-WEAK"
+          }}
+        ]"#
+    ))
+    .expect("json accounts parse");
+    let app = auth_router_with_config(AuthConfig::new(accounts));
+
+    let strong_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate"
+        }),
+    )
+    .await;
+    let weak_response = post_login(
+        app,
+        json!({
+            "identifier": "weak-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate"
+        }),
+    )
+    .await;
+
+    assert_eq!(strong_response.status, StatusCode::OK);
+    assert_eq!(strong_response.body["affiliate_id"], json!("AFF-001"));
+    assert_eq!(weak_response.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn strict_credential_policy_rejects_plaintext_affiliate_accounts() {
+    let strong_hash = argon2id_hash("affiliate", 19_456, 2, 1);
+    let accounts = AuthConfig::from_local_login_accounts_json_with_policy(
+        &format!(
+            r#"[
+              {{
+                "user_id": "U-AFF-PLAIN",
+                "email": "plain-affiliate@prophetica.local",
+                "phone": "0912345605",
+                "password": "affiliate",
+                "role": "affiliate",
+                "affiliate_id": "AFF-PLAIN"
+              }},
+              {{
+                "user_id": "U-AFF-HASHED",
+                "email": "hashed-affiliate@prophetica.local",
+                "phone": "0912345606",
+                "password": "{strong_hash}",
+                "role": "affiliate",
+                "affiliate_id": "AFF-HASHED"
+              }}
+            ]"#
+        ),
+        true,
+    )
+    .expect("hashed account should remain");
+
+    assert_eq!(accounts.len(), 1);
+    let app = auth_router_with_config(AuthConfig::new(accounts));
+    let plain_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "plain-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate"
+        }),
+    )
+    .await;
+    let hashed_response = post_login(
+        app,
+        json!({
+            "identifier": "hashed-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate"
+        }),
+    )
+    .await;
+
+    assert_eq!(plain_response.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(hashed_response.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn strict_hardware_mfa_policy_rejects_privileged_accounts_without_webauthn() {
+    let accounts = AuthConfig::from_local_login_accounts_json_with_security_policy(
+        r#"[
+          {
+            "user_id": "U-AFF-TOTP",
+            "email": "totp-affiliate@prophetica.local",
+            "phone": "0912345607",
+            "password": "affiliate",
+            "role": "affiliate",
+            "affiliate_id": "AFF-TOTP",
+            "mfa_methods": ["totp"],
+            "mfa_at_epoch_seconds": 1778880000
+          },
+          {
+            "user_id": "U-AFF-WEBAUTHN",
+            "email": "webauthn-affiliate@prophetica.local",
+            "phone": "0912345608",
+            "password": "affiliate",
+            "role": "affiliate",
+            "affiliate_id": "AFF-WEBAUTHN",
+            "mfa_methods": ["totp", "webauthn"],
+            "mfa_at_epoch_seconds": 1778880000
+          }
+        ]"#,
+        false,
+        true,
+    )
+    .expect("hardware-mfa account should remain");
+
+    assert_eq!(accounts.len(), 1);
+    let private_jwk = r#"{
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "session-key-1",
+      "d": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
+    }"#;
+    let app = auth_router_with_config(AuthConfig::new(accounts).with_session_signer(private_jwk));
+    let totp_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "totp-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate"
+        }),
+    )
+    .await;
+    let webauthn_response = post_login(
+        app,
+        json!({
+            "identifier": "webauthn-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate"
+        }),
+    )
+    .await;
+
+    assert_eq!(totp_response.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(webauthn_response.status, StatusCode::OK);
+    assert_eq!(
+        webauthn_response.body["mfa_at_epoch_seconds"],
+        json!(1778880000_u64)
+    );
+    let payload = jwt_payload(
+        webauthn_response.body["session_token"]
+            .as_str()
+            .expect("session token should be present"),
+    );
+    assert_eq!(payload["mfa_at"], json!(1778880000_u64));
+    assert_eq!(payload["amr"], json!(["pwd", "hwk"]));
+}
+
+#[tokio::test]
+async fn totp_step_up_is_required_when_account_has_totp_secret() {
+    let accounts = AuthConfig::from_local_login_accounts_json(
+        r#"[
+          {
+            "user_id": "U-AFF-TOTP",
+            "email": "totp-affiliate@prophetica.local",
+            "phone": "0912345609",
+            "password": "affiliate",
+            "role": "affiliate",
+            "affiliate_id": "AFF-TOTP",
+            "totp_secret_base32": "JBSWY3DPEHPK3PXP",
+            "recovery_codes": ["recover-once-1"]
+          }
+        ]"#,
+    )
+    .expect("totp account should parse");
+    let private_jwk = r#"{
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "session-key-1",
+      "d": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
+    }"#;
+    let app = auth_router_with_config(AuthConfig::new(accounts).with_session_signer(private_jwk));
+    let missing_mfa_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "totp-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate"
+        }),
+    )
+    .await;
+    let valid_totp_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "totp-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate",
+            "mfa_code": current_totp_code("JBSWY3DPEHPK3PXP")
+        }),
+    )
+    .await;
+    let recovery_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "totp-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate",
+            "mfa_recovery_code": "recover-once-1"
+        }),
+    )
+    .await;
+    let reused_recovery_response = post_login(
+        app,
+        json!({
+            "identifier": "totp-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate",
+            "mfa_recovery_code": "recover-once-1"
+        }),
+    )
+    .await;
+
+    assert_eq!(missing_mfa_response.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        missing_mfa_response.body["error"],
+        json!("ERROR_CODE_MFA_REQUIRED")
+    );
+    assert_eq!(valid_totp_response.status, StatusCode::OK);
+    assert!(
+        valid_totp_response.body["mfa_at_epoch_seconds"]
+            .as_u64()
+            .is_some()
+    );
+    let payload = jwt_payload(
+        valid_totp_response.body["session_token"]
+            .as_str()
+            .expect("session token should be present"),
+    );
+    assert!(payload["mfa_at"].as_u64().is_some());
+    assert_eq!(payload["amr"], json!(["pwd", "otp"]));
+    assert_eq!(recovery_response.status, StatusCode::OK);
+    assert_eq!(reused_recovery_response.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn consumed_recovery_codes_persist_across_auth_config_instances() {
+    let store_path = std::env::temp_dir().join(format!(
+        "prophetica-user-service-recovery-{}.txt",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&store_path);
+    let accounts_json = r#"[
+      {
+        "user_id": "U-AFF-RECOVERY",
+        "email": "recovery-affiliate@prophetica.local",
+        "phone": "0912345610",
+        "password": "affiliate",
+        "role": "affiliate",
+        "affiliate_id": "AFF-RECOVERY",
+        "totp_secret_base32": "JBSWY3DPEHPK3PXP",
+        "recovery_codes": ["recover-durable-1"]
+      }
+    ]"#;
+    let first_accounts =
+        AuthConfig::from_local_login_accounts_json(accounts_json).expect("accounts parse");
+    let first_app = auth_router_with_config(
+        AuthConfig::new(first_accounts).with_recovery_code_store_path(store_path.clone()),
+    );
+    let first_response = post_login(
+        first_app,
+        json!({
+            "identifier": "recovery-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate",
+            "mfa_recovery_code": "recover-durable-1"
+        }),
+    )
+    .await;
+
+    let second_accounts =
+        AuthConfig::from_local_login_accounts_json(accounts_json).expect("accounts parse");
+    let second_app = auth_router_with_config(
+        AuthConfig::new(second_accounts).with_recovery_code_store_path(store_path.clone()),
+    );
+    let second_response = post_login(
+        second_app,
+        json!({
+            "identifier": "recovery-affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate",
+            "mfa_recovery_code": "recover-durable-1"
+        }),
+    )
+    .await;
+
+    assert_eq!(first_response.status, StatusCode::OK);
+    assert_eq!(second_response.status, StatusCode::UNAUTHORIZED);
+    let _ = std::fs::remove_file(store_path);
+}
+
+#[tokio::test]
+async fn me_and_logout_are_available_on_v1_auth_surface() {
+    let app = auth_router_with_config(config_with_fixture());
+    let login_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "member@example.com",
+            "identifier_kind": "email",
+            "password": "member"
+        }),
+    )
+    .await;
+    let token = login_response.body["session_token"]
+        .as_str()
+        .expect("session token should be present");
+
+    let me_response =
+        request_with_optional_bearer(app.clone(), "GET", "/v1/auth/me", Some(token)).await;
+    let logout_response =
+        request_with_optional_bearer(app, "POST", "/v1/auth/logout", Some(token)).await;
+
+    assert_eq!(me_response.status, StatusCode::OK);
+    assert_eq!(me_response.body["user_id"], json!("user_42"));
+    assert_eq!(me_response.body["role"], json!("manager"));
+    assert_eq!(logout_response.status, StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn login_issues_ed25519_jws_and_publishes_jwks_when_signer_configured() {
+    let account = LocalLoginAccount::new(
+        "U-AFF-001",
+        "affiliate@prophetica.local",
+        "0912345603",
+        "affiliate",
+    )
+    .expect("fixture account is valid")
+    .with_profile("affiliate", Some("AFF-001".to_owned()));
+    let private_jwk = r#"{
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "session-key-1",
+      "d": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc"
+    }"#;
+    let app =
+        auth_router_with_config(AuthConfig::new(vec![account]).with_session_signer(private_jwk));
+
+    let login_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "affiliate@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate"
+        }),
+    )
+    .await;
+    let token = login_response.body["session_token"]
+        .as_str()
+        .expect("session token should be present");
+    assert_eq!(token.split('.').count(), 3);
+
+    let jwks_response =
+        request_with_optional_bearer(app.clone(), "GET", "/v1/auth/jwks", None).await;
+    assert_eq!(jwks_response.status, StatusCode::OK);
+    assert_eq!(jwks_response.body["keys"][0]["kid"], json!("session-key-1"));
+    assert_eq!(jwks_response.body["keys"][0]["crv"], json!("Ed25519"));
+
+    let me_response = request_with_optional_bearer(app, "GET", "/v1/auth/me", Some(token)).await;
+    assert_eq!(me_response.status, StatusCode::OK);
+    assert_eq!(me_response.body["user_id"], json!("U-AFF-001"));
+    assert_eq!(me_response.body["role"], json!("affiliate"));
+    assert_eq!(me_response.body["affiliate_id"], json!("AFF-001"));
+}
+
+#[tokio::test]
+async fn me_rejects_missing_or_invalid_bearer_token() {
+    let app = auth_router_with_config(config_with_fixture());
+    let missing = request_with_optional_bearer(app.clone(), "GET", "/v1/auth/me", None).await;
+    let invalid =
+        request_with_optional_bearer(app, "GET", "/v1/auth/me", Some("not-a-token")).await;
+
+    assert_eq!(missing.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(invalid.status, StatusCode::UNAUTHORIZED);
+}
+
 #[derive(Debug)]
 struct LoginTestResponse {
     status: StatusCode,
@@ -185,6 +590,91 @@ fn config_with_fixture() -> AuthConfig {
         .with_profile("manager", None);
 
     AuthConfig::new(vec![account])
+}
+
+fn argon2id_hash(password: &str, memory_cost: u32, time_cost: u32, parallelism: u32) -> String {
+    let params = Params::new(memory_cost, time_cost, parallelism, None)
+        .unwrap_or_else(|error| panic!("argon2 params should build: {error}"));
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let salt = SaltString::from_b64("cHJvcGhldGljYXNhbHQ")
+        .unwrap_or_else(|error| panic!("salt should parse: {error}"));
+    argon2
+        .hash_password(password.as_bytes(), &salt)
+        .unwrap_or_else(|error| panic!("password should hash: {error}"))
+        .to_string()
+}
+
+fn jwt_payload(token: &str) -> Value {
+    let payload = token
+        .split('.')
+        .nth(1)
+        .expect("jwt payload segment should exist");
+    serde_json::from_slice(&base64_url_decode(payload)).expect("jwt payload should be json")
+}
+
+fn base64_url_decode(value: &str) -> Vec<u8> {
+    let mut bits = 0_u32;
+    let mut bit_count = 0_u8;
+    let mut out = Vec::new();
+    for byte in value.bytes() {
+        let six_bits = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'-' => 62,
+            b'_' => 63,
+            b'=' => continue,
+            _ => panic!("invalid base64url byte"),
+        };
+        bits = (bits << 6) | u32::from(six_bits);
+        bit_count += 6;
+        if bit_count >= 8 {
+            bit_count -= 8;
+            out.push(((bits >> bit_count) & 0xff) as u8);
+        }
+    }
+    out
+}
+
+fn current_totp_code(secret_base32: &str) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_secs();
+    generate_totp_code(&base32_decode(secret_base32), now / 30)
+}
+
+fn generate_totp_code(secret: &[u8], counter: u64) -> String {
+    let mut mac = Hmac::<Sha1>::new_from_slice(secret).expect("hmac accepts any key length");
+    mac.update(&counter.to_be_bytes());
+    let digest = mac.finalize().into_bytes();
+    let offset = usize::from(digest[19] & 0x0f);
+    let binary = ((u32::from(digest[offset]) & 0x7f) << 24)
+        | (u32::from(digest[offset + 1]) << 16)
+        | (u32::from(digest[offset + 2]) << 8)
+        | u32::from(digest[offset + 3]);
+    format!("{:06}", binary % 1_000_000)
+}
+
+fn base32_decode(input: &str) -> Vec<u8> {
+    let mut bits = 0_u32;
+    let mut bit_count = 0_u8;
+    let mut out = Vec::new();
+    for byte in input.bytes() {
+        let value = match byte.to_ascii_uppercase() {
+            b'A'..=b'Z' => byte.to_ascii_uppercase() - b'A',
+            b'2'..=b'7' => byte - b'2' + 26,
+            b'=' | b' ' | b'-' => continue,
+            _ => panic!("invalid base32 byte"),
+        };
+        bits = (bits << 5) | u32::from(value);
+        bit_count += 5;
+        if bit_count >= 8 {
+            bit_count -= 8;
+            out.push(((bits >> bit_count) & 0xff) as u8);
+        }
+    }
+    out
 }
 
 async fn post_login(app: axum::Router, body: Value) -> LoginTestResponse {
@@ -207,6 +697,36 @@ async fn post_login(app: axum::Router, body: Value) -> LoginTestResponse {
         .expect("body")
         .to_bytes();
     let body = serde_json::from_slice(&bytes).expect("json response body");
+
+    LoginTestResponse { status, body }
+}
+
+async fn request_with_optional_bearer(
+    app: axum::Router,
+    method: &str,
+    uri: &str,
+    token: Option<&str>,
+) -> LoginTestResponse {
+    let mut builder = Request::builder().method(method).uri(uri);
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    let response = app
+        .oneshot(builder.body(Body::empty()).expect("request builds"))
+        .await
+        .expect("request handled");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body = if bytes.is_empty() {
+        json!(null)
+    } else {
+        serde_json::from_slice(&bytes).expect("json response body")
+    };
 
     LoginTestResponse { status, body }
 }

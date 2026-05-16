@@ -1,0 +1,15 @@
+# Prophetica referral production workers.
+#
+# Required environment:
+# - REFERRAL_SERVICE_DATABASE_URL or DATABASE_URL
+# - WALLET_LEDGER_BASE_URL
+# - WALLET_LEDGER_DATABASE_URL for trade-accrual and direct qualification input mode
+# - REFERRAL_QUALIFICATION_INPUT_BASE_URL for daily-qualification HTTP input mode, or
+# - KYC_SERVICE_DATABASE_URL and WALLET_LEDGER_DATABASE_URL for direct Postgres input mode
+#
+# Runs after UTC/Taipei daily ledger cutover window. The payout worker is idempotent at
+# wallet-ledger-service via `referral-commission-payout:{referrer}:{epoch_day}`
+# and at referral-service via `paid_out_txn_id`.
+00 18 * * * REFERRAL_WORKER_MODE=daily-qualification rtk referral-worker
+10 18 * * * REFERRAL_WORKER_MODE=trade-accrual rtk referral-worker
+15 18 * * * REFERRAL_WORKER_MODE=daily-payout rtk referral-worker

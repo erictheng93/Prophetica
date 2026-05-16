@@ -308,6 +308,13 @@ pub struct AffiliateDashboardResponse {
     pub referrals: Vec<AffiliateReferralListItem>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CaptureReferralRequest {
+    pub referral_code: String,
+    pub referred_user_id: String,
+    pub referred_at_day: Option<i64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct AffiliateQuery {
     pub limit: Option<usize>,
@@ -355,6 +362,11 @@ pub trait MatchingEngineClient {
 
 #[async_trait]
 pub trait ReferralClient {
+    async fn capture_referral(
+        &self,
+        request: CaptureReferralRequest,
+    ) -> Result<serde_json::Value, ApiError>;
+
     async fn get_affiliate_dashboard(
         &self,
         user_id: &str,
@@ -701,6 +713,27 @@ impl MatchingEngineClient for HttpMatchingEngineClient {
 
 #[async_trait]
 impl ReferralClient for HttpReferralClient {
+    async fn capture_referral(
+        &self,
+        request: CaptureReferralRequest,
+    ) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join("/internal/referrals/capture")
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .post(url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
+
     async fn get_affiliate_dashboard(
         &self,
         user_id: &str,
@@ -1114,6 +1147,10 @@ where
             get(get_my_affiliate_commission_summary::<W, E, R>),
         )
         .route(
+            "/api/internal/referrals/capture",
+            post(capture_referral::<W, E, R>),
+        )
+        .route(
             "/api/internal/admin/affiliates",
             get(list_admin_affiliates::<W, E, R>).post(create_admin_affiliate::<W, E, R>),
         )
@@ -1439,6 +1476,19 @@ where
     Ok(Json(response))
 }
 
+async fn capture_referral<W, E, R>(
+    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+    Json(request): Json<CaptureReferralRequest>,
+) -> Result<Json<serde_json::Value>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+{
+    let response = state.referral.capture_referral(request).await?;
+    Ok(Json(response))
+}
+
 async fn list_my_affiliate_referrals<W, E, R>(
     State(state): State<Arc<AppStateWithServices<W, E, R>>>,
     auth: AuthContext,
@@ -1680,9 +1730,10 @@ mod tests {
 
     use super::{
         AdminProxyContext, AffiliateCommissionSummary, AffiliateDashboardResponse,
-        AffiliateReferralListItem, ApiError, BookLevel, BookSnapshotResponse, LedgerEntry,
-        MatchingEngineClient, OrderActionResponse, PlaceOrderRequest, ReferralClient,
-        WalletBalance, WalletLedgerClient, router, router_with_engine, router_with_services,
+        AffiliateReferralListItem, ApiError, BookLevel, BookSnapshotResponse,
+        CaptureReferralRequest, LedgerEntry, MatchingEngineClient, OrderActionResponse,
+        PlaceOrderRequest, ReferralClient, WalletBalance, WalletLedgerClient, router,
+        router_with_engine, router_with_services,
     };
 
     #[tokio::test]
@@ -1992,6 +2043,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn internal_referral_capture_proxies_to_referral_service() {
+        let referral = InMemoryReferralClient::default();
+        let app = router_with_services(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            referral.clone(),
+        );
+
+        let response = app
+            .oneshot(admin_json_request(
+                "POST",
+                "/api/internal/referrals/capture",
+                &json!({
+                    "referral_code": "AFF-100",
+                    "referred_user_id": "MEM-900",
+                    "referred_at_day": 20_000
+                }),
+            ))
+            .await
+            .expect("capture should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            referral.capture_requests(),
+            vec![CaptureReferralRequest {
+                referral_code: "AFF-100".to_owned(),
+                referred_user_id: "MEM-900".to_owned(),
+                referred_at_day: Some(20_000),
+            }]
+        );
+    }
+
+    #[tokio::test]
     async fn affiliate_referrals_and_commission_summary_proxy_authenticated_user() {
         let referral = InMemoryReferralClient::default();
         let app = router_with_services(
@@ -2212,6 +2296,7 @@ mod tests {
 
     #[derive(Clone, Default)]
     struct InMemoryReferralClient {
+        captures: Arc<Mutex<Vec<CaptureReferralRequest>>>,
         dashboards: Arc<Mutex<Vec<(String, usize)>>>,
         referral_lists: Arc<Mutex<Vec<(String, usize)>>>,
         summaries: Arc<Mutex<Vec<String>>>,
@@ -2257,6 +2342,13 @@ mod tests {
     }
 
     impl InMemoryReferralClient {
+        fn capture_requests(&self) -> Vec<CaptureReferralRequest> {
+            self.captures
+                .lock()
+                .unwrap_or_else(|error| panic!("capture requests lock should not poison: {error}"))
+                .clone()
+        }
+
         fn dashboard_requests(&self) -> Vec<(String, usize)> {
             self.dashboards
                 .lock()
@@ -2390,6 +2482,22 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ReferralClient for InMemoryReferralClient {
+        async fn capture_referral(
+            &self,
+            request: CaptureReferralRequest,
+        ) -> Result<serde_json::Value, ApiError> {
+            self.captures
+                .lock()
+                .unwrap_or_else(|error| panic!("capture requests lock should not poison: {error}"))
+                .push(request.clone());
+            Ok(serde_json::json!({
+                "referrer_id": "user_aff_100",
+                "referred_id": request.referred_user_id,
+                "referral_code": request.referral_code,
+                "captured": true
+            }))
+        }
+
         async fn get_affiliate_dashboard(
             &self,
             user_id: &str,

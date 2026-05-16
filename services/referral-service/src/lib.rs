@@ -12,7 +12,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
+    routing::{get, post},
 };
 use sdk::{
     ledger::{LedgerAmount, LedgerEntryDraft, LedgerTransactionDraft},
@@ -122,7 +122,7 @@ impl ReferralRecord {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct AntiAbuseFlags {
     pub same_ip: bool,
@@ -189,7 +189,7 @@ impl AffiliateKinshipSignals {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QualificationEvent {
     pub referred_id: String,
     pub observed_at_day: i64,
@@ -200,7 +200,7 @@ pub struct QualificationEvent {
     pub kinship_review_passed: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommissionEvent {
     pub referred_id: String,
     pub trade_id: String,
@@ -211,9 +211,10 @@ pub struct CommissionEvent {
     pub referrer_group_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommissionAccrual {
     pub referrer_id: String,
+    pub referrer_group_id: Option<String>,
     pub referred_id: String,
     pub trade_id: String,
     pub fee_amount_minor_units: i64,
@@ -249,6 +250,129 @@ pub struct AffiliateDashboardResponse {
     pub share_url: String,
     pub summary: AffiliateCommissionSummary,
     pub referrals: Vec<AffiliateReferralListItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct CaptureReferralRequest {
+    pub referral_code: String,
+    pub referred_user_id: String,
+    pub referred_at_day: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CaptureReferralResponse {
+    pub referrer_id: String,
+    pub referred_id: String,
+    pub referral_code: String,
+    pub referred_at_day: i64,
+    pub observation_window_ends_at_day: i64,
+    pub status: String,
+    pub captured: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct QualificationEvaluationResponse {
+    pub referred_id: String,
+    pub referrer_id: String,
+    pub status: String,
+    pub qualification_evaluated_at_day: Option<i64>,
+    pub qualified_at_day: Option<i64>,
+    pub signup_bonus_minor_units: i64,
+    pub referred_signup_bonus_minor_units: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct SignupBonusLedgerRequest {
+    pub referred_id: String,
+    pub signup_bonus_txn_id: i64,
+    pub posted_at_day: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SignupBonusLedgerResponse {
+    pub referred_id: String,
+    pub referrer_id: String,
+    pub status: String,
+    pub signup_bonus_txn_id: i64,
+    pub replayed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SignupBonusLedgerDraftResponse {
+    pub idempotency_key: String,
+    pub txn_type: String,
+    pub correlation_id: String,
+    pub description: String,
+    pub metadata: serde_json::Value,
+    pub entries: Vec<SignupBonusLedgerEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SignupBonusLedgerEntry {
+    pub account_code: String,
+    pub direction: String,
+    pub amount_minor_units: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DueQualificationReferral {
+    pub referrer_id: String,
+    pub referred_id: String,
+    pub referral_code: String,
+    pub referred_at_day: i64,
+    pub observation_window_ends_at_day: i64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DueQualificationQuery {
+    pub observed_at_day: i64,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct CommissionPayoutRequest {
+    pub referrer_id: String,
+    pub paid_out_txn_id: i64,
+    pub paid_out_at_day: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CommissionPayoutResponse {
+    pub referrer_id: String,
+    pub paid_out_txn_id: i64,
+    pub paid_out_at_day: i64,
+    pub accrual_count: usize,
+    pub total_commission_minor_units: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CommissionPayoutLedgerDraftQuery {
+    pub paid_out_at_day: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CommissionPayoutLedgerDraftResponse {
+    pub idempotency_key: String,
+    pub txn_type: String,
+    pub correlation_id: String,
+    pub description: String,
+    pub metadata: serde_json::Value,
+    pub entries: Vec<SignupBonusLedgerEntry>,
+    pub accrual_count: usize,
+    pub total_commission_minor_units: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DueCommissionPayoutQuery {
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DueCommissionPayoutReferrer {
+    pub referrer_id: String,
+    pub accrual_count: usize,
+    pub total_commission_minor_units: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -414,6 +538,53 @@ pub struct ApiErrorResponse {
 
 #[async_trait]
 pub trait AffiliateDashboardStore {
+    async fn capture_referral(
+        &self,
+        request: CaptureReferralRequest,
+    ) -> Result<(ReferralRecord, bool), ReferralStoreError>;
+
+    async fn evaluate_referral_qualification(
+        &self,
+        event: QualificationEvent,
+    ) -> Result<QualificationEvaluationResponse, ReferralStoreError>;
+
+    async fn list_due_qualification_referrals(
+        &self,
+        observed_at_day: i64,
+        limit: usize,
+    ) -> Result<Vec<DueQualificationReferral>, ReferralStoreError>;
+
+    async fn finalize_signup_bonus_ledger(
+        &self,
+        request: SignupBonusLedgerRequest,
+    ) -> Result<SignupBonusLedgerResponse, ReferralStoreError>;
+
+    async fn signup_bonus_ledger_draft(
+        &self,
+        referred_id: &str,
+    ) -> Result<SignupBonusLedgerDraftResponse, ReferralStoreError>;
+
+    async fn accrue_trade_commission(
+        &self,
+        event: CommissionEvent,
+    ) -> Result<CommissionAccrual, ReferralStoreError>;
+
+    async fn mark_commission_accruals_paid(
+        &self,
+        request: CommissionPayoutRequest,
+    ) -> Result<CommissionPayoutResponse, ReferralStoreError>;
+
+    async fn commission_payout_ledger_draft(
+        &self,
+        referrer_id: &str,
+        paid_out_at_day: i64,
+    ) -> Result<CommissionPayoutLedgerDraftResponse, ReferralStoreError>;
+
+    async fn list_due_commission_payout_referrers(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<DueCommissionPayoutReferrer>, ReferralStoreError>;
+
     async fn referral_code_for_user(&self, user_id: &str) -> Result<String, ReferralStoreError>;
 
     async fn list_referrals_for_referrer(
@@ -473,10 +644,242 @@ pub enum ReferralStoreError {
     Unavailable(String),
 }
 
+#[async_trait]
+pub trait QualificationInputProvider {
+    async fn qualification_event_for(
+        &self,
+        due: &DueQualificationReferral,
+        observed_at_day: i64,
+    ) -> Result<QualificationEvent, ReferralStoreError>;
+}
+
+#[async_trait]
+pub trait ReferralLedgerPoster {
+    async fn post_signup_bonus(
+        &self,
+        draft: SignupBonusLedgerDraftResponse,
+    ) -> Result<i64, ReferralStoreError>;
+
+    async fn post_commission_payout(
+        &self,
+        draft: CommissionPayoutLedgerDraftResponse,
+    ) -> Result<i64, ReferralStoreError>;
+}
+
+#[derive(Clone)]
+pub struct HttpReferralLedgerPoster {
+    client: reqwest::Client,
+    base_url: reqwest::Url,
+}
+
+#[derive(Debug, Deserialize)]
+struct LedgerPostResponse {
+    txn_id: i64,
+}
+
+impl HttpReferralLedgerPoster {
+    pub fn new(base_url: &str) -> Result<Self, ReferralStoreError> {
+        let base_url = reqwest::Url::parse(base_url)
+            .map_err(|error| ReferralStoreError::Invalid(error.to_string()))?;
+        Ok(Self {
+            client: reqwest::Client::new(),
+            base_url,
+        })
+    }
+
+    async fn post_transaction(
+        &self,
+        idempotency_key: String,
+        body: serde_json::Value,
+    ) -> Result<i64, ReferralStoreError> {
+        let url = self
+            .base_url
+            .join("/internal/ledger/transactions")
+            .map_err(|error| ReferralStoreError::Invalid(error.to_string()))?;
+        let response = self
+            .client
+            .post(url)
+            .header("idempotency-key", idempotency_key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ReferralStoreError::Unavailable(format!(
+                "wallet-ledger-service returned {status}: {body}"
+            )));
+        }
+        response
+            .json::<LedgerPostResponse>()
+            .await
+            .map(|posted| posted.txn_id)
+            .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))
+    }
+}
+
+#[async_trait]
+impl ReferralLedgerPoster for HttpReferralLedgerPoster {
+    async fn post_signup_bonus(
+        &self,
+        draft: SignupBonusLedgerDraftResponse,
+    ) -> Result<i64, ReferralStoreError> {
+        let idempotency_key = draft.idempotency_key.clone();
+        let body = serde_json::to_value(draft)
+            .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?;
+        self.post_transaction(idempotency_key, body).await
+    }
+
+    async fn post_commission_payout(
+        &self,
+        draft: CommissionPayoutLedgerDraftResponse,
+    ) -> Result<i64, ReferralStoreError> {
+        let idempotency_key = draft.idempotency_key.clone();
+        let body = serde_json::to_value(draft)
+            .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?;
+        self.post_transaction(idempotency_key, body).await
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QualificationWorkerReport {
+    pub observed_at_day: i64,
+    pub scanned_count: usize,
+    pub qualified_count: usize,
+    pub signup_bonus_posted_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommissionPayoutWorkerReport {
+    pub referrer_id: String,
+    pub paid_out_at_day: i64,
+    pub paid_out_txn_id: i64,
+    pub accrual_count: usize,
+    pub total_commission_minor_units: i64,
+}
+
+pub struct ReferralDailyWorker<S, Q, L> {
+    store: S,
+    qualification_inputs: Q,
+    ledger: L,
+}
+
+impl<S, Q, L> ReferralDailyWorker<S, Q, L> {
+    #[must_use]
+    pub const fn new(store: S, qualification_inputs: Q, ledger: L) -> Self {
+        Self {
+            store,
+            qualification_inputs,
+            ledger,
+        }
+    }
+}
+
+impl<S, Q, L> ReferralDailyWorker<S, Q, L>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+    Q: QualificationInputProvider + Send + Sync,
+    L: ReferralLedgerPoster + Send + Sync,
+{
+    pub async fn run_qualification_batch(
+        &self,
+        observed_at_day: i64,
+        limit: usize,
+    ) -> Result<QualificationWorkerReport, ReferralStoreError> {
+        let due = self
+            .store
+            .list_due_qualification_referrals(observed_at_day, limit)
+            .await?;
+        let mut qualified_count = 0_usize;
+        let mut signup_bonus_posted_count = 0_usize;
+        for due_referral in &due {
+            let event = self
+                .qualification_inputs
+                .qualification_event_for(due_referral, observed_at_day)
+                .await?;
+            let evaluation = self.store.evaluate_referral_qualification(event).await?;
+            if evaluation.status == "qualified" && evaluation.signup_bonus_minor_units > 0 {
+                qualified_count += 1;
+                let draft = self
+                    .store
+                    .signup_bonus_ledger_draft(&evaluation.referred_id)
+                    .await?;
+                let txn_id = self.ledger.post_signup_bonus(draft).await?;
+                self.store
+                    .finalize_signup_bonus_ledger(SignupBonusLedgerRequest {
+                        referred_id: evaluation.referred_id,
+                        signup_bonus_txn_id: txn_id,
+                        posted_at_day: observed_at_day,
+                    })
+                    .await?;
+                signup_bonus_posted_count += 1;
+            }
+        }
+        Ok(QualificationWorkerReport {
+            observed_at_day,
+            scanned_count: due.len(),
+            qualified_count,
+            signup_bonus_posted_count,
+        })
+    }
+
+    pub async fn run_commission_payout(
+        &self,
+        referrer_id: &str,
+        paid_out_at_day: i64,
+    ) -> Result<CommissionPayoutWorkerReport, ReferralStoreError> {
+        let draft = self
+            .store
+            .commission_payout_ledger_draft(referrer_id, paid_out_at_day)
+            .await?;
+        let accrual_count = draft.accrual_count;
+        let total_commission_minor_units = draft.total_commission_minor_units;
+        let txn_id = self.ledger.post_commission_payout(draft).await?;
+        let payout = self
+            .store
+            .mark_commission_accruals_paid(CommissionPayoutRequest {
+                referrer_id: referrer_id.to_owned(),
+                paid_out_txn_id: txn_id,
+                paid_out_at_day,
+            })
+            .await?;
+        Ok(CommissionPayoutWorkerReport {
+            referrer_id: payout.referrer_id,
+            paid_out_at_day: payout.paid_out_at_day,
+            paid_out_txn_id: payout.paid_out_txn_id,
+            accrual_count,
+            total_commission_minor_units,
+        })
+    }
+
+    pub async fn run_due_commission_payouts(
+        &self,
+        paid_out_at_day: i64,
+        limit: usize,
+    ) -> Result<Vec<CommissionPayoutWorkerReport>, ReferralStoreError> {
+        let due_referrers = self
+            .store
+            .list_due_commission_payout_referrers(limit)
+            .await?;
+        let mut reports = Vec::with_capacity(due_referrers.len());
+        for due_referrer in due_referrers {
+            reports.push(
+                self.run_commission_payout(&due_referrer.referrer_id, paid_out_at_day)
+                    .await?,
+            );
+        }
+        Ok(reports)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryAffiliateDashboardStore {
     referral_codes_by_user: HashMap<String, String>,
     referrals_by_referrer: HashMap<String, Vec<AffiliateReferralListItem>>,
+    captured_referrals_by_referred: Arc<tokio::sync::Mutex<HashMap<String, ReferralRecord>>>,
+    commission_accruals_by_trade: Arc<tokio::sync::Mutex<HashMap<String, CommissionAccrual>>>,
+    commission_payouts_by_txn: Arc<tokio::sync::Mutex<HashMap<i64, CommissionPayoutResponse>>>,
     summaries_by_referrer: HashMap<String, AffiliateCommissionSummary>,
     commission_adjustment_reviews: Vec<AffiliateCommissionAdjustmentReview>,
     payout_reviews: Vec<AffiliatePayoutReview>,
@@ -493,6 +896,9 @@ impl InMemoryAffiliateDashboardStore {
         Self {
             referral_codes_by_user,
             referrals_by_referrer,
+            captured_referrals_by_referred: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            commission_accruals_by_trade: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            commission_payouts_by_txn: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             summaries_by_referrer,
             commission_adjustment_reviews: Vec::new(),
             payout_reviews: Vec::new(),
@@ -525,6 +931,265 @@ impl InMemoryAffiliateDashboardStore {
 
 #[async_trait]
 impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
+    async fn capture_referral(
+        &self,
+        request: CaptureReferralRequest,
+    ) -> Result<(ReferralRecord, bool), ReferralStoreError> {
+        let referral_code = normalize_required(&request.referral_code, "referralCode")?;
+        let referred_id = normalize_required(&request.referred_user_id, "referredUserId")?;
+        let referrer_id = self
+            .referral_codes_by_user
+            .iter()
+            .find_map(|(user_id, code)| (code == &referral_code).then(|| user_id.clone()))
+            .ok_or(ReferralStoreError::NotFound)?;
+        let referred_at_day = request.referred_at_day.unwrap_or_else(current_epoch_day);
+        let record = ReferralRecord::pending(
+            referrer_id,
+            referred_id.clone(),
+            referral_code,
+            referred_at_day,
+        )
+        .map_err(referral_error)?;
+        let mut referrals = self.captured_referrals_by_referred.lock().await;
+        if let Some(existing) = referrals.get(&referred_id) {
+            return Ok((existing.clone(), false));
+        }
+        referrals.insert(referred_id, record.clone());
+        Ok((record, true))
+    }
+
+    async fn evaluate_referral_qualification(
+        &self,
+        event: QualificationEvent,
+    ) -> Result<QualificationEvaluationResponse, ReferralStoreError> {
+        let mut referrals = self.captured_referrals_by_referred.lock().await;
+        let referrer_id = referrals
+            .get(&event.referred_id)
+            .ok_or(ReferralStoreError::NotFound)?
+            .referrer_id
+            .clone();
+        let observed_month = event.observed_at_day / DAYS_PER_CAP_MONTH;
+        let monthly_qualified_count = referrals
+            .values()
+            .filter(|record| {
+                record.referrer_id == referrer_id
+                    && record.status == ReferralStatus::Qualified
+                    && record
+                        .qualified_at_day
+                        .is_some_and(|day| day / DAYS_PER_CAP_MONTH == observed_month)
+            })
+            .count();
+        let lifetime_qualified_count = referrals
+            .values()
+            .filter(|record| {
+                record.referrer_id == referrer_id && record.status == ReferralStatus::Qualified
+            })
+            .count();
+        let record = referrals
+            .get_mut(&event.referred_id)
+            .ok_or(ReferralStoreError::NotFound)?;
+        evaluate_referral_record(
+            record,
+            &event,
+            monthly_qualified_count,
+            lifetime_qualified_count,
+        )
+    }
+
+    async fn list_due_qualification_referrals(
+        &self,
+        observed_at_day: i64,
+        limit: usize,
+    ) -> Result<Vec<DueQualificationReferral>, ReferralStoreError> {
+        let referrals = self.captured_referrals_by_referred.lock().await;
+        let mut due = referrals
+            .values()
+            .filter(|record| {
+                record.status == ReferralStatus::Pending
+                    && record.observation_window_ends_at_day <= observed_at_day
+            })
+            .map(due_qualification_referral)
+            .collect::<Vec<_>>();
+        due.sort_by(|left, right| left.referred_id.cmp(&right.referred_id));
+        due.truncate(limit);
+        Ok(due)
+    }
+
+    async fn finalize_signup_bonus_ledger(
+        &self,
+        request: SignupBonusLedgerRequest,
+    ) -> Result<SignupBonusLedgerResponse, ReferralStoreError> {
+        if request.signup_bonus_txn_id <= 0 {
+            return Err(ReferralStoreError::Invalid(
+                "signup_bonus_txn_id must be greater than zero".to_owned(),
+            ));
+        }
+        let mut referrals = self.captured_referrals_by_referred.lock().await;
+        let record = referrals
+            .get_mut(&request.referred_id)
+            .ok_or(ReferralStoreError::NotFound)?;
+        if record.status != ReferralStatus::Qualified {
+            return Err(ReferralStoreError::Invalid(
+                "signup bonus ledger can only be finalized for qualified referrals".to_owned(),
+            ));
+        }
+        if let Some(existing_txn_id) = record.signup_bonus_txn_id {
+            if existing_txn_id != request.signup_bonus_txn_id {
+                return Err(ReferralStoreError::Invalid(
+                    "signup bonus ledger transaction already finalized".to_owned(),
+                ));
+            }
+            return Ok(signup_bonus_ledger_response(record, true));
+        }
+        record.signup_bonus_txn_id = Some(request.signup_bonus_txn_id);
+        Ok(signup_bonus_ledger_response(record, false))
+    }
+
+    async fn signup_bonus_ledger_draft(
+        &self,
+        referred_id: &str,
+    ) -> Result<SignupBonusLedgerDraftResponse, ReferralStoreError> {
+        let referrals = self.captured_referrals_by_referred.lock().await;
+        let record = referrals
+            .get(referred_id)
+            .ok_or(ReferralStoreError::NotFound)?;
+        signup_bonus_ledger_draft_response(record)
+    }
+
+    async fn accrue_trade_commission(
+        &self,
+        event: CommissionEvent,
+    ) -> Result<CommissionAccrual, ReferralStoreError> {
+        let mut accruals = self.commission_accruals_by_trade.lock().await;
+        if let Some(existing) = accruals.get(&event.trade_id) {
+            return Ok(existing.clone());
+        }
+        let referrals = self.captured_referrals_by_referred.lock().await;
+        let record = referrals
+            .get(&event.referred_id)
+            .ok_or(ReferralStoreError::NotFound)?;
+        let accrual = commission_accrual_from_event(record, &event)?;
+        let month = event.traded_at_day / DAYS_PER_CAP_MONTH;
+        let current_month_total = accruals
+            .values()
+            .filter(|existing| {
+                existing.referrer_id == accrual.referrer_id
+                    && existing.accrued_at_day / DAYS_PER_CAP_MONTH == month
+            })
+            .map(|existing| existing.commission_amount_minor_units)
+            .sum::<i64>();
+        ensure_referrer_monthly_trade_cap(
+            current_month_total,
+            accrual.commission_amount_minor_units,
+        )?;
+        if let Some(group_id) = &accrual.referrer_group_id {
+            let current_group_month_total = accruals
+                .values()
+                .filter(|existing| {
+                    existing.referrer_group_id.as_ref() == Some(group_id)
+                        && existing.accrued_at_day / DAYS_PER_CAP_MONTH == month
+                })
+                .map(|existing| existing.commission_amount_minor_units)
+                .sum::<i64>();
+            ensure_monthly_trade_cap(
+                current_group_month_total,
+                accrual.commission_amount_minor_units,
+                "group monthly trade commission cap requires EDD review",
+            )?;
+        }
+        accruals.insert(event.trade_id.clone(), accrual.clone());
+        Ok(accrual)
+    }
+
+    async fn mark_commission_accruals_paid(
+        &self,
+        request: CommissionPayoutRequest,
+    ) -> Result<CommissionPayoutResponse, ReferralStoreError> {
+        if request.paid_out_txn_id <= 0 {
+            return Err(ReferralStoreError::Invalid(
+                "paidOutTxnId must be positive".to_owned(),
+            ));
+        }
+        let referrer_id = normalize_required(&request.referrer_id, "referrerId")?;
+        let mut payouts = self.commission_payouts_by_txn.lock().await;
+        if let Some(existing) = payouts.get(&request.paid_out_txn_id) {
+            return Ok(existing.clone());
+        }
+        let mut accruals = self.commission_accruals_by_trade.lock().await;
+        let mut accrual_count = 0_usize;
+        let mut total_commission_minor_units = 0_i64;
+        for accrual in accruals.values_mut().filter(|accrual| {
+            accrual.referrer_id == referrer_id && accrual.paid_out_txn_id.is_none()
+        }) {
+            accrual_count += 1;
+            total_commission_minor_units += accrual.commission_amount_minor_units;
+            accrual.paid_out_txn_id = Some(request.paid_out_txn_id);
+            accrual.paid_out_at_day = Some(request.paid_out_at_day);
+        }
+        if accrual_count == 0 {
+            return Err(ReferralStoreError::NotFound);
+        }
+        let response = CommissionPayoutResponse {
+            referrer_id,
+            paid_out_txn_id: request.paid_out_txn_id,
+            paid_out_at_day: request.paid_out_at_day,
+            accrual_count,
+            total_commission_minor_units,
+        };
+        payouts.insert(request.paid_out_txn_id, response.clone());
+        Ok(response)
+    }
+
+    async fn commission_payout_ledger_draft(
+        &self,
+        referrer_id: &str,
+        paid_out_at_day: i64,
+    ) -> Result<CommissionPayoutLedgerDraftResponse, ReferralStoreError> {
+        let referrer_id = normalize_required(referrer_id, "referrerId")?;
+        let accruals = self.commission_accruals_by_trade.lock().await;
+        let unpaid = accruals
+            .values()
+            .filter(|accrual| {
+                accrual.referrer_id == referrer_id && accrual.paid_out_txn_id.is_none()
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        commission_payout_ledger_draft_response(&referrer_id, paid_out_at_day, &unpaid)
+    }
+
+    async fn list_due_commission_payout_referrers(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<DueCommissionPayoutReferrer>, ReferralStoreError> {
+        let accruals = self.commission_accruals_by_trade.lock().await;
+        let mut by_referrer = HashMap::<String, (usize, i64)>::new();
+        for accrual in accruals
+            .values()
+            .filter(|accrual| accrual.paid_out_txn_id.is_none())
+        {
+            let entry = by_referrer
+                .entry(accrual.referrer_id.clone())
+                .or_insert((0, 0));
+            entry.0 += 1;
+            entry.1 += accrual.commission_amount_minor_units;
+        }
+        let mut due = by_referrer
+            .into_iter()
+            .map(
+                |(referrer_id, (accrual_count, total_commission_minor_units))| {
+                    DueCommissionPayoutReferrer {
+                        referrer_id,
+                        accrual_count,
+                        total_commission_minor_units,
+                    }
+                },
+            )
+            .collect::<Vec<_>>();
+        due.sort_by(|left, right| left.referrer_id.cmp(&right.referrer_id));
+        due.truncate(limit);
+        Ok(due)
+    }
+
     async fn referral_code_for_user(&self, user_id: &str) -> Result<String, ReferralStoreError> {
         self.referral_codes_by_user
             .get(user_id)
@@ -730,6 +1395,39 @@ where
 {
     let state = Arc::new(store);
     Router::new()
+        .route("/internal/referrals/capture", post(capture_referral::<S>))
+        .route(
+            "/internal/referrals/qualification-evaluate",
+            post(evaluate_referral_qualification::<S>),
+        )
+        .route(
+            "/internal/referrals/qualification-due",
+            get(list_due_qualification_referrals::<S>),
+        )
+        .route(
+            "/internal/referrals/signup-bonus-finalize",
+            post(finalize_signup_bonus_ledger::<S>),
+        )
+        .route(
+            "/internal/referrals/signup-bonus-ledger-draft/:referred_id",
+            get(get_signup_bonus_ledger_draft::<S>),
+        )
+        .route(
+            "/internal/referrals/commission-accruals",
+            post(accrue_trade_commission::<S>),
+        )
+        .route(
+            "/internal/referrals/commission-accruals-payout",
+            post(mark_commission_accruals_paid::<S>),
+        )
+        .route(
+            "/internal/referrals/commission-accruals-payout-ledger-draft/:referrer_id",
+            get(get_commission_payout_ledger_draft::<S>),
+        )
+        .route(
+            "/internal/referrals/commission-accruals-payout-due",
+            get(list_due_commission_payout_referrers::<S>),
+        )
         .route(
             "/internal/referrals/users/:user_id/affiliate-dashboard",
             get(get_affiliate_dashboard::<S>),
@@ -761,6 +1459,143 @@ where
             get(list_payout_reviews::<S>),
         )
         .with_state(state)
+}
+
+async fn capture_referral<S>(
+    State(store): State<Arc<S>>,
+    Json(request): Json<CaptureReferralRequest>,
+) -> Result<(StatusCode, Json<CaptureReferralResponse>), (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let (record, captured) = store
+        .capture_referral(request)
+        .await
+        .map_err(|error| api_error(&error))?;
+    let status = if captured {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((
+        status,
+        Json(CaptureReferralResponse::from_record(record, captured)),
+    ))
+}
+
+async fn evaluate_referral_qualification<S>(
+    State(store): State<Arc<S>>,
+    Json(event): Json<QualificationEvent>,
+) -> Result<Json<QualificationEvaluationResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    store
+        .evaluate_referral_qualification(event)
+        .await
+        .map(Json)
+        .map_err(|error| api_error(&error))
+}
+
+async fn list_due_qualification_referrals<S>(
+    State(store): State<Arc<S>>,
+    Query(query): Query<DueQualificationQuery>,
+) -> Result<Json<Vec<DueQualificationReferral>>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let limit = query.limit.unwrap_or(100).clamp(1, 500);
+    store
+        .list_due_qualification_referrals(query.observed_at_day, limit)
+        .await
+        .map(Json)
+        .map_err(|error| api_error(&error))
+}
+
+async fn finalize_signup_bonus_ledger<S>(
+    State(store): State<Arc<S>>,
+    Json(request): Json<SignupBonusLedgerRequest>,
+) -> Result<Json<SignupBonusLedgerResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    store
+        .finalize_signup_bonus_ledger(request)
+        .await
+        .map(Json)
+        .map_err(|error| api_error(&error))
+}
+
+async fn get_signup_bonus_ledger_draft<S>(
+    State(store): State<Arc<S>>,
+    Path(referred_id): Path<String>,
+) -> Result<Json<SignupBonusLedgerDraftResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    store
+        .signup_bonus_ledger_draft(&referred_id)
+        .await
+        .map(Json)
+        .map_err(|error| api_error(&error))
+}
+
+async fn accrue_trade_commission<S>(
+    State(store): State<Arc<S>>,
+    Json(event): Json<CommissionEvent>,
+) -> Result<Json<CommissionAccrual>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    store
+        .accrue_trade_commission(event)
+        .await
+        .map(Json)
+        .map_err(|error| api_error(&error))
+}
+
+async fn mark_commission_accruals_paid<S>(
+    State(store): State<Arc<S>>,
+    Json(request): Json<CommissionPayoutRequest>,
+) -> Result<Json<CommissionPayoutResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    store
+        .mark_commission_accruals_paid(request)
+        .await
+        .map(Json)
+        .map_err(|error| api_error(&error))
+}
+
+async fn get_commission_payout_ledger_draft<S>(
+    State(store): State<Arc<S>>,
+    Path(referrer_id): Path<String>,
+    Query(query): Query<CommissionPayoutLedgerDraftQuery>,
+) -> Result<Json<CommissionPayoutLedgerDraftResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    store
+        .commission_payout_ledger_draft(&referrer_id, query.paid_out_at_day)
+        .await
+        .map(Json)
+        .map_err(|error| api_error(&error))
+}
+
+async fn list_due_commission_payout_referrers<S>(
+    State(store): State<Arc<S>>,
+    Query(query): Query<DueCommissionPayoutQuery>,
+) -> Result<Json<Vec<DueCommissionPayoutReferrer>>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let limit = query.limit.unwrap_or(100).clamp(1, 500);
+    store
+        .list_due_commission_payout_referrers(limit)
+        .await
+        .map(Json)
+        .map_err(|error| api_error(&error))
 }
 
 async fn get_affiliate_dashboard<S>(
@@ -1069,6 +1904,304 @@ fn validate_admin_affiliate_mutation(
     Ok(())
 }
 
+impl CaptureReferralResponse {
+    fn from_record(record: ReferralRecord, captured: bool) -> Self {
+        Self {
+            referrer_id: record.referrer_id,
+            referred_id: record.referred_id,
+            referral_code: record.referral_code,
+            referred_at_day: record.referred_at_day,
+            observation_window_ends_at_day: record.observation_window_ends_at_day,
+            status: referral_status_as_str(record.status).to_owned(),
+            captured,
+        }
+    }
+}
+
+fn referral_status_as_str(status: ReferralStatus) -> &'static str {
+    match status {
+        ReferralStatus::Pending => "pending",
+        ReferralStatus::Qualified => "qualified",
+        ReferralStatus::Disqualified => "disqualified",
+        ReferralStatus::PendingReview => "pending_review",
+        ReferralStatus::PendingEddReview => "pending_eddreview",
+    }
+}
+
+fn normalize_required(value: &str, field: &str) -> Result<String, ReferralStoreError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ReferralStoreError::Invalid(format!("{field} is required")));
+    }
+    Ok(trimmed.to_owned())
+}
+
+fn current_epoch_day() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            i64::try_from(duration.as_secs() / 86_400).unwrap_or(0)
+        })
+}
+
+fn evaluate_referral_record(
+    record: &mut ReferralRecord,
+    event: &QualificationEvent,
+    monthly_qualified_count: usize,
+    lifetime_qualified_count: usize,
+) -> Result<QualificationEvaluationResponse, ReferralStoreError> {
+    if record.status == ReferralStatus::Qualified {
+        return Ok(qualification_response(record));
+    }
+    if record.status == ReferralStatus::PendingReview && !event.kinship_review_passed {
+        return Ok(qualification_response(record));
+    }
+    if event.observed_at_day < record.observation_window_ends_at_day {
+        return Err(ReferralStoreError::Invalid(
+            "observation window is still open".to_owned(),
+        ));
+    }
+    record.qualification_evaluated_at_day = Some(event.observed_at_day);
+    if event.anti_abuse.is_blocked() {
+        record.disqualify(event.observed_at_day, "anti_abuse_blocked");
+        return Ok(qualification_response(record));
+    }
+    let criteria_met = event.deposit_minor_units >= QUALIFICATION_DEPOSIT_MINOR_UNITS
+        && event.kyc_tier >= QUALIFICATION_MIN_KYC_TIER
+        && event.completed_trade_count >= QUALIFICATION_MIN_TRADE_COUNT;
+    if !criteria_met {
+        record.disqualify(event.observed_at_day, "qualification_criteria_not_met");
+        return Ok(qualification_response(record));
+    }
+    if monthly_qualified_count >= MONTHLY_SUCCESSFUL_REFERRAL_CAP as usize
+        || lifetime_qualified_count >= LIFETIME_SUCCESSFUL_REFERRAL_CAP as usize
+    {
+        record.mark_pending_edd_review("signup_referral_cap_exceeded");
+        return Ok(qualification_response(record));
+    }
+    record.status = ReferralStatus::Qualified;
+    record.qualified_at_day = Some(event.observed_at_day);
+    Ok(qualification_response(record))
+}
+
+fn qualification_response(record: &ReferralRecord) -> QualificationEvaluationResponse {
+    let qualified = record.status == ReferralStatus::Qualified;
+    QualificationEvaluationResponse {
+        referred_id: record.referred_id.clone(),
+        referrer_id: record.referrer_id.clone(),
+        status: referral_status_as_str(record.status).to_owned(),
+        qualification_evaluated_at_day: record.qualification_evaluated_at_day,
+        qualified_at_day: record.qualified_at_day,
+        signup_bonus_minor_units: if qualified {
+            QUALIFICATION_BONUS_MINOR_UNITS
+        } else {
+            0
+        },
+        referred_signup_bonus_minor_units: if qualified {
+            REFERRED_SIGNUP_BONUS_MINOR_UNITS
+        } else {
+            0
+        },
+    }
+}
+
+fn due_qualification_referral(record: &ReferralRecord) -> DueQualificationReferral {
+    DueQualificationReferral {
+        referrer_id: record.referrer_id.clone(),
+        referred_id: record.referred_id.clone(),
+        referral_code: record.referral_code.clone(),
+        referred_at_day: record.referred_at_day,
+        observation_window_ends_at_day: record.observation_window_ends_at_day,
+        status: referral_status_as_str(record.status).to_owned(),
+    }
+}
+
+fn signup_bonus_ledger_response(
+    record: &ReferralRecord,
+    replayed: bool,
+) -> SignupBonusLedgerResponse {
+    SignupBonusLedgerResponse {
+        referred_id: record.referred_id.clone(),
+        referrer_id: record.referrer_id.clone(),
+        status: referral_status_as_str(record.status).to_owned(),
+        signup_bonus_txn_id: record.signup_bonus_txn_id.unwrap_or_default(),
+        replayed,
+    }
+}
+
+fn signup_bonus_ledger_draft_response(
+    record: &ReferralRecord,
+) -> Result<SignupBonusLedgerDraftResponse, ReferralStoreError> {
+    if record.status != ReferralStatus::Qualified {
+        return Err(ReferralStoreError::Invalid(
+            "signup bonus ledger draft requires a qualified referral".to_owned(),
+        ));
+    }
+    if record.signup_bonus_txn_id.is_some() {
+        return Err(ReferralStoreError::Invalid(
+            "signup bonus ledger transaction already finalized".to_owned(),
+        ));
+    }
+    let idempotency_key = format!(
+        "referral-signup-bonus:{}:{}",
+        record.referrer_id, record.referred_id
+    );
+    Ok(SignupBonusLedgerDraftResponse {
+        correlation_id: idempotency_key.clone(),
+        idempotency_key,
+        txn_type: "referral_signup_bonus".to_owned(),
+        description: format!(
+            "Referral signup bonus for referrer {} and referred {}",
+            record.referrer_id, record.referred_id
+        ),
+        metadata: serde_json::json!({
+            "referrer_id": record.referrer_id,
+            "referred_id": record.referred_id,
+            "referral_code": record.referral_code,
+            "source": "referral-service"
+        }),
+        entries: vec![
+            SignupBonusLedgerEntry {
+                account_code: "Expense.AffiliateCommission".to_owned(),
+                direction: "debit".to_owned(),
+                amount_minor_units: QUALIFICATION_BONUS_MINOR_UNITS,
+            },
+            SignupBonusLedgerEntry {
+                account_code: format!("Player.Wallet.{}", record.referrer_id),
+                direction: "credit".to_owned(),
+                amount_minor_units: QUALIFICATION_BONUS_MINOR_UNITS,
+            },
+            SignupBonusLedgerEntry {
+                account_code: "Expense.AffiliateCommission".to_owned(),
+                direction: "debit".to_owned(),
+                amount_minor_units: REFERRED_SIGNUP_BONUS_MINOR_UNITS,
+            },
+            SignupBonusLedgerEntry {
+                account_code: format!("Player.Wallet.{}", record.referred_id),
+                direction: "credit".to_owned(),
+                amount_minor_units: REFERRED_SIGNUP_BONUS_MINOR_UNITS,
+            },
+        ],
+    })
+}
+
+fn commission_payout_ledger_draft_response(
+    referrer_id: &str,
+    paid_out_at_day: i64,
+    accruals: &[CommissionAccrual],
+) -> Result<CommissionPayoutLedgerDraftResponse, ReferralStoreError> {
+    if accruals.is_empty() {
+        return Err(ReferralStoreError::NotFound);
+    }
+    let total_commission_minor_units = accruals
+        .iter()
+        .map(|accrual| accrual.commission_amount_minor_units)
+        .sum::<i64>();
+    if total_commission_minor_units <= 0 {
+        return Err(ReferralStoreError::Invalid(
+            "commission payout ledger draft requires positive commission".to_owned(),
+        ));
+    }
+    let mut trade_ids = accruals
+        .iter()
+        .map(|accrual| accrual.trade_id.clone())
+        .collect::<Vec<_>>();
+    trade_ids.sort();
+    let idempotency_key = format!("referral-commission-payout:{referrer_id}:{paid_out_at_day}");
+    Ok(CommissionPayoutLedgerDraftResponse {
+        correlation_id: idempotency_key.clone(),
+        idempotency_key,
+        txn_type: "referral_commission_payout".to_owned(),
+        description: format!(
+            "Referral commission payout for referrer {referrer_id} on day {paid_out_at_day}"
+        ),
+        metadata: serde_json::json!({
+            "referrer_id": referrer_id,
+            "paid_out_at_day": paid_out_at_day,
+            "trade_ids": trade_ids,
+            "source": "referral-service"
+        }),
+        entries: vec![
+            SignupBonusLedgerEntry {
+                account_code: "Expense.AffiliateCommission".to_owned(),
+                direction: "debit".to_owned(),
+                amount_minor_units: total_commission_minor_units,
+            },
+            SignupBonusLedgerEntry {
+                account_code: format!("Player.Wallet.{referrer_id}"),
+                direction: "credit".to_owned(),
+                amount_minor_units: total_commission_minor_units,
+            },
+        ],
+        accrual_count: accruals.len(),
+        total_commission_minor_units,
+    })
+}
+
+fn commission_accrual_from_event(
+    record: &ReferralRecord,
+    event: &CommissionEvent,
+) -> Result<CommissionAccrual, ReferralStoreError> {
+    if event.anti_abuse.is_blocked() {
+        return Err(ReferralStoreError::Invalid("anti-abuse blocked".to_owned()));
+    }
+    if record.status != ReferralStatus::Qualified {
+        return Err(ReferralStoreError::Invalid(
+            "referral is not qualified".to_owned(),
+        ));
+    }
+    let qualified_at_day = record.qualified_at_day.ok_or_else(|| {
+        ReferralStoreError::Invalid("qualified referral is missing qualified_at".to_owned())
+    })?;
+    if event.traded_at_day - qualified_at_day > TRADE_COMMISSION_WINDOW_DAYS {
+        return Err(ReferralStoreError::Invalid(
+            "commission window expired".to_owned(),
+        ));
+    }
+    let fee_amount_minor_units = event.maker_fee_minor_units + event.taker_fee_minor_units;
+    let commission_amount_minor_units = fee_amount_minor_units * TRADE_COMMISSION_RATE_NUMERATOR
+        / TRADE_COMMISSION_RATE_DENOMINATOR;
+    if commission_amount_minor_units <= 0 {
+        return Err(ReferralStoreError::Invalid(
+            "commission amount must be positive".to_owned(),
+        ));
+    }
+    Ok(CommissionAccrual {
+        referrer_id: record.referrer_id.clone(),
+        referrer_group_id: event.referrer_group_id.clone(),
+        referred_id: record.referred_id.clone(),
+        trade_id: event.trade_id.clone(),
+        fee_amount_minor_units,
+        commission_amount_minor_units,
+        accrued_at_day: event.traded_at_day,
+        paid_out_txn_id: None,
+        paid_out_at_day: None,
+    })
+}
+
+fn ensure_referrer_monthly_trade_cap(
+    current_month_total: i64,
+    next_commission_minor_units: i64,
+) -> Result<(), ReferralStoreError> {
+    ensure_monthly_trade_cap(
+        current_month_total,
+        next_commission_minor_units,
+        "monthly trade commission cap requires EDD review",
+    )
+}
+
+fn ensure_monthly_trade_cap(
+    current_month_total: i64,
+    next_commission_minor_units: i64,
+    message: &'static str,
+) -> Result<(), ReferralStoreError> {
+    if current_month_total + next_commission_minor_units > MONTHLY_TRADE_COMMISSION_CAP_MINOR_UNITS
+    {
+        return Err(ReferralStoreError::Invalid(message.to_owned()));
+    }
+    Ok(())
+}
+
 fn apply_affiliate_mutation(
     detail: &mut AffiliateDetail,
     request: AdminAffiliateMutationRequest,
@@ -1218,6 +2351,555 @@ async fn insert_affiliate_audit(
 
 #[async_trait]
 impl AffiliateDashboardStore for PostgresAffiliateStore {
+    async fn capture_referral(
+        &self,
+        request: CaptureReferralRequest,
+    ) -> Result<(ReferralRecord, bool), ReferralStoreError> {
+        let referral_code = normalize_required(&request.referral_code, "referralCode")?;
+        let referred_id = normalize_required(&request.referred_user_id, "referredUserId")?;
+        let referred_at_day = request.referred_at_day.unwrap_or_else(current_epoch_day);
+        let referrer_row = sqlx::query(
+            "SELECT user_id FROM affiliate_profiles WHERE affiliate_id = $1 AND status <> 'archived'",
+        )
+        .bind(&referral_code)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(ReferralStoreError::NotFound)?;
+        let referrer_id: String = referrer_row.try_get("user_id").map_err(sqlx_error)?;
+        let pending = ReferralRecord::pending(
+            referrer_id,
+            referred_id.clone(),
+            referral_code.clone(),
+            referred_at_day,
+        )
+        .map_err(referral_error)?;
+
+        let inserted = sqlx::query(
+            r"
+            INSERT INTO referrals (
+                referrer_id, referred_id, referral_code, referred_at,
+                observation_window_ends_at, status, metadata
+            )
+            VALUES (
+                $1, $2, $3, to_timestamp($4 * 86400),
+                to_timestamp(($4 + $5) * 86400), 'pending', '{}'::jsonb
+            )
+            ON CONFLICT (referred_id) DO NOTHING
+            RETURNING referrer_id, referred_id, referral_code,
+                      FLOOR(EXTRACT(EPOCH FROM referred_at) / 86400)::BIGINT AS referred_at_day,
+                      FLOOR(EXTRACT(EPOCH FROM observation_window_ends_at) / 86400)::BIGINT AS observation_window_ends_at_day,
+                      FLOOR(EXTRACT(EPOCH FROM qualification_evaluated_at) / 86400)::BIGINT AS qualification_evaluated_at_day,
+                      FLOOR(EXTRACT(EPOCH FROM qualified_at) / 86400)::BIGINT AS qualified_at_day,
+                      signup_bonus_txn_id, status, metadata
+            ",
+        )
+        .bind(&pending.referrer_id)
+        .bind(&pending.referred_id)
+        .bind(&pending.referral_code)
+        .bind(pending.referred_at_day)
+        .bind(QUALIFICATION_WINDOW_DAYS)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+
+        if let Some(row) = inserted {
+            return Ok((referral_record_from_row(&row)?, true));
+        }
+
+        let row = sqlx::query(
+            r"
+            SELECT referrer_id, referred_id, referral_code,
+                   FLOOR(EXTRACT(EPOCH FROM referred_at) / 86400)::BIGINT AS referred_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM observation_window_ends_at) / 86400)::BIGINT AS observation_window_ends_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualification_evaluated_at) / 86400)::BIGINT AS qualification_evaluated_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualified_at) / 86400)::BIGINT AS qualified_at_day,
+                   signup_bonus_txn_id, status, metadata
+            FROM referrals
+            WHERE referred_id = $1
+            ",
+        )
+        .bind(&referred_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        Ok((referral_record_from_row(&row)?, false))
+    }
+
+    async fn evaluate_referral_qualification(
+        &self,
+        event: QualificationEvent,
+    ) -> Result<QualificationEvaluationResponse, ReferralStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT referrer_id, referred_id, referral_code,
+                   FLOOR(EXTRACT(EPOCH FROM referred_at) / 86400)::BIGINT AS referred_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM observation_window_ends_at) / 86400)::BIGINT AS observation_window_ends_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualification_evaluated_at) / 86400)::BIGINT AS qualification_evaluated_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualified_at) / 86400)::BIGINT AS qualified_at_day,
+                   signup_bonus_txn_id, status, metadata
+            FROM referrals
+            WHERE referred_id = $1
+            FOR UPDATE
+            ",
+        )
+        .bind(&event.referred_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(ReferralStoreError::NotFound)?;
+        let mut record = referral_record_from_row(&row)?;
+        let observed_month_start_day =
+            event.observed_at_day - (event.observed_at_day % DAYS_PER_CAP_MONTH);
+        let cap_row = sqlx::query(
+            r"
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE status = 'qualified'
+                      AND qualified_at >= to_timestamp($2 * 86400)
+                      AND qualified_at < to_timestamp(($2 + $3) * 86400)
+                )::BIGINT AS monthly_qualified_count,
+                COUNT(*) FILTER (WHERE status = 'qualified')::BIGINT AS lifetime_qualified_count
+            FROM referrals
+            WHERE referrer_id = $1
+            ",
+        )
+        .bind(&record.referrer_id)
+        .bind(observed_month_start_day)
+        .bind(DAYS_PER_CAP_MONTH)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        let monthly_qualified_count: i64 = cap_row
+            .try_get("monthly_qualified_count")
+            .map_err(sqlx_error)?;
+        let lifetime_qualified_count: i64 = cap_row
+            .try_get("lifetime_qualified_count")
+            .map_err(sqlx_error)?;
+        let response = evaluate_referral_record(
+            &mut record,
+            &event,
+            usize::try_from(monthly_qualified_count)
+                .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
+            usize::try_from(lifetime_qualified_count)
+                .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
+        )?;
+        sqlx::query(
+            r"
+            UPDATE referrals
+            SET status = $2,
+                qualification_evaluated_at = CASE
+                    WHEN $3::BIGINT IS NULL THEN qualification_evaluated_at
+                    ELSE to_timestamp($3 * 86400)
+                END,
+                qualified_at = CASE
+                    WHEN $4::BIGINT IS NULL THEN qualified_at
+                    ELSE to_timestamp($4 * 86400)
+                END,
+                metadata = metadata || $5::jsonb
+            WHERE referred_id = $1
+            ",
+        )
+        .bind(&record.referred_id)
+        .bind(referral_status_as_str(record.status))
+        .bind(record.qualification_evaluated_at_day)
+        .bind(record.qualified_at_day)
+        .bind(serde_json::json!({
+            "disqualify_reason": record.disqualify_reason,
+            "eddreview_reason": record.eddreview_reason,
+            "qualification_evaluator": "referral-service"
+        }))
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        Ok(response)
+    }
+
+    async fn list_due_qualification_referrals(
+        &self,
+        observed_at_day: i64,
+        limit: usize,
+    ) -> Result<Vec<DueQualificationReferral>, ReferralStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT referrer_id, referred_id, referral_code,
+                   FLOOR(EXTRACT(EPOCH FROM referred_at) / 86400)::BIGINT AS referred_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM observation_window_ends_at) / 86400)::BIGINT AS observation_window_ends_at_day,
+                   status
+            FROM referrals
+            WHERE status = 'pending'
+              AND observation_window_ends_at <= to_timestamp($1 * 86400)
+            ORDER BY observation_window_ends_at ASC, referred_id ASC
+            LIMIT $2
+            ",
+        )
+        .bind(observed_at_day)
+        .bind(
+            i64::try_from(limit)
+                .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(DueQualificationReferral {
+                    referrer_id: row.try_get("referrer_id").map_err(sqlx_error)?,
+                    referred_id: row.try_get("referred_id").map_err(sqlx_error)?,
+                    referral_code: row.try_get("referral_code").map_err(sqlx_error)?,
+                    referred_at_day: row.try_get("referred_at_day").map_err(sqlx_error)?,
+                    observation_window_ends_at_day: row
+                        .try_get("observation_window_ends_at_day")
+                        .map_err(sqlx_error)?,
+                    status: row.try_get("status").map_err(sqlx_error)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn finalize_signup_bonus_ledger(
+        &self,
+        request: SignupBonusLedgerRequest,
+    ) -> Result<SignupBonusLedgerResponse, ReferralStoreError> {
+        if request.signup_bonus_txn_id <= 0 {
+            return Err(ReferralStoreError::Invalid(
+                "signup_bonus_txn_id must be greater than zero".to_owned(),
+            ));
+        }
+        let row = sqlx::query(
+            r"
+            SELECT referrer_id, referred_id, referral_code,
+                   FLOOR(EXTRACT(EPOCH FROM referred_at) / 86400)::BIGINT AS referred_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM observation_window_ends_at) / 86400)::BIGINT AS observation_window_ends_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualification_evaluated_at) / 86400)::BIGINT AS qualification_evaluated_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualified_at) / 86400)::BIGINT AS qualified_at_day,
+                   signup_bonus_txn_id, status, metadata
+            FROM referrals
+            WHERE referred_id = $1
+            FOR UPDATE
+            ",
+        )
+        .bind(&request.referred_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(ReferralStoreError::NotFound)?;
+        let mut record = referral_record_from_row(&row)?;
+        if record.status != ReferralStatus::Qualified {
+            return Err(ReferralStoreError::Invalid(
+                "signup bonus ledger can only be finalized for qualified referrals".to_owned(),
+            ));
+        }
+        if let Some(existing_txn_id) = record.signup_bonus_txn_id {
+            if existing_txn_id != request.signup_bonus_txn_id {
+                return Err(ReferralStoreError::Invalid(
+                    "signup bonus ledger transaction already finalized".to_owned(),
+                ));
+            }
+            return Ok(signup_bonus_ledger_response(&record, true));
+        }
+        sqlx::query(
+            r"
+            UPDATE referrals
+            SET signup_bonus_txn_id = $2,
+                metadata = metadata || $3::jsonb
+            WHERE referred_id = $1
+              AND signup_bonus_txn_id IS NULL
+            ",
+        )
+        .bind(&record.referred_id)
+        .bind(request.signup_bonus_txn_id)
+        .bind(serde_json::json!({
+            "signup_bonus_posted_at_day": request.posted_at_day,
+            "signup_bonus_ledger_finalizer": "referral-service"
+        }))
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        record.signup_bonus_txn_id = Some(request.signup_bonus_txn_id);
+        Ok(signup_bonus_ledger_response(&record, false))
+    }
+
+    async fn signup_bonus_ledger_draft(
+        &self,
+        referred_id: &str,
+    ) -> Result<SignupBonusLedgerDraftResponse, ReferralStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT referrer_id, referred_id, referral_code,
+                   FLOOR(EXTRACT(EPOCH FROM referred_at) / 86400)::BIGINT AS referred_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM observation_window_ends_at) / 86400)::BIGINT AS observation_window_ends_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualification_evaluated_at) / 86400)::BIGINT AS qualification_evaluated_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualified_at) / 86400)::BIGINT AS qualified_at_day,
+                   signup_bonus_txn_id, status, metadata
+            FROM referrals
+            WHERE referred_id = $1
+            ",
+        )
+        .bind(referred_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(ReferralStoreError::NotFound)?;
+        let record = referral_record_from_row(&row)?;
+        signup_bonus_ledger_draft_response(&record)
+    }
+
+    async fn accrue_trade_commission(
+        &self,
+        event: CommissionEvent,
+    ) -> Result<CommissionAccrual, ReferralStoreError> {
+        if let Some(row) = sqlx::query(
+            r"
+            SELECT referrer_id, referrer_group_id, referred_id, trade_id, fee_amount, commission_amount,
+                   FLOOR(EXTRACT(EPOCH FROM accrued_at) / 86400)::BIGINT AS accrued_at_day,
+                   paid_out_txn_id,
+                   FLOOR(EXTRACT(EPOCH FROM paid_out_at) / 86400)::BIGINT AS paid_out_at_day
+            FROM commission_accruals
+            WHERE trade_id = $1
+            ",
+        )
+        .bind(&event.trade_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_error)?
+        {
+            return commission_accrual_from_row(&row);
+        }
+
+        let row = sqlx::query(
+            r"
+            SELECT referrer_id, referred_id, referral_code,
+                   FLOOR(EXTRACT(EPOCH FROM referred_at) / 86400)::BIGINT AS referred_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM observation_window_ends_at) / 86400)::BIGINT AS observation_window_ends_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualification_evaluated_at) / 86400)::BIGINT AS qualification_evaluated_at_day,
+                   FLOOR(EXTRACT(EPOCH FROM qualified_at) / 86400)::BIGINT AS qualified_at_day,
+                   signup_bonus_txn_id, status, metadata
+            FROM referrals
+            WHERE referred_id = $1
+            ",
+        )
+        .bind(&event.referred_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(ReferralStoreError::NotFound)?;
+        let record = referral_record_from_row(&row)?;
+        let accrual = commission_accrual_from_event(&record, &event)?;
+        let month_start_day = event.traded_at_day - (event.traded_at_day % DAYS_PER_CAP_MONTH);
+        let cap_row = sqlx::query(
+            r"
+            SELECT COALESCE(SUM(commission_amount), 0)::BIGINT AS current_month_total
+            FROM commission_accruals
+            WHERE referrer_id = $1
+              AND accrued_at >= to_timestamp($2 * 86400)
+              AND accrued_at < to_timestamp(($2 + $3) * 86400)
+            ",
+        )
+        .bind(&accrual.referrer_id)
+        .bind(month_start_day)
+        .bind(DAYS_PER_CAP_MONTH)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        let current_month_total: i64 =
+            cap_row.try_get("current_month_total").map_err(sqlx_error)?;
+        ensure_referrer_monthly_trade_cap(
+            current_month_total,
+            accrual.commission_amount_minor_units,
+        )?;
+        if let Some(group_id) = &accrual.referrer_group_id {
+            let group_cap_row = sqlx::query(
+                r"
+                SELECT COALESCE(SUM(commission_amount), 0)::BIGINT AS current_month_total
+                FROM commission_accruals
+                WHERE referrer_group_id = $1
+                  AND accrued_at >= to_timestamp($2 * 86400)
+                  AND accrued_at < to_timestamp(($2 + $3) * 86400)
+                ",
+            )
+            .bind(group_id)
+            .bind(month_start_day)
+            .bind(DAYS_PER_CAP_MONTH)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(sqlx_error)?;
+            let current_group_month_total: i64 = group_cap_row
+                .try_get("current_month_total")
+                .map_err(sqlx_error)?;
+            ensure_monthly_trade_cap(
+                current_group_month_total,
+                accrual.commission_amount_minor_units,
+                "group monthly trade commission cap requires EDD review",
+            )?;
+        }
+        sqlx::query(
+            r"
+            INSERT INTO commission_accruals (
+                referrer_id, referrer_group_id, referred_id, trade_id, fee_amount, commission_amount, accrued_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7 * 86400))
+            ",
+        )
+        .bind(&accrual.referrer_id)
+        .bind(accrual.referrer_group_id.as_deref())
+        .bind(&accrual.referred_id)
+        .bind(&accrual.trade_id)
+        .bind(accrual.fee_amount_minor_units)
+        .bind(accrual.commission_amount_minor_units)
+        .bind(accrual.accrued_at_day)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        Ok(accrual)
+    }
+
+    async fn mark_commission_accruals_paid(
+        &self,
+        request: CommissionPayoutRequest,
+    ) -> Result<CommissionPayoutResponse, ReferralStoreError> {
+        if request.paid_out_txn_id <= 0 {
+            return Err(ReferralStoreError::Invalid(
+                "paidOutTxnId must be positive".to_owned(),
+            ));
+        }
+        let referrer_id = normalize_required(&request.referrer_id, "referrerId")?;
+        let already_paid = sqlx::query(
+            r"
+            SELECT COUNT(*)::BIGINT AS accrual_count,
+                   COALESCE(SUM(commission_amount), 0)::BIGINT AS total_commission_minor_units
+            FROM commission_accruals
+            WHERE referrer_id = $1 AND paid_out_txn_id = $2
+            ",
+        )
+        .bind(&referrer_id)
+        .bind(request.paid_out_txn_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        let already_count: i64 = already_paid.try_get("accrual_count").map_err(sqlx_error)?;
+        if already_count > 0 {
+            return Ok(CommissionPayoutResponse {
+                referrer_id,
+                paid_out_txn_id: request.paid_out_txn_id,
+                paid_out_at_day: request.paid_out_at_day,
+                accrual_count: usize::try_from(already_count)
+                    .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
+                total_commission_minor_units: already_paid
+                    .try_get("total_commission_minor_units")
+                    .map_err(sqlx_error)?,
+            });
+        }
+
+        let pending = sqlx::query(
+            r"
+            SELECT COUNT(*)::BIGINT AS accrual_count,
+                   COALESCE(SUM(commission_amount), 0)::BIGINT AS total_commission_minor_units
+            FROM commission_accruals
+            WHERE referrer_id = $1 AND paid_out_txn_id IS NULL
+            ",
+        )
+        .bind(&referrer_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        let pending_count: i64 = pending.try_get("accrual_count").map_err(sqlx_error)?;
+        if pending_count == 0 {
+            return Err(ReferralStoreError::NotFound);
+        }
+        sqlx::query(
+            r"
+            UPDATE commission_accruals
+            SET paid_out_txn_id = $2,
+                paid_out_at = to_timestamp($3 * 86400)
+            WHERE referrer_id = $1 AND paid_out_txn_id IS NULL
+            ",
+        )
+        .bind(&referrer_id)
+        .bind(request.paid_out_txn_id)
+        .bind(request.paid_out_at_day)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        Ok(CommissionPayoutResponse {
+            referrer_id,
+            paid_out_txn_id: request.paid_out_txn_id,
+            paid_out_at_day: request.paid_out_at_day,
+            accrual_count: usize::try_from(pending_count)
+                .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
+            total_commission_minor_units: pending
+                .try_get("total_commission_minor_units")
+                .map_err(sqlx_error)?,
+        })
+    }
+
+    async fn commission_payout_ledger_draft(
+        &self,
+        referrer_id: &str,
+        paid_out_at_day: i64,
+    ) -> Result<CommissionPayoutLedgerDraftResponse, ReferralStoreError> {
+        let referrer_id = normalize_required(referrer_id, "referrerId")?;
+        let rows = sqlx::query(
+            r"
+            SELECT referrer_id, referrer_group_id, referred_id, trade_id, fee_amount, commission_amount,
+                   FLOOR(EXTRACT(EPOCH FROM accrued_at) / 86400)::BIGINT AS accrued_at_day,
+                   paid_out_txn_id,
+                   FLOOR(EXTRACT(EPOCH FROM paid_out_at) / 86400)::BIGINT AS paid_out_at_day
+            FROM commission_accruals
+            WHERE referrer_id = $1
+              AND paid_out_txn_id IS NULL
+            ORDER BY accrued_at ASC, trade_id ASC
+            ",
+        )
+        .bind(&referrer_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        let accruals = rows
+            .iter()
+            .map(commission_accrual_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        commission_payout_ledger_draft_response(&referrer_id, paid_out_at_day, &accruals)
+    }
+
+    async fn list_due_commission_payout_referrers(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<DueCommissionPayoutReferrer>, ReferralStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT referrer_id,
+                   COUNT(*)::BIGINT AS accrual_count,
+                   COALESCE(SUM(commission_amount), 0)::BIGINT AS total_commission_minor_units
+            FROM commission_accruals
+            WHERE paid_out_txn_id IS NULL
+            GROUP BY referrer_id
+            ORDER BY referrer_id ASC
+            LIMIT $1
+            ",
+        )
+        .bind(
+            i64::try_from(limit)
+                .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        rows.into_iter()
+            .map(|row| {
+                let accrual_count: i64 = row.try_get("accrual_count").map_err(sqlx_error)?;
+                Ok(DueCommissionPayoutReferrer {
+                    referrer_id: row.try_get("referrer_id").map_err(sqlx_error)?,
+                    accrual_count: usize::try_from(accrual_count)
+                        .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
+                    total_commission_minor_units: row
+                        .try_get("total_commission_minor_units")
+                        .map_err(sqlx_error)?,
+                })
+            })
+            .collect()
+    }
+
     async fn referral_code_for_user(&self, user_id: &str) -> Result<String, ReferralStoreError> {
         let row = sqlx::query("SELECT affiliate_id FROM affiliate_profiles WHERE user_id = $1")
             .bind(user_id)
@@ -1667,6 +3349,22 @@ fn payout_review_from_row(
     })
 }
 
+fn commission_accrual_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<CommissionAccrual, ReferralStoreError> {
+    Ok(CommissionAccrual {
+        referrer_id: row.try_get("referrer_id").map_err(sqlx_error)?,
+        referrer_group_id: row.try_get("referrer_group_id").map_err(sqlx_error)?,
+        referred_id: row.try_get("referred_id").map_err(sqlx_error)?,
+        trade_id: row.try_get("trade_id").map_err(sqlx_error)?,
+        fee_amount_minor_units: row.try_get("fee_amount").map_err(sqlx_error)?,
+        commission_amount_minor_units: row.try_get("commission_amount").map_err(sqlx_error)?,
+        accrued_at_day: row.try_get("accrued_at_day").map_err(sqlx_error)?,
+        paid_out_txn_id: row.try_get("paid_out_txn_id").map_err(sqlx_error)?,
+        paid_out_at_day: row.try_get("paid_out_at_day").map_err(sqlx_error)?,
+    })
+}
+
 fn referral_item_from_row(
     row: &sqlx::postgres::PgRow,
 ) -> Result<AffiliateReferralListItem, ReferralStoreError> {
@@ -1679,6 +3377,61 @@ fn referral_item_from_row(
             .try_get("cumulative_commission_minor_units")
             .map_err(sqlx_error)?,
     })
+}
+
+fn referral_record_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<ReferralRecord, ReferralStoreError> {
+    let metadata: serde_json::Value = row.try_get("metadata").map_err(sqlx_error)?;
+    let status: String = row.try_get("status").map_err(sqlx_error)?;
+    Ok(ReferralRecord {
+        referrer_id: row.try_get("referrer_id").map_err(sqlx_error)?,
+        referred_id: row.try_get("referred_id").map_err(sqlx_error)?,
+        referral_code: row.try_get("referral_code").map_err(sqlx_error)?,
+        referred_at_day: row.try_get("referred_at_day").map_err(sqlx_error)?,
+        observation_window_ends_at_day: row
+            .try_get("observation_window_ends_at_day")
+            .map_err(sqlx_error)?,
+        qualification_evaluated_at_day: row
+            .try_get("qualification_evaluated_at_day")
+            .map_err(sqlx_error)?,
+        qualified_at_day: row.try_get("qualified_at_day").map_err(sqlx_error)?,
+        signup_bonus_txn_id: row.try_get("signup_bonus_txn_id").map_err(sqlx_error)?,
+        kinship_flagged: metadata
+            .get("kinship_flagged")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        kinship_score: metadata
+            .get("kinship_score")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|value| u16::try_from(value).ok()),
+        disqualify_reason: metadata
+            .get("disqualify_reason")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        eddreview_reason: metadata
+            .get("eddreview_reason")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        status: referral_status_from_str(&status)?,
+    })
+}
+
+fn referral_status_from_str(status: &str) -> Result<ReferralStatus, ReferralStoreError> {
+    match status {
+        "pending" => Ok(ReferralStatus::Pending),
+        "qualified" => Ok(ReferralStatus::Qualified),
+        "disqualified" => Ok(ReferralStatus::Disqualified),
+        "pending_review" => Ok(ReferralStatus::PendingReview),
+        "pending_eddreview" => Ok(ReferralStatus::PendingEddReview),
+        _ => Err(ReferralStoreError::Unavailable(format!(
+            "unknown referral status {status}"
+        ))),
+    }
+}
+
+fn referral_error(error: ReferralError) -> ReferralStoreError {
+    ReferralStoreError::Invalid(error.to_string())
 }
 
 async fn fetch_sub_tree_breakdown(
@@ -2084,6 +3837,7 @@ impl AffiliateCommissionEngine {
 
         let accrual = CommissionAccrual {
             referrer_id,
+            referrer_group_id: event.referrer_group_id.clone(),
             referred_id: event.referred_id.clone(),
             trade_id: event.trade_id.clone(),
             fee_amount_minor_units: event.maker_fee_minor_units + event.taker_fee_minor_units,

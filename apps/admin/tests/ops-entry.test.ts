@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 
+const parsedPort = Number.parseInt(process.env.ADMIN_PORT ?? "3002", 10);
+const adminPort = Number.isNaN(parsedPort) || parsedPort <= 0 ? 3002 : parsedPort;
+
 const readAdminFile = (path: string) =>
   readFileSync(join(process.cwd(), path), "utf8");
 
@@ -33,6 +36,8 @@ test("admin operations entry page reads from the server-side ops facade", () => 
 
 test("members page exposes complete member management operations", () => {
   const source = readAdminFile("app/members/page.tsx");
+  const kycReviewSource = readAdminFile("app/members/kyc-review/page.tsx");
+  const approvalsSource = readAdminFile("app/approvals/page.tsx");
   const componentSource = readAdminFile("components/member-management.tsx");
   const bffSource = readAdminFile("lib/member-management-bff.ts");
   const modelSource = readAdminFile("lib/member-management.ts");
@@ -40,7 +45,18 @@ test("members page exposes complete member management operations", () => {
   const rbacSource = readAdminFile("lib/rbac.ts");
 
   assert.match(source, /MemberManagement/);
+  assert.doesNotMatch(source, /DomainScope/);
+  assert.doesNotMatch(source, /showPendingCases/);
+  assert.doesNotMatch(source, /showActionQueue/);
+  assert.match(kycReviewSource, /showPendingCases/);
+  assert.match(approvalsSource, /showActionQueue/);
+  assert.match(approvalsSource, /showMemberWorkspace=\{false\}/);
   assert.match(componentSource, /會員查詢/);
+  assert.ok(
+    componentSource.indexOf("會員查詢") < componentSource.indexOf("會員名單"),
+  );
+  assert.match(componentSource, /role="dialog"/);
+  assert.match(componentSource, /setMemberEditorOpen\(true\)/);
   assert.match(componentSource, /聯絡資料/);
   assert.match(componentSource, /帳戶摘要/);
   assert.match(componentSource, /狀態與風控/);
@@ -68,7 +84,10 @@ test("admin affiliate operations are grouped under the management area", () => {
   assert.match(facadeSource, /\/affiliate\/payouts/);
   assert.match(facadeSource, /KYC 審核/);
   assert.match(facadeSource, /\/members\/kyc-review/);
-  assert.match(shellSource, /const filteredChildren = route\.children\?\.filter/);
+  assert.match(
+    shellSource,
+    /const filteredChildren = route\.children\?\.filter/,
+  );
   assert.match(shellSource, /\.\.\.\(filteredChildren/);
   assert.match(sidebarSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
   assert.match(drawerSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
@@ -126,15 +145,17 @@ test("admin dev server allows configured LAN origins", async () => {
   };
 
   assert.ok(nextConfig.default.allowedDevOrigins?.includes("192.168.68.93"));
-  assert.ok(nextConfig.default.allowedDevOrigins?.some((origin) => origin.length > 0));
+  assert.ok(
+    nextConfig.default.allowedDevOrigins?.some((origin) => origin.length > 0),
+  );
   assert.deepEqual(
-    nextConfig.parseAllowedDevOrigins("http://192.168.68.94:3002", []),
+    nextConfig.parseAllowedDevOrigins(`http://192.168.68.94:${adminPort}`, []),
     ["192.168.68.93", "192.168.68.94"],
   );
-  assert.deepEqual(nextConfig.parseAllowedDevOrigins(undefined, ["172.20.10.6"]), [
-    "192.168.68.93",
-    "172.20.10.6",
-  ]);
+  assert.deepEqual(
+    nextConfig.parseAllowedDevOrigins(undefined, ["172.20.10.6"]),
+    ["192.168.68.93", "172.20.10.6"],
+  );
 });
 
 test("admin service worker is disabled during local development", () => {

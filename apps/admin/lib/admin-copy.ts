@@ -23,6 +23,10 @@ export const adminCopy = {
       "限平台管理員、主管與授權代理使用。所有登入動作均寫入稽核紀錄；嘗試以無效憑證登入將被風控系統標記。",
     emailLabel: "電子郵件",
     passwordLabel: "密碼",
+    mfaLegend: "兩步驗證（如帳號需要）",
+    mfaHint: "若 user-service 要求 MFA，請輸入 6 位數驗證碼；也可改用一次性復原碼。",
+    mfaCodeLabel: "驗證碼",
+    mfaRecoveryLabel: "復原碼",
     submit: "登入",
     submitting: "登入中…",
     successRedirect: "登入成功，正在進入後台。",
@@ -37,7 +41,6 @@ export const adminCopy = {
       "affiliate@prophetica.local / affiliate",
     ],
     devHintCredentialsHeading: "開發憑證（本機）：",
-    mfaPlaceholder: "MFA 將於 Phase 3 上線（SPEC-010 §9.3.3）。",
   },
   forbidden: {
     eyebrow: "存取被拒",

@@ -1,5 +1,4 @@
 import { AdminShell } from "@/components/admin-shell";
-import { DomainScope } from "@/components/domain-scope";
 import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
@@ -22,7 +21,6 @@ export default function AffiliatePayoutsPage() {
             role={viewer.role}
           >
             <div className="space-y-8">
-              <DomainScope domain={route.domain} role={viewer.role} />
               <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>

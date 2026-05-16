@@ -1,24 +1,44 @@
 use std::{
+    collections::HashSet,
     env,
-    sync::Arc,
+    fs::{self, OpenOptions},
+    io::Write,
+    path::PathBuf,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use axum::{
     Json, Router,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
 };
+use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
+use sha1::{Digest, Sha1};
 
 const LOCAL_ACCESS_TOKEN_TTL_SECONDS: u64 = 60 * 60 * 24;
+const TOTP_STEP_SECONDS: u64 = 30;
+const TOTP_DIGITS_MODULUS: u32 = 1_000_000;
 
 #[derive(Clone)]
 pub struct AuthConfig {
     accounts: Arc<[LocalLoginAccount]>,
+    session_signer: Option<SessionSigner>,
+    consumed_recovery_codes: Arc<Mutex<HashSet<String>>>,
+    consumed_recovery_code_store_path: Option<Arc<PathBuf>>,
+}
+
+#[derive(Clone)]
+struct SessionSigner {
+    kid: String,
+    signing_key: SigningKey,
+    public_x: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,6 +52,14 @@ struct LocalLoginAccountSpec {
     role: Option<String>,
     #[serde(default)]
     affiliate_id: Option<String>,
+    #[serde(default)]
+    mfa_methods: Vec<String>,
+    #[serde(default)]
+    mfa_at_epoch_seconds: Option<u64>,
+    #[serde(default)]
+    totp_secret_base32: Option<String>,
+    #[serde(default)]
+    recovery_codes: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -42,6 +70,10 @@ pub struct LocalLoginAccount {
     password: String,
     role: String,
     affiliate_id: Option<String>,
+    mfa_methods: Vec<String>,
+    mfa_at_epoch_seconds: Option<u64>,
+    totp_secret_base32: Option<String>,
+    recovery_codes: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +86,10 @@ struct LoginRequest {
     password: String,
     #[serde(default)]
     remember: bool,
+    #[serde(default)]
+    mfa_code: Option<String>,
+    #[serde(default)]
+    mfa_recovery_code: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -62,8 +98,37 @@ struct LoginResponse {
     role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     affiliate_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mfa_at_epoch_seconds: Option<u64>,
     session_token: String,
     expires_at_epoch_seconds: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct MeResponse {
+    user_id: String,
+    role: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    affiliate_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mfa_at_epoch_seconds: Option<u64>,
+    expires_at_epoch_seconds: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct JwksResponse {
+    keys: Vec<JwkResponse>,
+}
+
+#[derive(Debug, Serialize)]
+struct JwkResponse {
+    kty: &'static str,
+    crv: &'static str,
+    kid: String,
+    alg: &'static str,
+    #[serde(rename = "use")]
+    key_use: &'static str,
+    x: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -79,6 +144,14 @@ pub fn auth_router() -> Router {
 pub fn auth_router_with_config(config: AuthConfig) -> Router {
     Router::new()
         .route("/api/auth/login", post(login))
+        .route("/api/auth/me", get(me))
+        .route("/api/auth/logout", post(logout))
+        .route("/api/auth/jwks", get(jwks))
+        .route("/v1/auth/login", post(login))
+        .route("/v1/auth/me", get(me))
+        .route("/v1/auth/logout", post(logout))
+        .route("/v1/auth/jwks", get(jwks))
+        .route("/.well-known/jwks.json", get(jwks))
         .with_state(config)
 }
 
@@ -87,7 +160,24 @@ impl AuthConfig {
     pub fn new(accounts: Vec<LocalLoginAccount>) -> Self {
         Self {
             accounts: Arc::from(accounts.into_boxed_slice()),
+            session_signer: None,
+            consumed_recovery_codes: Arc::new(Mutex::new(HashSet::new())),
+            consumed_recovery_code_store_path: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_session_signer(mut self, private_jwk: &str) -> Self {
+        self.session_signer = SessionSigner::from_private_jwk(private_jwk);
+        self
+    }
+
+    #[must_use]
+    pub fn with_recovery_code_store_path(mut self, path: impl Into<PathBuf>) -> Self {
+        let path = path.into();
+        self.consumed_recovery_codes = Arc::new(Mutex::new(read_consumed_recovery_codes(&path)));
+        self.consumed_recovery_code_store_path = Some(Arc::new(path));
+        self
     }
 
     #[must_use]
@@ -118,23 +208,75 @@ impl AuthConfig {
             .map(|account| account.with_profile(role, affiliate_id))
             .map_or_else(Vec::new, |account| vec![account]);
 
-        Self::new(accounts)
+        let mut config = Self::new(accounts);
+        if let Ok(private_jwk) = env::var("USER_SERVICE_ED25519_SESSION_PRIVATE_JWK") {
+            config = config.with_session_signer(&private_jwk);
+        }
+        if let Ok(path) = env::var("USER_SERVICE_RECOVERY_CODE_CONSUMED_PATH") {
+            config = config.with_recovery_code_store_path(path);
+        }
+        config
     }
 
     fn from_local_login_accounts_json_env() -> Option<Vec<LocalLoginAccount>> {
-        Self::from_local_login_accounts_json(&env::var("USER_SERVICE_LOCAL_LOGIN_ACCOUNTS").ok()?)
+        let require_argon2id = env_flag("USER_SERVICE_REQUIRE_ARGON2ID_CREDENTIALS");
+        let require_hardware_mfa = env_flag("USER_SERVICE_REQUIRE_HARDWARE_MFA");
+        Self::from_local_login_accounts_json_with_security_policy(
+            &env::var("USER_SERVICE_LOCAL_LOGIN_ACCOUNTS").ok()?,
+            require_argon2id,
+            require_hardware_mfa,
+        )
     }
 
     #[must_use]
     pub fn from_local_login_accounts_json(raw_accounts: &str) -> Option<Vec<LocalLoginAccount>> {
+        Self::from_local_login_accounts_json_with_policy(raw_accounts, false)
+    }
+
+    #[must_use]
+    pub fn from_local_login_accounts_json_with_policy(
+        raw_accounts: &str,
+        require_argon2id: bool,
+    ) -> Option<Vec<LocalLoginAccount>> {
+        Self::from_local_login_accounts_json_with_security_policy(
+            raw_accounts,
+            require_argon2id,
+            false,
+        )
+    }
+
+    #[must_use]
+    pub fn from_local_login_accounts_json_with_security_policy(
+        raw_accounts: &str,
+        require_argon2id: bool,
+        require_hardware_mfa: bool,
+    ) -> Option<Vec<LocalLoginAccount>> {
         let specs: Vec<LocalLoginAccountSpec> = serde_json::from_str(raw_accounts).ok()?;
         let accounts = specs
             .into_iter()
             .filter_map(|spec| {
                 let phone = spec.phone.unwrap_or_else(|| "0912345698".to_owned());
                 let role = spec.role.unwrap_or_else(|| "player".to_owned());
-                LocalLoginAccount::new(spec.user_id, spec.email, phone, spec.password)
-                    .map(|account| account.with_profile(role, spec.affiliate_id))
+                if require_argon2id
+                    && is_privileged_or_affiliate_role(&role)
+                    && !spec.password.starts_with("$argon2id$")
+                {
+                    return None;
+                }
+                if require_hardware_mfa
+                    && is_privileged_or_affiliate_role(&role)
+                    && !has_hardware_mfa(&spec.mfa_methods, spec.mfa_at_epoch_seconds)
+                {
+                    return None;
+                }
+                LocalLoginAccount::new(spec.user_id, spec.email, phone, spec.password).map(
+                    |account| {
+                        account
+                            .with_profile(role, spec.affiliate_id)
+                            .with_mfa(spec.mfa_methods, spec.mfa_at_epoch_seconds)
+                            .with_totp(spec.totp_secret_base32, spec.recovery_codes)
+                    },
+                )
             })
             .collect::<Vec<_>>();
 
@@ -144,6 +286,56 @@ impl AuthConfig {
             Some(accounts)
         }
     }
+
+    fn account_by_user_id(&self, user_id: &str) -> Option<&LocalLoginAccount> {
+        self.accounts
+            .iter()
+            .find(|account| account.user_id == user_id)
+    }
+
+    fn consume_recovery_code(&self, account: &LocalLoginAccount, candidate: &str) -> bool {
+        if !account
+            .recovery_codes
+            .iter()
+            .any(|code| constant_time_equals_str(code, candidate.trim()))
+        {
+            return false;
+        }
+        let key = recovery_code_consumed_key(&account.user_id, candidate.trim());
+        let Ok(mut consumed) = self.consumed_recovery_codes.lock() else {
+            return false;
+        };
+        if consumed.contains(&key) {
+            return false;
+        }
+        consumed.insert(key);
+        if let Some(path) = self.consumed_recovery_code_store_path.as_deref() {
+            if persist_consumed_recovery_codes(path, &consumed).is_err() {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn env_flag(name: &str) -> bool {
+    env::var(name)
+        .ok()
+        .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+}
+
+fn is_privileged_or_affiliate_role(role: &str) -> bool {
+    matches!(role.trim(), "admin" | "manager" | "affiliate")
+}
+
+fn has_hardware_mfa(methods: &[String], mfa_at_epoch_seconds: Option<u64>) -> bool {
+    mfa_at_epoch_seconds.is_some_and(|mfa_at| mfa_at > 0)
+        && methods.iter().any(|method| {
+            matches!(
+                method.trim().to_ascii_lowercase().as_str(),
+                "webauthn" | "passkey" | "fido2" | "security_key" | "hardware_key"
+            )
+        })
 }
 
 impl LocalLoginAccount {
@@ -170,6 +362,10 @@ impl LocalLoginAccount {
             password,
             role: "player".to_owned(),
             affiliate_id: None,
+            mfa_methods: Vec::new(),
+            mfa_at_epoch_seconds: None,
+            totp_secret_base32: None,
+            recovery_codes: Vec::new(),
         })
     }
 
@@ -187,6 +383,30 @@ impl LocalLoginAccount {
                 Some(trimmed.to_owned())
             }
         });
+        self
+    }
+
+    #[must_use]
+    pub fn with_mfa(mut self, methods: Vec<String>, mfa_at_epoch_seconds: Option<u64>) -> Self {
+        self.mfa_methods = methods
+            .into_iter()
+            .map(|method| method.trim().to_ascii_lowercase())
+            .filter(|method| !method.is_empty())
+            .collect();
+        self.mfa_at_epoch_seconds = mfa_at_epoch_seconds.filter(|value| *value > 0);
+        self
+    }
+
+    #[must_use]
+    pub fn with_totp(mut self, secret_base32: Option<String>, recovery_codes: Vec<String>) -> Self {
+        self.totp_secret_base32 = secret_base32
+            .map(|secret| secret.trim().replace(' ', ""))
+            .filter(|secret| !secret.is_empty());
+        self.recovery_codes = recovery_codes
+            .into_iter()
+            .map(|code| code.trim().to_owned())
+            .filter(|code| !code.is_empty())
+            .collect();
         self
     }
 }
@@ -213,13 +433,89 @@ async fn login(State(config): State<AuthConfig>, Json(request): Json<LoginReques
     }
 
     let account = config.accounts.iter().find(|account| {
-        account.matches_identifier(&identifier) && account.password == request.password
+        account.matches_identifier(&identifier) && account.verify_password(&request.password)
     });
 
     match account {
-        Some(account) => successful_login(account, request.remember),
+        Some(account) => {
+            let (mfa_at_epoch_seconds, mfa_amr_method) = if account.requires_mfa_challenge() {
+                let Some(method) = account.verify_mfa_challenge(
+                    request.mfa_code.as_deref(),
+                    request.mfa_recovery_code.as_deref(),
+                    unix_now_seconds(),
+                    &config,
+                ) else {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(json!({ "error": "ERROR_CODE_MFA_REQUIRED" })),
+                    )
+                        .into_response();
+                };
+                (Some(unix_now_seconds()), Some(method))
+            } else {
+                (
+                    account.mfa_at_epoch_seconds,
+                    has_hardware_mfa(&account.mfa_methods, account.mfa_at_epoch_seconds)
+                        .then_some("hwk"),
+                )
+            };
+            successful_login(
+                &config,
+                account,
+                request.remember,
+                mfa_at_epoch_seconds,
+                mfa_amr_method,
+            )
+        }
         None => invalid_credentials(),
     }
+}
+
+async fn me(State(config): State<AuthConfig>, headers: HeaderMap) -> Response {
+    let Some(token) = bearer_token(&headers) else {
+        return invalid_credentials();
+    };
+    let Some(session) = parse_session_token(&config, token) else {
+        return invalid_credentials();
+    };
+    if session.expires_at_epoch_seconds <= unix_now_seconds() {
+        return invalid_credentials();
+    }
+    let Some(account) = config.account_by_user_id(&session.user_id) else {
+        return invalid_credentials();
+    };
+    Json(MeResponse {
+        user_id: account.user_id.clone(),
+        role: account.role.clone(),
+        affiliate_id: account.affiliate_id.clone(),
+        mfa_at_epoch_seconds: session
+            .mfa_at_epoch_seconds
+            .or(account.mfa_at_epoch_seconds),
+        expires_at_epoch_seconds: session.expires_at_epoch_seconds,
+    })
+    .into_response()
+}
+
+async fn logout() -> Response {
+    StatusCode::NO_CONTENT.into_response()
+}
+
+async fn jwks(State(config): State<AuthConfig>) -> Response {
+    let keys = config
+        .session_signer
+        .as_ref()
+        .map(|signer| {
+            vec![JwkResponse {
+                kty: "OKP",
+                crv: "Ed25519",
+                kid: signer.kid.clone(),
+                alg: "EdDSA",
+                key_use: "sig",
+                x: signer.public_x.clone(),
+            }]
+        })
+        .unwrap_or_default();
+    Json(JwksResponse { keys }).into_response()
 }
 
 impl LocalLoginAccount {
@@ -229,24 +525,428 @@ impl LocalLoginAccount {
             LoginIdentifier::Phone(phone) => self.phone == *phone,
         }
     }
+
+    fn session_amr(&self) -> Vec<&'static str> {
+        let mut methods = vec!["pwd"];
+        if has_hardware_mfa(&self.mfa_methods, self.mfa_at_epoch_seconds) {
+            methods.push("hwk");
+        }
+        methods
+    }
+
+    fn session_amr_with_method(&self, mfa_amr_method: Option<&'static str>) -> Vec<&'static str> {
+        let mut methods = vec!["pwd"];
+        if let Some(method) = mfa_amr_method {
+            methods.push(method);
+        }
+        methods
+    }
+
+    fn requires_mfa_challenge(&self) -> bool {
+        self.totp_secret_base32.is_some() || !self.recovery_codes.is_empty()
+    }
+
+    fn verify_mfa_challenge(
+        &self,
+        totp_code: Option<&str>,
+        recovery_code: Option<&str>,
+        now_seconds: u64,
+        config: &AuthConfig,
+    ) -> Option<&'static str> {
+        if totp_code.is_some_and(|code| {
+            self.totp_secret_base32
+                .as_deref()
+                .is_some_and(|secret| verify_totp(secret, code, now_seconds))
+        }) {
+            return Some("otp");
+        }
+        if recovery_code.is_some_and(|candidate| config.consume_recovery_code(self, candidate)) {
+            return Some("recovery");
+        }
+        None
+    }
+
+    fn verify_password(&self, candidate: &str) -> bool {
+        if self.password.starts_with("$argon2id$") {
+            return verify_argon2id_password(&self.password, candidate);
+        }
+        self.password == candidate
+    }
 }
 
-fn successful_login(account: &LocalLoginAccount, remember: bool) -> Response {
+fn verify_argon2id_password(encoded_hash: &str, candidate: &str) -> bool {
+    let Ok(parsed) = PasswordHash::new(encoded_hash) else {
+        return false;
+    };
+    if !argon2id_params_meet_minimum(&parsed) {
+        return false;
+    }
+    Argon2::default()
+        .verify_password(candidate.as_bytes(), &parsed)
+        .is_ok()
+}
+
+fn argon2id_params_meet_minimum(hash: &PasswordHash<'_>) -> bool {
+    if hash.algorithm.as_str() != "argon2id" {
+        return false;
+    }
+    let memory_cost = hash
+        .params
+        .get("m")
+        .and_then(|value| value.decimal().ok())
+        .unwrap_or_default();
+    let time_cost = hash
+        .params
+        .get("t")
+        .and_then(|value| value.decimal().ok())
+        .unwrap_or_default();
+    let parallelism = hash
+        .params
+        .get("p")
+        .and_then(|value| value.decimal().ok())
+        .unwrap_or_default();
+    memory_cost >= 19_456 && time_cost >= 2 && parallelism >= 1
+}
+
+fn verify_totp(secret_base32: &str, candidate: &str, now_seconds: u64) -> bool {
+    let Some(secret) = base32_decode(secret_base32) else {
+        return false;
+    };
+    let code = candidate.trim();
+    if code.len() != 6 || !code.bytes().all(|byte| byte.is_ascii_digit()) {
+        return false;
+    }
+    let counter = now_seconds / TOTP_STEP_SECONDS;
+    [
+        counter.saturating_sub(1),
+        counter,
+        counter.saturating_add(1),
+    ]
+    .into_iter()
+    .any(|window_counter| {
+        generate_totp_code(&secret, window_counter)
+            .is_some_and(|expected| constant_time_equals_str(&expected, code))
+    })
+}
+
+fn generate_totp_code(secret: &[u8], counter: u64) -> Option<String> {
+    let mut mac = Hmac::<Sha1>::new_from_slice(secret).ok()?;
+    mac.update(&counter.to_be_bytes());
+    let digest = mac.finalize().into_bytes();
+    let offset = usize::from(digest[19] & 0x0f);
+    let binary = ((u32::from(digest[offset]) & 0x7f) << 24)
+        | (u32::from(digest[offset + 1]) << 16)
+        | (u32::from(digest[offset + 2]) << 8)
+        | u32::from(digest[offset + 3]);
+    Some(format!("{:06}", binary % TOTP_DIGITS_MODULUS))
+}
+
+fn base32_decode(input: &str) -> Option<Vec<u8>> {
+    let mut bits = 0_u32;
+    let mut bit_count = 0_u8;
+    let mut out = Vec::new();
+    for byte in input.bytes() {
+        if byte == b'=' || byte == b' ' || byte == b'-' {
+            continue;
+        }
+        let value = match byte.to_ascii_uppercase() {
+            b'A'..=b'Z' => byte.to_ascii_uppercase() - b'A',
+            b'2'..=b'7' => byte - b'2' + 26,
+            _ => return None,
+        };
+        bits = (bits << 5) | u32::from(value);
+        bit_count += 5;
+        if bit_count >= 8 {
+            bit_count -= 8;
+            out.push(((bits >> bit_count) & 0xff) as u8);
+        }
+    }
+    if out.is_empty() { None } else { Some(out) }
+}
+
+fn constant_time_equals_str(a: &str, b: &str) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0_u8;
+    for (left, right) in a.bytes().zip(b.bytes()) {
+        diff |= left ^ right;
+    }
+    diff == 0
+}
+
+fn recovery_code_consumed_key(user_id: &str, recovery_code: &str) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(user_id.as_bytes());
+    hasher.update(b":");
+    hasher.update(recovery_code.as_bytes());
+    let digest = hasher.finalize();
+    digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
+}
+
+fn read_consumed_recovery_codes(path: &PathBuf) -> HashSet<String> {
+    fs::read_to_string(path)
+        .ok()
+        .map(|content| {
+            content
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn persist_consumed_recovery_codes(
+    path: &PathBuf,
+    consumed: &HashSet<String>,
+) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut entries = consumed.iter().cloned().collect::<Vec<_>>();
+    entries.sort();
+    let mut file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)?;
+    for entry in entries {
+        writeln!(file, "{entry}")?;
+    }
+    Ok(())
+}
+
+fn successful_login(
+    config: &AuthConfig,
+    account: &LocalLoginAccount,
+    remember: bool,
+    mfa_at_epoch_seconds: Option<u64>,
+    mfa_amr_method: Option<&'static str>,
+) -> Response {
     let now = unix_now_seconds();
     let expires_at_epoch_seconds = now + LOCAL_ACCESS_TOKEN_TTL_SECONDS;
     let scope = if remember { "remembered" } else { "session" };
+
+    let session_token = config
+        .session_signer
+        .as_ref()
+        .and_then(|signer| {
+            signer.sign_account_session(
+                account,
+                now,
+                expires_at_epoch_seconds,
+                mfa_at_epoch_seconds,
+                mfa_amr_method,
+            )
+        })
+        .unwrap_or_else(|| {
+            format!(
+                "local-user-service:{scope}:{}:{expires_at_epoch_seconds}",
+                account.user_id
+            )
+        });
 
     Json(LoginResponse {
         user_id: account.user_id.clone(),
         role: account.role.clone(),
         affiliate_id: account.affiliate_id.clone(),
-        session_token: format!(
-            "local-user-service:{scope}:{}:{expires_at_epoch_seconds}",
-            account.user_id
-        ),
+        mfa_at_epoch_seconds,
+        session_token,
         expires_at_epoch_seconds,
     })
     .into_response()
+}
+
+struct LocalSessionToken {
+    user_id: String,
+    expires_at_epoch_seconds: u64,
+    mfa_at_epoch_seconds: Option<u64>,
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get("authorization")?
+        .to_str()
+        .ok()?
+        .trim()
+        .strip_prefix("Bearer ")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn parse_local_session_token(token: &str) -> Option<LocalSessionToken> {
+    let rest = token.strip_prefix("local-user-service:")?;
+    let (_scope, user_and_expiry) = rest.split_once(':')?;
+    let (user_id, expiry) = user_and_expiry.rsplit_once(':')?;
+    let expires_at_epoch_seconds = expiry.parse::<u64>().ok()?;
+    if user_id.trim().is_empty() {
+        return None;
+    }
+    Some(LocalSessionToken {
+        user_id: user_id.to_owned(),
+        expires_at_epoch_seconds,
+        mfa_at_epoch_seconds: None,
+    })
+}
+
+fn parse_session_token(config: &AuthConfig, token: &str) -> Option<LocalSessionToken> {
+    if token.split('.').count() == 3 {
+        return config
+            .session_signer
+            .as_ref()
+            .and_then(|signer| signer.verify_session_token(token));
+    }
+    parse_local_session_token(token)
+}
+
+impl SessionSigner {
+    fn from_private_jwk(raw: &str) -> Option<Self> {
+        let jwk: Value = serde_json::from_str(raw).ok()?;
+        if jwk.get("kty")?.as_str()? != "OKP" || jwk.get("crv")?.as_str()? != "Ed25519" {
+            return None;
+        }
+        let seed = base64_url_decode(jwk.get("d")?.as_str()?)?;
+        let seed: [u8; 32] = seed.try_into().ok()?;
+        let signing_key = SigningKey::from_bytes(&seed);
+        let public_x = base64_url_encode(&signing_key.verifying_key().to_bytes());
+        let kid = jwk
+            .get("kid")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("user-service-session-ed25519")
+            .to_owned();
+        Some(Self {
+            kid,
+            signing_key,
+            public_x,
+        })
+    }
+
+    fn sign_account_session(
+        &self,
+        account: &LocalLoginAccount,
+        issued_at: u64,
+        expires_at_epoch_seconds: u64,
+        mfa_at_epoch_seconds: Option<u64>,
+        mfa_amr_method: Option<&'static str>,
+    ) -> Option<String> {
+        let header = json!({
+            "alg": "EdDSA",
+            "kid": self.kid,
+            "typ": "JWT"
+        });
+        let mut payload = json!({
+            "sub": account.user_id,
+            "role": account.role,
+            "iat": issued_at,
+            "exp": expires_at_epoch_seconds
+        });
+        if let Some(affiliate_id) = &account.affiliate_id {
+            payload["affiliateId"] = json!(affiliate_id);
+        }
+        if let Some(mfa_at) = mfa_at_epoch_seconds {
+            payload["mfa_at"] = json!(mfa_at);
+            payload["amr"] = json!(account.session_amr_with_method(mfa_amr_method));
+        }
+        let header = base64_url_encode(serde_json::to_string(&header).ok()?.as_bytes());
+        let payload = base64_url_encode(serde_json::to_string(&payload).ok()?.as_bytes());
+        let signing_input = format!("{header}.{payload}");
+        let signature = self.signing_key.sign(signing_input.as_bytes());
+        Some(format!(
+            "{signing_input}.{}",
+            base64_url_encode(&signature.to_bytes())
+        ))
+    }
+
+    fn verify_session_token(&self, token: &str) -> Option<LocalSessionToken> {
+        let mut parts = token.split('.');
+        let header = parts.next()?;
+        let payload = parts.next()?;
+        let signature = parts.next()?;
+        if parts.next().is_some() {
+            return None;
+        }
+        let header_json: Value = serde_json::from_slice(&base64_url_decode(header)?).ok()?;
+        if header_json.get("alg")?.as_str()? != "EdDSA" {
+            return None;
+        }
+        if header_json
+            .get("kid")
+            .and_then(Value::as_str)
+            .is_some_and(|kid| kid != self.kid)
+        {
+            return None;
+        }
+        let verifying_key = VerifyingKey::from(&self.signing_key);
+        let signature_bytes: [u8; 64] = base64_url_decode(signature)?.try_into().ok()?;
+        let signature = ed25519_dalek::Signature::from_bytes(&signature_bytes);
+        verifying_key
+            .verify(format!("{header}.{payload}").as_bytes(), &signature)
+            .ok()?;
+        let payload: Value = serde_json::from_slice(&base64_url_decode(payload)?).ok()?;
+        let user_id = payload.get("sub")?.as_str()?.to_owned();
+        let expires_at_epoch_seconds = payload.get("exp")?.as_u64()?;
+        let mfa_at_epoch_seconds = payload.get("mfa_at").and_then(Value::as_u64);
+        Some(LocalSessionToken {
+            user_id,
+            expires_at_epoch_seconds,
+            mfa_at_epoch_seconds,
+        })
+    }
+}
+
+fn base64_url_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::with_capacity((bytes.len() * 4).div_ceil(3));
+    let mut index = 0;
+    while index < bytes.len() {
+        let b0 = bytes[index];
+        let b1 = bytes.get(index + 1).copied();
+        let b2 = bytes.get(index + 2).copied();
+        out.push(TABLE[(b0 >> 2) as usize] as char);
+        out.push(
+            TABLE[(((b0 & 0b0000_0011) << 4) | (b1.unwrap_or_default() >> 4)) as usize] as char,
+        );
+        if let Some(b1) = b1 {
+            out.push(
+                TABLE[(((b1 & 0b0000_1111) << 2) | (b2.unwrap_or_default() >> 6)) as usize] as char,
+            );
+        }
+        if let Some(b2) = b2 {
+            out.push(TABLE[(b2 & 0b0011_1111) as usize] as char);
+        }
+        index += 3;
+    }
+    out
+}
+
+fn base64_url_decode(value: &str) -> Option<Vec<u8>> {
+    let mut bits = 0_u32;
+    let mut bit_count = 0_u8;
+    let mut out = Vec::new();
+    for byte in value.bytes() {
+        let six_bits = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'-' => 62,
+            b'_' => 63,
+            b'=' => continue,
+            _ => return None,
+        };
+        bits = (bits << 6) | u32::from(six_bits);
+        bit_count += 6;
+        if bit_count >= 8 {
+            bit_count -= 8;
+            out.push(((bits >> bit_count) & 0xff) as u8);
+        }
+    }
+    Some(out)
 }
 
 fn invalid_credentials() -> Response {

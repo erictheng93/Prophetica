@@ -2,6 +2,7 @@ import { expect, test, type APIResponse } from "@playwright/test";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ADMIN_ORIGIN } from "../admin-env.js";
 import { signSession } from "../../lib/session-crypto.js";
 
 const SESSION_COOKIE_NAME = "proph_admin_session";
@@ -31,7 +32,7 @@ test("admin UI completes a real member KYC action through gateway services and P
         { sub: "U-MANAGER-001", role: "manager" },
         DEV_SECRET,
       ),
-      url: "http://localhost:3002",
+      url: ADMIN_ORIGIN,
       httpOnly: true,
       sameSite: "Strict",
     },
@@ -41,8 +42,9 @@ test("admin UI completes a real member KYC action through gateway services and P
     await page.goto("/members");
     await expect(page.getByRole("heading", { name: "會員管理" })).toBeVisible();
 
+    await page.getByRole("button", { name: "新增會員" }).click();
     const editor = page
-      .locator("section")
+      .getByRole("dialog")
       .filter({ has: page.getByRole("heading", { name: "新增會員" }) });
     await editor.getByLabel("會員 ID").fill(userId);
     await editor.getByLabel("顯示名稱").fill("Full Chain Member");
@@ -63,6 +65,8 @@ test("admin UI completes a real member KYC action through gateway services and P
     await actionPanel.getByLabel("處理原因").fill("Full chain KYC review");
     await actionPanel.getByRole("button", { name: "提交動作" }).click();
     await expect(page.getByText(/已提交 mem-act-/)).toBeVisible();
+
+    await page.goto("/approvals");
     await expect(
       page.getByText(new RegExp(`提交 KYC 覆核 / ${userId} / OPS-FULL-KYC`)),
     ).toBeVisible();
@@ -74,7 +78,7 @@ test("admin UI completes a real member KYC action through gateway services and P
           { sub: "U-ADMIN-002", role: "admin" },
           DEV_SECRET,
         ),
-        url: "http://localhost:3002",
+        url: ADMIN_ORIGIN,
         httpOnly: true,
         sameSite: "Strict",
       },
@@ -115,7 +119,7 @@ test("admin UI completes a real member KYC action through gateway services and P
           { sub: "U-MANAGER-003", role: "manager" },
           DEV_SECRET,
         ),
-        url: "http://localhost:3002",
+        url: ADMIN_ORIGIN,
         httpOnly: true,
         sameSite: "Strict",
       },
@@ -135,7 +139,7 @@ test("admin UI completes a real member KYC action through gateway services and P
           { sub: "U-ADMIN-004", role: "admin" },
           DEV_SECRET,
         ),
-        url: "http://localhost:3002",
+        url: ADMIN_ORIGIN,
         httpOnly: true,
         sameSite: "Strict",
       },

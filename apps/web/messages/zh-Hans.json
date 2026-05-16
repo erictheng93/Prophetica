@@ -594,6 +594,14 @@
   "auth": {
     "signIn": {
       "signin": {
+        "mfa": {
+          "legend": "两步验证（如账号需要）",
+          "hint": "如果账号需要两步验证，请输入 6 位数验证码；也可以使用一次性复原码。",
+          "codeLabel": "验证码",
+          "codePlaceholder": "123456",
+          "recoveryLabel": "复原码",
+          "recoveryPlaceholder": "例如 recover-once-1"
+        },
         "status": {
           "missing": "请输入 Email 或手机号与密码。",
           "invalid": "Email、手机号或密码不正确。",

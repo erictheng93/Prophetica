@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { requiresCloudflareAccess } from "@/lib/cloudflare-access-policy";
 import { canAccess, defaultLandingFor } from "@/lib/rbac";
 import { verifySession } from "@/lib/session-crypto";
+import { hasRecentHardwareMfa, requiresStepUpMfa } from "@/lib/step-up-mfa-policy";
 
 const SESSION_COOKIE_NAME = "proph_admin_session";
 const DEV_SECRET = "dev-only-admin-session-secret-do-not-use-in-prod";
@@ -11,8 +13,10 @@ function getSecret(): string {
 
 /*
  * SPEC-017 §6.3 (amended 2026-05-10) — admin middleware enforces:
- *   1. Cloudflare Access / mTLS gate (placeholder — Phase 3 will read the
- *      edge-supplied attestation header for real verification)
+ *   1. Cloudflare Access / mTLS gate for internal admin surfaces. `/login`
+ *      and `/me/affiliate/*` bypass the edge SSO requirement so external
+ *      affiliates can reach their own portal, but application session/RBAC
+ *      still applies after this check.
  *   2. Application-layer session: every non-public route requires a valid
  *      session cookie, and the cookie's role must satisfy lib/rbac
  *
@@ -54,6 +58,7 @@ export async function middleware(req: NextRequest) {
   // only fail-closes in production when the placeholder header is missing.
   if (
     process.env.NODE_ENV === "production" &&
+    requiresCloudflareAccess(pathname) &&
     !req.headers.get("x-internal-mtls")
   ) {
     return new NextResponse("Forbidden", {
@@ -89,6 +94,13 @@ export async function middleware(req: NextRequest) {
         : "/403";
     target.search = "";
     return NextResponse.redirect(target);
+  }
+
+  if (requiresStepUpMfa(pathname, req.method) && !hasRecentHardwareMfa(session)) {
+    return new NextResponse("MFA step-up required", {
+      status: 403,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
   }
 
   return NextResponse.next();

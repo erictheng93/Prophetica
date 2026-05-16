@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { signSession, verifySession } from "../lib/session-crypto.js";
+import {
+  resolveSessionJwks,
+  resolveSessionSecret,
+  signSession,
+  verifyEd25519JwsSession,
+  verifySession,
+} from "../lib/session-crypto.js";
 
 const SECRET = "test-secret-do-not-use-in-prod";
 
@@ -18,6 +24,38 @@ test("affiliate session preserves affiliateId", async () => {
   const token = await signSession({ sub: "U-2", role: "affiliate", affiliateId: "AFF-9" }, SECRET);
   const verified = await verifySession(token, SECRET);
   assert.equal(verified?.affiliateId, "AFF-9");
+});
+
+test("session parser preserves MFA claims from HMAC and JWS sessions", async () => {
+  const hmacToken = await signSession(
+    { sub: "U-2", role: "admin", mfaAt: 1778880000, amr: ["pwd", "hwk"] },
+    SECRET,
+  );
+  const hmacVerified = await verifySession(hmacToken, SECRET);
+  assert.equal(hmacVerified?.mfaAt, 1778880000);
+  assert.deepEqual(hmacVerified?.amr, ["pwd", "hwk"]);
+
+  const pair = (await crypto.subtle.generateKey({ name: "Ed25519" } as AlgorithmIdentifier, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  const now = Math.floor(Date.now() / 1000);
+  const jwsToken = await signEd25519Jws(
+    {
+      sub: "U-3",
+      role: "manager",
+      iat: now,
+      exp: now + 60,
+      mfa_at: 1778880001,
+      amr: ["pwd", "hwk"],
+    },
+    privateJwk,
+  );
+  const jwsVerified = await verifyEd25519JwsSession(jwsToken, [publicJwk]);
+  assert.equal(jwsVerified?.mfaAt, 1778880001);
+  assert.deepEqual(jwsVerified?.amr, ["pwd", "hwk"]);
 });
 
 test("verifySession rejects token signed with a different secret", async () => {
@@ -57,3 +95,93 @@ test("verifySession rejects unknown roles", async () => {
   const verified = await verifySession(`${body}.invalidsig`, SECRET);
   assert.equal(verified, null);
 });
+
+test("resolveSessionSecret fails closed in production without configured secret", () => {
+  assert.throws(
+    () => resolveSessionSecret({ NODE_ENV: "production" }),
+    /ADMIN_SESSION_SECRET is required in production/,
+  );
+  assert.equal(
+    resolveSessionSecret({
+      NODE_ENV: "production",
+      ADMIN_SESSION_SECRET: "prod-secret",
+    }),
+    "prod-secret",
+  );
+});
+
+test("verifyEd25519JwsSession accepts EdDSA compact JWS from configured JWKS", async () => {
+  const pair = (await crypto.subtle.generateKey({ name: "Ed25519" } as AlgorithmIdentifier, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  jwkWithKid(publicJwk).kid = "session-key-1";
+  const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  jwkWithKid(privateJwk).kid = "session-key-1";
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signEd25519Jws(
+    {
+      sub: "U-3",
+      role: "affiliate",
+      affiliateId: "AFF-3",
+      iat: now,
+      exp: now + 60,
+    },
+    privateJwk,
+  );
+  const verified = await verifyEd25519JwsSession(token, [publicJwk]);
+
+  assert.equal(verified?.sub, "U-3");
+  assert.equal(verified?.role, "affiliate");
+  assert.equal(verified?.affiliateId, "AFF-3");
+});
+
+test("verifyEd25519JwsSession rejects unknown kid and resolveSessionJwks parses JWKS", async () => {
+  const pair = (await crypto.subtle.generateKey({ name: "Ed25519" } as AlgorithmIdentifier, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  jwkWithKid(publicJwk).kid = "session-key-1";
+  const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  jwkWithKid(privateJwk).kid = "other-key";
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signEd25519Jws(
+    {
+      sub: "U-3",
+      role: "admin",
+      iat: now,
+      exp: now + 60,
+    },
+    privateJwk,
+  );
+
+  assert.equal(await verifyEd25519JwsSession(token, [publicJwk]), null);
+  assert.equal(
+    resolveSessionJwks({
+      ADMIN_SESSION_JWKS: JSON.stringify({ keys: [publicJwk] }),
+    })[0]?.kid,
+    "session-key-1",
+  );
+});
+
+async function signEd25519Jws(payload: unknown, privateJwk: JsonWebKey): Promise<string> {
+  const header = {
+    alg: "EdDSA",
+    kid: jwkWithKid(privateJwk).kid,
+    typ: "JWT",
+  };
+  const headerB64 = Buffer.from(JSON.stringify(header)).toString("base64url");
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+  const key = await crypto.subtle.importKey("jwk", privateJwk, { name: "Ed25519" } as AlgorithmIdentifier, false, [
+    "sign",
+  ]);
+  const signature = await crypto.subtle.sign({ name: "Ed25519" } as AlgorithmIdentifier, key, data as unknown as BufferSource);
+  return `${headerB64}.${payloadB64}.${Buffer.from(signature).toString("base64url")}`;
+}
+
+function jwkWithKid(jwk: JsonWebKey): JsonWebKey & { kid?: string } {
+  return jwk as JsonWebKey & { kid?: string };
+}

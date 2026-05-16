@@ -1,5 +1,4 @@
 import { AdminShell } from "@/components/admin-shell";
-import { DomainScope } from "@/components/domain-scope";
 import { MemberManagement } from "@/components/member-management";
 import { RoleGate } from "@/components/role-gate";
 import { getOpsRoute } from "@/lib/ops-facade";
@@ -21,11 +20,11 @@ export default async function MembersKycReviewPage({
           role={viewer.role}
         >
           <div className="space-y-8">
-            <DomainScope domain={route.domain} role={viewer.role} />
             <MemberManagement
               initialQuery={params?.query}
               initialPendingRestriction="manual_review_required"
               initialPendingStatus="all"
+              showPendingCases
               viewerAffiliateId={viewer.affiliateId}
               viewerRole={viewer.role}
             />

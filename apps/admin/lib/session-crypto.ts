@@ -7,6 +7,7 @@ import { isRole, type Role } from "./rbac.js";
  */
 
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
+const DEV_SECRET = "dev-only-admin-session-secret-do-not-use-in-prod";
 
 export interface SessionPayload {
   sub: string;
@@ -14,6 +15,42 @@ export interface SessionPayload {
   iat: number;
   exp: number;
   affiliateId?: string;
+  mfaAt?: number;
+  amr?: string[];
+}
+
+interface JwsHeader {
+  alg?: string;
+  kid?: string;
+  typ?: string;
+}
+
+type SessionJwk = JsonWebKey & {
+  kid?: string;
+  kty?: string;
+  crv?: string;
+};
+
+export function resolveSessionSecret(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const configured = env.ADMIN_SESSION_SECRET;
+  if (configured?.trim()) return configured;
+  if (env.NODE_ENV === "production") {
+    throw new Error("ADMIN_SESSION_SECRET is required in production");
+  }
+  return DEV_SECRET;
+}
+
+export function resolveSessionJwks(env: Record<string, string | undefined> = process.env): SessionJwk[] {
+  const jwks = env.ADMIN_SESSION_JWKS?.trim();
+  if (jwks) {
+    const parsed = JSON.parse(jwks) as { keys?: SessionJwk[] };
+    return Array.isArray(parsed.keys) ? parsed.keys : [];
+  }
+  const publicJwk = env.ADMIN_SESSION_ED25519_PUBLIC_JWK?.trim();
+  if (publicJwk) return [JSON.parse(publicJwk) as SessionJwk];
+  return [];
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -53,6 +90,38 @@ function constantTimeEquals(a: string, b: string): boolean {
   return diff === 0;
 }
 
+function parseSessionPayload(payload: unknown, nowSeconds: number): SessionPayload | null {
+  if (!payload || typeof payload !== "object") return null;
+  const candidate = payload as Record<string, unknown>;
+  if (
+    typeof candidate.sub !== "string" ||
+    typeof candidate.iat !== "number" ||
+    typeof candidate.exp !== "number" ||
+    !isRole(candidate.role)
+  ) {
+    return null;
+  }
+  if (candidate.exp < nowSeconds) return null;
+
+  const result: SessionPayload = {
+    sub: candidate.sub,
+    role: candidate.role,
+    iat: candidate.iat,
+    exp: candidate.exp,
+  };
+  if (typeof candidate.affiliateId === "string") {
+    result.affiliateId = candidate.affiliateId;
+  }
+  const mfaAt = candidate.mfaAt ?? candidate.mfa_at ?? candidate.mfa_at_epoch_seconds;
+  if (typeof mfaAt === "number") {
+    result.mfaAt = mfaAt;
+  }
+  if (Array.isArray(candidate.amr)) {
+    result.amr = candidate.amr.filter((method): method is string => typeof method === "string");
+  }
+  return result;
+}
+
 export async function signSession(
   payload: Omit<SessionPayload, "iat" | "exp">,
   secret: string,
@@ -85,26 +154,51 @@ export async function verifySession(
   } catch {
     return null;
   }
-  if (!payload || typeof payload !== "object") return null;
-  const candidate = payload as Record<string, unknown>;
-  if (
-    typeof candidate.sub !== "string" ||
-    typeof candidate.iat !== "number" ||
-    typeof candidate.exp !== "number" ||
-    !isRole(candidate.role)
-  ) {
+  return parseSessionPayload(payload, nowSeconds);
+}
+
+export async function verifyEd25519JwsSession(
+  token: string,
+  publicKeys: SessionJwk[],
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): Promise<SessionPayload | null> {
+  const parts = token.split(".");
+  if (parts.length !== 3 || publicKeys.length === 0) return null;
+  const [headerB64, payloadB64, sigB64] = parts;
+
+  let header: JwsHeader;
+  let payload: unknown;
+  try {
+    header = JSON.parse(new TextDecoder().decode(base64UrlDecode(headerB64))) as JwsHeader;
+    payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(payloadB64)));
+  } catch {
     return null;
   }
-  if (candidate.exp < nowSeconds) return null;
+  if (header.alg !== "EdDSA") return null;
 
-  const result: SessionPayload = {
-    sub: candidate.sub,
-    role: candidate.role,
-    iat: candidate.iat,
-    exp: candidate.exp,
-  };
-  if (typeof candidate.affiliateId === "string") {
-    result.affiliateId = candidate.affiliateId;
+  const candidateKeys = publicKeys.filter((key) => {
+    if (key.kty !== "OKP" || key.crv !== "Ed25519") return false;
+    return !header.kid || !key.kid || key.kid === header.kid;
+  });
+  if (candidateKeys.length === 0) return null;
+
+  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+  const signature = base64UrlDecode(sigB64);
+  for (const jwk of candidateKeys) {
+    try {
+      const key = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" } as AlgorithmIdentifier, false, [
+        "verify",
+      ]);
+      const valid = await crypto.subtle.verify(
+        { name: "Ed25519" } as AlgorithmIdentifier,
+        key,
+        signature as unknown as BufferSource,
+        data as unknown as BufferSource,
+      );
+      if (valid) return parseSessionPayload(payload, nowSeconds);
+    } catch {
+      continue;
+    }
   }
-  return result;
+  return null;
 }

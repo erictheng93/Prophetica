@@ -14,6 +14,8 @@ export function LoginForm() {
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaRecoveryCode, setMfaRecoveryCode] = useState("");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -28,7 +30,7 @@ export function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, mfaCode, mfaRecoveryCode }),
       });
       if (res.ok) {
         const data = (await res.json()) as { redirect: string };
@@ -88,6 +90,49 @@ export function LoginForm() {
           className="w-full rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink focus:border-proph-primary focus:outline-none focus:ring-2 focus:ring-proph-primary-focus"
         />
       </div>
+      <fieldset className="space-y-3 rounded-proph-md border border-proph-hairline bg-proph-canvas-parchment/50 p-4">
+        <legend className="px-1 text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+          {adminCopy.login.mfaLegend}
+        </legend>
+        <p className="text-[12px] leading-[1.33] tracking-[-0.12px] text-proph-ink-muted-48">
+          {adminCopy.login.mfaHint}
+        </p>
+        <div className="space-y-2">
+          <label
+            className="block text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]"
+            htmlFor="login-mfa-code"
+          >
+            {adminCopy.login.mfaCodeLabel}
+          </label>
+          <input
+            id="login-mfa-code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            value={mfaCode}
+            onChange={(event) => setMfaCode(event.target.value)}
+            className="w-full rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink focus:border-proph-primary focus:outline-none focus:ring-2 focus:ring-proph-primary-focus"
+          />
+        </div>
+        <div className="space-y-2">
+          <label
+            className="block text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]"
+            htmlFor="login-mfa-recovery-code"
+          >
+            {adminCopy.login.mfaRecoveryLabel}
+          </label>
+          <input
+            id="login-mfa-recovery-code"
+            type="text"
+            autoComplete="off"
+            value={mfaRecoveryCode}
+            onChange={(event) => setMfaRecoveryCode(event.target.value)}
+            className="w-full rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink focus:border-proph-primary focus:outline-none focus:ring-2 focus:ring-proph-primary-focus"
+          />
+        </div>
+      </fieldset>
       {feedback && (
         <p
           aria-live="polite"
@@ -108,9 +153,6 @@ export function LoginForm() {
       >
         {submitting ? adminCopy.login.submitting : adminCopy.login.submit}
       </button>
-      <p className="text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-        {adminCopy.login.mfaPlaceholder}
-      </p>
     </form>
   );
 }

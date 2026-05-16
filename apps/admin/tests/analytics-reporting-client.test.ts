@@ -9,6 +9,7 @@ import {
   fetchLatestJobsPerTemplate,
   timezonesForRole,
 } from "../lib/analytics-reporting.js";
+import { ADMIN_ORIGIN } from "./admin-env.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -85,7 +86,7 @@ test("server-side analytics reads can target the absolute admin BFF and forward 
   };
 
   const serverFetch = {
-    baseUrl: "http://localhost:3002",
+    baseUrl: ADMIN_ORIGIN,
     headers: { cookie: "proph_admin_session=signed-session" },
   };
 
@@ -94,7 +95,7 @@ test("server-side analytics reads can target the absolute admin BFF and forward 
 
   assert.equal(
     String(calls[0]?.[0]),
-    "http://localhost:3002/api/analytics/dashboard-metrics",
+    `${ADMIN_ORIGIN}/api/analytics/dashboard-metrics`,
   );
   assert.equal(
     (calls[0]?.[1]?.headers as Record<string, string>)["cookie"],
@@ -102,7 +103,7 @@ test("server-side analytics reads can target the absolute admin BFF and forward 
   );
   assert.equal(
     String(calls[1]?.[0]),
-    "http://localhost:3002/api/analytics/jobs/latest-per-template",
+    `${ADMIN_ORIGIN}/api/analytics/jobs/latest-per-template`,
   );
   assert.equal(
     (calls[1]?.[1]?.headers as Record<string, string>)["cookie"],

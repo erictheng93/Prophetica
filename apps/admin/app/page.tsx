@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
+import { ImplementationProgress } from "@/components/implementation-progress";
 import { QueueSummary } from "@/components/queue-summary";
 import { RouteEntryCard } from "@/components/route-entry-card";
 import { WorkQueue } from "@/components/work-queue";
@@ -45,6 +46,8 @@ export default async function AdminOperationsPage() {
     >
       <div className="space-y-8">
         <QueueSummary summaries={snapshot.summaries} />
+
+        <ImplementationProgress />
 
         <section aria-labelledby="domains-title">
           <div className="mb-4">

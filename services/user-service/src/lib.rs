@@ -3,3 +3,4 @@ pub const DEFAULT_PORT: u16 = 8084;
 
 pub mod auth;
 pub mod members;
+pub mod webauthn_store;
