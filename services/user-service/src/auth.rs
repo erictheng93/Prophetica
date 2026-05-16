@@ -110,7 +110,8 @@ impl AuthConfig {
             env::var("USER_SERVICE_LOCAL_LOGIN_PHONE").unwrap_or_else(|_| "0912345698".to_owned());
         let password =
             env::var("USER_SERVICE_LOCAL_LOGIN_PASSWORD").unwrap_or_else(|_| "member".to_owned());
-        let role = env::var("USER_SERVICE_LOCAL_LOGIN_ROLE").unwrap_or_else(|_| "player".to_owned());
+        let role =
+            env::var("USER_SERVICE_LOCAL_LOGIN_ROLE").unwrap_or_else(|_| "player".to_owned());
         let affiliate_id = env::var("USER_SERVICE_LOCAL_LOGIN_AFFILIATE_ID").ok();
 
         let accounts = LocalLoginAccount::new(user_id, email, phone, password)

@@ -7,7 +7,7 @@ use axum::{
 use http_body_util::BodyExt;
 use kyc_service::{
     SecretConfig, api,
-    kyc::{InMemoryKycStore, KycStore, StartUpgradeDraft, KycTier},
+    kyc::{InMemoryKycStore, KycStore, KycTier, StartUpgradeDraft},
 };
 use serde_json::Value;
 use tower::ServiceExt;
