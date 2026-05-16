@@ -167,7 +167,8 @@ const initialSummaries: Record<string, MemberManagementSummary> = {
   },
 };
 
-let summaries: Record<string, MemberManagementSummary> = cloneSummaries(initialSummaries);
+let summaries: Record<string, MemberManagementSummary> =
+  cloneSummaries(initialSummaries);
 
 export function resetMemberManagementStoreForTests(): void {
   summaries = cloneSummaries(initialSummaries);
@@ -233,7 +234,12 @@ export function createMember(
   }
 
   const userId = request.user_id.trim();
-  if (!userId || !request.display_name.trim() || !request.email.trim() || !request.phone.trim()) {
+  if (
+    !userId ||
+    !request.display_name.trim() ||
+    !request.email.trim() ||
+    !request.phone.trim()
+  ) {
     return { ok: false, status: 400, error: "invalid_member" };
   }
   if (summaries[userId]) {
@@ -299,6 +305,9 @@ export function updateMember(
   if (typeof request.display_name === "string" && request.display_name.trim()) {
     summary.member.display_name = request.display_name.trim();
   }
+  if (isMemberStatus(request.status)) {
+    summary.member.status = request.status;
+  }
   if (typeof request.tier === "string" && request.tier.trim()) {
     summary.member.tier = request.tier.trim();
   }
@@ -328,8 +337,19 @@ export function updateMember(
   if (isRiskLevel(request.risk_level)) {
     summary.kyc_risk.risk_level = request.risk_level;
   }
-  if (typeof request.risk_score === "number" && Number.isFinite(request.risk_score)) {
-    summary.kyc_risk.risk_score = Math.max(0, Math.min(100, Math.round(request.risk_score)));
+  if (
+    typeof request.risk_score === "number" &&
+    Number.isFinite(request.risk_score)
+  ) {
+    summary.kyc_risk.risk_score = Math.max(
+      0,
+      Math.min(100, Math.round(request.risk_score)),
+    );
+  }
+  if (Array.isArray(request.restrictions)) {
+    summary.kyc_risk.restrictions = request.restrictions
+      .map((restriction) => restriction.trim())
+      .filter(Boolean);
   }
   if (viewer.role !== "affiliate" && "affiliate_id" in request) {
     summary.source = sourceForAffiliate(request.affiliate_id ?? undefined);
@@ -382,7 +402,9 @@ function toPendingCase(summary: MemberManagementSummary): MemberPendingCase[] {
       display_name: summary.member.display_name,
       restriction_reason:
         restrictionReason ??
-        (summary.member.status === "inactive" ? "kyc_pending" : "manual_review_required"),
+        (summary.member.status === "inactive"
+          ? "kyc_pending"
+          : "manual_review_required"),
       contact: {
         email_masked: summary.member.contact.email_masked,
         phone_masked: summary.member.contact.phone_masked,
@@ -398,7 +420,9 @@ function affiliateIdForWrite(
   requestedAffiliateId: string | undefined,
   viewer: SessionPayload,
 ): string | undefined {
-  return viewer.role === "affiliate" ? viewer.affiliateId : requestedAffiliateId?.trim() || undefined;
+  return viewer.role === "affiliate"
+    ? viewer.affiliateId
+    : requestedAffiliateId?.trim() || undefined;
 }
 
 function applyKycActivation(summary: MemberManagementSummary): void {
@@ -421,7 +445,11 @@ function applyKycActivation(summary: MemberManagementSummary): void {
 function sourceForAffiliate(affiliateId?: string): MemberSourceSummary {
   const normalized = affiliateId?.trim();
   if (!normalized) {
-    return { channel: "direct", affiliate_id: null, affiliate_name: "直接註冊" };
+    return {
+      channel: "direct",
+      affiliate_id: null,
+      affiliate_name: "直接註冊",
+    };
   }
   return {
     channel: "affiliate",
@@ -458,7 +486,20 @@ function maskLineId(value: string): string {
 }
 
 function isKycStatus(value: unknown): value is KycStatus {
-  return value === "verified" || value === "review_required" || value === "pending";
+  return (
+    value === "verified" || value === "review_required" || value === "pending"
+  );
+}
+
+function isMemberStatus(
+  value: unknown,
+): value is MemberManagementSummary["member"]["status"] {
+  return (
+    value === "inactive" ||
+    value === "active" ||
+    value === "restricted" ||
+    value === "suspended"
+  );
 }
 
 function isRiskLevel(value: unknown): value is RiskLevel {
@@ -473,6 +514,8 @@ function cloneSummaries(
   );
 }
 
-function cloneSummary(summary: MemberManagementSummary): MemberManagementSummary {
+function cloneSummary(
+  summary: MemberManagementSummary,
+): MemberManagementSummary {
   return structuredClone(summary);
 }

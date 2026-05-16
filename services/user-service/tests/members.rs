@@ -6,8 +6,19 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
+use sqlx::{
+    PgPool, Row,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
+use std::{
+    str::FromStr,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use tower::ServiceExt;
-use user_service::members::{InMemoryMemberStore, MemberRecord, internal_members_router};
+use user_service::members::{
+    InMemoryMemberStore, MemberRecord, MemberStore, MemberStoreError, PostgresMemberStore,
+    internal_members_router,
+};
 
 #[tokio::test]
 async fn member_crud_defaults_inactive_until_kyc_verified() {
@@ -25,7 +36,12 @@ async fn member_crud_defaults_inactive_until_kyc_verified() {
             "country": "TW",
             "timezone": "Asia/Taipei",
             "tier": "Standard",
-            "affiliate_id": "AFF-001"
+            "affiliate_id": "AFF-001",
+            "registration_audit": {
+                "referral_capture_required": true,
+                "referral_code": "AFF-001",
+                "referred_user_id": "MEM-900"
+            }
         })),
     )
     .await;
@@ -35,6 +51,10 @@ async fn member_crud_defaults_inactive_until_kyc_verified() {
     assert_eq!(created.body["member"]["status"], "inactive");
     assert_eq!(created.body["kyc_risk"]["kyc_status"], "pending");
     assert_eq!(created.body["source"]["affiliate_id"], "AFF-001");
+    assert_eq!(
+        created.body["audit"]["registration_audit"]["referral_code"],
+        "AFF-001"
+    );
 
     let updated = request_json(
         app.clone(),
@@ -98,6 +118,99 @@ async fn contact_lookup_reads_masked_contact_from_member_store() {
     assert_eq!(response.body["contacts"][0]["phone_masked"], "0912***001");
 }
 
+#[tokio::test]
+async fn postgres_member_store_persists_crud_soft_delete_and_constraints() {
+    let Some(pool) = postgres_test_pool().await else {
+        return;
+    };
+    let store = PostgresMemberStore::new(pool.clone());
+    let user_id = unique_test_id("MEM-PG");
+    cleanup_member_rows(&pool, &user_id).await;
+
+    let created = store
+        .create_member(user_service::members::CreateMemberRequest {
+            user_id: user_id.clone(),
+            display_name: "Postgres Member".to_owned(),
+            email: format!("{}@example.com", user_id.to_lowercase()),
+            phone: "0912345900".to_owned(),
+            line_id: Some("pg-line".to_owned()),
+            country: "tw".to_owned(),
+            timezone: "Asia/Taipei".to_owned(),
+            tier: "Standard".to_owned(),
+            affiliate_id: Some("AFF-PG".to_owned()),
+            registration_audit: None,
+        })
+        .await
+        .unwrap_or_else(|error| panic!("member insert should persist to postgres: {error}"));
+
+    assert_eq!(created.member.user_id, user_id);
+    assert_eq!(created.member.status, "inactive");
+    assert_eq!(created.kyc_risk.restrictions, vec!["kyc_pending"]);
+    assert_eq!(
+        persisted_status(&pool, &user_id).await,
+        Some("inactive".to_owned())
+    );
+
+    let duplicate = store
+        .create_member(user_service::members::CreateMemberRequest {
+            user_id: user_id.clone(),
+            display_name: "Duplicate".to_owned(),
+            email: format!("dupe-{}@example.com", user_id.to_lowercase()),
+            phone: "0912345999".to_owned(),
+            line_id: None,
+            country: "TW".to_owned(),
+            timezone: "Asia/Taipei".to_owned(),
+            tier: "Standard".to_owned(),
+            affiliate_id: None,
+            registration_audit: None,
+        })
+        .await;
+    assert_eq!(duplicate, Err(MemberStoreError::Duplicate));
+
+    let updated = store
+        .update_member(
+            &user_id,
+            user_service::members::UpdateMemberRequest {
+                status: None,
+                display_name: Some("Postgres Member Verified".to_owned()),
+                email: None,
+                phone: None,
+                line_id: Some(None),
+                country: None,
+                timezone: None,
+                tier: None,
+                affiliate_id: None,
+                kyc_status: Some("verified".to_owned()),
+                risk_level: Some("low".to_owned()),
+                risk_score: Some(9),
+                restrictions: None,
+            },
+        )
+        .await
+        .unwrap_or_else(|error| panic!("member update should persist to postgres: {error}"));
+
+    assert_eq!(updated.member.display_name, "Postgres Member Verified");
+    assert_eq!(updated.member.status, "active");
+    assert_eq!(updated.kyc_risk.kyc_status, "verified");
+    assert!(updated.kyc_risk.restrictions.is_empty());
+    assert_eq!(
+        persisted_status(&pool, &user_id).await,
+        Some("active".to_owned())
+    );
+
+    let deleted = store
+        .delete_member(&user_id)
+        .await
+        .unwrap_or_else(|error| panic!("member delete should soft-delete in postgres: {error}"));
+
+    assert_eq!(deleted.user_id, user_id);
+    assert_eq!(
+        store.member_summary(&user_id).await,
+        Err(MemberStoreError::NotFound)
+    );
+    assert!(persisted_deleted_at(&pool, &user_id).await.is_some());
+}
+
 #[derive(Debug)]
 struct TestResponse {
     status: StatusCode,
@@ -156,5 +269,83 @@ fn fixture_record(user_id: &str, affiliate_id: Option<&str>) -> MemberRecord {
         device_count: 0,
         two_factor_enabled: false,
         created_at: "2026-05-15T00:00:00Z".to_owned(),
+        registration_audit: None,
     }
+}
+
+async fn postgres_test_pool() -> Option<PgPool> {
+    let Some(database_url) = std::env::var("USER_SERVICE_TEST_DATABASE_URL").ok() else {
+        eprintln!("skipping postgres member store test: USER_SERVICE_TEST_DATABASE_URL is not set");
+        return None;
+    };
+    let bootstrap_pool = PgPool::connect(&database_url)
+        .await
+        .unwrap_or_else(|error| panic!("test database should be reachable: {error}"));
+    let schema = unique_test_schema("user_service_members");
+    sqlx::query(&format!("CREATE SCHEMA IF NOT EXISTS {schema}"))
+        .execute(&bootstrap_pool)
+        .await
+        .unwrap_or_else(|error| panic!("test schema should be created: {error}"));
+    bootstrap_pool.close().await;
+    let options = PgConnectOptions::from_str(&database_url)
+        .unwrap_or_else(|error| panic!("test database URL should parse: {error}"))
+        .options([("search_path", schema.as_str())]);
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap_or_else(|error| panic!("test schema database should be reachable: {error}"));
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .unwrap_or_else(|error| panic!("user-service migrations should run: {error}"));
+    Some(pool)
+}
+
+fn unique_test_id(prefix: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|error| panic!("system time should be after unix epoch: {error}"))
+        .as_nanos();
+    format!("{prefix}-{nanos}")
+}
+
+fn unique_test_schema(prefix: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|error| panic!("system time should be after unix epoch: {error}"))
+        .as_nanos();
+    format!("{prefix}_{nanos}")
+}
+
+async fn cleanup_member_rows(pool: &PgPool, user_id: &str) {
+    sqlx::query("DELETE FROM user_members WHERE user_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap_or_else(|error| panic!("test cleanup should delete user_members row: {error}"));
+}
+
+async fn persisted_status(pool: &PgPool, user_id: &str) -> Option<String> {
+    sqlx::query("SELECT status FROM user_members WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or_else(|error| panic!("status query should run: {error}"))
+        .map(|row| {
+            row.try_get("status")
+                .unwrap_or_else(|error| panic!("status column should decode: {error}"))
+        })
+}
+
+async fn persisted_deleted_at(pool: &PgPool, user_id: &str) -> Option<String> {
+    sqlx::query("SELECT deleted_at::text AS deleted_at FROM user_members WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or_else(|error| panic!("deleted_at query should run: {error}"))
+        .and_then(|row| {
+            row.try_get("deleted_at")
+                .unwrap_or_else(|error| panic!("deleted_at column should decode: {error}"))
+        })
 }

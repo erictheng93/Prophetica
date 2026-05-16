@@ -65,9 +65,11 @@ dependencies = [
  "axum 0.7.9",
  "hmac",
  "http-body-util",
+ "kyc-service",
  "matching-engine",
  "proto",
  "reqwest",
+ "risk-antifraud-service",
  "sdk",
  "serde",
  "serde_json",
@@ -78,6 +80,8 @@ dependencies = [
  "tonic",
  "tower 0.5.3",
  "tracing",
+ "user-service",
+ "wallet-ledger-service",
  "ws-gateway",
 ]
 

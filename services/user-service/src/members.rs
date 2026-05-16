@@ -69,6 +69,8 @@ pub struct MemberAuditSummary {
     pub source: String,
     pub audit_required: bool,
     pub latest_admin_action_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registration_audit: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,10 +113,12 @@ pub struct CreateMemberRequest {
     pub timezone: String,
     pub tier: String,
     pub affiliate_id: Option<String>,
+    pub registration_audit: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct UpdateMemberRequest {
+    pub status: Option<String>,
     pub display_name: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
@@ -126,6 +130,7 @@ pub struct UpdateMemberRequest {
     pub kyc_status: Option<String>,
     pub risk_level: Option<String>,
     pub risk_score: Option<i32>,
+    pub restrictions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -171,6 +176,7 @@ pub struct MemberRecord {
     pub device_count: i32,
     pub two_factor_enabled: bool,
     pub created_at: String,
+    pub registration_audit: Option<Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -462,7 +468,7 @@ impl MemberStore for PostgresMemberStore {
         let rows = sqlx::query(
             r"
             SELECT user_id, display_name, status, tier, email, phone, line_id, country, timezone,
-                   affiliate_id, kyc_status, risk_level, risk_score, restrictions,
+                   affiliate_id, registration_audit, kyc_status, risk_level, risk_score, restrictions,
                    last_reviewed_at::text AS last_reviewed_at,
                    last_login_at::text AS last_login_at,
                    device_count, two_factor_enabled, created_at::text AS created_at
@@ -500,11 +506,11 @@ impl MemberStore for PostgresMemberStore {
             r"
             INSERT INTO user_members (
                 user_id, display_name, status, tier, email, phone, line_id, country, timezone,
-                affiliate_id, kyc_status, risk_level, risk_score, restrictions
+                affiliate_id, registration_audit, kyc_status, risk_level, risk_score, restrictions
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING user_id, display_name, status, tier, email, phone, line_id, country, timezone,
-                      affiliate_id, kyc_status, risk_level, risk_score, restrictions,
+                      affiliate_id, registration_audit, kyc_status, risk_level, risk_score, restrictions,
                       last_reviewed_at::text AS last_reviewed_at,
                       last_login_at::text AS last_login_at,
                       device_count, two_factor_enabled, created_at::text AS created_at
@@ -520,6 +526,7 @@ impl MemberStore for PostgresMemberStore {
         .bind(&record.country)
         .bind(&record.timezone)
         .bind(&record.affiliate_id)
+        .bind(&record.registration_audit)
         .bind(&record.kyc_status)
         .bind(&record.risk_level)
         .bind(record.risk_score)
@@ -558,7 +565,7 @@ impl MemberStore for PostgresMemberStore {
                 updated_at = now()
             WHERE user_id = $1 AND deleted_at IS NULL
             RETURNING user_id, display_name, status, tier, email, phone, line_id, country, timezone,
-                      affiliate_id, kyc_status, risk_level, risk_score, restrictions,
+                      affiliate_id, registration_audit, kyc_status, risk_level, risk_score, restrictions,
                       last_reviewed_at::text AS last_reviewed_at,
                       last_login_at::text AS last_login_at,
                       device_count, two_factor_enabled, created_at::text AS created_at
@@ -668,6 +675,7 @@ fn record_from_create(request: &CreateMemberRequest) -> MemberRecord {
         device_count: 0,
         two_factor_enabled: false,
         created_at: "now".to_owned(),
+        registration_audit: request.registration_audit.clone(),
     }
 }
 
@@ -675,6 +683,15 @@ fn apply_update(
     record: &mut MemberRecord,
     request: UpdateMemberRequest,
 ) -> Result<(), MemberStoreError> {
+    if let Some(value) = request.status {
+        if !matches!(
+            value.as_str(),
+            "inactive" | "active" | "restricted" | "suspended"
+        ) {
+            return Err(MemberStoreError::Invalid);
+        }
+        record.status = value;
+    }
     if let Some(value) = request.display_name.as_deref().and_then(trim_optional) {
         record.display_name = value;
     }
@@ -726,6 +743,21 @@ fn apply_update(
             return Err(MemberStoreError::Invalid);
         }
         record.risk_score = value;
+    }
+    if let Some(restrictions) = request.restrictions {
+        let normalized = restrictions
+            .into_iter()
+            .map(|restriction| restriction.trim().to_owned())
+            .filter(|restriction| !restriction.is_empty())
+            .collect::<Vec<_>>();
+        if normalized.iter().any(|restriction| {
+            !restriction
+                .chars()
+                .all(|character| character.is_ascii_lowercase() || character == '_')
+        }) {
+            return Err(MemberStoreError::Invalid);
+        }
+        record.restrictions = normalized;
     }
     Ok(())
 }
@@ -799,6 +831,7 @@ fn summary_from_record(record: MemberRecord) -> MemberManagementSummary {
             source: "user-service:member-store".to_owned(),
             audit_required: true,
             latest_admin_action_at: None,
+            registration_audit: record.registration_audit,
         },
         source: MemberSourceSummary {
             channel: if record.affiliate_id.is_some() {
@@ -827,6 +860,9 @@ fn row_to_member_record(row: &sqlx::postgres::PgRow) -> Result<MemberRecord, Mem
         country: row.try_get("country").map_err(sqlx_store_error)?,
         timezone: row.try_get("timezone").map_err(sqlx_store_error)?,
         affiliate_id: row.try_get("affiliate_id").map_err(sqlx_store_error)?,
+        registration_audit: row
+            .try_get("registration_audit")
+            .map_err(sqlx_store_error)?,
         kyc_status: row.try_get("kyc_status").map_err(sqlx_store_error)?,
         risk_level: row.try_get("risk_level").map_err(sqlx_store_error)?,
         risk_score: row.try_get("risk_score").map_err(sqlx_store_error)?,
@@ -848,7 +884,7 @@ async fn fetch_member_record(
     let row = sqlx::query(
         r"
         SELECT user_id, display_name, status, tier, email, phone, line_id, country, timezone,
-               affiliate_id, kyc_status, risk_level, risk_score, restrictions,
+               affiliate_id, registration_audit, kyc_status, risk_level, risk_score, restrictions,
                last_reviewed_at::text AS last_reviewed_at,
                last_login_at::text AS last_login_at,
                device_count, two_factor_enabled, created_at::text AS created_at

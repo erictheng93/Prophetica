@@ -34,6 +34,9 @@ async fn run_stub_http(service_name: &'static str, default_port: u16) -> anyhow:
     let app = if service_name == risk_antifraud_service::SERVICE_NAME {
         service_stub::router(&config)
             .merge(risk_antifraud_service::internal_reports::internal_reports_router())
+            .merge(risk_antifraud_service::member_actions::router(
+                risk_antifraud_service::member_actions::InMemoryRiskEventStore::default(),
+            ))
     } else {
         service_stub::router(&config)
     };

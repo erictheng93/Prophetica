@@ -23,10 +23,14 @@ tower = "0.5"
 tracing.workspace = true
 
 [dev-dependencies]
+kyc-service = { path = "../kyc-service" }
 matching-engine = { path = "../matching-engine" }
 proto = { path = "../../crates/proto" }
+risk-antifraud-service = { path = "../risk-antifraud-service" }
 settlement-worker = { path = "../settlement-worker" }
 tonic.workspace = true
+user-service = { path = "../user-service" }
+wallet-ledger-service = { path = "../wallet-ledger-service" }
 ws-gateway = { path = "../ws-gateway" }
 
 [lints]

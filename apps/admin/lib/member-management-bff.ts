@@ -641,6 +641,14 @@ function parseMemberUpdate(
     result.line_id = null;
   }
   if (
+    candidate.status === "inactive" ||
+    candidate.status === "active" ||
+    candidate.status === "restricted" ||
+    candidate.status === "suspended"
+  ) {
+    result.status = candidate.status;
+  }
+  if (
     candidate.kyc_status === "verified" ||
     candidate.kyc_status === "review_required" ||
     candidate.kyc_status === "pending"
@@ -659,6 +667,14 @@ function parseMemberUpdate(
     Number.isFinite(candidate.risk_score)
   ) {
     result.risk_score = candidate.risk_score;
+  }
+  if (Array.isArray(candidate.restrictions)) {
+    result.restrictions = candidate.restrictions
+      .filter(
+        (restriction): restriction is string => typeof restriction === "string",
+      )
+      .map((restriction) => restriction.trim())
+      .filter((restriction) => restriction.length > 0);
   }
   return { value: result };
 }

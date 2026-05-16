@@ -683,6 +683,8 @@ pub struct HttpAdminOpsStore {
     client: reqwest::Client,
     kyc_service_url: Url,
     user_service_url: Url,
+    wallet_ledger_url: Option<Url>,
+    risk_service_url: Option<Url>,
 }
 
 impl HttpAdminOpsStore {
@@ -703,7 +705,32 @@ impl HttpAdminOpsStore {
             client: reqwest::Client::new(),
             kyc_service_url,
             user_service_url,
+            wallet_ledger_url: None,
+            risk_service_url: None,
         })
+    }
+
+    /// Creates an admin ops store with optional write-side-effect services.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when any configured upstream base URL is invalid.
+    pub fn with_side_effect_services(
+        kyc_service_url: impl AsRef<str>,
+        user_service_url: impl AsRef<str>,
+        wallet_ledger_url: Option<impl AsRef<str>>,
+        risk_service_url: Option<impl AsRef<str>>,
+    ) -> Result<Self, AdminOpsStoreError> {
+        let mut store = Self::new(kyc_service_url, user_service_url)?;
+        store.wallet_ledger_url = wallet_ledger_url
+            .map(|url| Url::parse(url.as_ref()))
+            .transpose()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        store.risk_service_url = risk_service_url
+            .map(|url| Url::parse(url.as_ref()))
+            .transpose()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(store)
     }
 
     /// Loads upstream service URLs from the process environment.
@@ -716,7 +743,12 @@ impl HttpAdminOpsStore {
             std::env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned());
         let user_service_url = std::env::var("USER_SERVICE_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8084".to_owned());
-        Self::new(kyc_service_url, user_service_url)
+        Self::with_side_effect_services(
+            kyc_service_url,
+            user_service_url,
+            std::env::var("WALLET_LEDGER_BASE_URL").ok(),
+            std::env::var("RISK_SERVICE_URL").ok(),
+        )
     }
 
     fn pending_cases_url(
@@ -819,6 +851,137 @@ impl HttpAdminOpsStore {
         }
         Ok(())
     }
+
+    async fn request_kyc_review_task(
+        &self,
+        record: &MemberActionRecord,
+    ) -> Result<(), AdminOpsStoreError> {
+        let path = format!(
+            "/api/v1/kyc/users/{}/upgrades",
+            url_encode_path_segment(&record.target_user_id)
+        );
+        let url = self
+            .kyc_service_url
+            .join(&path)
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        self.client
+            .post(url)
+            .header("x-user-id", &record.target_user_id)
+            .json(&json!({
+                "target_tier": "TIER_2",
+                "idempotency_key": format!("{}:kyc-review", record.correlation_id),
+                "declared_monthly_income": null,
+            }))
+            .send()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(())
+    }
+
+    async fn freeze_available_wallet_balance(
+        &self,
+        record: &MemberActionRecord,
+    ) -> Result<(), AdminOpsStoreError> {
+        let Some(wallet_ledger_url) = &self.wallet_ledger_url else {
+            return Ok(());
+        };
+        let balance_url = wallet_ledger_url
+            .join(&format!(
+                "/internal/ledger/wallets/{}/balance",
+                url_encode_path_segment(&record.target_user_id)
+            ))
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let balance = self
+            .client
+            .get(balance_url)
+            .header("x-actor-id", &record.actor_user_id)
+            .header("x-operator-role", &record.actor_role)
+            .header("x-correlation-id", &record.correlation_id)
+            .send()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .json::<Value>()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let available_minor_units = balance
+            .get("available_minor_units")
+            .and_then(Value::as_i64)
+            .unwrap_or_default();
+        let amount_to_freeze = available_minor_units.saturating_neg();
+        if amount_to_freeze <= 0 {
+            return Ok(());
+        }
+
+        let transaction_url = wallet_ledger_url
+            .join("/internal/ledger/transactions")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        self.client
+            .post(transaction_url)
+            .header(
+                "idempotency-key",
+                format!("{}:wallet-freeze", record.correlation_id),
+            )
+            .json(&json!({
+                "txn_type": "freeze",
+                "correlation_id": record.correlation_id,
+                "description": "admin member withdrawal restriction freeze",
+                "metadata": {
+                    "action_id": record.action_id,
+                    "target_user_id": record.target_user_id,
+                    "action_type": record.action_type,
+                    "ticket_id": record.ticket_id,
+                },
+                "entries": [
+                    {
+                        "account_code": format!("Player.Wallet.{}", record.target_user_id),
+                        "direction": "debit",
+                        "amount_minor_units": amount_to_freeze
+                    },
+                    {
+                        "account_code": format!("Player.Frozen.{}", record.target_user_id),
+                        "direction": "credit",
+                        "amount_minor_units": amount_to_freeze
+                    }
+                ]
+            }))
+            .send()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(())
+    }
+
+    async fn record_risk_member_action(
+        &self,
+        record: &MemberActionRecord,
+    ) -> Result<(), AdminOpsStoreError> {
+        let Some(risk_service_url) = &self.risk_service_url else {
+            return Ok(());
+        };
+        let url = risk_service_url
+            .join("/internal/risk/member-actions")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        self.client
+            .post(url)
+            .json(&json!({
+                "target_user_id": record.target_user_id,
+                "action_id": record.action_id,
+                "action_type": record.action_type,
+                "correlation_id": record.correlation_id,
+                "reason": record.reason,
+            }))
+            .send()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -895,10 +1058,75 @@ fn action_side_effects(action_type: &str) -> Vec<String> {
     match action_type {
         "add_note" => vec!["case_note:recorded".to_owned()],
         "request_kyc_review" => vec!["kyc_review_task:requested".to_owned()],
-        "restrict_withdrawals" => vec!["member_restriction:withdrawals_locked".to_owned()],
+        "restrict_withdrawals" => vec![
+            "member_restriction:withdrawals_locked".to_owned(),
+            "wallet_freeze:available_balance".to_owned(),
+            "risk_event:member_action_recorded".to_owned(),
+        ],
         "escalate_case" => vec!["case_queue:escalated".to_owned()],
         _ => Vec::new(),
     }
+}
+
+async fn apply_member_action_side_effects(
+    upstream: &HttpAdminOpsStore,
+    record: &MemberActionRecord,
+) -> Result<(), AdminOpsStoreError> {
+    let summary = upstream.member_summary(&record.target_user_id).await?;
+    let existing_restrictions = member_restrictions_from_summary(&summary);
+    let request = match record.action_type.as_str() {
+        "request_kyc_review" => {
+            upstream.request_kyc_review_task(record).await?;
+            Some(json!({
+                "status": "restricted",
+                "kyc_status": "review_required",
+                "restrictions": merged_restrictions(
+                    existing_restrictions,
+                    &["manual_review_required"],
+                ),
+            }))
+        }
+        "restrict_withdrawals" => Some(json!({
+            "status": "restricted",
+            "restrictions": merged_restrictions(
+                existing_restrictions,
+                &["withdrawals_locked"],
+            ),
+        })),
+        _ => None,
+    };
+    if record.action_type == "restrict_withdrawals" {
+        upstream.freeze_available_wallet_balance(record).await?;
+        upstream.record_risk_member_action(record).await?;
+    }
+    if let Some(request) = request {
+        upstream
+            .update_member(&record.target_user_id, request)
+            .await?;
+    }
+    Ok(())
+}
+
+fn member_restrictions_from_summary(summary: &Value) -> Vec<String> {
+    summary
+        .get("kyc_risk")
+        .and_then(|kyc_risk| kyc_risk.get("restrictions"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn merged_restrictions(existing: Vec<String>, additions: &[&str]) -> Vec<String> {
+    let mut merged = existing;
+    for addition in additions {
+        if !merged.iter().any(|value| value == addition) {
+            merged.push((*addition).to_owned());
+        }
+    }
+    merged
 }
 
 #[derive(Debug, Clone)]
@@ -976,9 +1204,14 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         request: MemberActionReviewRequest,
         context: AdminOpsRequestContext,
     ) -> Result<MemberActionRecord, AdminOpsStoreError> {
-        self.compensation
+        let record = self
+            .compensation
             .review_member_action(action_id, request, context)
-            .await
+            .await?;
+        if record.status == "approved" {
+            apply_member_action_side_effects(&self.upstream, &record).await?;
+        }
+        Ok(record)
     }
 
     async fn create_compensation_proposal(

@@ -17,6 +17,7 @@ CREATE TABLE user_members (
     last_login_at TIMESTAMPTZ,
     device_count INTEGER NOT NULL DEFAULT 0 CHECK (device_count >= 0),
     two_factor_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    registration_audit JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ

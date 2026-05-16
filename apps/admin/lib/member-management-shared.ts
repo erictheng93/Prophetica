@@ -86,6 +86,7 @@ export interface MemberCreateRequest {
 }
 
 export interface MemberUpdateRequest {
+  status?: MemberStatus;
   display_name?: string;
   email?: string;
   phone?: string;
@@ -97,6 +98,7 @@ export interface MemberUpdateRequest {
   kyc_status?: KycStatus;
   risk_level?: RiskLevel;
   risk_score?: number;
+  restrictions?: string[];
 }
 
 export interface MemberDeleteResponse {
