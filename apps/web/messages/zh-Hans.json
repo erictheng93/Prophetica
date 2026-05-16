@@ -632,14 +632,14 @@
           "birthday": {
             "field": "生日",
             "collected": "Tier 1 / 2 / 3",
-            "purpose": "验证已满 18 岁（SPEC-006 §6 未成年保护）。",
+            "purpose": "验证已满 18 岁。",
             "retention": "同账户生命周期 + 7 年。",
             "access": "同上。"
           },
           "documentId": {
             "field": "证件号码",
             "collected": "Tier 1（隐式验证）/ Tier 2 / 3",
-            "purpose": "唯一性比对、制裁名单比对、自我排除名单比对（SPEC-006 §5.4）。",
+            "purpose": "唯一性比对、制裁名单比对、自我排除名单比对。",
             "retention": "<strong>只保存 SHA256 哈希</strong>，原始号码不入库，提交后立即丢弃。哈希保存同账户生命周期 + 7 年。",
             "access": "后端 kyc-service（只能比对，不能还原原始号码）。"
           },
@@ -667,7 +667,7 @@
           "income": {
             "field": "月收入（区间）",
             "collected": "Tier 2 自愿 / Tier 3 必填",
-            "purpose": "自我设限评分（SPEC-006 §4.1）；解锁更高储值上限。",
+            "purpose": "自我设限评分；解锁更高储值上限。",
             "retention": "同账户生命周期；12 个月未更新会自动标记为过期。",
             "access": "你本人 + Compliance Officer。<strong>客服只看区间，不看精确值</strong>。"
           },

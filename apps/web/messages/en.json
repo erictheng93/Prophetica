@@ -632,14 +632,14 @@
           "birthday": {
             "field": "Date of birth",
             "collected": "Tier 1 / 2 / 3",
-            "purpose": "Verify that you are at least 18 years old under SPEC-006 §6.",
+            "purpose": "Verify that you are at least 18 years old.",
             "retention": "Account lifetime + 7 years.",
             "access": "Same as above."
           },
           "documentId": {
             "field": "Document number",
             "collected": "Tier 1 implicit check / Tier 2 / 3",
-            "purpose": "Deduplicate identities, screen sanctions lists, and match the self-exclusion list under SPEC-006 §5.4.",
+            "purpose": "Deduplicate identities, screen sanctions lists, and match the self-exclusion list.",
             "retention": "<strong>Only a SHA256 hash is stored</strong>. The raw number is never stored and is discarded after submission. The hash is kept for account lifetime + 7 years.",
             "access": "Backend kyc-service only. It can compare the hash but cannot recover the raw number."
           },
@@ -667,7 +667,7 @@
           "income": {
             "field": "Monthly income band",
             "collected": "Optional for Tier 2 / required for Tier 3",
-            "purpose": "Support responsible-gaming limit scoring under SPEC-006 §4.1 and unlock higher top-up limits.",
+            "purpose": "Support responsible-gaming limit scoring and unlock higher top-up limits.",
             "retention": "Account lifetime. Marked stale automatically if not updated for 12 months.",
             "access": "You + Compliance Officer. <strong>Support sees only the band, not the exact value</strong>."
           },

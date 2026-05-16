@@ -280,7 +280,11 @@ async fn list_members<S>(
 where
     S: MemberStore,
 {
-    store.list_members(query).await.map(Json).map_err(store_error)
+    store
+        .list_members(query)
+        .await
+        .map(Json)
+        .map_err(store_error)
 }
 
 async fn member_summary<S>(
@@ -369,7 +373,10 @@ impl MemberStore for InMemoryMemberStore {
         &self,
         query: ListMembersQuery,
     ) -> Result<ListMembersResponse, MemberStoreError> {
-        let records = self.records.lock().map_err(|_| MemberStoreError::Unavailable)?;
+        let records = self
+            .records
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
         Ok(list_response(records.values().cloned(), &query))
     }
 
@@ -377,7 +384,10 @@ impl MemberStore for InMemoryMemberStore {
         &self,
         user_id: &str,
     ) -> Result<MemberManagementSummary, MemberStoreError> {
-        let records = self.records.lock().map_err(|_| MemberStoreError::Unavailable)?;
+        let records = self
+            .records
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
         records
             .get(user_id)
             .cloned()
@@ -390,7 +400,10 @@ impl MemberStore for InMemoryMemberStore {
         request: CreateMemberRequest,
     ) -> Result<MemberManagementSummary, MemberStoreError> {
         validate_create_member(&request)?;
-        let mut records = self.records.lock().map_err(|_| MemberStoreError::Unavailable)?;
+        let mut records = self
+            .records
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
         if records.contains_key(&request.user_id) {
             return Err(MemberStoreError::Duplicate);
         }
@@ -405,14 +418,20 @@ impl MemberStore for InMemoryMemberStore {
         user_id: &str,
         request: UpdateMemberRequest,
     ) -> Result<MemberManagementSummary, MemberStoreError> {
-        let mut records = self.records.lock().map_err(|_| MemberStoreError::Unavailable)?;
+        let mut records = self
+            .records
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
         let record = records.get_mut(user_id).ok_or(MemberStoreError::NotFound)?;
         apply_update(record, request)?;
         Ok(summary_from_record(record.clone()))
     }
 
     async fn delete_member(&self, user_id: &str) -> Result<DeleteMemberResponse, MemberStoreError> {
-        let mut records = self.records.lock().map_err(|_| MemberStoreError::Unavailable)?;
+        let mut records = self
+            .records
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
         records.remove(user_id).ok_or(MemberStoreError::NotFound)?;
         Ok(DeleteMemberResponse {
             user_id: user_id.to_owned(),
@@ -423,7 +442,10 @@ impl MemberStore for InMemoryMemberStore {
         &self,
         ids: Vec<String>,
     ) -> Result<Vec<MaskedContact>, MemberStoreError> {
-        let records = self.records.lock().map_err(|_| MemberStoreError::Unavailable)?;
+        let records = self
+            .records
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
         Ok(ids
             .into_iter()
             .filter_map(|id| records.get(&id).map(masked_contact_from_record))
@@ -678,10 +700,7 @@ fn apply_update(
         record.affiliate_id = value.as_deref().and_then(trim_optional);
     }
     if let Some(value) = request.kyc_status {
-        if !matches!(
-            value.as_str(),
-            "pending" | "verified" | "review_required"
-        ) {
+        if !matches!(value.as_str(), "pending" | "verified" | "review_required") {
             return Err(MemberStoreError::Invalid);
         }
         record.kyc_status = value;
@@ -822,7 +841,10 @@ fn row_to_member_record(row: &sqlx::postgres::PgRow) -> Result<MemberRecord, Mem
     })
 }
 
-async fn fetch_member_record(pool: &PgPool, user_id: &str) -> Result<MemberRecord, MemberStoreError> {
+async fn fetch_member_record(
+    pool: &PgPool,
+    user_id: &str,
+) -> Result<MemberRecord, MemberStoreError> {
     let row = sqlx::query(
         r"
         SELECT user_id, display_name, status, tier, email, phone, line_id, country, timezone,
@@ -860,7 +882,10 @@ fn trim_optional(value: &str) -> Option<String> {
 }
 
 fn mask_phone(value: &str) -> String {
-    let digits = value.chars().filter(char::is_ascii_digit).collect::<String>();
+    let digits = value
+        .chars()
+        .filter(char::is_ascii_digit)
+        .collect::<String>();
     if digits.len() <= 6 {
         return "***".to_owned();
     }

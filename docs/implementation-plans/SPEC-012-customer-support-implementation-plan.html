@@ -33,7 +33,7 @@
     <p>公開 Beta / 真實入金前需具備最小客服能力；缺任一項時只能做 internal alpha / sandbox demo。</p>
     <ul>
       <li>單一客服入口與可追蹤 ticket id。</li>
-      <li>KYC / 支付 / 結算 / RG 四類分流與 assignee team。</li>
+      <li>KYC / 支付 / 結算 / Compliance 四類分流與 assignee team。</li>
       <li>SLA 告警與違反升級。</li>
       <li>所有影響帳本或帳戶狀態的客服動作寫入 audit log。</li>
     </ul>
@@ -52,8 +52,7 @@
     <ul>
       <li>§3 工單系統：分類矩陣、SLA、ESCALATE 路由規則</li>
       <li>§4 權限分級：T1/T2/T3/Admin/Compliance 操作邊界</li>
-      <li>§5 查詢介面：player profile、KYC、交易與 RG 歷史聚合查詢</li>
-      <li>§6 RG 個案：主動關懷觸發、回訪與 4 小時處置節點</li>
+      <li>§5 查詢介面：player profile、KYC、交易歷史聚合查詢</li>
       <li>§11 帳本整合：`compensation` API 與 `audit_logs` 強制留痕</li>
     </ul>
   </section>
@@ -97,7 +96,7 @@ CREATE TABLE support_ticket_events (
     <h3>4.1 RBAC（最小權限）</h3>
     <ul>
       <li>T1：可查詢用戶摘要、回覆工單、調整單筆設定。</li>
-      <li>T2：可回應爭議、KYC 重啟、解凍、執行 RG case。</li>
+      <li>T2：可回應爭議、KYC 重啟、解凍、執行 Compliance case。</li>
       <li>T3：可提案帳本調整、外部回應、提交 SAR。</li>
       <li>Admin：可改客服設定、FAQ、流程參數。</li>
       <li>Compliance：簽核與外部監管溝通入口。</li>
@@ -140,7 +139,6 @@ CREATE TABLE support_ticket_events (
       <li>工單建立、轉派、升級、關閉流程都有不可變更 audit trail。</li>
       <li>SLA 告警可在 24hr/72hr 自動觸發。</li>
       <li>客服帳號無工程特權前提下，無法直接改帳本。</li>
-      <li>親友通報與 RG 案件有獨立分流並可產生 follow-up task。</li>
     </ul>
   </section>
 </body>

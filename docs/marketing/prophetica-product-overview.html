@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prophetica · 用直覺，預測世界</title>
+<meta name="description" content="Prophetica — 趣味預測競猜娛樂遊戲平台。用站內虛擬點數，預測運動賽事、選舉、經濟指標的結果，與其他玩家對手競猜。" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --primary:#0066cc;
+    --primary-focus:#0071e3;
+    --primary-on-dark:#2997ff;
+    --ink:#1d1d1f;
+    --body-muted:#cccccc;
+    --ink-80:#333333;
+    --ink-48:#595959;
+    --hairline:#e0e0e0;
+    --canvas:#ffffff;
+    --parchment:#f5f5f7;
+    --pearl:#fafafc;
+    --tile-1:#272729;
+    --tile-2:#2a2a2c;
+    --black:#000000;
+    --yes:#1f7a3f;
+    --no:#c92020;
+  }
+
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html { -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+
+  body {
+    font-family:'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    color:var(--ink);
+    background:var(--canvas);
+    line-height:1.47;
+    letter-spacing:-0.012em;
+    font-size:17px;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Global nav ---------- */
+  .nav {
+    position:sticky; top:0; z-index:50;
+    height:44px; background:var(--black);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 22px;
+  }
+  .nav .brand { color:#fff; font-size:13px; font-weight:600; letter-spacing:0.01em; }
+  .nav .brand span { color:var(--primary-on-dark); }
+  .nav .nav-links { display:flex; gap:22px; }
+  .nav a { color:#f5f5f7; font-size:12px; text-decoration:none; opacity:.82; }
+  .nav a:hover { opacity:1; }
+  @media (max-width:600px){ .nav .nav-links { display:none; } }
+
+  /* ---------- Tiles ---------- */
+  .tile { padding:96px 24px; }
+  .tile.parchment { background:var(--parchment); }
+  .tile.dark { background:var(--tile-1); color:#fff; }
+  .tile.dark .kicker { color:var(--primary-on-dark); }
+  .wrap { max-width:980px; margin:0 auto; }
+  .wrap.narrow { max-width:760px; }
+
+  .kicker {
+    color:var(--primary); font-size:14px; font-weight:600;
+    letter-spacing:0.04em; margin-bottom:18px;
+  }
+
+  h1 {
+    font-size:clamp(42px, 7.4vw, 68px);
+    font-weight:600; line-height:1.06; letter-spacing:-0.024em;
+  }
+  h2 {
+    font-size:clamp(30px, 4.6vw, 44px);
+    font-weight:600; line-height:1.1; letter-spacing:-0.018em;
+  }
+  h3 { font-size:21px; font-weight:600; line-height:1.2; letter-spacing:-0.01em; }
+  .lead {
+    font-size:clamp(20px, 2.5vw, 26px);
+    font-weight:400; line-height:1.4; letter-spacing:-0.005em;
+    color:var(--ink-80); margin-top:24px;
+  }
+  .tile.dark .lead { color:var(--body-muted); }
+  p { margin-top:18px; }
+  p.body { font-size:17px; color:var(--ink-80); }
+  .tile.dark p.body { color:var(--body-muted); }
+  .section-intro { max-width:680px; }
+
+  /* ---------- Hero ---------- */
+  .hero { padding:118px 24px 104px; text-align:center; }
+  .hero .lead { max-width:620px; margin-left:auto; margin-right:auto; }
+  .hero .meta { margin-top:30px; font-size:13px; color:var(--ink-48); letter-spacing:0.02em; }
+
+  /* ---------- Buttons ---------- */
+  .cta-row { margin-top:36px; display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
+  .btn {
+    display:inline-block; border-radius:9999px;
+    padding:13px 26px; font-size:16px; font-weight:500;
+    text-decoration:none; line-height:1; transition:transform .15s ease;
+  }
+  .btn:active { transform:scale(0.96); }
+  .btn-primary { background:var(--primary); color:#fff; }
+  .btn-ghost { background:transparent; color:var(--primary); border:1px solid var(--primary); }
+
+  /* ---------- Order ticket mock (hero) ---------- */
+  .ticket {
+    margin:52px auto 0; max-width:380px;
+    background:var(--canvas); border:1px solid var(--hairline);
+    border-radius:18px; padding:22px; text-align:left;
+    box-shadow:0 10px 40px rgba(0,0,0,0.10);
+  }
+  .ticket .tk-top { display:flex; justify-content:space-between; align-items:center; }
+  .ticket .tk-cat { font-size:12px; font-weight:600; color:var(--primary); letter-spacing:0.04em; }
+  .ticket .tk-live {
+    font-size:11px; color:var(--ink-48); display:flex; align-items:center; gap:6px;
+  }
+  .ticket .tk-live::before {
+    content:""; width:7px; height:7px; border-radius:9999px; background:var(--yes);
+  }
+  .ticket .tk-q { margin-top:14px; font-size:18px; font-weight:600; line-height:1.35; }
+  .ticket .tk-bets { margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .tk-bet {
+    border-radius:12px; padding:14px; text-align:center;
+  }
+  .tk-bet .side { font-size:13px; font-weight:600; }
+  .tk-bet .price { font-size:26px; font-weight:600; margin-top:4px; letter-spacing:-0.02em; }
+  .tk-bet.yes { background:rgba(31,122,63,0.10); color:var(--yes); }
+  .tk-bet.no  { background:rgba(201,32,32,0.09); color:var(--no); }
+  .ticket .tk-foot { margin-top:14px; font-size:12px; color:var(--ink-48); }
+
+  /* ---------- Steps ---------- */
+  .flow { margin-top:48px; display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  @media (max-width:820px){ .flow { grid-template-columns:1fr 1fr; } }
+  @media (max-width:520px){ .flow { grid-template-columns:1fr; } }
+  .step { padding:24px; border-radius:14px; background:var(--canvas); border:1px solid var(--hairline); }
+  .tile.parchment .step { background:var(--canvas); }
+  .step .n {
+    width:32px; height:32px; border-radius:9999px;
+    background:var(--primary); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:15px; font-weight:600;
+  }
+  .step h3 { margin-top:16px; font-size:18px; }
+  .step p { margin-top:8px; font-size:14px; color:var(--ink-48); line-height:1.55; }
+
+  /* ---------- Card grid ---------- */
+  .grid { margin-top:48px; display:grid; gap:20px; }
+  .grid.cols-4 { grid-template-columns:repeat(4,1fr); }
+  .grid.cols-3 { grid-template-columns:repeat(3,1fr); }
+  .grid.cols-2 { grid-template-columns:repeat(2,1fr); }
+  @media (max-width:900px){ .grid.cols-4 { grid-template-columns:1fr 1fr; } }
+  @media (max-width:820px){ .grid.cols-3, .grid.cols-2 { grid-template-columns:1fr; } }
+  @media (max-width:520px){ .grid.cols-4 { grid-template-columns:1fr; } }
+
+  .card {
+    background:var(--canvas); border:1px solid var(--hairline);
+    border-radius:18px; padding:28px; box-shadow:0 1px 3px rgba(0,0,0,0.04);
+  }
+  .tile.dark .card { background:var(--tile-2); border-color:#3a3a3c; box-shadow:none; }
+  .card .emoji { font-size:30px; line-height:1; }
+  .card .tag {
+    display:inline-block; font-size:12px; font-weight:600; color:var(--primary);
+    background:rgba(0,102,204,0.08); padding:4px 10px; border-radius:9999px;
+  }
+  .card h3 { margin-top:14px; }
+  .card p { margin-top:10px; font-size:15px; color:var(--ink-48); line-height:1.55; }
+  .tile.dark .card p { color:var(--body-muted); }
+
+  /* ---------- Fair / safety list ---------- */
+  .features { margin-top:44px; display:grid; gap:1px; background:var(--hairline);
+    border:1px solid var(--hairline); border-radius:18px; overflow:hidden; }
+  .feature { background:var(--canvas); padding:26px 28px; display:flex; gap:20px; align-items:flex-start; }
+  .feature .ficon {
+    flex-shrink:0; width:44px; height:44px; border-radius:9999px;
+    background:rgba(0,102,204,0.08); color:var(--primary);
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; font-weight:600;
+  }
+  .feature .fbody h3 { font-size:18px; }
+  .feature .fbody p { margin-top:6px; font-size:15px; color:var(--ink-48); line-height:1.55; }
+
+  /* ---------- Pay channels ---------- */
+  .pays { margin-top:40px; display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  @media (max-width:680px){ .pays { grid-template-columns:1fr; } }
+  .pay {
+    background:var(--tile-2); border:1px solid #3a3a3c; border-radius:16px;
+    padding:26px; text-align:center;
+  }
+  .pay .emoji { font-size:30px; }
+  .pay h3 { margin-top:12px; color:#fff; font-size:18px; }
+  .pay p { margin-top:6px; font-size:14px; color:var(--body-muted); }
+
+  /* ---------- Regions ---------- */
+  .regions { margin-top:32px; display:flex; flex-wrap:wrap; gap:12px; }
+  .region {
+    display:flex; align-items:center; gap:10px; font-size:15px;
+    padding:12px 20px; border-radius:9999px;
+    background:var(--canvas); border:1px solid var(--hairline);
+  }
+  .region b { font-weight:600; }
+  .region span { color:var(--ink-48); font-size:13px; }
+
+  /* ---------- Closing ---------- */
+  .closing { text-align:center; }
+  .closing h2 { max-width:720px; margin:0 auto; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    background:var(--parchment); color:var(--ink-48);
+    padding:48px 24px; font-size:12px; text-align:center;
+  }
+  footer .fbrand { font-weight:600; color:var(--ink-80); font-size:13px; }
+  footer p { margin-top:10px; line-height:1.6; }
+
+  /* ---------- Reveal ---------- */
+  .reveal { opacity:1; }
+  html.js .reveal { opacity:0; transform:translateY(20px); }
+  html.js .reveal.in { opacity:1; transform:none; transition:opacity .7s ease, transform .7s ease; }
+  @media (prefers-reduced-motion:reduce){ html.js .reveal { opacity:1; transform:none; } }
+</style>
+</head>
+<body>
+<script>document.documentElement.className='js';</script>
+
+<nav class="nav">
+  <div class="brand">Prophetica<span>.</span></div>
+  <div class="nav-links">
+    <a href="#what">這是什麼</a>
+    <a href="#how">怎麼玩</a>
+    <a href="#topics">預測題材</a>
+    <a href="#orderbook">撮合機制</a>
+    <a href="#fair">公平安心</a>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="tile hero">
+  <div class="wrap reveal">
+    <div class="kicker">趣味預測競猜娛樂遊戲平台</div>
+    <h1>用直覺，<br />預測世界。</h1>
+    <p class="lead">下一場比賽誰會贏？用你的判斷，在 Prophetica 以站內虛擬點數對結果競猜，和其他玩家一較高下。</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#how">看看怎麼玩</a>
+      <a class="btn btn-ghost" href="#topics">能預測什麼</a>
+    </div>
+
+    <div class="ticket" aria-hidden="true">
+      <div class="tk-top">
+        <span class="tk-cat">運動賽事</span>
+        <span class="tk-live">進行中</span>
+      </div>
+      <div class="tk-q">主隊會在今晚的比賽中獲勝嗎？</div>
+      <div class="tk-bets">
+        <div class="tk-bet yes"><div class="side">YES　會</div><div class="price">62</div></div>
+        <div class="tk-bet no"><div class="side">NO　不會</div><div class="price">38</div></div>
+      </div>
+      <div class="tk-foot">價格代表市場目前認為的機率 · 示意畫面</div>
+    </div>
+
+    <div class="meta">prophetica.net　即將上線</div>
+  </div>
+</header>
+
+<!-- ============ WHAT IS IT ============ -->
+<section class="tile parchment" id="what">
+  <div class="wrap">
+    <div class="reveal section-intro">
+      <div class="kicker">這是什麼</div>
+      <h2>把「我覺得會這樣」<br />變成一場競猜。</h2>
+      <p class="lead">Prophetica 是一個趣味預測競猜娛樂遊戲平台。對於還沒揭曉的事件，你用站內虛擬點數下判斷——猜對了，就贏。</p>
+    </div>
+    <div class="grid cols-3 reveal">
+      <div class="card">
+        <div class="emoji">🎯</div>
+        <h3>選一個你有看法的題目</h3>
+        <p>平台會上架各種還沒有答案的事件，從運動賽事到熱門話題。</p>
+      </div>
+      <div class="card">
+        <div class="emoji">🪙</div>
+        <h3>用站內虛擬點數出手</h3>
+        <p>點數用來顯示餘額、鎖倉與結算結果，是平台內的競猜籌碼。</p>
+      </div>
+      <div class="card">
+        <div class="emoji">🏆</div>
+        <h3>事件揭曉，見真章</h3>
+        <p>結果確定後由平台統一結算，看看你的判斷是否準確。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HOW TO PLAY ============ -->
+<section class="tile" id="how">
+  <div class="wrap">
+    <div class="reveal section-intro">
+      <div class="kicker">怎麼玩</div>
+      <h2>四個步驟，<br />馬上開始競猜。</h2>
+    </div>
+    <div class="flow reveal">
+      <div class="step">
+        <div class="n">1</div>
+        <h3>選市場</h3>
+        <p>挑一個你想預測的事件，例如某場比賽的勝負。</p>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <h3>下 YES／NO 單</h3>
+        <p>看現在的價格，選 YES 或 NO，用你願意的價格出價。</p>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <h3>與其他玩家撮合</h3>
+        <p>你的出價會和其他玩家的訂單在訂單簿上配對成交。</p>
+      </div>
+      <div class="step">
+        <div class="n">4</div>
+        <h3>事件揭曉、自動結算</h3>
+        <p>結果一出，平台統一結算，猜對的一方獲得回報。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TOPICS ============ -->
+<section class="tile dark" id="topics">
+  <div class="wrap">
+    <div class="reveal section-intro">
+      <div class="kicker">你可以預測什麼</div>
+      <h2>從球場開始，<br />延伸到整個世界。</h2>
+      <p class="lead">運動賽事是最直覺的起點，但可被預測的，遠不只如此。</p>
+    </div>
+    <div class="grid cols-4 reveal">
+      <div class="card">
+        <span class="tag">主打</span>
+        <h3 style="margin-top:14px;">🏀 運動賽事</h3>
+        <p>賽事勝負、晉級、單場表現——體育迷最熟悉的競猜場景。</p>
+      </div>
+      <div class="card">
+        <h3>🗳️ 選舉</h3>
+        <p>對選情走向有想法？把你的判斷放上訂單簿。</p>
+      </div>
+      <div class="card">
+        <h3>📈 經濟指標</h3>
+        <p>關注數據公布的人，這裡有對應的預測市場。</p>
+      </div>
+      <div class="card">
+        <h3>🎮 電競</h3>
+        <p>電競賽事同樣精彩，預測戰隊與賽果一決高下。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ORDER BOOK ============ -->
+<section class="tile parchment" id="orderbook">
+  <div class="wrap">
+    <div class="reveal section-intro">
+      <div class="kicker">撮合機制</div>
+      <h2>你的對手，<br />是其他玩家。</h2>
+      <p class="lead">Prophetica 採用訂單簿（Order Book）撮合。簡單說：你不是和平台對賭，而是和其他同樣有判斷的玩家對手成交。</p>
+    </div>
+    <div class="grid cols-3 reveal">
+      <div class="card">
+        <div class="emoji">👥</div>
+        <h3>玩家對玩家</h3>
+        <p>平台不下場當你的對手，只負責上架題目、撮合訂單與結算。</p>
+      </div>
+      <div class="card">
+        <div class="emoji">💹</div>
+        <h3>價格就是機率</h3>
+        <p>YES 的價格，反映市場目前認為事件「會發生」的共識機率。</p>
+      </div>
+      <div class="card">
+        <div class="emoji">⚖️</div>
+        <h3>想清楚再出價</h3>
+        <p>你決定要用什麼價格買進；撮合到對手單，就成交。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAIR & SAFE ============ -->
+<section class="tile" id="fair">
+  <div class="wrap">
+    <div class="reveal section-intro">
+      <div class="kicker">為什麼公平又安心</div>
+      <h2>玩得開心，<br />也要玩得放心。</h2>
+    </div>
+    <div class="features reveal">
+      <div class="feature">
+        <div class="ficon">⊘</div>
+        <div class="fbody">
+          <h3>平台不下場</h3>
+          <p>平台保持中立，不持有任何一方部位、不和玩家對賭，只擔任市集的營運者。</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="ficon">≣</div>
+        <div class="fbody">
+          <h3>訂單簿透明</h3>
+          <p>價格由真實的玩家供需形成，所有訂單在公開的訂單簿上撮合。</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="ficon">∑</div>
+        <div class="fbody">
+          <h3>每一筆都有紀錄</h3>
+          <p>採用雙簿記帳本，金流、撮合、結算與判定全程留有可追查的事件紀錄。</p>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="ficon">✓</div>
+        <div class="fbody">
+          <h3>實名驗證把關</h3>
+          <p>透過 KYC 身分驗證流程維護平台環境，讓競猜在乾淨的社群裡進行。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PAYMENT ============ -->
+<section class="tile dark">
+  <div class="wrap">
+    <div class="reveal section-intro">
+      <div class="kicker">入金通路</div>
+      <h2>用你習慣的方式儲值。</h2>
+      <p class="lead">Prophetica 整合在地化的入金通路，儲值站內虛擬點數簡單直覺。</p>
+    </div>
+    <div class="pays reveal">
+      <div class="pay">
+        <div class="emoji">🏪</div>
+        <h3>超商代碼</h3>
+        <p>到鄰近的便利商店輕鬆完成。</p>
+      </div>
+      <div class="pay">
+        <div class="emoji">🏦</div>
+        <h3>虛擬帳號</h3>
+        <p>以專屬虛擬帳號轉帳儲值。</p>
+      </div>
+      <div class="pay">
+        <div class="emoji">💳</div>
+        <h3>信用卡</h3>
+        <p>用信用卡快速完成入金。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ REGIONS ============ -->
+<section class="tile parchment">
+  <div class="wrap">
+    <div class="reveal section-intro">
+      <div class="kicker">服務區域</div>
+      <h2>從亞太六個市場啟程。</h2>
+      <p class="lead">Prophetica 以在地化的版本，逐步在以下市場與玩家見面。</p>
+    </div>
+    <div class="regions reveal">
+      <div class="region"><b>台灣</b><span>TW</span></div>
+      <div class="region"><b>日本</b><span>JP</span></div>
+      <div class="region"><b>韓國</b><span>KR</span></div>
+      <div class="region"><b>越南</b><span>VN</span></div>
+      <div class="region"><b>馬來西亞</b><span>MY</span></div>
+      <div class="region"><b>菲律賓</b><span>PH</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CLOSING ============ -->
+<section class="tile closing">
+  <div class="wrap narrow reveal">
+    <div class="kicker">即將上線</div>
+    <h2>準備好，相信你的直覺了嗎？</h2>
+    <p class="lead">Prophetica 即將開放。把對未來的判斷，變成一場好玩的競猜。</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://prophetica.net">Start</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="fbrand">Prophetica</div>
+  <p>趣味預測競猜娛樂遊戲平台 · prophetica.net（即將上線）</p>
+  <p>站內虛擬點數用於顯示餘額、鎖倉與結算結果。本頁畫面與數字為示意。<br />實際使用規則、服務地區與營運條款由業主與營運方另行維護。</p>
+</footer>
+
+<script>
+  (function () {
+    var els = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window)) {
+      els.forEach(function (e) { e.classList.add('in'); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+      });
+    }, { threshold: 0.12 });
+    els.forEach(function (e) { io.observe(e); });
+  })();
+</script>
+</body>
+</html>

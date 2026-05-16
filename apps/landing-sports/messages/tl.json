@@ -1,0 +1,92 @@
+{
+  "common": {
+    "brand": "Prophetica Sports",
+    "metadata": {
+      "title": "Prophetica - Sports Prediction",
+      "description": "Ang Prophetica Sports ay landing page para sa sports event prediction na may neutral matching at responsible play."
+    },
+    "nav": {
+      "markets": "Markets",
+      "howItWorks": "Paano gumagana",
+      "responsibleGaming": "Responsible play"
+    },
+    "auth": {
+      "account": {
+        "ariaLabel": "Account"
+      },
+      "signIn": "Mag-sign in",
+      "signUp": "Magsimula"
+    },
+    "localeSwitcher": {
+      "label": "Palitan ang wika"
+    },
+    "theme": {
+      "light": "Light mode",
+      "dark": "Dark mode",
+      "switchToLight": "Lumipat sa light mode",
+      "switchToDark": "Lumipat sa dark mode"
+    },
+    "footer": {
+      "play": {
+        "heading": "Play",
+        "markets": "Sports markets",
+        "howItWorks": "Paano gumagana"
+      },
+      "compliance": {
+        "heading": "Compliance",
+        "responsibleGaming": "Responsible play",
+        "terms": "Terms",
+        "privacy": "Privacy"
+      },
+      "legal": {
+        "body": "Para lang sa edad 18 pataas. Ang Prophetica ay entertainment service, hindi gambling, lottery, o financial derivative."
+      }
+    },
+    "noScript": {
+      "headline": "Kailangan ang JavaScript",
+      "body": "Kailangan ang JavaScript para sa language switching, sign-in, at account setup.",
+      "cta": "Contact support"
+    }
+  },
+  "landingSports": {
+    "hero": {
+      "headline": "Basahin ang laro. Presyuhan ang sandali.",
+      "tagline": "Subaybayan ang sports events, bumuo ng prediction view, at ma-match sa ibang players gamit ang neutral matching engine.",
+      "ctaPrimary": "Magsimula",
+      "ctaSecondary": "Paano gumagana",
+      "media": "Sports market sigil"
+    },
+    "neutral": {
+      "headline": "Neutral matching, hindi counterparty ng player.",
+      "tagline": "Nagbibigay ang Prophetica Sports ng event prediction markets at matching services. Hindi nangangako ang platform ng returns, hindi ginagarantiya ang win rate, at hindi ito counterparty ng trades.",
+      "cta": "Tingnan ang matching flow",
+      "media": "Neutral matching"
+    },
+    "points": {
+      "headline": "Pamahalaan ang prediction pace gamit ang points.",
+      "tagline": "Pumasok sa markets gamit ang in-app virtual points, kasama ang limits, records, at malinaw na transaction states para sa bawat prediction.",
+      "ctaPrimary": "Tingnan ang points",
+      "ctaSecondary": "Terms",
+      "media": "Points wallet"
+    },
+    "responsibleGaming": {
+      "headline": "Nauuna ang responsible play tools.",
+      "tagline": "Suriin muna ang budget at risk bago magsimula, gamit ang limits, cooldown, self-exclusion, at support resources kapag kailangan.",
+      "ctaPrimary": "Itakda ang limits",
+      "ctaSecondary": "Resources",
+      "media": "Responsible gaming"
+    },
+    "start": {
+      "headline": "Pumasok sa unang sports market kapag handa ka na.",
+      "tagline": "Pagkatapos mag-sign up, tapusin ang required account setup, mag-browse ng markets ayon sa iyong pace, unawain ang rules, at gumawa ng predictions.",
+      "ctaPrimary": "Mag-sign up",
+      "ctaSecondary": "Tingnan ang markets"
+    },
+    "mediaTags": {
+      "sigil": ["Neutral", "Verified", "Sports"],
+      "platform": ["Order book", "Matched", "Settled"],
+      "wallet": ["Points", "Limits", "Receipts"],
+      "responsible": ["Budget", "Cooldown", "Support"]
+    }
+  }
+}

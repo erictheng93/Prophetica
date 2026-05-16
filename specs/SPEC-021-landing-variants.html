@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-021 — Landing Variants Lifecycle</title>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.6;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre { overflow: auto; padding: 1rem; background: #f6f8fa; border: 1px solid #d8dee3; }
+    hr { border: none; border-top: 1px solid #d0d7de; }
+    blockquote { border-left: 4px solid #d0d7de; padding-left: 0.8rem; margin-left: 0; color: #374151; }
+    a { color: #0969da; }
+  </style>
+
+</head>
+<body>
+<h1>SPEC-021 — Landing Variants Lifecycle</h1>
+
+<table>
+<tbody>
+<tr><td>Version</td><td>v0.1.1</td></tr>
+<tr><td>Status</td><td>🟡 Draft</td></tr>
+<tr><td>Created</td><td>2026-05-15</td></tr>
+<tr><td>Owner</td><td>Tech Lead</td></tr>
+<tr><td>Depends on</td><td>SPEC-005（KYC）、SPEC-007（Observability）、SPEC-009（DMM / 平台中立性）、SPEC-010（Security）、SPEC-014（Tech Architecture §6）、SPEC-017（Monorepo §3 / §6）、SPEC-020（Analytics）</td></tr>
+<tr><td>Supersedes</td><td>n/a</td></tr>
+</tbody>
+</table>
+
+<hr />
+
+<h2>1. 範圍與目標</h2>
+
+<h3>1.1 為什麼需要這份 SPEC</h3>
+<p>產品方針確定採 <strong>multi-landing 架構</strong>：不同<strong>地區市場</strong>與不同<strong>產品線</strong>對應獨立 <code>apps/landing-*</code> Next.js 應用，但<strong>共用同一組 Rust 後端 services + 同一個 <code>apps/admin</code> 後台</strong>。為避免 landing 增生造成：</p>
+<ul>
+<li>合規元件被各 landing 自行重寫（KYC entry、平台中立聲明不一致）</li>
+<li>API 契約偏離 <code>packages/proto</code> 造成後端報表斷裂</li>
+<li>觀測事件命名各自為政造成 SPEC-007 / SPEC-020 報表無法跨 variant 聚合</li>
+<li>視覺風格碎片化失控</li>
+</ul>
+<p>本 SPEC 規範 <strong>landing variant 的 lifecycle 與強制檢核清單</strong>。</p>
+
+<h3>1.2 範圍</h3>
+<ul>
+<li>每個 <code>apps/landing-*</code> 的目錄骨架與必載入的共用元件清單</li>
+<li>Region × Product matrix 的宣告格式</li>
+<li>上線前合規檢核 gate</li>
+<li>部署拓樸（Cloudflare Pages 多 project + 域名策略）</li>
+<li>Variant 退役流程</li>
+</ul>
+
+<h3>1.3 非範圍</h3>
+<ul>
+<li>landing 的視覺設計細節（屬於 <code>design/</code> 與 <code>packages/design-tokens</code> 的領域）</li>
+<li>後端 services 的修改（multi-landing <strong>不應</strong>造成後端 schema 變動）</li>
+<li>Geo-block / IP 地區阻擋 —— 已於 2026-05-15 全域移除（見 SPEC-000 v0.1.5 changelog）</li>
+</ul>
+
+<hr />
+
+<h2>2. Variant Matrix</h2>
+<p>每個 landing variant 必須在其 <code>package.json</code> 之 <code>prophetica.variant</code> 欄位宣告：</p>
+<pre><code>{
+  "name": "@prophetica/landing-sports",
+  "prophetica": {
+    "variant": {
+      "id": "sports",
+      "regions": ["TW", "JP", "KR", "VN", "MY", "PH"],
+      "product_lines": ["sports"],
+      "design_theme": "apple",
+      "deployment": {
+        "domain": "sports.prophetica.example",
+        "path_prefix": "/"
+      },
+      "owner": "marketing",
+      "launched_at": "2026-06-01",
+      "retired_at": null
+    }
+  }
+}</code></pre>
+
+<table>
+<thead>
+<tr><th>欄位</th><th>強制</th><th>說明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>id</code></td><td>✅</td><td>kebab-case，全域唯一；用於 observability dimension <code>variant_id</code></td></tr>
+<tr><td><code>regions</code></td><td>✅</td><td>ISO 3166-1 alpha-2 陣列；可包含多個</td></tr>
+<tr><td><code>product_lines</code></td><td>✅</td><td>必須是 <code>packages/proto</code> 中已定義的 product enum 子集</td></tr>
+<tr><td><code>design_theme</code></td><td>✅</td><td><code>packages/design-tokens</code> 中 registered theme，或 variant-local override</td></tr>
+<tr><td><code>deployment.domain</code></td><td>✅</td><td>Cloudflare Pages project 對應的對外域名</td></tr>
+<tr><td><code>deployment.path_prefix</code></td><td>可選</td><td>預設 <code>/</code>，多個 variant 共用同域名時必填且不可重疊</td></tr>
+<tr><td><code>owner</code></td><td>✅</td><td>內部 team 名稱，用於 PR review routing</td></tr>
+<tr><td><code>launched_at</code></td><td>✅</td><td>ISO 8601 日期；未上線可暫設未來日期</td></tr>
+<tr><td><code>retired_at</code></td><td>可選</td><td>null = 仍在線</td></tr>
+</tbody>
+</table>
+
+<h3>2.1 命名規範</h3>
+<p>目錄名為 <code>apps/landing-{slug}/</code>，<code>{slug}</code> 為人類可讀識別字（kebab-case）。slug <strong>不強制</strong>編碼 region / product —— 真正的 region × product matrix 由 §2 的 manifest 欄位宣告，目錄名只需易讀且全域唯一。</p>
+<pre><code>apps/landing-{slug}/          ← directory
+@prophetica/landing-{slug}    ← package name
+variant.id === {slug}
+
+範例：
+  apps/landing-sports/      → id "sports"，product_lines ["sports"]，regions 多國
+  apps/landing-tw/          → id "tw"，regions ["TW"]，product_lines 多條
+  apps/landing-jp-casino/   → id "jp-casino"，region + product 皆專一</code></pre>
+
+<hr />
+
+<h2>3. 強制共用（不可偏離）</h2>
+<table>
+<thead>
+<tr><th>共用對象</th><th>來源</th><th>強制理由</th></tr>
+</thead>
+<tbody>
+<tr><td>API 契約</td><td><code>packages/proto</code></td><td>SPEC-014 §6 single source of truth；landing 不准自定義新欄位</td></tr>
+<tr><td>HTTP / gRPC client</td><td><code>packages/ts-sdk</code></td><td>session、idempotency key、tracing header 一致</td></tr>
+<tr><td>合規元件</td><td><code>packages/ui/compliance/*</code></td><td>見 §3.1</td></tr>
+<tr><td>Observability events</td><td><code>packages/ts-sdk/analytics</code></td><td>event name 與 dimension key 統一，SPEC-007 §3 / SPEC-020</td></tr>
+<tr><td>版本</td><td>SPEC-017 §3 鎖定的 Next.js / React / <code>@cloudflare/kumo</code></td><td>多 variant 不能版本漂移，避免 monorepo build 矩陣爆炸</td></tr>
+<tr><td>TypeScript / ESLint config</td><td>各 app tsconfig 對齊 <code>apps/web</code> baseline</td><td>PR 自審門檻一致</td></tr>
+</tbody>
+</table>
+
+<h3>3.1 合規元件清單（<code>packages/ui/compliance/*</code>）</h3>
+<p>下列元件<strong>必須</strong>從 <code>packages/ui/compliance</code> 引入，<strong>不准</strong>在 variant 內 fork 或重寫：</p>
+<table>
+<thead>
+<tr><th>Component</th><th>對應 SPEC</th><th>用途</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;KycEntryButton /&gt;</code></td><td>SPEC-005</td><td>註冊 / 升級 Tier 2 CTA</td></tr>
+<tr><td><code>&lt;NeutralPlatformDisclosure /&gt;</code></td><td>SPEC-009 §1</td><td>「中立撮合，平台不下場」聲明</td></tr>
+<tr><td><code>&lt;AnalyticsBoundary /&gt;</code></td><td>SPEC-007 §3 / SPEC-020</td><td>統一事件 emitter wrapper</td></tr>
+</tbody>
+</table>
+<p>如果某個 variant 的視覺設計需要客製這些元件的外觀，<strong>只能透過 props / theme tokens 改外觀，不能 fork 邏輯</strong>。若 props 不夠用，回頭擴 <code>packages/ui/compliance</code>，不是在 variant 內另起爐灶。</p>
+<blockquote>
+<p><strong>實作狀態（2026-05-16）</strong>：<code>packages/ui/compliance/*</code> 尚未實作。在這些元件落地前，新 variant 應以 inline 內容滿足合規可見性要求（KYC entry、平台中立聲明），並於該處標註 <code>SPEC-021 §3.1</code> TODO，待元件 ship 後替換。<code>apps/landing-sports</code> 即為此過渡模式範例。</p>
+</blockquote>
+
+<hr />
+
+<h2>4. 可分歧層面（自由發揮）</h2>
+<table>
+<thead>
+<tr><th>對象</th><th>可分歧</th><th>備註</th></tr>
+</thead>
+<tbody>
+<tr><td>Hero / Marketing copy</td><td>✅</td><td>i18n 與 brand tone 完全自治</td></tr>
+<tr><td>字體 / 配色 / 動效</td><td>✅</td><td>透過 <code>packages/design-tokens</code> 的 theme override</td></tr>
+<tr><td>Layout / Page composition</td><td>✅</td><td>但 §3.1 合規元件必須出現在 viewport 上</td></tr>
+<tr><td>Product surface</td><td>✅</td><td>在 variant 宣告的 <code>product_lines</code> 範圍內</td></tr>
+<tr><td>Onboarding flow 視覺</td><td>✅</td><td>但 KYC 邏輯走共用元件</td></tr>
+</tbody>
+</table>
+
+<h3>4.1 視覺方向之 prior art</h3>
+<p><code>design/</code> 目錄已有三份視覺探索可供 variant 設計起點：</p>
+<ul>
+<li><code>design/landing-apple.html</code> + <code>design/DESIGN-apple.md</code> — Apple 風格（精簡、留白、產品攝影）</li>
+<li><code>design/landing-airbnb.html</code> + <code>design/DESIGN-airbnb.md</code> — Airbnb 風格（社群感、溫暖配色、cards）</li>
+<li><code>design/landing-lamborghini.html</code> + <code>design/DESIGN-lamborghini.md</code> — Lamborghini 風格（高反差、賽車美學）</li>
+</ul>
+<p>這三份是<strong>非 production 視覺探索</strong>，新 variant 可挑一個方向延伸或新創。新方向之 theme tokens 須補進 <code>packages/design-tokens</code> 並於 PR 描述引用 <code>design/DESIGN.md</code> 設計系統章節。</p>
+
+<hr />
+
+<h2>5. 部署拓樸</h2>
+
+<h3>5.1 Cloudflare Pages 多 project</h3>
+<p>每個 variant 對應一個獨立 Cloudflare Pages project：</p>
+<pre><code>apps/landing-sports/wrangler.toml    → CF Pages: prophetica-landing-sports
+apps/landing-jp-casino/wrangler.toml → CF Pages: prophetica-landing-jp-casino</code></pre>
+<p>CI 部署條件：只有該 variant 的目錄或其依賴的 <code>packages/*</code> 變動時才觸發。<code>turbo.json</code> 的 task（<code>build</code> / <code>lint</code> / <code>typecheck</code> / <code>test</code> / <code>dev</code>）為 workspace-generic，新 variant 由 <code>pnpm-workspace.yaml</code> 的 <code>apps/*</code> glob 自動納入，<strong>無需修改 <code>turbo.json</code></strong>。</p>
+
+<h3>5.2 域名策略</h3>
+<p>兩種策略可並存：</p>
+<p><strong>A. 不同子域（推薦給「不同地區市場」）</strong></p>
+<pre><code>tw.prophetica.example  → apps/landing-tw
+jp.prophetica.example  → apps/landing-jp-casino
+kr.prophetica.example  → apps/landing-kr-events</code></pre>
+<p><strong>B. 同域不同 path（推薦給「不同產品線」）</strong></p>
+<pre><code>prophetica.example/sports  → apps/landing-sports
+prophetica.example/casino  → apps/landing-casino
+prophetica.example/events  → apps/landing-events</code></pre>
+<p>混合：地區走子域、產品線走 path：</p>
+<pre><code>tw.prophetica.example/sports
+tw.prophetica.example/casino
+jp.prophetica.example/sports</code></pre>
+
+<h3>5.3 Cookie / Session 邊界（與 SPEC-010 §2 對齊）</h3>
+<ul>
+<li><strong>預設</strong>：landing 不持有 session cookie；「立即註冊」CTA 跳轉到 <code>apps/web</code> 之 <code>/auth/signup</code>，登入後 redirect 回原 landing 之指定 path</li>
+<li><strong>跨子域共享 session</strong>：若需要 landing 顯示「已登入」狀態，cookie domain 設為 <code>.prophetica.example</code>（apex），所有子域共用</li>
+<li><strong>產品線 path 切分</strong>：同 apex 下不同 path 自動共用 cookie，無需特殊設定</li>
+</ul>
+<p><code>SameSite=Lax</code>、<code>Secure</code>、<code>HttpOnly</code> 強制，無例外（SPEC-010 §2）。</p>
+
+<hr />
+
+<h2>6. 新 landing 上線檢核清單（PR Gate）</h2>
+<p>新增 <code>apps/landing-*</code> 的 PR 必須在 description 勾選下列項目，缺一則 reject：</p>
+<pre><code>## SPEC-021 New Landing Variant Checklist
+
+### 宣告
+- [ ] package.json 之 prophetica.variant 完整填寫（§2 全欄位）
+- [ ] variant.id 全域唯一（CI script 掃描所有 apps/landing-*/package.json
+      之 prophetica.variant.id 驗證）
+
+### 強制共用
+- [ ] 引用 packages/proto 與 packages/ts-sdk，無自定 API 呼叫
+- [ ] 引用 packages/ui/compliance/* 列出之全部元件，未 fork
+      （元件未 ship 前以 inline 內容過渡，標註 §3.1 TODO）
+- [ ] Analytics 透過 &lt;AnalyticsBoundary /&gt;，event name 對齊 SPEC-020 dictionary
+- [ ] Next.js / React / Kumo 版本對齊 SPEC-017 §3 lock file
+
+### 合規可見性
+- [ ] &lt;AgeConfirmationGate /&gt; 在首訪流程出現
+- [ ] &lt;ResponsibleGamingBanner /&gt; 出現在 viewport（首屏可不出但 footer 必到）
+- [ ] &lt;NeutralPlatformDisclosure /&gt; 在 footer 或 about 頁
+- [ ] KYC CTA 文案經 legal 過審
+- [ ] 無「保證」「穩賺」「平台對沖」「平台造市」等違反 SPEC-009 §1 的字眼
+
+### 部署
+- [ ] wrangler.toml 指向獨立 Cloudflare Pages project
+- [ ] 域名 / path_prefix 與既有 variant 無衝突
+
+### 觀測
+- [ ] variant_id 已加入 SPEC-007 §3 metric / log 標籤
+- [ ] Lighthouse CI（Performance / Accessibility / SEO）≥ 90</code></pre>
+
+<h3>6.1 4-eye review 要求</h3>
+<ul>
+<li><strong>必須</strong> Tech Lead + 該 variant <code>owner</code> 雙簽</li>
+<li>若 variant 含新地區（<code>regions</code> 出現未曾上線的國家代碼）→ 加要求 legal 審 marketing copy</li>
+</ul>
+
+<hr />
+
+<h2>7. Variant Lifecycle</h2>
+<pre><code>[ proposal ] → [ design review ] → [ implementation ] → [ §6 PR gate ] → [ launched ]
+                                                                              │
+                                                                              ▼
+                                                                       [ monitoring ]
+                                                                              │
+                                                          ┌───────────────────┤
+                                                          ▼                   ▼
+                                                    [ retiring ]         [ active ]
+                                                          │
+                                                          ▼
+                                                    [ retired ]
+                                                    （保留 6 個月供 SEO / 直連流量 redirect）</code></pre>
+
+<h3>7.1 退役流程</h3>
+<ol>
+<li><code>package.json</code> 之 <code>prophetica.variant.retired_at</code> 填上日期</li>
+<li>variant 域名加 301 redirect 到指定的存活 variant</li>
+<li>該 variant 的 Cloudflare Pages project 標記 <code>inactive</code>，6 個月後刪除</li>
+<li>SPEC-000 changelog 補一筆退役紀錄</li>
+<li>observability dashboard 之 <code>variant_id</code> filter 加入退役標記，歷史資料仍可查</li>
+</ol>
+
+<h3>7.2 A/B 測試</h3>
+<p>A/B 不算新 variant，由單一 variant 內部以 feature flag 處理（SPEC-013 或對應 flag 服務）。<strong>禁止</strong>為 A/B 而新增 <code>apps/landing-*</code> 目錄。</p>
+
+<hr />
+
+<h2>8. Anti-patterns（不要做）</h2>
+<ul>
+<li>❌ landing 內直接 <code>fetch(API_URL)</code>：必須走 <code>packages/ts-sdk</code></li>
+<li>❌ landing 內定義新的 analytics event name：必須在 SPEC-020 dictionary 補定義後共用</li>
+<li>❌ landing 內 fork 合規元件：擴 props 或在 <code>packages/ui</code> 加新 variant</li>
+<li>❌ 為了視覺需求調整 Next.js / React 版本：違反 SPEC-017 §3</li>
+<li>❌ 用環境變數開關決定「要不要顯示 KYC entry」：合規元件強制存在，不可條件性</li>
+<li>❌ 把產品線判斷邏輯寫在 landing：產品線由 <code>prophetica.variant.product_lines</code> 宣告，後端 service 與 admin 直接讀此 metadata</li>
+</ul>
+
+<hr />
+
+<h2>9. Open Questions</h2>
+<ul>
+<li>A/B variant 的 traffic split 機制（Cloudflare Workers edge split vs Next.js middleware vs 第三方 LaunchDarkly / GrowthBook）</li>
+<li>design tokens override 的版本控管：variant 鎖 token 版本 vs 隨主版滾動</li>
+</ul>
+
+<hr />
+
+<h2>10. Changelog</h2>
+<ul>
+<li>2026-05-15 · v0.1.0：初版。產品方針確認為 multi-landing 後建立。同時對應 SPEC-000 v0.1.5 / SPEC-005 §2.4 重寫 / SPEC-010 §2.1 Geo-rules 移除。</li>
+<li>2026-05-16 · v0.1.1：由 <code>.md</code> 轉為 <code>.html</code> 對齊既有 SPEC 格式。第一個 variant（<code>apps/landing-sports</code>）落地時回修三處與 monorepo 現實不符之處：(1) §2.1 命名規範由 <code>landing-{region}-{product}</code> 鬆綁為 slug-based，region × product matrix 改由 manifest 宣告；(2) §5.1 釐清 <code>turbo.json</code> 無需 per-variant entry，由 <code>pnpm-workspace.yaml</code> glob 自動納入；(3) §6 移除 <code>.variants-registry.json</code>，改為 CI script 掃描各 <code>package.json</code> 驗證 <code>variant.id</code> 唯一性。§3.1 補實作狀態 blockquote。</li>
+</ul>
+
+</body>
+</html>

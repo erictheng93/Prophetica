@@ -6,6 +6,18 @@ on:
     branches: [main]
 
 jobs:
+  landing-variant-validator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: test landing variant validator
+        run: node --test tools/scripts/validate-landing-variants.test.mjs
+      - name: validate landing variant manifests
+        run: node tools/scripts/validate-landing-variants.mjs
+
   rust-lsp-lint:
     runs-on: ubuntu-latest
     env:

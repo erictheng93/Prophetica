@@ -11,7 +11,7 @@ import {
   type SiteNavLink,
 } from "@/lib/site-nav";
 
-// Shared chrome for /responsible-gaming/* — SPEC-006 §7.3 dedicated RG section.
+// Shared chrome for /responsible-gaming/* dedicated section.
 // Single primary nav (consolidated from prior global+sub stack) + an inline
 // RG-section chip row + footer.
 

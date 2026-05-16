@@ -21,7 +21,7 @@ ADR-0003 v1.0 於 2026-05-05 拍板雙簿記帳本，§5 列出 5 條核心不�
 
 | INV ID | ADR-0003 v1.0 §5 公式 | SPEC-002 v0.1.1 起實際公式 | Drift 來源 |
 |--------|----------------------|---------------------------|----------|
-| INV-2 | `Σ(Player.Wallet.*) + Σ(Player.Locked.*) = 平台對玩家負債總額` | `Σ(Player.Wallet.*) + Σ(Player.Locked.*) + Σ(Player.Frozen.*) = 平台對玩家負債總額` | SPEC-002 v0.1.1 新增 `Player.Frozen.{user_id}` 子科目（自我排除 / Compliance 凍結 / EDD 待審）|
+| INV-2 | `Σ(Player.Wallet.*) + Σ(Player.Locked.*) = 平台對玩家負債總額` | `Σ(Player.Wallet.*) + Σ(Player.Locked.*) + Σ(Player.Frozen.*) = 平台對玩家負債總額` | SPEC-002 v0.1.1 新增 `Player.Frozen.{user_id}` 子科目（Compliance 凍結 / EDD 待審）|
 | INV-4 | `Player.Wallet.X 任意時刻 ≥ 0` | `Player.Wallet.X` 與 `Player.Frozen.X` 任意時刻 ≥ 0 | 同上 |
 
 ADR README §修訂規則「Accepted 後不可直接修改 ADR 主體」嚴格論已被 violated — SPEC-002 v0.1.1 變更時應該先寫 ADR 把 INV-2 / INV-4 公式擴展，再改 SPEC，但實際是先改 SPEC 後 ADR 沒同步。本 ADR 補上這個 governance gap。

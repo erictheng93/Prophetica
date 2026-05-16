@@ -56,6 +56,18 @@ export type {
 } from "./kyc-provider/index.js";
 export { createWalletClient, type WalletClient } from "./wallet/client.js";
 export { createEngineClient, type EngineClient } from "./engine/client.js";
+export {
+  ANALYTICS_SCHEMA_VERSION,
+  LANDING_ANALYTICS_EVENTS,
+  createAnalyticsClient,
+  type AnalyticsClient,
+  type AnalyticsClientOptions,
+  type AnalyticsFetcher,
+  type AnalyticsNavigator,
+  type LandingAnalyticsEventName,
+  type LandingCtaClickedDimensions,
+  type LandingCtaClickedPayload,
+} from "./analytics/index.js";
 export type {
   PointsDisposition,
   SelfExclusionMode,

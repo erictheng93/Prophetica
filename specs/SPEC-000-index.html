@@ -82,10 +82,6 @@
 <td>主要市場</td>
 <td>亞太娛樂用戶</td>
 </tr>
-<tr>
-<td>嚴格 Geo-block</td>
-<td>首發保守名單待業主與運營方確認，技術側依 SPEC-005 / SPEC-010 / SPEC-016 的 KYC、風控與支付限制實作</td>
-</tr>
 </tbody></table>
 <h2>2. SPEC 清單</h2>
 <h3>P0 — 必須在第一行 code 之前完成</h3>
@@ -156,12 +152,6 @@
 <td>SumSub 前端整合契約</td>
 <td><code>KycIdentityProvider</code> 抽象、Tier 2 page state machine、idempotency / polling / CSP 紀律</td>
 <td>🟡 Frontend 主路徑 done（PR #2 merged 2026-05-09）；blocker: <a href="#cross-cutting-q9">Q-9</a> SumSub sandbox + iProov real adapter · v0.1.2</td>
-</tr>
-<tr>
-<td><a href="./SPEC-006-responsible-gaming.html">SPEC-006</a></td>
-<td>責任博弈機制</td>
-<td>自我排除、限額、冷靜期</td>
-<td>🟢 v0.1</td>
 </tr>
 <tr>
 <td><a href="./SPEC-007-observability.html">SPEC-007</a></td>
@@ -454,7 +444,7 @@
     <p><strong>程式碼 ↔ SPEC 同步收斂 round 7</strong>（agent 驗證 → R-1/R-2 補齊 + 殘餘 gap 對齊）：</p>
     <ul>
       <li><strong>R-1/R-2 程式碼補齊</strong>（commit <code>430643c</code>）：sentinel 重構為 sorted const slice + <code>RESERVED_REMOVED_USER_IDS</code>、INV-6 application validate + DB CONSTRAINT TRIGGER 雙層、CI sentinel-scan job 補 R-1/R-2 grep gate、CI runner 切 <code>ubuntu-latest-4-cores</code>、KUMO_NPM_TOKEN 殘留移除、cargo-mutants 門檻調 60；87 unit tests pass / clippy clean / fmt clean；INV-6 chargeback carve-out 補正（SPEC-002 v0.1.8、ADR-0006 v1.0.1）。</li>
-      <li><strong>SPEC-005 §0 標記降級</strong>：v0.1.2「✅ Complete」→ v0.1.3「⚠️ Backend Complete / Frontend Pending SumSub Integration」；新增 §0.1 backend 已完成清單、§0.2 待完成清單（SumSub iframe / Tier 2/3 OCR / self-exclusion / batch scheduler / income stale / EdDSA PoC）、§0.3 PR #1 acceptance 條件。SDD 紀律：spec 反映現況，不誤導 Compliance。</li>
+      <li><strong>SPEC-005 §0 標記降級</strong>：v0.1.2「✅ Complete」→ v0.1.3「⚠️ Backend Complete / Frontend Pending SumSub Integration」；新增 §0.1 backend 已完成清單、§0.2 待完成清單（SumSub iframe / Tier 2/3 OCR / batch scheduler / income stale / EdDSA PoC）、§0.3 PR #1 acceptance 條件。SDD 紀律：spec 反映現況，不誤導 Compliance。</li>
       <li><strong><code>.env.example</code> sweep</strong>：移除殘留 <code>KUMO_NPM_TOKEN=</code>（v0.2.3 erratum 後不需要）、補 observability port（PROMETHEUS / GRAFANA / TEMPO_OTLP_GRPC / LOKI / MAILHOG SMTP+UI）、補 frontend port（WEB / ADMIN / LIFF）、補 <code>NEXT_PUBLIC_LIFF_ID</code>、補檔頭註記 SPEC-017 §7.1 / SPEC-010 §3.3 / Vault sidecar 警示。</li>
       <li><strong>SPEC-014 §4.1.1 對齊現況</strong>：紀錄 round 7 程式碼驗證結果「當前採 12-binary 拓撲」+ 採 12-binary 之 acceptance 補強（PR description 須宣告 latency budget 壓測承諾）+ §4.1.1.1 轉 7-binary 之 4 條觸發條件 + 簡述轉換流程；SPEC-014 v0.2.5 → v0.2.6。</li>
       <li>Agent 驗證澄清：admin / liff stub 對 SPEC-017 §6.3 acceptance（health route + middleware + LIFF init + fail-fast）已落地；apps/web/app/api/health/route.ts 已存在（agent 之前誤報）。版本 bump：SPEC-002 v0.1.7 → v0.1.8、SPEC-005 v0.1.2 → v0.1.3、SPEC-014 v0.2.5 → v0.2.6；ADR-0006 v1.0 → v1.0.1。</li>
@@ -571,8 +561,7 @@
       <li>Q-6 數據主權暫定 Cloudflare R2 ✅ Resolved；</li>
       <li>SPEC-005 §2.1 釘住 KYC tier canonical enum <code>TIER_0/1/2/3</code>，SPEC-017 §5.2 同步；</li>
       <li>SPEC-017 §12 OQ #1 / #2 / #5 全部 Resolved（commit gen/、env_file、Linux PR gate + macOS nightly）；</li>
-      <li>SPEC-002 §12 OQ #1 ledger 拆獨立 service Resolved，§4.2.1 新增 <code>Player.Frozen.{user_id}</code> 子科目，INV-2 同步擴展；</li>
-      <li>SPEC-002 §12 OQ #4 自我排除錢包處理 Resolved。</li>
+      <li>SPEC-002 §12 OQ #1 ledger 拆獨立 service Resolved，§4.2.1 新增 <code>Player.Frozen.{user_id}</code> 子科目，INV-2 同步擴展。</li>
     </ul>
   </article>
   <article class="changelog-entry">
@@ -585,6 +574,17 @@
       <li>SPEC-015 §6 補 outcomes / oracle_submissions / disputes / dispute_resolutions / positions 五張 schema，SPEC-004 §6.3 改為呼應引用；</li>
       <li>SPEC-016 §5.5 補通路 webhook payload 對映表（綠界 / Stripe / 藍新 / PayMongo / MoMo / VNPay 6 家）；</li>
       <li>SPEC-010 §3.1 補 JWT claims schema、refresh token rotation、reuse detection、step-up MFA 細節。</li>
+    </ul>
+  </article>
+  <article class="changelog-entry">
+    <h3>2026-05-15 · v0.1.5 · Tech Lead</h3>
+    <p>產品方針改為 multi-landing：</p>
+    <ul>
+      <li>§1 系統屬性表「嚴格 Geo-block」整列移除；目標市場改由各 <code>apps/landing-*</code> variant 自治（見新 SPEC-021）；</li>
+      <li>SPEC-005 §2.4 / §2.4.2 重寫：移除「紅名單地區」「Geo-block runtime 配置」「Phase 2 waiting list」等條文；Tier 1 5 國轉為純工程文件支援範圍，其餘地區直走 Tier 2 SumSub；</li>
+      <li>SPEC-010 §2.1 Cloudflare 規則表「Geo-rules: 拒絕 🔴 名單地區」整列移除；</li>
+      <li>新增 SPEC-021 規範 landing variant lifecycle（region × product matrix、合規檢核、上線/退役、共用 packages 契約）；</li>
+      <li>CLAUDE.md / README.md / <code>docs/implementation-plans/README.html</code> 對 SPEC-001 的保留引用同步清除（SPEC-001 anchor 廢止，原章節改由 SPEC-002 ~ SPEC-010 各自承擔法律邊界條文）。</li>
     </ul>
   </article>
   <article class="changelog-entry">
@@ -613,7 +613,7 @@
       <li>修 SPEC-002 §4.4.4 零金額結算 entry 衝突；</li>
       <li>ADR-0002 / ADR-0003 §11 改名為「Pre-Execution Validation Items」；</li>
       <li>§5 改為跨檔決策追蹤表（含 Resolved-by 欄位）；</li>
-      <li>SPEC-005 補 declared_monthly_income 並對齊 SPEC-006 §4.1；</li>
+      <li>SPEC-005 補 declared_monthly_income 作為 KYC / EDD 風控輔助欄位；</li>
       <li>SPEC-005 §2.4 補首發 5 國 Tier 1 證件驗證；</li>
       <li>新增 SPEC-015 市場生命週期；</li>
       <li>新增 SPEC-016 支付通路整合；</li>
@@ -677,14 +677,6 @@
 <td>🟡 Pending</td>
 <td><a href="./SPEC-016-payment-gateway.html">SPEC-016 §3.2</a> 列驗證項</td>
 <td>公開 Beta / 真實入金前完成至少 3 家詢價與 1 家 sandbox webhook + MCC 接受度驗證，並對齊支付 Gateway BIN 檢查；未完成時不得開放真實儲值</td>
-</tr>
-<tr>
-<td>Q-5</td>
-<td>未成年下限：18 歲 vs 20 歲</td>
-<td>SPEC-006 §6</td>
-<td>✅ Resolved</td>
-<td><a href="./SPEC-006-responsible-gaming.html">SPEC-006 §6</a></td>
-<td>18 歲（依台灣民法成年新制）</td>
 </tr>
 <tr>
 <td>Q-6</td>

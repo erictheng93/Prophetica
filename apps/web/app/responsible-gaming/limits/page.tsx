@@ -7,7 +7,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title"), description: t("description") };
 }
 
-// SPEC-006 §3.1 — fixed monthly limit options. "無上限" intentionally absent.
+// Fixed monthly limit options. "無上限" intentionally absent.
 const limitOptions = [
   { value: 1000 },
   { value: 3000 },

@@ -214,7 +214,7 @@
 負債（Liabilities）
   └─ Player.Wallet.{user_id}     對玩家的銅幣負債（每個玩家一個帳戶）
   └─ Player.Locked.{user_id}     鎖倉中（掛單未成交、結算中）
-  └─ Player.Frozen.{user_id}     已凍結（責任博弈自我排除 / Compliance 凍結 / EDD 待審）— 詳見 §4.2.1
+  └─ Player.Frozen.{user_id}     已凍結（Compliance 凍結 / EDD 待審）— 詳見 §4.2.1
 
 負債 — 應付帳款（Liabilities — Accounts Payable）
   └─ Liability.AccountsPayable.{partner_id}   B2B 業務合約應付（與玩家錢包零交集，呼應 SPEC-011 §6.4）
@@ -241,25 +241,25 @@
 <p>決議 2026-05-05：採 <strong>(b) 帳本層轉子科目</strong> 而非 metadata flag 或純 application freeze。理由：</p>
 </blockquote>
 <ul>
-<li><strong>Audit Trail</strong>：永久封號 / 自我排除為不可逆事件，必須在帳本留下明確 entry，metadata flag 無法滿足「不可竄改事件流」要求。</li>
+<li><strong>Audit Trail</strong>：永久封號 / Compliance 凍結 / EDD 待審必須在帳本留下明確 entry，metadata flag 無法滿足「不可竄改事件流」要求。</li>
 <li><strong>隔離 INV-1 / INV-2 計算</strong>：凍結資產仍是平台對玩家之負債（不能歸 0），但不應出現在「可用餘額」對帳；以子科目分流可避免日常 wallet 查詢誤觸。</li>
-<li><strong>可逆操作</strong>：若凍結觸發條件解除（例如自我排除期滿、Compliance 釋出），由反向 entry 從 <code>Player.Frozen.{user_id}</code> 轉回 <code>Player.Wallet.{user_id}</code>，全程留痕。</li>
+<li><strong>可逆操作</strong>：若凍結觸發條件解除（例如 Compliance 釋出），由反向 entry 從 <code>Player.Frozen.{user_id}</code> 轉回 <code>Player.Wallet.{user_id}</code>，全程留痕。</li>
 </ul>
 <h4>凍結流程分錄</h4>
-<pre><code class="language-text">觸發：玩家 42 自我排除 / Compliance 凍結 / EDD 待審
+<pre><code class="language-text">觸發：玩家 42 Compliance 凍結 / EDD 待審
 凍結金額 = Player.Wallet.42 + Player.Locked.42（先撤掉所有掛單，鎖倉退回 wallet 後再轉凍結）
 
   Entry 1: Player.Wallet.42       +X       (負債從 wallet 減少 X)
   Entry 2: Player.Frozen.42       -X       (負債轉到 frozen 子科目)
-  metadata: { reason: &#39;self_exclusion&#39; | &#39;compliance_freeze&#39; | &#39;edd_pending&#39;, triggered_by, ref_id }
+  metadata: { reason: &#39;compliance_freeze&#39; | &#39;edd_pending&#39;, triggered_by, ref_id }
 </code></pre>
 <h4>解凍流程</h4>
 <pre><code class="language-text">  Entry 1: Player.Frozen.42       +X
   Entry 2: Player.Wallet.42       -X
-  metadata: { reason: &#39;self_exclusion_expired&#39; | &#39;compliance_cleared&#39;, approved_by, ref_id }
+  metadata: { reason: &#39;compliance_cleared&#39;, approved_by, ref_id }
 </code></pre>
 <blockquote>
-<p>Compliance 凍結 / EDD 凍結之解凍須走 SPEC-010 §9 4-eye review；自我排除期滿解凍由 SPEC-006 §5 排程自動觸發但仍寫入 <code>approved_by = &#39;system:rg-scheduler&#39;</code>。</p>
+<p>Compliance 凍結 / EDD 凍結之解凍須走 SPEC-010 §9 4-eye review。</p>
 </blockquote>
 <h4>INV 影響</h4>
 <ul>
@@ -686,7 +686,6 @@ Layer 5 (月度)：第三方審計事務所抽樣對帳
 </ul>
 </li>
 <li><strong>WORM 儲存</strong>：R2 Object Lock vs AWS S3 Glacier（呼應 SPEC-008 §6.1 已部分定案 R2 + S3 雙寫；本 SPEC §10.2 hash chain 寫入 R2 Object Lock 桶為定案，僅 cold archive 介質保留討論）。</li>
-<li><del><strong>Player Wallet 帳戶在玩家自我排除（永久封號）後如何處理</strong></del> ✅ <strong>Resolved 2026-05-05</strong>：採 <strong>(b) 轉 sub-account</strong>，新增 <code>Player.Frozen.{user_id}</code> 子科目，詳見 §4.2.1；INV-2 / INV-4 同步擴展。</li>
 <li><strong>客服 compensation transaction 介面</strong>：手動表單 vs Workflow 工具（Temporal / Airflow）？追蹤於 ADR-0003 §11 V-3。</li>
 </ol>
 

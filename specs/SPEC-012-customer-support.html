@@ -26,15 +26,15 @@
 <blockquote>
 <p>優先級：<strong>P1</strong>
 版本：v0.1.1 · 最後更新：2026-05-09
-依賴：SPEC-004, SPEC-006
+依賴：SPEC-004
 被依賴：SPEC-000 Public Beta Launch Gate</p>
 <p><strong>v0.1.1 變更</strong>：公開 Beta 前最低客服能力上移至 P1 launch gate；未完成客服入口、SLA 告警、KYC / 支付 / 結算爭議分流與帳本影響操作留痕時，不得開放真實入金 / 真實下單。</p>
 </blockquote>
 <hr />
 <h2>1. Objective</h2>
-<p>建立 24/7 客服體系，處理玩家一般查詢、KYC 異議、結算申訴、責任博弈個案、技術故障。</p>
+<p>建立 24/7 客服體系，處理玩家一般查詢、KYC 異議、結算申訴、Compliance 個案、技術故障。</p>
 <h3>1.1 Public Beta minimum</h3>
-<p>公開 Beta 前不要求完整 24/7 自建客服中心，但必須具備以下最小能力：單一客服入口、KYC / 支付 / 結算 / RG 四類分流、SLA 告警、可追蹤工單編號、所有影響帳本或帳戶狀態的客服動作寫入 audit log。缺任一項時，只能做 internal alpha / sandbox demo。</p>
+<p>公開 Beta 前不要求完整 24/7 自建客服中心，但必須具備以下最小能力：單一客服入口、KYC / 支付 / 結算 / Compliance 四類分流、SLA 告警、可追蹤工單編號、所有影響帳本或帳戶狀態的客服動作寫入 audit log。缺任一項時，只能做 internal alpha / sandbox demo。</p>
 <h2>2. 服務管道與 SLA</h2>
 <table>
 <thead>
@@ -72,7 +72,7 @@
 </tr>
 <tr>
 <td>電話客服</td>
-<td>RG 高風險、Compliance、紛爭</td>
+<td>Compliance、紛爭</td>
 <td>callback 4 hr</td>
 <td>僅 Compliance 案件</td>
 </tr>
@@ -121,11 +121,6 @@
 <td>標準</td>
 </tr>
 <tr>
-<td>責任博弈</td>
-<td>T2 → RG 客服</td>
-<td><strong>高</strong></td>
-</tr>
-<tr>
 <td>安全事件（被盜帳）</td>
 <td>T2 → Security</td>
 <td><strong>緊急</strong></td>
@@ -161,7 +156,7 @@
 </tr>
 <tr>
 <td>T2</td>
-<td>解凍帳戶、KYC 重啟、回覆爭議、執行 RG 個案</td>
+<td>解凍帳戶、KYC 重啟、回覆爭議、執行 Compliance 個案</td>
 </tr>
 <tr>
 <td>T3</td>
@@ -187,7 +182,6 @@
 <li>基本資訊（去除身份證號等 PII，僅 hash 後 4 碼）</li>
 <li>KYC tier 與歷史</li>
 <li>儲值 / 交易 / 結算紀錄</li>
-<li>RG 評分歷史</li>
 <li>最近 30 日工單</li>
 </ul>
 <h3>5.2 不可直接看的資訊</h3>
@@ -226,26 +220,6 @@
 <li>操作前後資料（修改類）</li>
 <li>工單關聯 id</li>
 <li>時間戳、IP、User-Agent</li>
-</ul>
-<h2>6. RG 個案處理流程</h2>
-<p>呼應 SPEC-006：</p>
-<h3>6.1 主動關懷流程（系統觸發）</h3>
-<blockquote>
-<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-012-customer-support-implementation-plan.html">implementation plan</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-</blockquote>
-<h3>6.2 玩家主動求助</h3>
-<ul>
-<li>Help Center 顯著位置「責任博弈協助」入口</li>
-<li>客服有專屬腳本與培訓</li>
-<li>提供合作戒癮機構聯繫資訊</li>
-<li>不嘗試「挽留」玩家，遵循 player-first 原則</li>
-</ul>
-<h3>6.3 親友通報</h3>
-<ul>
-<li>接受第三方通報，但<strong>不可直接以親友通報為據停權</strong></li>
-<li>通報觸發系統 review，通報內容<strong>不對玩家揭露</strong></li>
-<li>客服可在後續 RG 評估中參考</li>
-<li>確認問題嚴重 → 客服聯繫玩家，邀請其自我排除</li>
 </ul>
 <h2>7. 結算申訴處理</h2>
 <p>呼應 SPEC-004 §5（申訴窗口）：</p>
@@ -302,11 +276,6 @@
 <td>入職 + 年度更新</td>
 </tr>
 <tr>
-<td>RG 識別與介入</td>
-<td>T2 RG 客服</td>
-<td>入職 + 半年更新</td>
-</tr>
-<tr>
 <td>AML / 可疑交易識別</td>
 <td>T2/T3</td>
 <td>入職 + 年度</td>
@@ -315,11 +284,6 @@
 <td>個資保護（GDPR / 個資法）</td>
 <td>全員</td>
 <td>入職 + 年度</td>
-</tr>
-<tr>
-<td>玩家心理學</td>
-<td>T2 RG</td>
-<td>入職</td>
 </tr>
 <tr>
 <td>系統工具操作</td>
@@ -332,7 +296,7 @@
 <ul>
 <li>完成課程 → 內部認證</li>
 <li>認證每年 refresh</li>
-<li>處理 RG / Compliance 案件需通過對應認證</li>
+<li>處理 Compliance 案件需通過對應認證</li>
 </ul>
 <h2>10. 績效指標</h2>
 <table>
@@ -356,10 +320,6 @@
 <td>&gt; 85%</td>
 </tr>
 <tr>
-<td>RG 案件介入有效性</td>
-<td>6 個月後該玩家 RG 評分下降</td>
-</tr>
-<tr>
 <td>工單再開率</td>
 <td>&lt; 10%</td>
 </tr>
@@ -378,7 +338,7 @@
 <li>[ ] 客服查詢介面通過 PII redaction 測試</li>
 <li>[ ] 操作 audit_logs 完整記錄</li>
 <li>[ ] SLA 監控告警上線</li>
-<li>[ ] RG 與 Compliance 客服培訓完成</li>
+<li>[ ] Compliance 客服培訓完成</li>
 <li>[ ] 客服系統與帳本整合通過 4-eye 測試</li>
 </ul>
 <h2>13. Open Questions</h2>

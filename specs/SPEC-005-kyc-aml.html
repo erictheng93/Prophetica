@@ -36,7 +36,7 @@
 <p>優先級：<strong>P1</strong>
 版本：v0.1.4 · 最後更新：2026-05-08
 依賴：無
-被依賴：SPEC-006, SPEC-010, SPEC-011
+被依賴：SPEC-010, SPEC-011
 實作狀態：🟡 <strong>Backend Postgres wiring baseline 已落地（2026-05-09）/ Secret hardening 完成 / Frontend 主路徑已落地（PR #2 merged 2026-05-09），real SumSub iframe + iProov 待 <a href="./SPEC-000-index.html#cross-cutting-q9">SPEC-000 §5 Q-9</a></strong>（v0.1.4；status source of truth 移至 <a href="../docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html">plan §0</a>）</p>
 </blockquote>
 <hr>
@@ -159,11 +159,6 @@
 <td>同上</td>
 </tr>
 <tr>
-<td><strong>Self-exclusion 名單比對</strong></td>
-<td>⏳ §2.4.1 step 3「對 self-excluded 名單比對」未在 kyc-service 實作</td>
-<td>待 SPEC-006 §5.4 落地後跨 service 整合</td>
-</tr>
-<tr>
 <td><strong>Daily batch screening rescan scheduler</strong></td>
 <td>⏳ <code>/internal/screening/rescans</code> 為手動 API；§6 「每日 batch」cron 排程未實作</td>
 <td>動工排程基礎設施（Temporal / Airflow / cron）後接入</td>
@@ -276,17 +271,17 @@
 <td>Tier 3 申報數值與證明文件不符 → 凍結帳戶 + 人工複審</td>
 </tr>
 </tbody></table>
-<h4>Fallback 行為（給 SPEC-006 §4.1 等下游消費者）</h4>
+<h4>Fallback 行為（給下游風控消費者）</h4>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html">SPEC-005-kyc-aml-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-<p><strong>呼應 SPEC-006 §4.1 RG 評分公式</strong>：當 <code>effective_monthly_income(user) is None</code>，「儲值金額 / 申報月收入」維度視為<strong>中性</strong>（不加分，但若該玩家儲值 &gt; 金幣 30,000 / 月直接觸發 Tier 2 升級流程，間接強制申報）。</p>
+<p>當 <code>effective_monthly_income(user) is None</code>，「儲值金額 / 申報月收入」維度視為<strong>中性</strong>（不加分，但若該玩家儲值 &gt; 金幣 30,000 / 月直接觸發 Tier 2 升級流程，間接強制申報）。</p>
 <h3>2.2 升級觸發條件</h3>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html">SPEC-005-kyc-aml-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 <p>升級失敗 → 帳戶<strong>功能凍結</strong>，已有持倉保留至結算，不影響玩家既有資產。</p>
 <h3>2.3 升級條件對齊 §2.2</h3>
-<p>升級條件涵蓋金額（觸發升級的累計儲值閾值）與行為（觸發 EDD 的可疑活動），詳見 §7.3 EDD 觸發情境與 SPEC-006 §4.2 RG 評分對照行動。</p>
+<p>升級條件涵蓋金額（觸發升級的累計儲值閾值）與行為（觸發 EDD 的可疑活動），詳見 §7.3 EDD 觸發情境。</p>
 <h3>2.4 Tier 1 多市場身份證件驗證</h3>
 <blockquote>
-<p>平台首發市場暫定為台灣（主市場）+ 日 / 韓 / 越 / 馬 / 菲（一般市場），最終名單由 Operating Co. 與執照地律師確認；國家分級與 🔴 紅名單之具體內容由業主治理（注入 Geo-block runtime 配置），不在本 SPEC 維護。Tier 1 不依賴 SaaS 全套 OCR，僅做最低驗證；<strong>不同國家的證件類型與驗證方法不同</strong>，本節定義首發 5 國的對應規則。</p>
+<p>Tier 1 KYC 提供 5 國本國證件的純後端驗證能力：台灣（主市場）+ 日 / 韓 / 越 / 馬 / 菲。此名單為<strong>工程上已實作的文件支援範圍</strong>，非法律意義上的市場限制 —— 目標市場與產品線之地區策略由 <a href="./SPEC-021-landing-variants.html">SPEC-021</a> 規範，每個 <code>apps/landing-*</code> variant 自治宣告其面向地區。Tier 1 不依賴 SaaS 全套 OCR，僅做最低驗證；<strong>不同國家的證件類型與驗證方法不同</strong>，本節定義已支援 5 國的對應規則。</p>
 </blockquote>
 <table>
 <thead>
@@ -343,10 +338,10 @@
 </tbody></table>
 <h4>2.4.1 Tier 1 隱式驗證流程</h4>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html">SPEC-005-kyc-aml-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-<h4>2.4.2 不在首發 5 國的玩家</h4>
+<h4>2.4.2 不在 Tier 1 支援名單的玩家</h4>
 <ul>
-<li>「一般市場」名單外的玩家（紅名單地區）→ 由註冊前 Geo-block、KYC 國籍 / 居住地檢查與風控規則阻擋</li>
-<li>首發 5 國以外、🟢 一般市場以外的中性國家（例如印尼、泰國）→ Tier 1 暫不開放，註冊時提示「您的所在國尚未支援，預計 Phase 2 開放」並導入 waiting list</li>
+<li>不在 Tier 1 5 國（台 / 日 / 韓 / 越 / 馬 / 菲）的玩家 → 直接走 §2.4.3 Tier 2 SumSub Web SDK 流程，覆蓋 §3.1 全球證件 OCR + liveness；KYC 結論不因訪客來源 landing 而變</li>
+<li>landing 端的地區與產品線策略由 <a href="./SPEC-021-landing-variants.html">SPEC-021</a> 規範；各 variant 的 marketing copy 與 product surface 可宣告其目標市場，但 KYC 後端流程本身不依 landing 分支</li>
 </ul>
 <h4>2.4.3 SaaS 整合對應</h4>
 <ul>

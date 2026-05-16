@@ -67,7 +67,10 @@ async fn list_members_can_scope_to_affiliate() {
     .await;
 
     assert_eq!(response.status, StatusCode::OK);
-    assert_eq!(response.body["members"].as_array().expect("members").len(), 1);
+    assert_eq!(
+        response.body["members"].as_array().expect("members").len(),
+        1
+    );
     assert_eq!(response.body["members"][0]["member"]["user_id"], "MEM-001");
     assert_eq!(response.body["source"], "user-service:member-store");
 }
@@ -75,8 +78,7 @@ async fn list_members_can_scope_to_affiliate() {
 #[tokio::test]
 async fn contact_lookup_reads_masked_contact_from_member_store() {
     let app = internal_members_router(InMemoryMemberStore::new(vec![fixture_record(
-        "MEM-001",
-        None,
+        "MEM-001", None,
     )]));
 
     let response = request_json(
@@ -89,7 +91,10 @@ async fn contact_lookup_reads_masked_contact_from_member_store() {
 
     assert_eq!(response.status, StatusCode::OK);
     assert_eq!(response.body["contacts"][0]["id"], "MEM-001");
-    assert_eq!(response.body["contacts"][0]["email_masked"], "m***@example.com");
+    assert_eq!(
+        response.body["contacts"][0]["email_masked"],
+        "m***@example.com"
+    );
     assert_eq!(response.body["contacts"][0]["phone_masked"], "0912***001");
 }
 
@@ -112,7 +117,9 @@ async fn request_json(
     let response = app
         .oneshot(
             builder
-                .body(Body::from(body.map_or_else(String::new, |body| body.to_string())))
+                .body(Body::from(
+                    body.map_or_else(String::new, |body| body.to_string()),
+                ))
                 .expect("request builds"),
         )
         .await

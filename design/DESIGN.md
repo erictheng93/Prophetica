@@ -330,7 +330,7 @@ Store and shop surfaces retain the same chassis but switch modes. The product co
 Form validation and system-message colors. The "Known Gaps" section originally noted these were missing; they were added on 2026-05-06 to support the `<TradePanel>` Zod-driven inline error UX. They are **not brand accents** — `Action Blue` remains the sole interactive accent.
 
 - **Error** (`{colors.feedback-error}` — #c92020): Inline form-field errors (Zod validation), destructive-action confirmation copy, blocking system messages. Tuned slightly below iOS systemRed (`#FF3B30`) so it pairs with ink (`#1d1d1f`) rather than competing for attention. **Never** apply to marketing surfaces or to elements that aren't communicating a problem.
-- **Warning** (`{colors.feedback-warning}` — #8a5800): Approaching-limit notices (e.g., 80% of monthly deposit cap per SPEC-006 §7.2), `stale` declarations, soft-fail states where the user can still proceed. Restricted to status copy and small inline icons.
+- **Warning** (`{colors.feedback-warning}` — #8a5800): Approaching-limit notices (e.g., 80% of monthly deposit cap), `stale` declarations, soft-fail states where the user can still proceed. Restricted to status copy and small inline icons.
 - **Success** (`{colors.feedback-success}` — #1f7a3f): Confirmation banners after KYC review GREEN, after a successful order submission, or settlement-positive resolutions in user-specific contexts. Sparingly used — the design assumes "success is the default" and avoids green confetti.
 
 ### Brand Gradient
