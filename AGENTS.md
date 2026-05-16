@@ -2,14 +2,14 @@
 
 ## Project Structure & Module Organization
 
-Prophetica is a Rust/pnpm monorepo. Frontend apps live in `apps/` (`web`, `admin`, `liff`). Shared TypeScript packages live in `packages/` (`ui`, `ts-sdk`, `proto`, `design-tokens`). Rust services are in `services/`, with shared crates in `crates/`. Infrastructure is under `infra/`; SQLx metadata is in `.sqlx/`; references are in `docs/`, `design/`, and `specs/`; scripts and mocks are in `tools/`.
+Prophetica is a Rust/pnpm monorepo. Frontend apps live in `apps/` (`web`, `admin`, `liff`, `landing-sports`). Shared TypeScript packages live in `packages/` (`ui`, `ts-sdk`, `proto`, `design-tokens`). Rust services are in `services/`, with binary wrapper crates under `services/_binaries/` and shared crates in `crates/`. Infrastructure is under `infra/`; SQLx metadata is in `.sqlx/`; references are in `docs/`, `design/`, `specs/`, and `runbooks/`; scripts and mocks are in `tools/`.
 
 ## Build, Test, and Development Commands
 
 Use `rtk` before external CLI commands when invoking developer tools from Codex.
 
 - `rtk pnpm dev`: run the MVP player web app and admin app in parallel.
-- `rtk pnpm dev:all-apps`: run all Turbo `dev` tasks in parallel, including LIFF.
+- `rtk pnpm dev:all-apps`: run all Turbo `dev` tasks in parallel for every app under `apps/`, including LIFF and landing variants.
 - `rtk pnpm build`: build all pnpm workspace targets.
 - `rtk pnpm lint` / `rtk pnpm typecheck`: run linting and TypeScript checks.
 - `rtk pnpm test`: run pnpm workspace tests.
@@ -78,11 +78,11 @@ or ask before including them.
 Copy `.env.example` for local configuration and do not commit secrets. Prefer checked-in scripts in `tools/scripts/` for bootstrap, migrations, and seeding. Regenerate protobuf and SQLx artifacts intentionally, and include generated outputs only when required by the workflow.
 
 ## RTK Command Preference
-When invoking external CLI commands from Codex for this repository, prefer the `rtk` prefix for tools such as `php`, `composer`, `npm`, `git`, and `bash`.
+When invoking external CLI commands from Codex for this repository, prefer the `rtk` prefix for tools such as `pnpm`, `cargo`, `make`, `git`, `docker`, `node`, and `bash`.
 
 Examples:
-- `rtk php artisan test`
-- `rtk composer install`
-- `rtk npm run build`
+- `rtk pnpm test`
+- `rtk cargo check -p api-gateway --locked`
+- `rtk make dev-infra`
 
 PowerShell builtins and simple read-only inspection commands do not need the `rtk` prefix.
