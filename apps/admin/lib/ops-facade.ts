@@ -85,6 +85,14 @@ const routes: OpsRoute[] = [
     owner: "Member Ops",
     openItems: 18,
     tone: "neutral",
+    children: [
+      { key: "member-list", href: "/members", label: "會員清單" },
+      {
+        key: "member-kyc-review",
+        href: "/members/kyc-review",
+        label: "KYC 審核",
+      },
+    ],
   },
   {
     href: "/points",

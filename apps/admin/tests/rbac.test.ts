@@ -15,6 +15,7 @@ const internalRoutes = [
   "/dashboard",
   "/faq",
   "/members",
+  "/members/kyc-review",
   "/points",
   "/affiliate",
   "/affiliate/commissions",
@@ -44,6 +45,14 @@ test("affiliate can reach scoped member management routes", () => {
   assert.equal(canAccess("/members", "affiliate"), true);
   assert.equal(canAccess("/api/members", "affiliate"), true);
   assert.equal(canAccess("/api/members/MEM-001/summary", "affiliate"), true);
+});
+
+test("admin and manager can access the member KYC review page", () => {
+  for (const path of ["/members/kyc-review", "/members/kyc-review/abc"]) {
+    assert.equal(canAccess(path, "admin"), true, `admin -> ${path}`);
+    assert.equal(canAccess(path, "manager"), true, `manager -> ${path}`);
+    assert.equal(canAccess(path, "affiliate"), false, `affiliate -> ${path}`);
+  }
 });
 
 test("only affiliate can reach /me/affiliate and its descendants", () => {

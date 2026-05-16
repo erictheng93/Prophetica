@@ -75,12 +75,17 @@ export function AdminShell({
   }
   const navLinks = [
     ...baseLinks,
-    ...visibleRoutes.map((route) => ({
-      key: route.domain,
-      href: route.href,
-      label: route.label,
-      children: route.children,
-    })),
+    ...visibleRoutes.map((route) => {
+      const filteredChildren = route.children?.filter((child) =>
+        canAccess(child.href, role),
+      );
+      return {
+        key: route.domain,
+        href: route.href,
+        label: route.label,
+        ...(filteredChildren?.length ? { children: filteredChildren } : {}),
+      };
+    }),
   ];
 
   return (

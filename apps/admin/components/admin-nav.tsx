@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@prophetica/ui";
@@ -124,6 +124,7 @@ export function AdminSidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   async function handleSignOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -131,6 +132,25 @@ export function AdminSidebar({
       router.replace("/login");
       router.refresh();
     });
+  }
+
+  function isSectionOpen(link: AdminNavLink): boolean {
+    if (!link.children?.length) {
+      return false;
+    }
+
+    return Boolean(expandedSections[link.key]);
+  }
+
+  function toggleSection(link: AdminNavLink) {
+    if (!link.children?.length) {
+      return;
+    }
+
+    setExpandedSections((previous) => ({
+      ...previous,
+      [link.key]: !isSectionOpen(link),
+    }));
   }
 
   return (
@@ -152,48 +172,78 @@ export function AdminSidebar({
             const activeChildKey = link.children
               ? findActiveNavChildKey(pathname, link.children)
               : undefined;
+            const sectionOpen = isSectionOpen(link);
             return (
               <li key={link.key}>
-                <Link
-                  href={link.href}
-                  aria-current={
-                    isExactActive && !link.children?.length ? "page" : undefined
-                  }
-                  className={cn(
-                    "flex min-h-11 items-center rounded-proph-sm px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors",
-                    isActive
-                      ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
-                      : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
-                  )}
-                >
-                  {link.label}
-                </Link>
-                {link.children && link.children.length > 0 && (
-                  <ul
-                    aria-label={`${link.label} 子導覽`}
-                    className="mt-1 flex flex-col gap-1 border-l border-proph-hairline pl-3"
-                  >
-                    {link.children.map((child) => {
-                      const isChildActive = activeChildKey === child.key;
+                {link.children?.length ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(link)}
+                      aria-expanded={sectionOpen}
+                      aria-controls={`${link.key}-children`}
+                      className={cn(
+                        "flex min-h-11 w-full items-center justify-between rounded-proph-sm px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors",
+                        isActive
+                          ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
+                          : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
+                      )}
+                    >
+                      <span>{link.label}</span>
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "inline-block text-[11px] transition-transform duration-150 ease-out",
+                          sectionOpen && "rotate-90",
+                        )}
+                      >
+                        {'>'}
+                      </span>
+                    </button>
+                    {sectionOpen && (
+                      <ul
+                        id={`${link.key}-children`}
+                        aria-label={`${link.label} 子導覽`}
+                        className="mt-1 flex flex-col gap-1 border-l border-proph-hairline pl-3"
+                      >
+                        {link.children.map((child) => {
+                          const isChildActive = activeChildKey === child.key;
 
-                      return (
-                        <li key={child.key}>
-                          <Link
-                            href={child.href}
-                            aria-current={isChildActive ? "page" : undefined}
-                            className={cn(
-                              "flex min-h-9 items-center rounded-proph-sm px-3 py-2 text-[13px] leading-[1.31] tracking-[-0.12px] transition-colors",
-                              isChildActive
-                                ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
-                                : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
-                            )}
-                          >
-                            {child.label}
-                          </Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                          return (
+                            <li key={child.key}>
+                              <Link
+                                href={child.href}
+                                aria-current={isChildActive ? "page" : undefined}
+                                className={cn(
+                                  "flex min-h-9 items-center rounded-proph-sm px-3 py-2 text-[13px] leading-[1.31] tracking-[-0.12px] transition-colors",
+                                  isChildActive
+                                    ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
+                                    : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
+                                )}
+                              >
+                                {child.label}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  <Link
+                    href={link.href}
+                    aria-current={
+                      isExactActive && !link.children?.length ? "page" : undefined
+                    }
+                    className={cn(
+                      "flex min-h-11 items-center rounded-proph-sm px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors",
+                      isActive
+                        ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
+                        : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
+                    )}
+                  >
+                    {link.label}
+                  </Link>
                 )}
               </li>
             );

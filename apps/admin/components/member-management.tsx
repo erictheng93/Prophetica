@@ -26,6 +26,8 @@ import type { Role } from "@/lib/rbac";
 
 interface MemberManagementProps {
   initialQuery?: string;
+  initialPendingRestriction?: string;
+  initialPendingStatus?: MemberStatus | "all";
   viewerRole: Role;
   viewerAffiliateId?: string;
 }
@@ -82,6 +84,8 @@ const emptyMemberForm: MemberFormState = {
 
 export function MemberManagement({
   initialQuery,
+  initialPendingRestriction,
+  initialPendingStatus,
   viewerAffiliateId,
   viewerRole,
 }: MemberManagementProps) {
@@ -112,9 +116,11 @@ export function MemberManagement({
   const [pendingCasesLoading, setPendingCasesLoading] = useState(false);
   const [pendingQuery, setPendingQuery] = useState("");
   const [pendingStatus, setPendingStatus] = useState<MemberStatus | "all">(
-    "all",
+    initialPendingStatus ?? "all",
   );
-  const [pendingRestriction, setPendingRestriction] = useState("");
+  const [pendingRestriction, setPendingRestriction] = useState(
+    initialPendingRestriction ?? "",
+  );
   const [pendingPage, setPendingPage] = useState(1);
 
   const [actionType, setActionType] = useState<MemberActionType>("add_note");

@@ -8,6 +8,11 @@ const affiliateChildren = [
   { key: "affiliate-payouts", href: "/affiliate/payouts" },
 ] as const;
 
+const memberChildren = [
+  { key: "member-list", href: "/members" },
+  { key: "member-kyc-review", href: "/members/kyc-review" },
+] as const;
+
 test("affiliate child navigation picks the most specific active route", () => {
   assert.equal(
     findActiveNavChildKey("/affiliate/commissions", affiliateChildren),
@@ -27,5 +32,20 @@ test("affiliate list stays active for the list page and affiliate detail pages",
   assert.equal(
     findActiveNavChildKey("/affiliate/AFF-001", affiliateChildren),
     "affiliate-list",
+  );
+});
+
+test("member child navigation picks the most specific active route", () => {
+  assert.equal(
+    findActiveNavChildKey("/members", memberChildren),
+    "member-list",
+  );
+  assert.equal(
+    findActiveNavChildKey("/members/kyc-review", memberChildren),
+    "member-kyc-review",
+  );
+  assert.equal(
+    findActiveNavChildKey("/members/kyc-review/abc", memberChildren),
+    "member-kyc-review",
   );
 });

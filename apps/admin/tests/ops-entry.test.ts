@@ -66,7 +66,10 @@ test("admin affiliate operations are grouped under the management area", () => {
   assert.match(facadeSource, /撥款管理/);
   assert.match(facadeSource, /\/affiliate\/commissions/);
   assert.match(facadeSource, /\/affiliate\/payouts/);
-  assert.match(shellSource, /children:\s*route\.children/);
+  assert.match(facadeSource, /KYC 審核/);
+  assert.match(facadeSource, /\/members\/kyc-review/);
+  assert.match(shellSource, /const filteredChildren = route\.children\?\.filter/);
+  assert.match(shellSource, /\.\.\.\(filteredChildren/);
   assert.match(sidebarSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
   assert.match(drawerSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
 });
