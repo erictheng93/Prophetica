@@ -1,0 +1,92 @@
+{
+  "common": {
+    "brand": "Prophetica Sports",
+    "metadata": {
+      "title": "Prophetica - Prediksi Olahraga",
+      "description": "Prophetica Sports adalah halaman landing prediksi peristiwa olahraga dengan pencocokan netral dan permainan bertanggung jawab."
+    },
+    "nav": {
+      "markets": "Pasar",
+      "howItWorks": "Cara kerja",
+      "responsibleGaming": "Main bertanggung jawab"
+    },
+    "auth": {
+      "account": {
+        "ariaLabel": "Akun"
+      },
+      "signIn": "Masuk",
+      "signUp": "Mulai"
+    },
+    "localeSwitcher": {
+      "label": "Ganti bahasa"
+    },
+    "theme": {
+      "light": "Mode terang",
+      "dark": "Mode gelap",
+      "switchToLight": "Beralih ke mode terang",
+      "switchToDark": "Beralih ke mode gelap"
+    },
+    "footer": {
+      "play": {
+        "heading": "Main",
+        "markets": "Pasar olahraga",
+        "howItWorks": "Cara kerja"
+      },
+      "compliance": {
+        "heading": "Kepatuhan",
+        "responsibleGaming": "Main bertanggung jawab",
+        "terms": "Ketentuan",
+        "privacy": "Privasi"
+      },
+      "legal": {
+        "body": "Hanya untuk pengguna berusia 18 tahun ke atas. Prophetica adalah layanan hiburan, bukan perjudian, lotre, atau derivatif keuangan."
+      }
+    },
+    "noScript": {
+      "headline": "JavaScript diperlukan",
+      "body": "Penggantian bahasa, masuk, dan pengaturan akun memerlukan JavaScript.",
+      "cta": "Hubungi dukungan"
+    }
+  },
+  "landingSports": {
+    "hero": {
+      "headline": "Baca pertandingan. Nilai momennya.",
+      "tagline": "Ikuti peristiwa olahraga, bentuk pandangan prediksi, lalu dicocokkan dengan pemain lain melalui mesin pencocokan netral.",
+      "ctaPrimary": "Mulai",
+      "ctaSecondary": "Cara kerja",
+      "media": "Simbol pasar olahraga"
+    },
+    "neutral": {
+      "headline": "Pencocokan netral, bukan lawan transaksi pemain.",
+      "tagline": "Prophetica Sports menyediakan pasar prediksi peristiwa dan layanan pencocokan. Platform tidak menjanjikan imbal hasil, tidak menjamin tingkat menang, dan tidak menjadi lawan transaksi.",
+      "cta": "Lihat alur pencocokan",
+      "media": "Pencocokan netral"
+    },
+    "points": {
+      "headline": "Kelola ritme prediksi dengan poin.",
+      "tagline": "Masuk ke pasar dengan poin virtual dalam aplikasi, dilengkapi batas, catatan, dan status transaksi yang jelas untuk setiap prediksi.",
+      "ctaPrimary": "Lihat poin",
+      "ctaSecondary": "Ketentuan",
+      "media": "Dompet poin"
+    },
+    "responsibleGaming": {
+      "headline": "Alat main bertanggung jawab hadir lebih dulu.",
+      "tagline": "Periksa anggaran dan risiko sebelum mulai, dengan batas, jeda, pengecualian diri, dan sumber dukungan saat diperlukan.",
+      "ctaPrimary": "Atur batas",
+      "ctaSecondary": "Sumber bantuan",
+      "media": "Main bertanggung jawab"
+    },
+    "start": {
+      "headline": "Masuki pasar olahraga pertama saat sudah siap.",
+      "tagline": "Setelah mendaftar, selesaikan pengaturan akun yang diperlukan, jelajahi pasar sesuai ritme Anda, pahami aturan, dan buat prediksi.",
+      "ctaPrimary": "Daftar",
+      "ctaSecondary": "Lihat pasar"
+    },
+    "mediaTags": {
+      "sigil": ["Netral", "Terverifikasi", "Olahraga"],
+      "platform": ["Buku order", "Cocok", "Selesai"],
+      "wallet": ["Poin", "Batas", "Tanda terima"],
+      "responsible": ["Anggaran", "Jeda", "Dukungan"]
+    }
+  }
+}

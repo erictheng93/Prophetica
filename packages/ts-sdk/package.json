@@ -22,6 +22,10 @@
       "types": "./src/engine/index.ts",
       "import": "./src/engine/index.ts"
     },
+    "./analytics": {
+      "types": "./src/analytics/index.ts",
+      "import": "./src/analytics/index.ts"
+    },
     "./kyc-provider": {
       "types": "./src/kyc-provider/index.ts",
       "import": "./src/kyc-provider/index.ts"

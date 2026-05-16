@@ -1,0 +1,92 @@
+{
+  "common": {
+    "brand": "Prophetica Sports",
+    "metadata": {
+      "title": "Prophetica - Sports Prediction",
+      "description": "Prophetica Sports is a sports event prediction landing page with neutral matching and responsible play."
+    },
+    "nav": {
+      "markets": "Markets",
+      "howItWorks": "How it works",
+      "responsibleGaming": "Responsible play"
+    },
+    "auth": {
+      "account": {
+        "ariaLabel": "Account"
+      },
+      "signIn": "Sign in",
+      "signUp": "Get started"
+    },
+    "localeSwitcher": {
+      "label": "Switch language"
+    },
+    "theme": {
+      "light": "Light mode",
+      "dark": "Dark mode",
+      "switchToLight": "Switch to light mode",
+      "switchToDark": "Switch to dark mode"
+    },
+    "footer": {
+      "play": {
+        "heading": "Play",
+        "markets": "Sports markets",
+        "howItWorks": "How it works"
+      },
+      "compliance": {
+        "heading": "Compliance",
+        "responsibleGaming": "Responsible play",
+        "terms": "Terms",
+        "privacy": "Privacy"
+      },
+      "legal": {
+        "body": "Use is limited to players aged 18 or older. Prophetica is an entertainment service, not gambling, lottery, or a financial derivative."
+      }
+    },
+    "noScript": {
+      "headline": "JavaScript is required",
+      "body": "Language switching, sign-in, and account setup require JavaScript.",
+      "cta": "Contact support"
+    }
+  },
+  "landingSports": {
+    "hero": {
+      "headline": "Read the match. Price the moment.",
+      "tagline": "Track sports events, form a prediction view, and match with other players through a neutral matching engine.",
+      "ctaPrimary": "Get started",
+      "ctaSecondary": "How it works",
+      "media": "Sports market sigil"
+    },
+    "neutral": {
+      "headline": "Neutral matching, never player counterparty.",
+      "tagline": "Prophetica Sports provides event prediction markets and matching services. The platform does not promise returns, guarantee win rates, or act as counterparty.",
+      "cta": "View matching flow",
+      "media": "Neutral matching"
+    },
+    "points": {
+      "headline": "Manage prediction pace with points.",
+      "tagline": "Enter markets with in-app virtual points, limits, records, and clear transaction states for every prediction.",
+      "ctaPrimary": "View points",
+      "ctaSecondary": "Terms",
+      "media": "Points wallet"
+    },
+    "responsibleGaming": {
+      "headline": "Responsible play tools come first.",
+      "tagline": "Check budget and risk before starting, with limits, cooldown, self-exclusion, and support resources when needed.",
+      "ctaPrimary": "Set limits",
+      "ctaSecondary": "Resources",
+      "media": "Responsible gaming"
+    },
+    "start": {
+      "headline": "Enter your first sports market when ready.",
+      "tagline": "After signup, complete required account setup, browse markets at your pace, understand rules, and create predictions.",
+      "ctaPrimary": "Sign up",
+      "ctaSecondary": "Browse markets"
+    },
+    "mediaTags": {
+      "sigil": ["Neutral", "Verified", "Sports"],
+      "platform": ["Order book", "Matched", "Settled"],
+      "wallet": ["Points", "Limits", "Receipts"],
+      "responsible": ["Budget", "Cooldown", "Support"]
+    }
+  }
+}

@@ -5,10 +5,32 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --sports-bg: #0a0808;
+    --sports-bg-alt: #141010;
+    --sports-panel: #050303;
+    --sports-control-bg: #050303;
+    --sports-heading: #ffffff;
+    --sports-text: #ede6d8;
+    --sports-muted: #c9b98f;
+    --sports-border: rgba(212, 168, 87, 0.24);
+  }
+
+  :root[data-theme="light"] {
+    --sports-bg: #f4efe6;
+    --sports-bg-alt: #ebe2d3;
+    --sports-panel: #fffaf0;
+    --sports-control-bg: #fffaf0;
+    --sports-heading: #1d160f;
+    --sports-text: #2b2117;
+    --sports-muted: #6f6048;
+    --sports-border: rgba(139, 105, 20, 0.28);
+  }
+
   html,
   body {
-    background-color: var(--proph-color-canvas);
-    color: var(--proph-color-ink);
+    background-color: var(--sports-bg);
+    color: var(--sports-text);
     font-family: var(--proph-font-text);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

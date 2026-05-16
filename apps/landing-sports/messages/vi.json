@@ -1,0 +1,92 @@
+{
+  "common": {
+    "brand": "Prophetica Sports",
+    "metadata": {
+      "title": "Prophetica - Dự đoán thể thao",
+      "description": "Prophetica Sports là trang landing dự đoán sự kiện thể thao với cơ chế khớp lệnh trung lập và công cụ chơi có trách nhiệm."
+    },
+    "nav": {
+      "markets": "Thị trường",
+      "howItWorks": "Cách hoạt động",
+      "responsibleGaming": "Chơi có trách nhiệm"
+    },
+    "auth": {
+      "account": {
+        "ariaLabel": "Tài khoản"
+      },
+      "signIn": "Đăng nhập",
+      "signUp": "Bắt đầu"
+    },
+    "localeSwitcher": {
+      "label": "Đổi ngôn ngữ"
+    },
+    "theme": {
+      "light": "Chế độ sáng",
+      "dark": "Chế độ tối",
+      "switchToLight": "Chuyển sang chế độ sáng",
+      "switchToDark": "Chuyển sang chế độ tối"
+    },
+    "footer": {
+      "play": {
+        "heading": "Chơi",
+        "markets": "Thị trường thể thao",
+        "howItWorks": "Cách hoạt động"
+      },
+      "compliance": {
+        "heading": "Tuân thủ",
+        "responsibleGaming": "Chơi có trách nhiệm",
+        "terms": "Điều khoản",
+        "privacy": "Quyền riêng tư"
+      },
+      "legal": {
+        "body": "Chỉ dành cho người dùng từ 18 tuổi trở lên. Prophetica là dịch vụ giải trí, không phải cờ bạc, xổ số hay công cụ phái sinh tài chính."
+      }
+    },
+    "noScript": {
+      "headline": "Cần bật JavaScript",
+      "body": "Đổi ngôn ngữ, đăng nhập và thiết lập tài khoản cần JavaScript.",
+      "cta": "Liên hệ hỗ trợ"
+    }
+  },
+  "landingSports": {
+    "hero": {
+      "headline": "Đọc trận đấu. Định giá khoảnh khắc.",
+      "tagline": "Theo dõi sự kiện thể thao, xây dựng góc nhìn dự đoán và khớp với người chơi khác qua cơ chế trung lập.",
+      "ctaPrimary": "Bắt đầu",
+      "ctaSecondary": "Cách hoạt động",
+      "media": "Biểu tượng thị trường thể thao"
+    },
+    "neutral": {
+      "headline": "Khớp lệnh trung lập, không đối ứng với người chơi.",
+      "tagline": "Prophetica Sports cung cấp thị trường dự đoán sự kiện và dịch vụ khớp lệnh. Nền tảng không hứa hẹn lợi nhuận, không đảm bảo tỷ lệ thắng và không làm đối tác giao dịch.",
+      "cta": "Xem luồng khớp lệnh",
+      "media": "Khớp lệnh trung lập"
+    },
+    "points": {
+      "headline": "Quản lý nhịp dự đoán bằng điểm.",
+      "tagline": "Tham gia thị trường bằng điểm ảo trong ứng dụng, với hạn mức, lịch sử và trạng thái giao dịch rõ ràng cho mỗi dự đoán.",
+      "ctaPrimary": "Xem điểm",
+      "ctaSecondary": "Điều khoản",
+      "media": "Ví điểm"
+    },
+    "responsibleGaming": {
+      "headline": "Công cụ chơi có trách nhiệm luôn có trước.",
+      "tagline": "Kiểm tra ngân sách và rủi ro trước khi bắt đầu, với hạn mức, thời gian nghỉ, tự loại trừ và tài nguyên hỗ trợ khi cần.",
+      "ctaPrimary": "Đặt hạn mức",
+      "ctaSecondary": "Tài nguyên hỗ trợ",
+      "media": "Chơi có trách nhiệm"
+    },
+    "start": {
+      "headline": "Vào thị trường thể thao đầu tiên khi bạn đã sẵn sàng.",
+      "tagline": "Sau khi đăng ký, hoàn tất thiết lập tài khoản bắt buộc, duyệt thị trường theo nhịp của bạn, hiểu quy tắc và tạo dự đoán.",
+      "ctaPrimary": "Đăng ký",
+      "ctaSecondary": "Xem thị trường"
+    },
+    "mediaTags": {
+      "sigil": ["Trung lập", "Đã xác minh", "Thể thao"],
+      "platform": ["Sổ lệnh", "Đã khớp", "Đã tất toán"],
+      "wallet": ["Điểm", "Hạn mức", "Biên nhận"],
+      "responsible": ["Ngân sách", "Nghỉ", "Hỗ trợ"]
+    }
+  }
+}

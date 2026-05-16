@@ -1,0 +1,92 @@
+{
+  "common": {
+    "brand": "Prophetica Sports",
+    "metadata": {
+      "title": "Prophetica - 体育赛事预测",
+      "description": "Prophetica Sports 是体育赛事事件预测 landing，采用中立撮合与责任游戏设计。"
+    },
+    "nav": {
+      "markets": "Markets",
+      "howItWorks": "How it works",
+      "responsibleGaming": "Responsible play"
+    },
+    "auth": {
+      "account": {
+        "ariaLabel": "账户"
+      },
+      "signIn": "登录",
+      "signUp": "开始体验"
+    },
+    "localeSwitcher": {
+      "label": "切换语言"
+    },
+    "theme": {
+      "light": "浅色模式",
+      "dark": "深色模式",
+      "switchToLight": "切换至浅色模式",
+      "switchToDark": "切换至深色模式"
+    },
+    "footer": {
+      "play": {
+        "heading": "玩法",
+        "markets": "体育赛事市场",
+        "howItWorks": "如何开始"
+      },
+      "compliance": {
+        "heading": "合规",
+        "responsibleGaming": "责任游戏",
+        "terms": "服务条款",
+        "privacy": "隐私政策"
+      },
+      "legal": {
+        "body": "仅限 18 岁以上使用。Prophetica 是娱乐游戏服务，不是博彩、彩票或金融衍生品。"
+      }
+    },
+    "noScript": {
+      "headline": "需要启用 JavaScript",
+      "body": "语言切换、登录与账户设置需要浏览器执行 JavaScript。",
+      "cta": "联系支持"
+    }
+  },
+  "landingSports": {
+    "hero": {
+      "headline": "洞察战局，量化眼光",
+      "tagline": "用 Prophetica Sports 追踪赛事事件、建立预测观点，并通过中立撮合机制与其他玩家成交。",
+      "ctaPrimary": "开始体验",
+      "ctaSecondary": "了解玩法",
+      "media": "Sports market sigil"
+    },
+    "neutral": {
+      "headline": "中立撮合，不与玩家对赌。",
+      "tagline": "Prophetica Sports 提供事件预测市场与撮合服务；平台不承诺回报、不保证胜率，也不作为任何玩家交易的对手方。",
+      "cta": "了解撮合机制",
+      "media": "Neutral matching"
+    },
+    "points": {
+      "headline": "用点数管理预测节奏。",
+      "tagline": "以站内虚拟点数进入市场，搭配限额、记录与清楚的交易状态，让每一次预测都可追踪。",
+      "ctaPrimary": "查看点数",
+      "ctaSecondary": "服务条款",
+      "media": "Points wallet"
+    },
+    "responsibleGaming": {
+      "headline": "责任游戏工具先到位。",
+      "tagline": "开始前先确认预算与风险，需要时可使用限额、冷静期、自我排除与支持资源。",
+      "ctaPrimary": "设置限额",
+      "ctaSecondary": "支持资源",
+      "media": "Responsible gaming"
+    },
+    "start": {
+      "headline": "准备好，再进入第一个 sports market。",
+      "tagline": "注册后完成必要账户设置，再依你的节奏浏览市场、理解规则并建立预测。",
+      "ctaPrimary": "注册并开始",
+      "ctaSecondary": "浏览市场"
+    },
+    "mediaTags": {
+      "sigil": ["Neutral", "Verified", "Sports"],
+      "platform": ["Order book", "Matched", "Settled"],
+      "wallet": ["Points", "Limits", "Receipts"],
+      "responsible": ["Budget", "Cooldown", "Support"]
+    }
+  }
+}
