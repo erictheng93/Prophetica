@@ -1,0 +1,52 @@
+{
+  "name": "@prophetica/landing-sports",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "prophetica sports landing variant (SPEC-021).",
+  "prophetica": {
+    "variant": {
+      "id": "sports",
+      "regions": ["TW", "JP", "KR", "VN", "MY", "PH"],
+      "product_lines": ["sports"],
+      "design_theme": "apple",
+      "deployment": {
+        "domain": "sports.prophetica.example",
+        "path_prefix": "/"
+      },
+      "owner": "marketing",
+      "launched_at": "2026-06-01",
+      "retired_at": null
+    }
+  },
+  "scripts": {
+    "dev": "next dev -p 3004",
+    "build": "next build",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "lint": "tsc --project tsconfig.lint.json",
+    "test": "node -e \"console.log('landing-sports bootstrap test ok')\""
+  },
+  "dependencies": {
+    "@cloudflare/kumo": "latest",
+    "@opennextjs/cloudflare": "^1.19.9",
+    "@phosphor-icons/react": "^2.1.7",
+    "@prophetica/design-tokens": "workspace:*",
+    "@prophetica/ui": "workspace:*",
+    "clsx": "^2.1.1",
+    "next": "^16.2.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2",
+    "wrangler": "^4.90.0"
+  }
+}

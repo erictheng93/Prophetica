@@ -105,7 +105,7 @@ prophetica/
 ├── crates/                Rust 共用 lib（sdk / proto）                 （規劃中）
 ├── packages/              共用 protobuf 來源 / TS SDK                  （規劃中）
 ├── infra/                 Terraform / Helm / ArgoCD                    （規劃中）
-├── specs/                 規格文件（SPEC-000、SPEC-002 ~ 020；SPEC-001 保留未使用） ✅
+├── specs/                 規格文件（SPEC-000、SPEC-002 ~ 021） ✅
 ├── docs/architecture/     ADR / 圖表                                   ✅
 ├── design/                早期視覺探索（apple / airbnb / lamborghini） ✅
 ├── tools/                 壓測 / 遷移腳本                              （規劃中）

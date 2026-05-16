@@ -1,0 +1,30 @@
+@import "@prophetica/design-tokens/css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    background-color: var(--proph-color-canvas);
+    color: var(--proph-color-ink);
+    font-family: var(--proph-font-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-size: 17px;
+    line-height: 1.47;
+    letter-spacing: -0.374px;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--proph-font-display);
+  }
+
+  a {
+    color: var(--proph-color-primary);
+  }
+}
