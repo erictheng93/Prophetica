@@ -142,7 +142,7 @@
 <li>玩家登入：Email/Phone + Password + TOTP（強制）</li>
 <li>Password：argon2id，min length 12</li>
 <li>Session：JWT Access Token (15 min) + Refresh Token (7 day) + rotation</li>
-<li>高敏操作 step-up：儲值 &gt; 銀幣 1,000、KYC 升級、自我排除 → 重新 MFA</li>
+<li>高敏操作 step-up：儲值 &gt; 銀幣 1,000、KYC 升級 → 重新 MFA</li>
 <li>Admin / Compliance 後台：mTLS + Hardware MFA（YubiKey）</li>
 </ul>
 <h4>3.1.2 JWT Access Token 設計</h4>
@@ -185,7 +185,7 @@
 <p><strong>Refresh token 必須一次性使用</strong>。若同一 token 被使用第二次：</p>
 <p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-010-security-antifraud-implementation-plan.html">SPEC-010-security-antifraud-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
 <h4>3.1.5 Step-up MFA 機制</h4>
-<p>對應 SPEC-002 §8 / SPEC-005 / SPEC-006 / SPEC-016 等高敏感操作：</p>
+<p>對應 SPEC-002 §8 / SPEC-005 / SPEC-016 等高敏感操作：</p>
 <table>
 <thead>
 <tr>
@@ -203,11 +203,6 @@
 <td>KYC 升級至 Tier 2/3</td>
 <td>必須</td>
 <td>完成本次升級即清</td>
-</tr>
-<tr>
-<td>啟用 / 變更自我排除</td>
-<td>必須</td>
-<td>完成本次操作即清</td>
 </tr>
 <tr>
 <td>30 天無交易後突然儲值</td>
@@ -421,7 +416,7 @@
 </tr>
 <tr>
 <td>關鍵操作通知</td>
-<td>改密碼 / 改 Email / 自我排除 → 24h 撤回窗口</td>
+<td>改密碼 / 改 Email → 24h 撤回窗口</td>
 </tr>
 <tr>
 <td>暗網密碼洩漏比對</td>
@@ -562,15 +557,8 @@
 <td>MS-7</td>
 <td>Frozen 解凍（Compliance / EDD pending → Wallet）</td>
 <td>Compliance</td>
-<td><strong>4-eye</strong> Compliance + RG Officer（呼應 SPEC-002 §4.2.1 metadata.approved_by）</td>
+<td><strong>4-eye</strong> Compliance + Risk Officer（呼應 SPEC-002 §4.2.1 metadata.approved_by）</td>
 <td>SPEC-002 §4.2.1</td>
-</tr>
-<tr>
-<td>MS-8</td>
-<td>自我排除期滿解凍（自動）</td>
-<td>RG Scheduler</td>
-<td>系統觸發；<code>approved_by = &#39;system:rg-scheduler&#39;</code>（不需人工簽核但全程留痕）</td>
-<td>SPEC-002 §4.2.1 / SPEC-006 §5</td>
 </tr>
 <tr>
 <td>MS-9</td>
@@ -676,7 +664,7 @@
 <li><strong>避免 admin UI 分裂</strong>：原本 SPEC-002 / 004 / 008 / 012 / 013 / 015 / 017 各自詮釋「4-eye」/「3-of-3」造成 12 個 service × 各自一套 UI；集中後一份 component 對應全部。</li>
 <li><strong>監管稽核</strong>：監管問詢「平台 multi-sig 治理為何」時提供單一答覆來源，不需翻閱七份 SPEC。</li>
 <li><strong>新進 Compliance Officer onboarding</strong>：本表為治理 SOP 入口；對應每條 MS 配套之操作手冊由 Compliance 團隊維護於 <code>infra/runbooks/multisig-{ms-id}.md</code>。</li>
-<li><strong>演化追蹤</strong>：簽核規則調整（例如未來 Compliance Officer 角色拆分為 AML Officer / RG Officer）只需改本表 + ADR，不需散彈式跨 SPEC patch。</li>
+<li><strong>演化追蹤</strong>：簽核規則調整（例如未來 Compliance Officer 角色拆分為 AML Officer / Risk Officer）只需改本表 + ADR，不需散彈式跨 SPEC patch。</li>
 </ul>
 <h2>10. 驗收條件</h2>
 <ul>

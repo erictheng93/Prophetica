@@ -13,7 +13,7 @@ import {
 
 // SPEC-005 §8 KYC user UX — shared chrome for /kyc/*.
 // Single primary nav + inline KYC section chip row + standard footer.
-// (No mandatory help-line strip here — that's SPEC-006 RG-specific.)
+// (No mandatory help-line strip here; it only appears on responsible-gaming surfaces.)
 
 function KYCSectionNav({
   links,

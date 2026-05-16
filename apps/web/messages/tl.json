@@ -632,14 +632,14 @@
           "birthday": {
             "field": "Petsa ng kapanganakan",
             "collected": "Tier 1 / 2 / 3",
-            "purpose": "Tiyaking ikaw ay hindi bababa sa 18 taong gulang ayon sa SPEC-006 §6.",
+            "purpose": "Tiyaking ikaw ay hindi bababa sa 18 taong gulang.",
             "retention": "Account lifetime + 7 taon.",
             "access": "Pareho sa nasa itaas."
           },
           "documentId": {
             "field": "Document number",
             "collected": "Tier 1 implicit check / Tier 2 / 3",
-            "purpose": "Mag-deduplicate ng identity, mag-screen sa sanctions lists, at mag-match sa self-exclusion list ayon sa SPEC-006 §5.4.",
+            "purpose": "Mag-deduplicate ng identity, mag-screen sa sanctions lists, at mag-match sa self-exclusion list.",
             "retention": "<strong>SHA256 hash lang ang iniimbak</strong>. Hindi kailanman iniimbak ang raw number at itinatapon ito pagkatapos isumite. Iniimbak ang hash sa account lifetime + 7 taon.",
             "access": "Backend kyc-service lang. Maaari nitong ikumpara ang hash pero hindi maibabalik ang raw number."
           },
@@ -667,7 +667,7 @@
           "income": {
             "field": "Monthly income band",
             "collected": "Optional sa Tier 2 / required sa Tier 3",
-            "purpose": "Suportahan ang responsible-gaming limit scoring ayon sa SPEC-006 §4.1 at i-unlock ang mas mataas na top-up limits.",
+            "purpose": "Suportahan ang responsible-gaming limit scoring at i-unlock ang mas mataas na top-up limits.",
             "retention": "Account lifetime. Awtomatikong mamarkahan na stale kung hindi na-update sa loob ng 12 buwan.",
             "access": "Ikaw + Compliance Officer. <strong>Band lang ang nakikita ng support, hindi ang eksaktong value</strong>."
           },

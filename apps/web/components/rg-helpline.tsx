@@ -1,7 +1,7 @@
 import { PhoneCall } from "@phosphor-icons/react/dist/ssr";
 import { getTranslations } from "next-intl/server";
 
-// SPEC-006 §7.1 — Mandatory help-line strip on responsible-gaming surfaces.
+// Mandatory help-line strip on responsible-gaming surfaces.
 // Numbers stay literal (TW-specific public hotlines verified against published
 // sources); labels / hours / emergency note translate. Final approved list
 // (incl. licensing-region resources for Malta / Curaçao / etc.) is pending

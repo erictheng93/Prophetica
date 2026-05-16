@@ -632,14 +632,14 @@
           "birthday": {
             "field": "Tanggal lahir",
             "collected": "Tier 1 / 2 / 3",
-            "purpose": "Memastikan Anda berusia minimal 18 tahun sesuai SPEC-006 §6.",
+            "purpose": "Memastikan Anda berusia minimal 18 tahun.",
             "retention": "Masa aktif akun + 7 tahun.",
             "access": "Sama seperti di atas."
           },
           "documentId": {
             "field": "Nomor dokumen",
             "collected": "Pemeriksaan implisit Tier 1 / Tier 2 / 3",
-            "purpose": "Mendeteksi identitas ganda, memeriksa daftar sanksi, dan mencocokkan daftar self-exclusion sesuai SPEC-006 §5.4.",
+            "purpose": "Mendeteksi identitas ganda, memeriksa daftar sanksi, dan mencocokkan daftar self-exclusion.",
             "retention": "<strong>Hanya hash SHA256 yang disimpan</strong>. Nomor asli tidak pernah disimpan dan dibuang setelah pengiriman. Hash disimpan selama masa aktif akun + 7 tahun.",
             "access": "Backend kyc-service saja. Layanan ini hanya dapat membandingkan hash dan tidak dapat memulihkan nomor asli."
           },
@@ -667,7 +667,7 @@
           "income": {
             "field": "Rentang pendapatan bulanan",
             "collected": "Opsional untuk Tier 2 / wajib untuk Tier 3",
-            "purpose": "Mendukung skor batas responsible gaming sesuai SPEC-006 §4.1 dan membuka batas top-up yang lebih tinggi.",
+            "purpose": "Mendukung skor batas responsible gaming dan membuka batas top-up yang lebih tinggi.",
             "retention": "Masa aktif akun. Ditandai kedaluwarsa otomatis jika tidak diperbarui selama 12 bulan.",
             "access": "Anda + Compliance Officer. <strong>Dukungan hanya melihat rentang, bukan nilai tepatnya</strong>."
           },

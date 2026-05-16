@@ -12,7 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title"), description: t("description") };
 }
 
-// SPEC-006 §5.1 — Cool-off has 3 fixed durations.
+// Cool-off has 3 fixed durations.
 const DURATION_IDS = ["24h", "7d", "30d"] as const;
 const FROZEN_ITEM_IDS = ["noLogin", "noActivity", "settle", "mute"] as const;
 

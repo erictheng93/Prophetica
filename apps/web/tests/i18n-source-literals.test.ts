@@ -9,7 +9,7 @@ const messages = JSON.parse(
 
 // Files that have completed next-intl migration. The assertion below scans
 // each for CJK characters in *runtime* code — comments are stripped first so
-// that SPEC references like `// SPEC-006 §3.1 — "無上限" intentionally absent.`
+// that source comments containing intentional literals are not treated as UI copy.
 // stay legal documentation without breaking the gate.
 const migratedFiles = [
   "app/auth/sign-in/page.tsx",

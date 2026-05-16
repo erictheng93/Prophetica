@@ -260,7 +260,7 @@
             },
             "monthlyLimit": {
               "q": "為什麼有月儲值上限？",
-              "a": "自我設限機制（SPEC-006 §3.1）的強制保護。Tier 1 為 TWD 30,000；升級 Tier 2 / 3 可解鎖更高上限。"
+              "a": "自我設限機制的強制保護。Tier 1 為 TWD 30,000；升級 Tier 2 / 3 可解鎖更高上限。"
             },
             "raiseLimit": {
               "q": "降低儲值上限後可以馬上提高嗎？",
@@ -315,7 +315,7 @@
             },
             "thirdParty": {
               "q": "親友可以代為申請停權嗎？",
-              "a": "我們接受第三方通報，但不會直接以親友通報為據停權；通報觸發系統 review，可能聯繫玩家邀請其解除賬號（SPEC-006 §5.4）。"
+              "a": "我們接受第三方通報，但不會直接以親友通報為據停權；通報觸發系統 review，可能聯繫玩家邀請其解除賬號。"
             }
           }
         },
@@ -1835,14 +1835,14 @@
           "birthday": {
             "field": "生日",
             "collected": "Tier 1 / 2 / 3",
-            "purpose": "驗證 ≥ 18 歲（SPEC-006 §6 未成年保護）。",
+            "purpose": "驗證 ≥ 18 歲。",
             "retention": "同帳戶生命週期 + 7 年。",
             "access": "同上。"
           },
           "documentId": {
             "field": "證件號碼",
             "collected": "Tier 1（隱式驗證）/ Tier 2 / 3",
-            "purpose": "唯一性比對、制裁名單比對、self-exclusion 名單比對（SPEC-006 §5.4）。",
+            "purpose": "唯一性比對、制裁名單比對、self-exclusion 名單比對。",
             "retention": "<strong>只儲存 SHA256 雜湊</strong>，原始號碼不入庫，提交後立即丟棄。雜湊保存同帳戶生命週期 + 7 年。",
             "access": "後端 kyc-service（只能比對，不能還原原始號碼）。"
           },
@@ -1870,7 +1870,7 @@
           "income": {
             "field": "月收入（區間）",
             "collected": "Tier 2 自願 / Tier 3 必填",
-            "purpose": "自我設限評分（SPEC-006 §4.1）；解鎖更高儲值上限。",
+            "purpose": "自我設限評分；解鎖更高儲值上限。",
             "retention": "同帳戶生命週期；12 個月未更新自動標記過時。",
             "access": "你本人 + Compliance Officer。<strong>客服只看區間，不看精確值</strong>。"
           },
@@ -2019,7 +2019,7 @@
       "backdropLabel": "關閉下單面板",
       "closeAriaLabel": "關閉",
       "closeLabel": "關閉",
-      "complianceNote": "SPEC-003 撮合送單前須通過自我設限評分（SPEC-006 §4）與 KYC 層級檢查。",
+      "complianceNote": "SPEC-003 撮合送單前須通過自我設限評分與 KYC 層級檢查。",
       "sideLegend": "選擇下單方向",
       "priceLabel": "價格（cent）",
       "priceHint": "目前 {side} 的最佳報價 {quote}¢",

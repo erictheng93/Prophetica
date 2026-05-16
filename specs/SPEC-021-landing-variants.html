@@ -30,7 +30,7 @@
 <tr><td>Status</td><td>🟡 Draft</td></tr>
 <tr><td>Created</td><td>2026-05-15</td></tr>
 <tr><td>Owner</td><td>Tech Lead</td></tr>
-<tr><td>Depends on</td><td>SPEC-005（KYC）、SPEC-006（RG）、SPEC-007（Observability）、SPEC-009（DMM / 平台中立性）、SPEC-010（Security）、SPEC-014（Tech Architecture §6）、SPEC-017（Monorepo §3 / §6）、SPEC-020（Analytics）</td></tr>
+<tr><td>Depends on</td><td>SPEC-005（KYC）、SPEC-007（Observability）、SPEC-009（DMM / 平台中立性）、SPEC-010（Security）、SPEC-014（Tech Architecture §6）、SPEC-017（Monorepo §3 / §6）、SPEC-020（Analytics）</td></tr>
 <tr><td>Supersedes</td><td>n/a</td></tr>
 </tbody>
 </table>
@@ -42,7 +42,7 @@
 <h3>1.1 為什麼需要這份 SPEC</h3>
 <p>產品方針確定採 <strong>multi-landing 架構</strong>：不同<strong>地區市場</strong>與不同<strong>產品線</strong>對應獨立 <code>apps/landing-*</code> Next.js 應用，但<strong>共用同一組 Rust 後端 services + 同一個 <code>apps/admin</code> 後台</strong>。為避免 landing 增生造成：</p>
 <ul>
-<li>合規元件被各 landing 自行重寫（KYC entry、責任博弈 modal 不一致）</li>
+<li>合規元件被各 landing 自行重寫（KYC entry、平台中立聲明不一致）</li>
 <li>API 契約偏離 <code>packages/proto</code> 造成後端報表斷裂</li>
 <li>觀測事件命名各自為政造成 SPEC-007 / SPEC-020 報表無法跨 variant 聚合</li>
 <li>視覺風格碎片化失控</li>
@@ -141,16 +141,13 @@ variant.id === {slug}
 </thead>
 <tbody>
 <tr><td><code>&lt;KycEntryButton /&gt;</code></td><td>SPEC-005</td><td>註冊 / 升級 Tier 2 CTA</td></tr>
-<tr><td><code>&lt;ResponsibleGamingBanner /&gt;</code></td><td>SPEC-006 §3</td><td>站台底部強制顯示</td></tr>
-<tr><td><code>&lt;ResponsibleGamingModal /&gt;</code></td><td>SPEC-006 §4</td><td>自我排除 / 限額 / 冷靜期 entry</td></tr>
-<tr><td><code>&lt;AgeConfirmationGate /&gt;</code></td><td>SPEC-006 §2</td><td>首訪 ≥18 確認</td></tr>
 <tr><td><code>&lt;NeutralPlatformDisclosure /&gt;</code></td><td>SPEC-009 §1</td><td>「中立撮合，平台不下場」聲明</td></tr>
 <tr><td><code>&lt;AnalyticsBoundary /&gt;</code></td><td>SPEC-007 §3 / SPEC-020</td><td>統一事件 emitter wrapper</td></tr>
 </tbody>
 </table>
 <p>如果某個 variant 的視覺設計需要客製這些元件的外觀，<strong>只能透過 props / theme tokens 改外觀，不能 fork 邏輯</strong>。若 props 不夠用，回頭擴 <code>packages/ui/compliance</code>，不是在 variant 內另起爐灶。</p>
 <blockquote>
-<p><strong>實作狀態（2026-05-16）</strong>：<code>packages/ui/compliance/*</code> 尚未實作。在這些元件落地前，新 variant 應以 inline 內容滿足合規可見性要求（age gate、RG 通知、平台中立聲明），並於該處標註 <code>SPEC-021 §3.1</code> TODO，待元件 ship 後替換。<code>apps/landing-sports</code> 即為此過渡模式範例。</p>
+<p><strong>實作狀態（2026-05-16）</strong>：<code>packages/ui/compliance/*</code> 尚未實作。在這些元件落地前，新 variant 應以 inline 內容滿足合規可見性要求（KYC entry、平台中立聲明），並於該處標註 <code>SPEC-021 §3.1</code> TODO，待元件 ship 後替換。<code>apps/landing-sports</code> 即為此過渡模式範例。</p>
 </blockquote>
 
 <hr />
@@ -165,7 +162,7 @@ variant.id === {slug}
 <tr><td>字體 / 配色 / 動效</td><td>✅</td><td>透過 <code>packages/design-tokens</code> 的 theme override</td></tr>
 <tr><td>Layout / Page composition</td><td>✅</td><td>但 §3.1 合規元件必須出現在 viewport 上</td></tr>
 <tr><td>Product surface</td><td>✅</td><td>在 variant 宣告的 <code>product_lines</code> 範圍內</td></tr>
-<tr><td>Onboarding flow 視覺</td><td>✅</td><td>但 KYC / RG 邏輯走共用元件</td></tr>
+<tr><td>Onboarding flow 視覺</td><td>✅</td><td>但 KYC 邏輯走共用元件</td></tr>
 </tbody>
 </table>
 
@@ -295,7 +292,6 @@ jp.prophetica.example/sports</code></pre>
 <h2>9. Open Questions</h2>
 <ul>
 <li>A/B variant 的 traffic split 機制（Cloudflare Workers edge split vs Next.js middleware vs 第三方 LaunchDarkly / GrowthBook）</li>
-<li>多 variant 共用 cookie 時的 RG self-exclusion 跨 variant 一致性（SPEC-006 §4 是否需要中央 service 取代 cookie）</li>
 <li>design tokens override 的版本控管：variant 鎖 token 版本 vs 隨主版滾動</li>
 </ul>
 

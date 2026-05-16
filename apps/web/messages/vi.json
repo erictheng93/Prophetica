@@ -632,14 +632,14 @@
           "birthday": {
             "field": "Ngày sinh",
             "collected": "Tier 1 / 2 / 3",
-            "purpose": "Xác minh bạn ít nhất 18 tuổi theo SPEC-006 §6.",
+            "purpose": "Xác minh bạn ít nhất 18 tuổi.",
             "retention": "Vòng đời tài khoản + 7 năm.",
             "access": "Như trên."
           },
           "documentId": {
             "field": "Số giấy tờ",
             "collected": "Kiểm tra ngầm Tier 1 / Tier 2 / 3",
-            "purpose": "Phát hiện danh tính trùng lặp, kiểm tra danh sách trừng phạt, và đối chiếu danh sách self-exclusion theo SPEC-006 §5.4.",
+            "purpose": "Phát hiện danh tính trùng lặp, kiểm tra danh sách trừng phạt, và đối chiếu danh sách self-exclusion.",
             "retention": "<strong>Chỉ lưu hash SHA256</strong>. Số gốc không bao giờ được lưu và bị loại bỏ sau khi gửi. Hash được lưu trong vòng đời tài khoản + 7 năm.",
             "access": "Chỉ backend kyc-service. Dịch vụ chỉ có thể so sánh hash và không thể khôi phục số gốc."
           },
@@ -667,7 +667,7 @@
           "income": {
             "field": "Khoảng thu nhập hằng tháng",
             "collected": "Tùy chọn ở Tier 2 / bắt buộc ở Tier 3",
-            "purpose": "Hỗ trợ chấm điểm giới hạn responsible gaming theo SPEC-006 §4.1 và mở giới hạn top-up cao hơn.",
+            "purpose": "Hỗ trợ chấm điểm giới hạn responsible gaming và mở giới hạn top-up cao hơn.",
             "retention": "Vòng đời tài khoản. Tự động đánh dấu cũ nếu không cập nhật trong 12 tháng.",
             "access": "Bạn + Compliance Officer. <strong>Hỗ trợ chỉ thấy khoảng, không thấy giá trị chính xác</strong>."
           },

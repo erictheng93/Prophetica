@@ -52,7 +52,6 @@ Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站�
 | ID | 標題 |
 |----|------|
 | [SPEC-005](./specs/SPEC-005-kyc-aml.html) | KYC/AML 整合（🟡 contract / frontend main path 已有進度；Postgres wiring、SumSub sandbox E2E、iProov real adapter 仍為 Public Beta blocker） |
-| [SPEC-006](./specs/SPEC-006-responsible-gaming.html) | 責任博弈機制 |
 | [SPEC-007](./specs/SPEC-007-observability.html) | 可觀測性與監控 |
 | [SPEC-008](./specs/SPEC-008-disaster-recovery.html) | 災備與高可用 |
 | [SPEC-009](./specs/SPEC-009-dmm-liquidity.html) | DMM 與流動性 |

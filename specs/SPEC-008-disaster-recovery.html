@@ -455,7 +455,7 @@
 <h3>9.3 解除</h3>
 <p><strong>呼應 SPEC-010 §9.3 MS-9</strong>（multi-sig 治理中央表）：Kill switch 解除需 <strong>2-of-3</strong> CTO / Compliance / Senior Engineer 共同簽核。</p>
 <blockquote>
-<p><strong>重要 governance 約束</strong>（v0.2.1 補）：admin / Compliance UI <strong>不得</strong>為 MS-9 自刻一套簽核流程；必須使用 SPEC-010 §9.3.3 規範之<strong>單一</strong> multi-sig component（schema 由 §9.3.1 規則總表驅動）。簽核者強制 hardware MFA（YubiKey / Passkey），對應 step-up MFA 過去 30 分鐘內仍有效。任何對 MS-9 簽核要求之變更（如改成 3-of-3、加入 RG Officer），須先 PR 修 SPEC-010 §9.3.1，本節僅為呼應引用。</p>
+<p><strong>重要 governance 約束</strong>（v0.2.1 補）：admin / Compliance UI <strong>不得</strong>為 MS-9 自刻一套簽核流程；必須使用 SPEC-010 §9.3.3 規範之<strong>單一</strong> multi-sig component（schema 由 §9.3.1 規則總表驅動）。簽核者強制 hardware MFA（YubiKey / Passkey），對應 step-up MFA 過去 30 分鐘內仍有效。任何對 MS-9 簽核要求之變更（如改成 3-of-3、加入 Risk Officer），須先 PR 修 SPEC-010 §9.3.1，本節僅為呼應引用。</p>
 </blockquote>
 <p>解除動作必須寫入 <code>audit_logs</code>（呼應 SPEC-012 §5.3），<code>metadata.ms_id = &quot;MS-9&quot;</code>、<code>action = &quot;kill_switch_release&quot;</code>、<code>subject_id</code> 為觸發停盤之事故 ID。</p>
 <h2>10. 演練計畫（Drill Schedule）</h2>

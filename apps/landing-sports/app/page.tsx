@@ -77,7 +77,7 @@ export default function LandingSportsPage() {
         tagline="Prophetica 僅提供撮合並收取手續費，不持有合約倉位、不做造市商。所有成交皆為玩家對玩家。"
       />
 
-      {/* SPEC-006 — responsible-gaming notice. Interim inline tile;
+      {/* Responsible-gaming notice. Interim inline tile;
           migrate to <ResponsibleGamingBanner /> per SPEC-021 §3.1. */}
       <ProphTile
         surface="dark-2"
