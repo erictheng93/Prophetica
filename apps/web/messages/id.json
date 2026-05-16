@@ -604,7 +604,7 @@
         },
         "status": {
           "missing": "Masukkan Email atau nomor ponsel dan kata sandi.",
-          "invalid": "Email, nomor ponsel, atau kata sandi tidak benar.",
+          "invalid": "Kata sandi salah. Masukkan lagi, dan pastikan Email atau nomor ponsel benar.",
           "unavailable": "Layanan masuk sementara tidak tersedia. Coba lagi nanti.",
           "mfaRequired": "Akun ini memerlukan verifikasi dua langkah. Selesaikan verifikasi terlebih dahulu."
         }

@@ -604,7 +604,7 @@
         },
         "status": {
           "missing": "Nhập Email hoặc số điện thoại và mật khẩu.",
-          "invalid": "Email, số điện thoại hoặc mật khẩu không đúng.",
+          "invalid": "Mật khẩu không đúng. Hãy nhập lại và kiểm tra Email hoặc số điện thoại.",
           "unavailable": "Dịch vụ đăng nhập tạm thời không khả dụng. Vui lòng thử lại sau.",
           "mfaRequired": "Tài khoản này cần xác minh hai bước. Vui lòng hoàn tất xác minh trước."
         }

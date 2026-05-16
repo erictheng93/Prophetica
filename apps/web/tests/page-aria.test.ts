@@ -112,6 +112,32 @@ test("sign-in page does not render the legacy OTP submit note", () => {
   assert.equal(messages.auth.signIn.signin.submitNote, undefined);
 });
 
+test("sign-in invalid credentials status gives a password error hint", () => {
+  const source = readSignInPageSource();
+  const messages = JSON.parse(
+    readFileSync(join(process.cwd(), "messages/zh-Hant.json"), "utf8"),
+  ) as {
+    auth: {
+      signIn: {
+        signin: {
+          status: {
+            invalid: string;
+          };
+        };
+      };
+    };
+  };
+
+  assert.match(messages.auth.signIn.signin.status.invalid, /密碼錯誤/);
+  assert.match(source, /const passwordDescribedBy =/);
+  assert.match(
+    source,
+    /aria-invalid=\{status === "invalid" \? true : undefined\}/,
+  );
+  assert.match(source, /aria-describedby=\{passwordDescribedBy\}/);
+  assert.match(source, /id=\{statusBannerId\}/);
+});
+
 test("sign-in page does not render the compliance reminder section", () => {
   const source = readFileSync(
     join(process.cwd(), "app/auth/sign-in/page.tsx"),

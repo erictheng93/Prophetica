@@ -604,7 +604,7 @@
         },
         "status": {
           "missing": "Enter your Email or mobile number and password.",
-          "invalid": "The Email, mobile number, or password is incorrect.",
+          "invalid": "The password is incorrect. Re-enter it, and confirm the Email or mobile number is correct.",
           "unavailable": "Sign-in is temporarily unavailable. Try again later.",
           "mfaRequired": "This account requires two-step verification. Complete verification first."
         }

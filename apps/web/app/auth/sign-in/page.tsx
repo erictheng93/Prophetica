@@ -167,11 +167,16 @@ function ModeToggle({ mode, t }: { mode: "signin" | "signup"; t: AuthCopy }) {
 }
 
 function SigninForm({ t, status }: { t: AuthCopy; status?: SigninStatusKey }) {
+  const statusBannerId = status ? `signin-status-${status}` : undefined;
+  const passwordDescribedBy = status === "invalid" ? statusBannerId : undefined;
+
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
         <form action={submitSigninAction} className="space-y-6">
-          {status ? <SigninStatusBanner t={t} status={status} /> : null}
+          {status && statusBannerId ? (
+            <SigninStatusBanner id={statusBannerId} t={t} status={status} />
+          ) : null}
 
           <label className="block">
             <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
@@ -216,6 +221,8 @@ function SigninForm({ t, status }: { t: AuthCopy; status?: SigninStatusKey }) {
               autoComplete="current-password"
               placeholder="********"
               required
+              aria-invalid={status === "invalid" ? true : undefined}
+              aria-describedby={passwordDescribedBy}
               className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
             />
           </label>
@@ -293,14 +300,17 @@ function SigninForm({ t, status }: { t: AuthCopy; status?: SigninStatusKey }) {
 }
 
 function SigninStatusBanner({
+  id,
   t,
   status,
 }: {
+  id: string;
   t: AuthCopy;
   status: SigninStatusKey;
 }) {
   return (
     <p
+      id={id}
       role="alert"
       aria-live="polite"
       className="rounded-proph-md border border-proph-feedback-error/40 bg-proph-feedback-error/10 px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink"
