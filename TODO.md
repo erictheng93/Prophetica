@@ -1,6 +1,6 @@
 # TODO
 
-Last updated: 2026-05-17
+Last updated: 2026-05-18
 
 ## MVP Phase 2: Local Infra And Observability Stack
 
@@ -34,6 +34,24 @@ the full Docker dependency stack.
   matching topology to dedicated Kubernetes nodes with static
   `cpuManagerPolicy` or equivalent `taskset`-style pinning, then capture
   production-grade latency evidence.
+
+## SPEC-022 Completion Blockers
+
+- Define and implement the LIFF identity bridge before declaring SPEC-022
+  complete. `apps/liff` currently only initializes the LINE LIFF SDK and reads
+  the LINE profile; it does not exchange LINE identity for a Prophetica
+  `user-service` session. Because `login_success` requires `principal_id` and
+  player events require `user_id`, LIFF must either call a user-service session
+  exchange that records `login_surface = liff`, or write the same durable login
+  event contract through a LIFF BFF / outbox path.
+- Capture SPEC-022 §10 latency evidence showing login event write plus
+  geolocation does not add more than 100ms to login P95. Unit coverage confirms
+  timeout fallback behavior, but formal completion still needs a targeted
+  benchmark, staging trace, or CI perf evidence for the actual login path.
+- Run and record manual QA for desktop web, mobile web, and LIFF/WebView login
+  surfaces after the LIFF session path exists, confirming admin and user UIs
+  show approximate location language and `未知` fallback instead of blank
+  fields.
 
 ## Public Beta Launch Gate Blockers
 
