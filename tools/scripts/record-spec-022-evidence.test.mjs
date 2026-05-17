@@ -56,6 +56,33 @@ test("records SPEC-022 LIFF evidence only when all markers are present", async (
   await cleanEvidence();
 });
 
+test("rejects SPEC-022 LIFF evidence logs containing token material", async () => {
+  await cleanEvidence();
+  const root = await mkdtemp(path.join(os.tmpdir(), "prophetica-spec-022-liff-secret-"));
+  const logPath = path.join(root, "secret.log");
+  await writeFile(
+    logPath,
+    [
+      "line_channel_configured=true",
+      "ios_liff_login_success_event=true",
+      "android_liff_login_success_event=true",
+      "login_surface_liff_confirmed=true",
+      "user_members_line_id_link_confirmed=true",
+      "id_token=redacted-but-should-not-be-present",
+      "",
+    ].join("\n"),
+  );
+
+  const failed = spawnSync(process.execPath, [liffScript, logPath], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /appears to contain a token/);
+
+  await cleanEvidence();
+});
+
 test("records SPEC-022 manual QA evidence only when all markers are present", async () => {
   await cleanEvidence();
   const root = await mkdtemp(path.join(os.tmpdir(), "prophetica-spec-022-qa-"));
@@ -94,6 +121,33 @@ test("records SPEC-022 manual QA evidence only when all markers are present", as
   assert.equal(evidence.liff_webview_login_event_visible, true);
   assert.equal(evidence.unknown_fallback_visible, true);
   assert.equal(evidence.manual_qa_log.file, "complete.log");
+
+  await cleanEvidence();
+});
+
+test("rejects SPEC-022 manual QA logs containing credentials", async () => {
+  await cleanEvidence();
+  const root = await mkdtemp(path.join(os.tmpdir(), "prophetica-spec-022-qa-secret-"));
+  const logPath = path.join(root, "secret.log");
+  await writeFile(
+    logPath,
+    [
+      "desktop_web_recent_login_approximate_location=true",
+      "mobile_web_recent_login_approximate_location=true",
+      "admin_login_events_rbac_and_audit_checked=true",
+      "liff_webview_login_event_visible=true",
+      "unknown_fallback_visible=true",
+      "password=redacted-but-should-not-be-present",
+      "",
+    ].join("\n"),
+  );
+
+  const failed = spawnSync(process.execPath, [manualQaScript, logPath], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /appears to contain a token/);
 
   await cleanEvidence();
 });

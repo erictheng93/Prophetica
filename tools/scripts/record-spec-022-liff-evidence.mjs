@@ -17,6 +17,7 @@ const evidenceDir = resolve(repoRoot, "docs/evidence/spec-022-liff");
 const logPath = resolve(process.cwd(), liffLogArg);
 const log = readFileSync(logPath);
 const logText = log.toString("utf8");
+rejectSensitiveEvidence(logText);
 
 const requiredMarkers = {
   line_channel_configured: "line_channel_configured=true",
@@ -65,6 +66,25 @@ console.log(`SPEC-022 LIFF evidence recorded: ${resolve(evidenceDir, "latest.jso
 
 function hasEvidence(source, marker) {
   return source.includes(marker);
+}
+
+function rejectSensitiveEvidence(source) {
+  const forbiddenPatterns = [
+    /\bid_token\s*[=:]/i,
+    /\baccess_token\s*[=:]/i,
+    /\bsession_token\s*[=:]/i,
+    /\brefresh_token\s*[=:]/i,
+    /\bauthorization:\s*bearer\b/i,
+    /\bproph_user_service_session\s*=/i,
+  ];
+  for (const pattern of forbiddenPatterns) {
+    if (pattern.test(source)) {
+      console.error(
+        "SPEC-022 LIFF evidence log appears to contain a token, cookie, or authorization secret. Redact it before recording evidence.",
+      );
+      process.exit(1);
+    }
+  }
 }
 
 function sha256(buffer) {

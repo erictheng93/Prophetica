@@ -17,6 +17,7 @@ const evidenceDir = resolve(repoRoot, "docs/evidence/spec-022-manual-qa");
 const logPath = resolve(process.cwd(), manualQaLogArg);
 const log = readFileSync(logPath);
 const logText = log.toString("utf8");
+rejectSensitiveEvidence(logText);
 
 const requiredMarkers = {
   desktop_web_recent_login_approximate_location:
@@ -70,6 +71,27 @@ console.log(
 
 function hasEvidence(source, marker) {
   return source.includes(marker);
+}
+
+function rejectSensitiveEvidence(source) {
+  const forbiddenPatterns = [
+    /\bid_token\s*[=:]/i,
+    /\baccess_token\s*[=:]/i,
+    /\bsession_token\s*[=:]/i,
+    /\brefresh_token\s*[=:]/i,
+    /\bauthorization:\s*bearer\b/i,
+    /\bproph_user_service_session\s*=/i,
+    /\bpassword\s*[=:]/i,
+    /\botp\s*[=:]/i,
+  ];
+  for (const pattern of forbiddenPatterns) {
+    if (pattern.test(source)) {
+      console.error(
+        "SPEC-022 manual QA evidence log appears to contain a token, password, OTP, cookie, or authorization secret. Redact it before recording evidence.",
+      );
+      process.exit(1);
+    }
+  }
 }
 
 function sha256(buffer) {

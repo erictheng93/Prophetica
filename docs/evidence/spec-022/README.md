@@ -4,8 +4,9 @@ This directory documents the external evidence required before SPEC-022 can be
 declared complete. The implementation is intentionally blocked until real LIFF
 and manual QA evidence is recorded.
 
-Do not commit LINE secrets, raw ID tokens, access tokens, session cookies, or raw
-user personal data in the logs used by these recorders.
+Do not commit LINE secrets, raw ID tokens, access tokens, session cookies,
+passwords, OTPs, or raw user personal data in the logs used by these recorders.
+The recorders fail closed if they see common token / credential markers.
 
 ## Required Environment
 
