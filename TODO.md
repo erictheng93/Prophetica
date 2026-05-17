@@ -1,6 +1,6 @@
 # TODO
 
-Last updated: 2026-05-16
+Last updated: 2026-05-17
 
 ## MVP Phase 2: Local Infra And Observability Stack
 
@@ -23,6 +23,17 @@ the full Docker dependency stack.
   Grafana dashboard import.
 - Document resource expectations for macOS/OrbStack and keep full-stack checks
   out of the default MVP loop.
+
+## SPEC-008 Deferred Production Topology
+
+- Resolve the Railway + Neon MVP deployment tradeoff for
+  `matching-engine-hot`: Railway shared/general vCPU deployments may run the
+  current-thread `LocalSet` binary correctly, but `core_affinity` is only a
+  best-effort latency hint without dedicated-node / static CPU-manager
+  guarantees. Before claiming production hot-market P99 latency, move the hot
+  matching topology to dedicated Kubernetes nodes with static
+  `cpuManagerPolicy` or equivalent `taskset`-style pinning, then capture
+  production-grade latency evidence.
 
 ## Public Beta Launch Gate Blockers
 

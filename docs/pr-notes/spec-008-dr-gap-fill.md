@@ -36,6 +36,19 @@
 - `9c0da2a fix(web): make test output portable`
   - Cleans stale `.test-out` output before web tests and avoids a quoted glob that fails on Linux CI.
 
+## Known MVP Deployment Tradeoffs
+
+- MVP Railway + Neon deployment does not provide the dedicated-node / static
+  CPU-manager assumptions required by the `matching-engine-hot` latency
+  topology in SPEC-003 §17.3 / SPEC-014 R-3. The hot matching engine remains
+  functionally correct on Railway, but `core_affinity` must be treated as a
+  best-effort latency hint only; it does not satisfy the dedicated-core P99
+  latency optimization described for production hot markets.
+- Dedicated Kubernetes nodes, `cpuManagerPolicy: static`, `taskset`-style
+  pinning, and production validation of hot-market P99 behavior are deferred
+  with the SPEC-008 production topology work. Do not claim the hot-market P99
+  latency SLO is met from Railway shared-vCPU evidence alone.
+
 ## Merge Governance
 
 - SPEC-010 §9.3.1 MS-10 applies because this branch touches matching-engine, ledger, settlement,
