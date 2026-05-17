@@ -83,19 +83,15 @@ This writes `docs/evidence/spec-022-manual-qa/latest.json`.
 
 ## Completion Check
 
-After both evidence files are recorded, update
-`docs/spec-022-evidence-manifest.json`:
-
-- Set `status` to `complete`.
-- Remove the two `blocking_items` entries.
-- Add evidence notes that identify the target environment and the command output
-  used to record the two JSON files.
-
-Then run:
+After both evidence files are recorded, finalize the manifest and run the
+completion check:
 
 ```bash
+rtk node tools/scripts/finalize-spec-022-complete.mjs
 rtk node tools/scripts/check-spec-022-complete.mjs
 ```
 
-SPEC-022 may only be declared complete if this checker passes and the manifest
+The finalize script fails closed and restores the blocked manifest when either
+external evidence file is missing or does not satisfy every required marker.
+SPEC-022 may only be declared complete if the checker passes and the manifest
 still maps every SPEC-022 requirement to concrete implementation or evidence.
