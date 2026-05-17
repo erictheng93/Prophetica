@@ -126,6 +126,13 @@ pub fn start_passkey_registration(
     })
 }
 
+/// Finishes a passkey registration ceremony and returns the serialized passkey.
+///
+/// # Errors
+///
+/// Returns [`WebauthnRuntimeError`] when the relying-party configuration is invalid, the browser
+/// registration payload or stored state cannot be decoded, registration verification fails, or the
+/// verified passkey cannot be serialized.
 pub fn finish_passkey_registration(
     config: &WebauthnRuntimeConfig,
     registration_data: Value,
@@ -143,6 +150,13 @@ pub fn finish_passkey_registration(
     serde_json::to_value(passkey).map_err(|_| WebauthnRuntimeError::SerializationFailed)
 }
 
+/// Starts a passkey assertion ceremony and returns serialized request options plus state.
+///
+/// # Errors
+///
+/// Returns [`WebauthnRuntimeError`] when no active credentials exist, the relying-party
+/// configuration is invalid, stored passkeys cannot be decoded, authentication cannot be started,
+/// or the generated options/state cannot be serialized.
 pub fn start_passkey_assertion(
     config: &WebauthnRuntimeConfig,
     credentials: &[WebauthnCredentialRecord],
@@ -169,6 +183,14 @@ pub fn start_passkey_assertion(
     })
 }
 
+/// Finishes a passkey assertion ceremony and returns the updated credential material.
+///
+/// # Errors
+///
+/// Returns [`WebauthnRuntimeError`] when no active credentials exist, the relying-party
+/// configuration is invalid, the browser assertion payload or stored state cannot be decoded,
+/// authentication verification fails, the authenticated credential is not found, or the updated
+/// credential material cannot be serialized.
 pub fn finish_passkey_assertion(
     config: &WebauthnRuntimeConfig,
     assertion_data: Value,
@@ -252,6 +274,12 @@ pub async fn start_and_store_passkey_registration(
     })
 }
 
+/// Starts a passkey assertion ceremony and persists the challenge state.
+///
+/// # Errors
+///
+/// Returns [`WebauthnRuntimeError`] when assertion setup fails or the challenge state cannot be
+/// stored.
 pub async fn start_and_store_passkey_assertion(
     store: &dyn WebauthnStore,
     config: &WebauthnRuntimeConfig,

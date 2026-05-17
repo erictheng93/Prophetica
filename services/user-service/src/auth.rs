@@ -26,8 +26,9 @@ use sqlx::{PgPool, Row};
 
 use crate::{
     webauthn_runtime::{
-        WebauthnRuntimeConfig, finish_passkey_assertion, finish_passkey_registration,
-        start_and_store_passkey_assertion, start_and_store_passkey_registration,
+        PasskeyAssertionFinish, WebauthnRuntimeConfig, finish_passkey_assertion,
+        finish_passkey_registration, start_and_store_passkey_assertion,
+        start_and_store_passkey_registration,
     },
     webauthn_store::{
         InMemoryWebauthnStore, WebauthnCeremony, WebauthnCredentialRecord, WebauthnStore,
@@ -558,7 +559,7 @@ impl PasswordCredentialStore for PostgresPasswordCredentialStore {
             .await
             .map_err(|_| PasswordCredentialStoreError::Unavailable)?;
 
-        row.map(row_to_stored_login_credential).transpose()
+        row.as_ref().map(row_to_stored_login_credential).transpose()
     }
 
     async fn credential_by_user_id(
@@ -573,12 +574,12 @@ impl PasswordCredentialStore for PostgresPasswordCredentialStore {
         .await
         .map_err(|_| PasswordCredentialStoreError::Unavailable)?;
 
-        row.map(row_to_stored_login_credential).transpose()
+        row.as_ref().map(row_to_stored_login_credential).transpose()
     }
 }
 
 fn row_to_stored_login_credential(
-    row: sqlx::postgres::PgRow,
+    row: &sqlx::postgres::PgRow,
 ) -> Result<StoredLoginCredential, PasswordCredentialStoreError> {
     Ok(StoredLoginCredential {
         user_id: row
@@ -947,7 +948,7 @@ async fn webauthn_register_finish(
     }
     let registration_credential_id =
         webauthn_registration_credential_id(&request.registration_data);
-    let Ok(mut passkey) = finish_passkey_registration(
+    let Ok(passkey) = finish_passkey_registration(
         webauthn_config,
         request.registration_data,
         challenge.state_json,
@@ -966,35 +967,9 @@ async fn webauthn_register_finish(
         )
             .into_response();
     };
-    if let Some(passkey_object) = passkey.as_object_mut() {
-        passkey_object
-            .entry("credential_id")
-            .or_insert_with(|| json!(credential_id.clone()));
-    }
-    if config
-        .webauthn_store
-        .put_credential(WebauthnCredentialRecord {
-            credential_id: credential_id.clone(),
-            user_id: account.user_id.clone(),
-            user_webauthn_uuid: user_uuid.to_owned(),
-            display_name: account.email.clone(),
-            public_key_cose: passkey.clone(),
-            signature_counter: 0,
-            transports: json!([]),
-            user_verified: true,
-            backup_eligible: false,
-            backup_state: false,
-            registration_policy: "required".to_owned(),
-            attestation_format: None,
-            attestation: json!({}),
-            created_at_epoch_seconds: now,
-            last_used_at_epoch_seconds: None,
-            revoked_at_epoch_seconds: None,
-            metadata: json!({ "passkey": passkey }),
-        })
-        .await
-        .is_err()
-    {
+    let record =
+        registered_webauthn_credential_record(account, user_uuid, &credential_id, passkey, now);
+    if config.webauthn_store.put_credential(record).await.is_err() {
         return (
             StatusCode::BAD_GATEWAY,
             Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_STORE_FAILED" })),
@@ -1141,35 +1116,11 @@ async fn webauthn_assert_finish(
         )
             .into_response();
     };
-    let Some(mut credential) = credentials
-        .into_iter()
-        .find(|record| record.credential_id == assertion.credential_id)
-    else {
-        return (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_NOT_FOUND" })),
-        )
-            .into_response();
+    let store_result =
+        store_successful_webauthn_assertion(&config, credentials, assertion, now).await;
+    if let Err(response) = store_result {
+        return response;
     };
-    credential.public_key_cose = assertion.updated_passkey;
-    credential.signature_counter = assertion.signature_counter;
-    credential.user_verified = assertion.user_verified;
-    credential.backup_eligible = assertion.backup_eligible;
-    credential.backup_state = assertion.backup_state;
-    credential.last_used_at_epoch_seconds = Some(now);
-    credential.metadata = json!({ "authentication_result": assertion.authentication_result });
-    if config
-        .webauthn_store
-        .put_credential(credential)
-        .await
-        .is_err()
-    {
-        return (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_STORE_FAILED" })),
-        )
-            .into_response();
-    }
 
     successful_login(
         &config,
@@ -1178,6 +1129,77 @@ async fn webauthn_assert_finish(
         Some(unix_now_seconds()),
         Some("hwk"),
     )
+}
+
+fn registered_webauthn_credential_record(
+    account: &LocalLoginAccount,
+    user_uuid: &str,
+    credential_id: &str,
+    mut passkey: Value,
+    now_epoch_seconds: i64,
+) -> WebauthnCredentialRecord {
+    if let Some(passkey_object) = passkey.as_object_mut() {
+        passkey_object
+            .entry("credential_id")
+            .or_insert_with(|| json!(credential_id));
+    }
+
+    WebauthnCredentialRecord {
+        credential_id: credential_id.to_owned(),
+        user_id: account.user_id.clone(),
+        user_webauthn_uuid: user_uuid.to_owned(),
+        display_name: account.email.clone(),
+        public_key_cose: passkey.clone(),
+        signature_counter: 0,
+        transports: json!([]),
+        user_verified: true,
+        backup_eligible: false,
+        backup_state: false,
+        registration_policy: "required".to_owned(),
+        attestation_format: None,
+        attestation: json!({}),
+        created_at_epoch_seconds: now_epoch_seconds,
+        last_used_at_epoch_seconds: None,
+        revoked_at_epoch_seconds: None,
+        metadata: json!({ "passkey": passkey }),
+    }
+}
+
+async fn store_successful_webauthn_assertion(
+    config: &AuthConfig,
+    credentials: Vec<WebauthnCredentialRecord>,
+    assertion: PasskeyAssertionFinish,
+    now_epoch_seconds: i64,
+) -> Result<(), Response> {
+    let Some(mut credential) = credentials
+        .into_iter()
+        .find(|record| record.credential_id == assertion.credential_id)
+    else {
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_NOT_FOUND" })),
+        )
+            .into_response());
+    };
+
+    credential.public_key_cose = assertion.updated_passkey;
+    credential.signature_counter = assertion.signature_counter;
+    credential.user_verified = assertion.user_verified;
+    credential.backup_eligible = assertion.backup_eligible;
+    credential.backup_state = assertion.backup_state;
+    credential.last_used_at_epoch_seconds = Some(now_epoch_seconds);
+    credential.metadata = json!({ "authentication_result": assertion.authentication_result });
+    config
+        .webauthn_store
+        .put_credential(credential)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_STORE_FAILED" })),
+            )
+                .into_response()
+        })
 }
 
 async fn webauthn_credential_revoke(

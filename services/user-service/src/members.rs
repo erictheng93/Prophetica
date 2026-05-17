@@ -360,7 +360,7 @@ where
     S: MemberStore,
 {
     let password_hash = hash_public_registration_password(&request.password)?;
-    let create = public_registration_to_create_member(request)?;
+    let create = public_registration_to_create_member(&request)?;
     let summary = store
         .create_member(create.clone())
         .await
@@ -753,7 +753,7 @@ fn validate_create_member(request: &CreateMemberRequest) -> Result<(), MemberSto
 }
 
 fn public_registration_to_create_member(
-    request: PublicRegistrationRequest,
+    request: &PublicRegistrationRequest,
 ) -> Result<CreateMemberRequest, (StatusCode, Json<ErrorResponse>)> {
     let email = request.email.trim().to_ascii_lowercase();
     let phone = normalize_taiwan_mobile(&request.phone).ok_or_else(invalid_registration)?;
