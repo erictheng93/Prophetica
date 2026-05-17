@@ -3877,6 +3877,7 @@ dependencies = [
  "ed25519-dalek",
  "hmac",
  "http-body-util",
+ "reqwest",
  "sdk",
  "serde",
  "serde_json",

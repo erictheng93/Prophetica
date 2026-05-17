@@ -62,6 +62,8 @@ pub struct AuthConfig {
     login_event_store: Option<Arc<dyn LoginEventStore>>,
     login_event_outbox: Option<Arc<dyn LoginEventOutbox>>,
     login_geo_provider: Option<Arc<dyn LoginGeoProvider>>,
+    liff_identity_verifier: Option<Arc<dyn LiffIdentityVerifier>>,
+    liff_linked_account_store: Option<Arc<dyn LiffLinkedAccountStore>>,
     login_geo_timeout: Duration,
     login_identifier_hmac_key: Arc<Vec<u8>>,
     login_identifier_hmac_key_version: String,
@@ -143,6 +145,47 @@ pub trait PasswordCredentialStore: Send + Sync {
     ) -> Result<Option<StoredLoginCredential>, PasswordCredentialStoreError>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiffIdentity {
+    pub line_user_id: String,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum LiffIdentityError {
+    #[error("liff identity is invalid")]
+    Invalid,
+    #[error("liff identity verifier unavailable")]
+    Unavailable,
+}
+
+#[async_trait]
+pub trait LiffIdentityVerifier: Send + Sync {
+    async fn verify(&self, id_token: &str) -> Result<LiffIdentity, LiffIdentityError>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiffLinkedAccount {
+    pub line_user_id: String,
+    pub user_id: String,
+    pub email: String,
+    pub phone: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum LiffLinkedAccountStoreError {
+    #[error("liff linked account store unavailable")]
+    Unavailable,
+}
+
+#[async_trait]
+pub trait LiffLinkedAccountStore: Send + Sync {
+    async fn account_by_line_user_id(
+        &self,
+        line_user_id: &str,
+    ) -> Result<Option<LiffLinkedAccount>, LiffLinkedAccountStoreError>;
+}
+
 #[derive(Clone, Default)]
 pub struct InMemoryPasswordCredentialStore {
     credentials: Arc<Vec<StoredLoginCredential>>,
@@ -151,6 +194,17 @@ pub struct InMemoryPasswordCredentialStore {
 #[derive(Clone)]
 pub struct PostgresPasswordCredentialStore {
     pool: PgPool,
+}
+
+#[derive(Clone)]
+pub struct PostgresLiffLinkedAccountStore {
+    pool: PgPool,
+}
+
+#[derive(Clone)]
+struct LineVerifyIdTokenVerifier {
+    client: reqwest::Client,
+    channel_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,6 +223,21 @@ struct LoginRequest {
     mfa_recovery_code: Option<String>,
     #[serde(default)]
     login_surface: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LiffSessionRequest {
+    #[serde(default)]
+    id_token: String,
+    #[serde(default)]
+    remember: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct LineVerifyIdTokenResponse {
+    sub: String,
+    #[serde(default)]
+    name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -333,10 +402,12 @@ pub fn auth_router() -> Router {
 pub fn auth_router_with_config(config: AuthConfig) -> Router {
     Router::new()
         .route("/api/auth/login", post(login))
+        .route("/api/auth/liff/session", post(liff_session))
         .route("/api/auth/me", get(me))
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/jwks", get(jwks))
         .route("/v1/auth/login", post(login))
+        .route("/v1/auth/liff/session", post(liff_session))
         .route("/v1/auth/me", get(me))
         .route("/v1/auth/logout", post(logout))
         .route("/v1/auth/jwks", get(jwks))
@@ -392,6 +463,8 @@ impl AuthConfig {
             login_event_store: Some(Arc::new(InMemoryLoginEventStore::default())),
             login_event_outbox: None,
             login_geo_provider: None,
+            liff_identity_verifier: None,
+            liff_linked_account_store: None,
             login_geo_timeout: Duration::from_millis(50),
             login_identifier_hmac_key: Arc::new(b"prophetica-login-events-dev-key".to_vec()),
             login_identifier_hmac_key_version: "dev-v1".to_owned(),
@@ -451,6 +524,21 @@ impl AuthConfig {
     }
 
     #[must_use]
+    pub fn with_liff_identity_verifier(mut self, verifier: Arc<dyn LiffIdentityVerifier>) -> Self {
+        self.liff_identity_verifier = Some(verifier);
+        self
+    }
+
+    #[must_use]
+    pub fn with_liff_linked_account_store(
+        mut self,
+        store: Arc<dyn LiffLinkedAccountStore>,
+    ) -> Self {
+        self.liff_linked_account_store = Some(store);
+        self
+    }
+
+    #[must_use]
     pub fn with_login_geo_timeout(mut self, timeout: Duration) -> Self {
         self.login_geo_timeout = timeout;
         self
@@ -477,11 +565,9 @@ impl AuthConfig {
     pub fn from_env() -> Self {
         let prophetica_env = env::var("PROPHETICA_ENV").unwrap_or_else(|_| "dev".to_owned());
 
-        if prophetica_env.eq_ignore_ascii_case("production") {
-            return Self::new(Vec::new());
-        }
-
-        let accounts = if let Some(accounts) = Self::from_local_login_accounts_json_env() {
+        let accounts = if prophetica_env.eq_ignore_ascii_case("production") {
+            Vec::new()
+        } else if let Some(accounts) = Self::from_local_login_accounts_json_env() {
             accounts
         } else {
             let user_id = env::var("USER_SERVICE_LOCAL_LOGIN_USER_ID")
@@ -515,6 +601,14 @@ impl AuthConfig {
             let version = env::var("USER_SERVICE_LOGIN_EVENT_IDENTIFIER_HMAC_KEY_VERSION")
                 .unwrap_or_else(|_| "env-v1".to_owned());
             config = config.with_login_identifier_hmac_key(key.into_bytes(), version);
+        }
+        if let Ok(channel_id) = env::var("USER_SERVICE_LINE_LOGIN_CHANNEL_ID") {
+            let channel_id = channel_id.trim();
+            if !channel_id.is_empty() {
+                config = config.with_liff_identity_verifier(Arc::new(
+                    LineVerifyIdTokenVerifier::new(channel_id),
+                ));
+            }
         }
         if let Ok(cidrs) = env::var("USER_SERVICE_TRUSTED_PROXY_CIDRS") {
             config = config.with_trusted_proxy_cidrs(&cidrs);
@@ -687,6 +781,22 @@ impl PostgresPasswordCredentialStore {
     }
 }
 
+impl PostgresLiffLinkedAccountStore {
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl LineVerifyIdTokenVerifier {
+    fn new(channel_id: &str) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            channel_id: channel_id.to_owned(),
+        }
+    }
+}
+
 #[async_trait]
 impl PasswordCredentialStore for InMemoryPasswordCredentialStore {
     async fn credential_by_identifier(
@@ -751,6 +861,84 @@ impl PasswordCredentialStore for PostgresPasswordCredentialStore {
 
         row.as_ref().map(row_to_stored_login_credential).transpose()
     }
+}
+
+#[async_trait]
+impl LiffLinkedAccountStore for PostgresLiffLinkedAccountStore {
+    async fn account_by_line_user_id(
+        &self,
+        line_user_id: &str,
+    ) -> Result<Option<LiffLinkedAccount>, LiffLinkedAccountStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT user_id, email, phone, line_id
+            FROM user_members
+            WHERE line_id = $1 AND deleted_at IS NULL
+            ",
+        )
+        .bind(line_user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| LiffLinkedAccountStoreError::Unavailable)?;
+
+        row.as_ref().map(row_to_liff_linked_account).transpose()
+    }
+}
+
+#[async_trait]
+impl LiffIdentityVerifier for LineVerifyIdTokenVerifier {
+    async fn verify(&self, id_token: &str) -> Result<LiffIdentity, LiffIdentityError> {
+        let id_token = id_token.trim();
+        if id_token.is_empty() {
+            return Err(LiffIdentityError::Invalid);
+        }
+        let response = self
+            .client
+            .post("https://api.line.me/oauth2/v2.1/verify")
+            .form(&[
+                ("id_token", id_token),
+                ("client_id", self.channel_id.as_str()),
+            ])
+            .send()
+            .await
+            .map_err(|_| LiffIdentityError::Unavailable)?;
+
+        if !response.status().is_success() {
+            return Err(LiffIdentityError::Invalid);
+        }
+
+        let payload = response
+            .json::<LineVerifyIdTokenResponse>()
+            .await
+            .map_err(|_| LiffIdentityError::Invalid)?;
+        let line_user_id = payload.sub.trim();
+        if line_user_id.is_empty() {
+            return Err(LiffIdentityError::Invalid);
+        }
+        Ok(LiffIdentity {
+            line_user_id: line_user_id.to_owned(),
+            display_name: payload.name,
+        })
+    }
+}
+
+fn row_to_liff_linked_account(
+    row: &sqlx::postgres::PgRow,
+) -> Result<LiffLinkedAccount, LiffLinkedAccountStoreError> {
+    Ok(LiffLinkedAccount {
+        user_id: row
+            .try_get("user_id")
+            .map_err(|_| LiffLinkedAccountStoreError::Unavailable)?,
+        email: row
+            .try_get("email")
+            .map_err(|_| LiffLinkedAccountStoreError::Unavailable)?,
+        phone: row
+            .try_get("phone")
+            .map_err(|_| LiffLinkedAccountStoreError::Unavailable)?,
+        line_user_id: row
+            .try_get("line_id")
+            .map_err(|_| LiffLinkedAccountStoreError::Unavailable)?,
+    })
 }
 
 fn row_to_stored_login_credential(
@@ -975,6 +1163,107 @@ async fn login(
     )
     .await;
     invalid_credentials()
+}
+
+async fn liff_session(
+    State(config): State<AuthConfig>,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+    Json(request): Json<LiffSessionRequest>,
+) -> Response {
+    let remote_addr = connect_info.map(|ConnectInfo(addr)| addr);
+    let login_surface = "liff";
+    let Some(verifier) = config.liff_identity_verifier.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "ERROR_CODE_AUTH_PROVIDER_UNAVAILABLE" })),
+        )
+            .into_response();
+    };
+    let Some(store) = config.liff_linked_account_store.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "ERROR_CODE_AUTH_PROVIDER_UNAVAILABLE" })),
+        )
+            .into_response();
+    };
+
+    let identity = match verifier.verify(&request.id_token).await {
+        Ok(identity) => identity,
+        Err(LiffIdentityError::Invalid) => {
+            record_login_failure(
+                &config,
+                &headers,
+                remote_addr,
+                login_surface,
+                None,
+                "invalid_identifier",
+                "liff",
+            )
+            .await;
+            return invalid_credentials();
+        }
+        Err(LiffIdentityError::Unavailable) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": "ERROR_CODE_AUTH_PROVIDER_UNAVAILABLE" })),
+            )
+                .into_response();
+        }
+    };
+
+    let linked = match store.account_by_line_user_id(&identity.line_user_id).await {
+        Ok(Some(account)) => account,
+        Ok(None) => {
+            record_login_failure_with_identifier_hash(
+                &config,
+                &headers,
+                remote_addr,
+                login_surface,
+                Some(&identity.line_user_id),
+                "invalid_credentials",
+                "liff",
+            )
+            .await;
+            return invalid_credentials();
+        }
+        Err(LiffLinkedAccountStoreError::Unavailable) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": "ERROR_CODE_AUTH_PROVIDER_UNAVAILABLE" })),
+            )
+                .into_response();
+        }
+    };
+
+    let Some(account) = linked.to_local_login_account() else {
+        record_login_failure_with_identifier_hash(
+            &config,
+            &headers,
+            remote_addr,
+            login_surface,
+            Some(&identity.line_user_id),
+            "invalid_identifier",
+            "liff",
+        )
+        .await;
+        return invalid_credentials();
+    };
+
+    successful_login(
+        &config,
+        SuccessfulLoginInput {
+            headers: &headers,
+            remote_addr,
+            login_surface,
+            account: &account,
+            remember: request.remember,
+            mfa_at_epoch_seconds: None,
+            mfa_amr_method: None,
+            auth_method: "liff",
+        },
+    )
+    .await
 }
 
 async fn authenticated_password_login(
@@ -1804,6 +2093,18 @@ impl LocalLoginAccount {
     }
 }
 
+impl LiffLinkedAccount {
+    fn to_local_login_account(&self) -> Option<LocalLoginAccount> {
+        LocalLoginAccount::new(
+            self.user_id.clone(),
+            self.email.as_str(),
+            self.phone.as_str(),
+            "liff-authenticated",
+        )
+        .map(|account| account.with_profile("player", None))
+    }
+}
+
 fn verify_argon2id_password(encoded_hash: &str, candidate: &str) -> bool {
     let Ok(parsed) = PasswordHash::new(encoded_hash) else {
         return false;
@@ -2093,6 +2394,49 @@ async fn record_login_failure(
         );
         (Some(hash), Some(key_version))
     });
+    let (client_ip, geo) = login_event_network_context(config, headers, remote_addr).await;
+    let event = LoginEventInput {
+        login_surface: login_surface.to_owned(),
+        principal_type: principal_type_from_surface(login_surface),
+        principal_id: None,
+        user_id: None,
+        principal_external_id: None,
+        account_identifier_hash: hash,
+        account_identifier_hash_key_version: key_version,
+        event_type: LoginEventType::Failure,
+        client_ip,
+        user_agent: parse_user_agent(headers),
+        geo,
+        session_id: None,
+        auth_method: auth_method.to_owned(),
+        failure_reason: Some(failure_reason.to_owned()),
+        risk_flags: json!([]),
+        request_id: header_value(headers, "x-request-id"),
+        correlation_id: header_value(headers, "x-correlation-id"),
+    };
+    write_login_event(config, event).await;
+}
+
+async fn record_login_failure_with_identifier_hash(
+    config: &AuthConfig,
+    headers: &HeaderMap,
+    remote_addr: Option<SocketAddr>,
+    login_surface: &str,
+    identifier: Option<&str>,
+    failure_reason: &str,
+    auth_method: &str,
+) {
+    let (hash, key_version) = identifier
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map_or((None, None), |identifier| {
+            let (hash, key_version) = identifier_hmac(
+                identifier,
+                config.login_identifier_hmac_key.as_slice(),
+                &config.login_identifier_hmac_key_version,
+            );
+            (Some(hash), Some(key_version))
+        });
     let (client_ip, geo) = login_event_network_context(config, headers, remote_addr).await;
     let event = LoginEventInput {
         login_surface: login_surface.to_owned(),

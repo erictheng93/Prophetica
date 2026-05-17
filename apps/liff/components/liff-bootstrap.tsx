@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 type Status =
   | { kind: "initializing" }
   | { kind: "needs-login" }
+  | { kind: "authenticating" }
   | { kind: "ready"; profile: { displayName: string; userId: string } | null }
   | { kind: "error"; message: string };
 
@@ -38,6 +39,22 @@ export function LiffBootstrap({ liffId }: Props) {
           // and isLoggedIn() will be true.
           liff.login();
           return;
+        }
+
+        setStatus({ kind: "authenticating" });
+        const idToken = liff.getIDToken();
+        if (!idToken) {
+          throw new Error("LIFF ID token is unavailable");
+        }
+
+        const session = await fetch("/api/auth/liff/session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id_token: idToken }),
+          cache: "no-store",
+        });
+        if (!session.ok) {
+          throw new Error("LIFF session exchange failed");
         }
 
         const profile = liff.isInClient() ? await liff.getProfile() : null;
@@ -77,6 +94,8 @@ export function LiffBootstrap({ liffId }: Props) {
               ? "LIFF 載入中…"
               : status.kind === "needs-login"
               ? "請於 LINE 登入後返回"
+              : status.kind === "authenticating"
+              ? "帳號驗證中…"
               : status.kind === "ready"
               ? `Hello, ${status.profile?.displayName ?? "玩家"}`
               : "LIFF 初始化失敗"}

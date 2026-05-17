@@ -37,13 +37,12 @@ the full Docker dependency stack.
 
 ## SPEC-022 Completion Blockers
 
-- Define and implement the LIFF identity bridge before declaring SPEC-022
-  complete. `apps/liff` currently only initializes the LINE LIFF SDK and reads
-  the LINE profile; it does not exchange LINE identity for a Prophetica
-  `user-service` session. Because `login_success` requires `principal_id` and
-  player events require `user_id`, LIFF must either call a user-service session
-  exchange that records `login_surface = liff`, or write the same durable login
-  event contract through a LIFF BFF / outbox path.
+- Capture live LIFF identity-bridge evidence before declaring SPEC-022 complete.
+  The code path now exchanges a LINE ID token for a `user-service` session and
+  records `login_surface = liff`, but formal completion still needs a LINE
+  channel configured with `USER_SERVICE_LINE_LOGIN_CHANNEL_ID`, a member linked
+  through `user_members.line_id`, and an iOS / Android LIFF login run showing
+  the resulting `login_success` event.
 - Capture SPEC-022 §10 latency evidence showing login event write plus
   geolocation does not add more than 100ms to login P95. Unit coverage confirms
   timeout fallback behavior, but formal completion still needs a targeted

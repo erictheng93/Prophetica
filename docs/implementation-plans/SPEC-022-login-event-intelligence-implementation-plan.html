@@ -35,6 +35,7 @@
   <section>
     <h2>0. 變更紀錄</h2>
     <ul>
+      <li><strong>v0.1.3</strong>：LIFF 路徑定案為由 <code>apps/liff</code> BFF 將 LINE ID token 送至 <code>user-service</code>，由 <code>user-service</code> 呼叫 LINE Verify ID token endpoint 驗證，再以 <code>user_members.line_id</code> 換取玩家 session 並記錄 <code>login_surface = liff</code> / <code>auth_method = liff</code>。剩餘驗收是 live LINE channel + iOS / Android LIFF device evidence。</li>
       <li><strong>v0.1.2</strong>：對齊 SPEC v0.1.3：新增 <code>login_surface</code>、<code>principal_external_id</code>、<code>account_identifier_hash_key_version</code> 與失敗登入 identifier CHECK；明確禁止把 affiliate id 塞入 <code>risk_flags</code>；收斂 outbox fail-open 語意。</li>
       <li><strong>v0.1.1</strong>：修正 <code>user_id</code> CHECK 約束，避免不可識別帳號的失敗登入無法寫入；補上 X-Real-IP 解析路徑、§5 outbox / queue 補寫要求、NFR 100ms 驗收項、UI「未知」顯示，並對齊 SPEC §15 Open Questions。</li>
       <li><strong>v0.1.0</strong>：初版實作計畫。</li>
@@ -412,7 +413,7 @@ rtk pnpm typecheck</code></pre>
       <li>MVP geolocation 是否只採 Cloudflare headers，或需要 MaxMind local DB。</li>
       <li>完整登入事件保留期採 180 天或 365 天。</li>
       <li>哪些角色能解除 IP masking；建議至少限制在 admin + compliance。</li>
-      <li>LIFF 登入最後是否一定換取 user-service session；若不是，需定義 LIFF BFF 寫入 login event 的可靠路徑。</li>
+      <li><strong>已定案（v0.1.3）</strong>：LIFF 登入必須換取 <code>user-service</code> session；<code>apps/liff</code> BFF 只轉送 LINE ID token，不信任前端 profile。<code>user-service</code> 使用 LINE Verify ID token endpoint 驗證後，以 <code>user_members.line_id</code> 查找玩家並透過同一個 login event writer 寫入 <code>login_success</code> / <code>login_failure</code>。</li>
       <li>第一版是否納入 VPN / Tor / proxy detection 並寫入 <code>risk_flags</code>，或延後至 SPEC-010 風控規則擴充（MVP <code>risk_flags</code> 可為空陣列）。</li>
     </ul>
   </section>

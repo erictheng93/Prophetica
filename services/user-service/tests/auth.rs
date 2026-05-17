@@ -14,8 +14,9 @@ use serde_json::{Value, json};
 use sha1::Sha1;
 use tower::ServiceExt;
 use user_service::auth::{
-    AuthConfig, InMemoryPasswordCredentialStore, LocalLoginAccount, StoredLoginCredential,
-    auth_router_with_config,
+    AuthConfig, InMemoryPasswordCredentialStore, LiffIdentity, LiffIdentityError,
+    LiffIdentityVerifier, LiffLinkedAccount, LiffLinkedAccountStore, LiffLinkedAccountStoreError,
+    LocalLoginAccount, StoredLoginCredential, auth_router_with_config,
 };
 use user_service::login_events::{
     AdminLoginEventFilter, GeoLookupError, GeoLookupResult, InMemoryLoginEventOutbox,
@@ -575,6 +576,91 @@ async fn failed_login_event_write_enqueues_outbox_and_keeps_login_fail_open() {
     assert_eq!(outbox.records().len(), 1);
     assert_eq!(metrics.body["login_events_write_failed_total"], json!(1));
     assert_eq!(metrics.body["login_events_outbox_enqueued_total"], json!(1));
+}
+
+#[tokio::test]
+async fn liff_session_exchange_records_login_success() {
+    let events = InMemoryLoginEventStore::default();
+    let app = auth_router_with_config(
+        AuthConfig::new(Vec::new())
+            .with_liff_identity_verifier(Arc::new(FakeLiffIdentityVerifier))
+            .with_liff_linked_account_store(Arc::new(FakeLiffLinkedAccountStore {
+                account: Some(LiffLinkedAccount {
+                    line_user_id: "Uline-linked".to_owned(),
+                    user_id: "U-LIFF-001".to_owned(),
+                    email: "liff-player@prophetica.local".to_owned(),
+                    phone: "0912345620".to_owned(),
+                }),
+            }))
+            .with_login_event_store(Arc::new(events.clone())),
+    );
+
+    let response = post_liff_session_with_headers(
+        app,
+        json!({
+            "id_token": "valid-line-id-token",
+            "remember": true
+        }),
+        &[
+            ("user-agent", "Line/14.0 LIFF"),
+            ("cf-connecting-ip", "203.0.113.150"),
+            ("cf-ipcountry", "TW"),
+        ],
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.body["user_id"], json!("U-LIFF-001"));
+    assert_eq!(response.body["role"], json!("player"));
+    assert!(response.body["session_token"].as_str().is_some());
+
+    let stored = events.events();
+    assert_eq!(stored.len(), 1);
+    let event = &stored[0];
+    assert_eq!(event.login_surface, "liff");
+    assert_eq!(event.principal_type, "user");
+    assert_eq!(event.principal_id.as_deref(), Some("U-LIFF-001"));
+    assert_eq!(event.user_id.as_deref(), Some("U-LIFF-001"));
+    assert_eq!(event.auth_method, "liff");
+    assert_eq!(event.event_type, "login_success");
+    assert_eq!(event.geo_country.as_deref(), Some("TW"));
+}
+
+#[tokio::test]
+async fn liff_session_exchange_records_login_failure_for_unlinked_line_user() {
+    let events = InMemoryLoginEventStore::default();
+    let app = auth_router_with_config(
+        AuthConfig::new(Vec::new())
+            .with_liff_identity_verifier(Arc::new(FakeLiffIdentityVerifier))
+            .with_liff_linked_account_store(Arc::new(FakeLiffLinkedAccountStore { account: None }))
+            .with_login_event_store(Arc::new(events.clone())),
+    );
+
+    let response = post_liff_session(
+        app,
+        json!({
+            "id_token": "valid-line-id-token"
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        response.body["error"],
+        json!("ERROR_CODE_INVALID_CREDENTIALS")
+    );
+    let stored = events.events();
+    assert_eq!(stored.len(), 1);
+    let event = &stored[0];
+    assert_eq!(event.login_surface, "liff");
+    assert_eq!(event.principal_type, "user");
+    assert_eq!(event.event_type, "login_failure");
+    assert_eq!(event.failure_reason.as_deref(), Some("invalid_credentials"));
+    assert!(event.account_identifier_hash.is_some());
+    assert_eq!(
+        event.account_identifier_hash_key_version.as_deref(),
+        Some("dev-v1")
+    );
 }
 
 #[tokio::test]
@@ -1355,6 +1441,12 @@ struct SlowGeoProvider;
 
 struct UnavailableLoginEventStore;
 
+struct FakeLiffIdentityVerifier;
+
+struct FakeLiffLinkedAccountStore {
+    account: Option<LiffLinkedAccount>,
+}
+
 #[async_trait]
 impl LoginEventStore for UnavailableLoginEventStore {
     async fn write_event(
@@ -1417,6 +1509,33 @@ impl LoginGeoProvider for SlowGeoProvider {
             asn: None,
             isp: None,
         })
+    }
+}
+
+#[async_trait]
+impl LiffIdentityVerifier for FakeLiffIdentityVerifier {
+    async fn verify(&self, id_token: &str) -> Result<LiffIdentity, LiffIdentityError> {
+        if id_token == "valid-line-id-token" {
+            Ok(LiffIdentity {
+                line_user_id: "Uline-linked".to_owned(),
+                display_name: Some("LIFF Player".to_owned()),
+            })
+        } else {
+            Err(LiffIdentityError::Invalid)
+        }
+    }
+}
+
+#[async_trait]
+impl LiffLinkedAccountStore for FakeLiffLinkedAccountStore {
+    async fn account_by_line_user_id(
+        &self,
+        line_user_id: &str,
+    ) -> Result<Option<LiffLinkedAccount>, LiffLinkedAccountStoreError> {
+        Ok(self
+            .account
+            .clone()
+            .filter(|account| account.line_user_id == line_user_id))
     }
 }
 
@@ -1525,6 +1644,42 @@ async fn post_login_with_headers(
     let mut builder = Request::builder()
         .method("POST")
         .uri("/api/auth/login")
+        .header("content-type", "application/json");
+    for (name, value) in headers {
+        builder = builder.header(*name, *value);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request builds"),
+        )
+        .await
+        .expect("request handled");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body = serde_json::from_slice(&bytes).expect("json response body");
+
+    LoginTestResponse { status, body }
+}
+
+async fn post_liff_session(app: axum::Router, body: Value) -> LoginTestResponse {
+    post_liff_session_with_headers(app, body, &[]).await
+}
+
+async fn post_liff_session_with_headers(
+    app: axum::Router,
+    body: Value,
+    headers: &[(&str, &str)],
+) -> LoginTestResponse {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri("/v1/auth/liff/session")
         .header("content-type", "application/json");
     for (name, value) in headers {
         builder = builder.header(*name, *value);
