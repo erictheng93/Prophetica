@@ -52,7 +52,8 @@ the full Docker dependency stack.
   show approximate location language and `未知` fallback instead of blank
   fields. Use `tools/scripts/record-spec-022-liff-evidence.mjs` and
   `tools/scripts/record-spec-022-manual-qa-evidence.mjs` to produce the two
-  required `docs/evidence/spec-022-*/latest.json` files; follow
+  required `docs/evidence/spec-022-*/latest.json` files, then run
+  `tools/scripts/preflight-spec-022-evidence.mjs` before finalizing; follow
   `docs/evidence/spec-022/README.md` for the exact markers and completion
   process.
 
