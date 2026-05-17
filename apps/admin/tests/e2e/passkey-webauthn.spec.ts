@@ -383,9 +383,10 @@ async function assertPasskeyInBrowser(page: Page): Promise<Record<string, unknow
 }
 
 function startCoreApi(): ChildProcess {
-  const environment = {
+  const environment: NodeJS.ProcessEnv = {
     CARGO_HOME: process.env.CARGO_HOME,
     HOME: process.env.HOME,
+    NODE_ENV: process.env.NODE_ENV ?? "test",
     PATH: process.env.PATH,
     RUSTUP_HOME: process.env.RUSTUP_HOME,
     TMPDIR: process.env.TMPDIR,
@@ -423,9 +424,13 @@ function startCoreApi(): ChildProcess {
       ]),
     },
     stdio: "pipe",
-  });
-  core.stdout?.on("data", (chunk) => process.stdout.write(`[core-api] ${chunk}`));
-  core.stderr?.on("data", (chunk) => process.stderr.write(`[core-api] ${chunk}`));
+  }) as ChildProcess;
+  core.stdout?.on("data", (chunk: Buffer) =>
+    process.stdout.write(`[core-api] ${chunk}`),
+  );
+  core.stderr?.on("data", (chunk: Buffer) =>
+    process.stderr.write(`[core-api] ${chunk}`),
+  );
   return core;
 }
 
