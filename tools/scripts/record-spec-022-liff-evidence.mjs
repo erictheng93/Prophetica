@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
 const [, , liffLogArg] = process.argv;
@@ -15,6 +15,10 @@ if (!liffLogArg) {
 const repoRoot = resolve(import.meta.dirname, "../..");
 const evidenceDir = resolve(repoRoot, "docs/evidence/spec-022-liff");
 const logPath = resolve(process.cwd(), liffLogArg);
+if (!existsSync(logPath)) {
+  console.error(`SPEC-022 LIFF evidence log not found: ${logPath}`);
+  process.exit(2);
+}
 const log = readFileSync(logPath);
 const logText = log.toString("utf8");
 rejectSensitiveEvidence(logText);

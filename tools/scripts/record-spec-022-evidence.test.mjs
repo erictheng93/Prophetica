@@ -83,6 +83,21 @@ test("rejects SPEC-022 LIFF evidence logs containing token material", async () =
   await cleanEvidence();
 });
 
+test("reports missing SPEC-022 LIFF evidence log without a stack trace", async () => {
+  await cleanEvidence();
+  const missingLog = path.join(os.tmpdir(), "prophetica-spec-022-missing-liff.log");
+
+  const failed = spawnSync(process.execPath, [liffScript, missingLog], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  assert.equal(failed.status, 2);
+  assert.match(failed.stderr, /SPEC-022 LIFF evidence log not found:/);
+  assert.doesNotMatch(failed.stderr, /Error: ENOENT/);
+
+  await cleanEvidence();
+});
+
 test("records SPEC-022 manual QA evidence only when all markers are present", async () => {
   await cleanEvidence();
   const root = await mkdtemp(path.join(os.tmpdir(), "prophetica-spec-022-qa-"));
@@ -148,6 +163,21 @@ test("rejects SPEC-022 manual QA logs containing credentials", async () => {
   });
   assert.equal(failed.status, 1);
   assert.match(failed.stderr, /appears to contain a token/);
+
+  await cleanEvidence();
+});
+
+test("reports missing SPEC-022 manual QA evidence log without a stack trace", async () => {
+  await cleanEvidence();
+  const missingLog = path.join(os.tmpdir(), "prophetica-spec-022-missing-manual-qa.log");
+
+  const failed = spawnSync(process.execPath, [manualQaScript, missingLog], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  assert.equal(failed.status, 2);
+  assert.match(failed.stderr, /SPEC-022 manual QA evidence log not found:/);
+  assert.doesNotMatch(failed.stderr, /Error: ENOENT/);
 
   await cleanEvidence();
 });
