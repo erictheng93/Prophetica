@@ -275,6 +275,8 @@ struct WebauthnAssertionFinishRequest {
     challenge_id: String,
     #[serde(default)]
     assertion_data: Value,
+    #[serde(default)]
+    login_surface: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1587,7 +1589,7 @@ async fn webauthn_assert_finish(
         SuccessfulLoginInput {
             headers: &headers,
             remote_addr,
-            login_surface: "user_web",
+            login_surface: &normalize_login_surface(request.login_surface.as_deref()),
             account,
             remember: false,
             mfa_at_epoch_seconds: Some(unix_now_seconds()),

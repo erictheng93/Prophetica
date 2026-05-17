@@ -31,6 +31,7 @@ test("admin passkey proxy forwards WebAuthn ceremonies to user-service with bear
   assert.match(route, /"revoke"/);
   assert.match(route, /\/v1\/auth\/webauthn\/credentials\/revoke/);
   assert.match(route, /authorization: `Bearer \$\{upstreamSessionToken\}`/);
+  assert.match(route, /login_surface: "admin_console"/);
   assert.match(route, /setUpstreamSessionCookie\(response\.session_token\)/);
   assert.match(route, /amr: \["pwd", "hwk"\]/);
 });

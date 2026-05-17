@@ -1,0 +1,32 @@
+groups:
+  - name: login-events
+    rules:
+      - alert: LoginEventWriteFailuresP1
+        expr: increase(login_events_write_failed_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: P1
+          service: user-service
+        annotations:
+          summary: Login event writes are failing
+          description: "user-service failed to persist one or more login events; check outbox enqueue and database health."
+
+      - alert: LoginEventOutboxBacklogP2
+        expr: increase(login_events_outbox_enqueued_total[15m]) > 0
+        for: 15m
+        labels:
+          severity: P2
+          service: user-service
+        annotations:
+          summary: Login event outbox fallback is active
+          description: "Login events are being enqueued through the fallback outbox path and need replay."
+
+      - alert: LoginGeoLookupFailuresP3
+        expr: increase(login_geo_lookup_failed_total[15m]) > 10
+        for: 5m
+        labels:
+          severity: P3
+          service: user-service
+        annotations:
+          summary: Login geolocation lookups are failing
+          description: "Geolocation provider failures or timeouts are above the MVP threshold; login remains fail-open with unknown location."

@@ -63,7 +63,11 @@ export async function POST(request: Request, context: PasskeyRouteContext) {
   let body: string | undefined;
   if (passkeyAction.mode === "finish") {
     try {
-      body = JSON.stringify(await request.json());
+      const payload = (await request.json()) as Record<string, unknown>;
+      body = JSON.stringify({
+        ...payload,
+        ...(action === "assert-finish" ? { login_surface: "admin_console" } : {}),
+      });
     } catch {
       return NextResponse.json({ error: "invalid_json" }, { status: 400 });
     }
