@@ -1,0 +1,8 @@
+# Copy this file to .tmp/spec-022-liff.log after the real checks are done.
+# Flip each marker to true only after verifying it in the target environment.
+# Do not paste LINE secrets, raw ID tokens, access tokens, session cookies, or PII here.
+line_channel_configured=false
+ios_liff_login_success_event=false
+android_liff_login_success_event=false
+login_surface_liff_confirmed=false
+user_members_line_id_link_confirmed=false

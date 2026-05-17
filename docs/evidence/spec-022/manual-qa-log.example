@@ -1,0 +1,8 @@
+# Copy this file to .tmp/spec-022-manual-qa.log after the real checks are done.
+# Flip each marker to true only after verifying it in the target environment.
+# Do not paste credentials, cookies, OTPs, raw IP addresses, or PII here.
+desktop_web_recent_login_approximate_location=false
+mobile_web_recent_login_approximate_location=false
+admin_login_events_rbac_and_audit_checked=false
+liff_webview_login_event_visible=false
+unknown_fallback_visible=false

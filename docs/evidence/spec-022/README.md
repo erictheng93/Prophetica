@@ -20,8 +20,8 @@ The recorders fail closed if they see common token / credential markers.
 
 ## LIFF Identity Bridge Evidence
 
-Create a text log, for example `.tmp/spec-022-liff.log`, with these markers only
-after the real checks have been performed:
+Copy `docs/evidence/spec-022/liff-log.example` to `.tmp/spec-022-liff.log`.
+Flip these markers to `true` only after the real checks have been performed:
 
 ```text
 line_channel_configured=true
@@ -51,8 +51,9 @@ This writes `docs/evidence/spec-022-liff/latest.json`.
 
 ## Manual QA Evidence
 
-Create a text log, for example `.tmp/spec-022-manual-qa.log`, with these markers
-only after the real checks have been performed:
+Copy `docs/evidence/spec-022/manual-qa-log.example` to
+`.tmp/spec-022-manual-qa.log`. Flip these markers to `true` only after the real
+checks have been performed:
 
 ```text
 desktop_web_recent_login_approximate_location=true
