@@ -49,7 +49,9 @@ the full Docker dependency stack.
 - Run and record manual QA for desktop web, mobile web, and LIFF/WebView login
   surfaces after the LIFF session path exists, confirming admin and user UIs
   show approximate location language and `未知` fallback instead of blank
-  fields.
+  fields. Use `tools/scripts/record-spec-022-liff-evidence.mjs` and
+  `tools/scripts/record-spec-022-manual-qa-evidence.mjs` to produce the two
+  required `docs/evidence/spec-022-*/latest.json` files.
 
 ## Public Beta Launch Gate Blockers
 
