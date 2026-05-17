@@ -1,6 +1,7 @@
-import { getAdminOperationsSnapshot, type OpsDomainId } from "@/lib/ops-facade";
 import { adminCopy } from "@/lib/admin-copy";
+import { getAdminOperationsLiveSnapshot, type OpsDomainId } from "@/lib/ops-facade";
 import { capabilityFor, type Role } from "@/lib/rbac";
+import { getViewer } from "@/lib/session";
 import { QueueSummary } from "./queue-summary";
 import { StatusPill } from "./status-pill";
 import { WorkQueue } from "./work-queue";
@@ -16,8 +17,13 @@ const capabilityCopy: Record<NonNullable<ReturnType<typeof capabilityFor>>, stri
   view: "你的角色為唯讀。如需動作，請通知 admin 或提交工單。",
 };
 
-export function DomainScope({ domain, role }: DomainScopeProps) {
-  const snapshot = getAdminOperationsSnapshot();
+export async function DomainScope({ domain, role }: DomainScopeProps) {
+  const viewer = await getViewer();
+  if (!viewer) {
+    return null;
+  }
+
+  const snapshot = await getAdminOperationsLiveSnapshot(viewer);
   const route = snapshot.routes.find((item) => item.domain === domain);
   const items = snapshot.queue.filter((item) => item.domain === domain);
   const capability = capabilityFor(role, domain);
@@ -45,7 +51,7 @@ export function DomainScope({ domain, role }: DomainScopeProps) {
       </section>
 
       <QueueSummary summaries={snapshot.summaries} />
-      <WorkQueue items={items.length > 0 ? items : snapshot.queue.slice(0, 2)} routes={snapshot.routes} />
+      <WorkQueue items={items} routes={snapshot.routes} />
     </div>
   );
 }

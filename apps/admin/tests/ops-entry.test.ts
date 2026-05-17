@@ -5,7 +5,8 @@ import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 
 const parsedPort = Number.parseInt(process.env.ADMIN_PORT ?? "3002", 10);
-const adminPort = Number.isNaN(parsedPort) || parsedPort <= 0 ? 3002 : parsedPort;
+const adminPort =
+  Number.isNaN(parsedPort) || parsedPort <= 0 ? 3002 : parsedPort;
 
 const readAdminFile = (path: string) =>
   readFileSync(join(process.cwd(), path), "utf8");
@@ -19,6 +20,18 @@ const operationalDomains = [
   "manual-approvals",
 ] as const;
 
+interface CrossDomainStreamEventForTest {
+  correlationId: string;
+  sourceDomain: (typeof operationalDomains)[number];
+  targetDomains: (typeof operationalDomains)[number][];
+  acknowledgement: {
+    status: "confirmed";
+    receiptId: string;
+    returnedFrom: (typeof operationalDomains)[number];
+    returnPath: string;
+  };
+}
+
 test("admin operations entry page exposes all six operational domains", () => {
   const source = readAdminFile("app/page.tsx");
 
@@ -27,11 +40,169 @@ test("admin operations entry page exposes all six operational domains", () => {
   }
 });
 
-test("admin operations entry page reads from the server-side ops facade", () => {
+test("admin operations entry page reads live queue data from the server-side ops facade", () => {
   const source = readAdminFile("app/page.tsx");
 
   assert.match(source, /@\/lib\/ops-facade/);
-  assert.match(source, /\bgetAdminOperationsSnapshot\b/);
+  assert.match(source, /\bgetAdminOperationsLiveSnapshot\b/);
+  assert.doesNotMatch(source, /\bgetAdminOperationsSnapshot\b/);
+});
+
+test("admin queue surfaces do not render the mock operations snapshot", () => {
+  const shellSource = readAdminFile("components/admin-shell.tsx");
+  const domainScopeSource = readAdminFile("components/domain-scope.tsx");
+
+  assert.match(shellSource, /\bgetAdminOperationsRoutes\b/);
+  assert.doesNotMatch(shellSource, /\bgetAdminOperationsSnapshot\b/);
+  assert.match(domainScopeSource, /\bgetAdminOperationsLiveSnapshot\b/);
+  assert.doesNotMatch(domainScopeSource, /\bgetAdminOperationsSnapshot\b/);
+  assert.doesNotMatch(domainScopeSource, /snapshot\.queue\.slice/);
+});
+
+test("admin operations snapshot exposes confirmed cross-domain stream handoffs", async () => {
+  const { getAdminOperationsSnapshot } =
+    (await import("../lib/ops-facade.js")) as typeof import("../lib/ops-facade.js");
+  const snapshot = getAdminOperationsSnapshot() as ReturnType<
+    typeof getAdminOperationsSnapshot
+  > & {
+    crossDomainStream?: CrossDomainStreamEventForTest[];
+  };
+  const validDomains = new Set(operationalDomains);
+
+  assert.ok(Array.isArray(snapshot.crossDomainStream));
+  assert.ok(snapshot.crossDomainStream.length >= 3);
+  assert.ok(
+    snapshot.crossDomainStream.some((event) => event.targetDomains.length > 1),
+    "at least one event should fan out to multiple operational domains",
+  );
+
+  const linkedDomains = new Set<string>();
+  for (const event of snapshot.crossDomainStream) {
+    assert.match(event.correlationId, /^corr-/);
+    assert.ok(validDomains.has(event.sourceDomain), event.sourceDomain);
+    linkedDomains.add(event.sourceDomain);
+
+    for (const target of event.targetDomains) {
+      assert.ok(validDomains.has(target), target);
+      linkedDomains.add(target);
+    }
+
+    assert.equal(event.acknowledgement.status, "confirmed");
+    assert.ok(
+      event.acknowledgement.receiptId.startsWith("ack-"),
+      event.acknowledgement.receiptId,
+    );
+    assert.ok(
+      event.acknowledgement.returnedFrom.length > 0,
+      event.acknowledgement.returnedFrom,
+    );
+    assert.ok(
+      validDomains.has(event.acknowledgement.returnedFrom),
+      event.acknowledgement.returnedFrom,
+    );
+    assert.match(event.acknowledgement.returnPath, / -> /);
+  }
+
+  assert.deepEqual([...linkedDomains].sort(), [...validDomains].sort());
+});
+
+test("admin operations snapshot derives every domain open item count from queue data", async () => {
+  const { getAdminOperationsSnapshot } =
+    (await import("../lib/ops-facade.js")) as typeof import("../lib/ops-facade.js");
+  const snapshot = getAdminOperationsSnapshot();
+  const expectedOpenItems = Object.fromEntries(
+    operationalDomains.map((domain) => [domain, 0]),
+  ) as Record<(typeof operationalDomains)[number], number>;
+
+  for (const item of snapshot.queue) {
+    expectedOpenItems[item.domain] += 1;
+  }
+
+  for (const route of snapshot.routes) {
+    assert.equal(
+      route.openItems,
+      expectedOpenItems[route.domain],
+      route.domain,
+    );
+  }
+
+  const totalSummary = snapshot.summaries.find(
+    (summary) => summary.label === "未結項目",
+  );
+  assert.equal(totalSummary?.value, String(snapshot.queue.length));
+  assert.equal(
+    snapshot.routes.find((route) => route.domain === "member-management")
+      ?.openItems,
+    0,
+  );
+});
+
+test("admin operations live snapshot includes all member pending cases in domain counts", async () => {
+  const previousApiGatewayUrl = process.env.API_GATEWAY_URL;
+  const previousMemberFallback =
+    process.env.MEMBER_MANAGEMENT_ALLOW_MOCK_FALLBACK;
+  const { getAdminOperationsLiveSnapshot } =
+    (await import("../lib/ops-facade.js")) as typeof import("../lib/ops-facade.js");
+
+  delete process.env.API_GATEWAY_URL;
+  process.env.MEMBER_MANAGEMENT_ALLOW_MOCK_FALLBACK = "true";
+
+  try {
+    const snapshot = await getAdminOperationsLiveSnapshot({
+      sub: "U-MGR-001",
+      role: "manager",
+      iat: 1,
+      exp: 2,
+    });
+    const queueIds = snapshot.queue.map((item) => item.id);
+
+    assert.ok(queueIds.includes("case-MEM-1042"));
+    assert.ok(queueIds.includes("case-user_123"));
+    assert.equal(
+      snapshot.routes.find((route) => route.domain === "kyc-risk-events")
+        ?.openItems,
+      2,
+    );
+    assert.equal(
+      snapshot.routes.find((route) => route.domain === "member-management")
+        ?.openItems,
+      0,
+    );
+  } finally {
+    if (previousApiGatewayUrl === undefined) {
+      delete process.env.API_GATEWAY_URL;
+    } else {
+      process.env.API_GATEWAY_URL = previousApiGatewayUrl;
+    }
+    if (previousMemberFallback === undefined) {
+      delete process.env.MEMBER_MANAGEMENT_ALLOW_MOCK_FALLBACK;
+    } else {
+      process.env.MEMBER_MANAGEMENT_ALLOW_MOCK_FALLBACK =
+        previousMemberFallback;
+    }
+  }
+});
+
+test("overview marks cross-domain stream linkage as complete", () => {
+  const pageSource = readAdminFile("app/page.tsx");
+  const progressSource = readAdminFile(
+    "components/implementation-progress.tsx",
+  );
+
+  assert.match(pageSource, /crossDomainStream=\{snapshot\.crossDomainStream\}/);
+  assert.match(progressSource, /完成跨域串流/);
+  assert.doesNotMatch(progressSource, /待補充跨域串流/);
+});
+
+test("overview marks notification reminder chain as complete", () => {
+  const progressSource = readAdminFile(
+    "components/implementation-progress.tsx",
+  );
+
+  assert.match(progressSource, /完成通知鏈路/);
+  assert.match(progressSource, /notification-service API/);
+  assert.match(progressSource, /Postgres outbox/);
+  assert.doesNotMatch(progressSource, /待補充通知鏈路/);
 });
 
 test("members page exposes complete member management operations", () => {

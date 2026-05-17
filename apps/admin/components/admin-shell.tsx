@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { adminCopy } from "@/lib/admin-copy";
-import { getAdminOperationsSnapshot } from "@/lib/ops-facade";
+import { getAdminOperationsRoutes } from "@/lib/ops-facade";
 import { canAccess, filterRoutes, type Role } from "@/lib/rbac";
 import { AdminNavDrawer } from "./admin-nav-drawer";
 import { AdminSidebar } from "./admin-nav";
@@ -39,7 +39,7 @@ export function AdminShell({
   description,
   role,
 }: AdminShellProps) {
-  const { routes } = getAdminOperationsSnapshot();
+  const routes = getAdminOperationsRoutes();
   const visibleRoutes = filterRoutes(routes, role);
   const baseLinks: { key: string; href: string; label: string }[] = [];
   if (canAccess("/", role)) {
