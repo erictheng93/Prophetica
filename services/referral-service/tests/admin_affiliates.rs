@@ -1,5 +1,7 @@
 #![allow(clippy::expect_used)]
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use axum::{
     body::Body,
@@ -19,8 +21,8 @@ use tower::ServiceExt;
 async fn capture_referral_is_first_touch_and_idempotent() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
@@ -67,8 +69,8 @@ async fn capture_referral_is_first_touch_and_idempotent() {
 async fn capture_referral_rejects_self_referral() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
@@ -96,8 +98,8 @@ async fn capture_referral_rejects_self_referral() {
 async fn qualification_evaluator_qualifies_matured_clean_referral() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
@@ -153,35 +155,12 @@ async fn qualification_evaluator_qualifies_matured_clean_referral() {
 async fn signup_bonus_finalization_records_ledger_txn_idempotently() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
-    let captured = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/internal/referrals/capture",
-            &json!({
-                "referral_code": "AFF-100",
-                "referred_user_id": "user_new_1",
-                "referred_at_day": 20_000
-            }),
-        ))
-        .await
-        .expect("capture should be handled");
-    assert_eq!(captured.status(), StatusCode::CREATED);
-    let evaluated = app
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/internal/referrals/qualification-evaluate",
-            &qualification_event_json(),
-        ))
-        .await
-        .expect("evaluation should be handled");
-    assert_eq!(response_json(evaluated).await["status"], "qualified");
+    capture_qualified_referral(&app).await;
 
     let draft = app
         .clone()
@@ -263,8 +242,8 @@ async fn signup_bonus_finalization_records_ledger_txn_idempotently() {
 async fn qualification_due_lists_only_matured_pending_referrals() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
@@ -308,8 +287,8 @@ async fn qualification_due_lists_only_matured_pending_referrals() {
 async fn daily_worker_evaluates_due_referrals_and_finalizes_signup_bonus() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store.clone());
 
@@ -342,8 +321,8 @@ async fn daily_worker_evaluates_due_referrals_and_finalizes_signup_bonus() {
 async fn qualification_evaluator_sends_signup_cap_overflow_to_edd_review() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
@@ -419,8 +398,8 @@ async fn qualification_evaluator_sends_signup_cap_overflow_to_edd_review() {
 async fn commission_accrual_requires_qualified_referral_and_is_idempotent_by_trade() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
@@ -491,31 +470,12 @@ async fn commission_accrual_requires_qualified_referral_and_is_idempotent_by_tra
 async fn daily_worker_posts_commission_payout_and_marks_accruals_paid() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store.clone());
 
-    app.clone()
-        .oneshot(json_request(
-            "POST",
-            "/internal/referrals/capture",
-            &json!({
-                "referral_code": "AFF-100",
-                "referred_user_id": "user_new_1",
-                "referred_at_day": 20_000
-            }),
-        ))
-        .await
-        .expect("capture should be handled");
-    app.clone()
-        .oneshot(json_request(
-            "POST",
-            "/internal/referrals/qualification-evaluate",
-            &qualification_event_json(),
-        ))
-        .await
-        .expect("evaluation should be handled");
+    capture_qualified_referral(&app).await;
     for trade_id in ["trade_1", "trade_2"] {
         app.clone()
             .oneshot(json_request(
@@ -545,31 +505,12 @@ async fn daily_worker_posts_commission_payout_and_marks_accruals_paid() {
 async fn commission_payout_marks_unpaid_accruals_and_is_idempotent_by_ledger_txn() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
-    app.clone()
-        .oneshot(json_request(
-            "POST",
-            "/internal/referrals/capture",
-            &json!({
-                "referral_code": "AFF-100",
-                "referred_user_id": "user_new_1",
-                "referred_at_day": 20_000
-            }),
-        ))
-        .await
-        .expect("capture should be handled");
-    app.clone()
-        .oneshot(json_request(
-            "POST",
-            "/internal/referrals/qualification-evaluate",
-            &qualification_event_json(),
-        ))
-        .await
-        .expect("evaluation should be handled");
+    capture_qualified_referral(&app).await;
     for trade_id in ["trade_1", "trade_2"] {
         app.clone()
             .oneshot(json_request(
@@ -665,8 +606,8 @@ async fn commission_payout_marks_unpaid_accruals_and_is_idempotent_by_ledger_txn
 async fn commission_accrual_rejects_referrer_monthly_cap_overflow() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
@@ -733,8 +674,8 @@ async fn commission_accrual_rejects_group_monthly_cap_overflow() {
             ("user_aff_200".to_owned(), "AFF-200".to_owned()),
         ]
         .into(),
-        Default::default(),
-        Default::default(),
+        HashMap::default(),
+        HashMap::default(),
     );
     let app = router(store);
 
@@ -957,6 +898,34 @@ async fn response_json(response: axum::response::Response) -> Value {
         .await
         .expect("response body should collect");
     serde_json::from_slice(&collected.to_bytes()).expect("response should be json")
+}
+
+async fn capture_qualified_referral(app: &axum::Router) {
+    let captured = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/internal/referrals/capture",
+            &json!({
+                "referral_code": "AFF-100",
+                "referred_user_id": "user_new_1",
+                "referred_at_day": 20_000
+            }),
+        ))
+        .await
+        .expect("capture should be handled");
+    assert_eq!(captured.status(), StatusCode::CREATED);
+
+    let evaluated = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/internal/referrals/qualification-evaluate",
+            &qualification_event_json(),
+        ))
+        .await
+        .expect("evaluation should be handled");
+    assert_eq!(response_json(evaluated).await["status"], "qualified");
 }
 
 fn qualification_event_json() -> Value {

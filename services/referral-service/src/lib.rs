@@ -678,6 +678,11 @@ struct LedgerPostResponse {
 }
 
 impl HttpReferralLedgerPoster {
+    /// Builds an HTTP ledger poster for the wallet-ledger service.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReferralStoreError`] when `base_url` is not a valid URL.
     pub fn new(base_url: &str) -> Result<Self, ReferralStoreError> {
         let base_url = reqwest::Url::parse(base_url)
             .map_err(|error| ReferralStoreError::Invalid(error.to_string()))?;
@@ -782,6 +787,13 @@ where
     Q: QualificationInputProvider + Send + Sync,
     L: ReferralLedgerPoster + Send + Sync,
 {
+    /// Evaluates due referrals and posts signup bonuses for newly qualified members.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReferralStoreError`] when due referrals cannot be loaded, qualification inputs
+    /// cannot be produced, qualification persistence fails, or signup bonus ledger posting/finalize
+    /// operations fail.
     pub async fn run_qualification_batch(
         &self,
         observed_at_day: i64,
@@ -824,6 +836,12 @@ where
         })
     }
 
+    /// Posts a commission payout for one referrer and marks its accruals as paid.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReferralStoreError`] when the payout draft cannot be loaded, the ledger post
+    /// fails, or paid accrual persistence fails.
     pub async fn run_commission_payout(
         &self,
         referrer_id: &str,
@@ -853,6 +871,12 @@ where
         })
     }
 
+    /// Posts commission payouts for referrers currently due for payout.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ReferralStoreError`] when due referrers cannot be listed or any individual payout
+    /// fails.
     pub async fn run_due_commission_payouts(
         &self,
         paid_out_at_day: i64,
@@ -937,19 +961,19 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
     ) -> Result<(ReferralRecord, bool), ReferralStoreError> {
         let referral_code = normalize_required(&request.referral_code, "referralCode")?;
         let referred_id = normalize_required(&request.referred_user_id, "referredUserId")?;
-        let referrer_id = self
+        let affiliate_user_id = self
             .referral_codes_by_user
             .iter()
             .find_map(|(user_id, code)| (code == &referral_code).then(|| user_id.clone()))
             .ok_or(ReferralStoreError::NotFound)?;
         let referred_at_day = request.referred_at_day.unwrap_or_else(current_epoch_day);
         let record = ReferralRecord::pending(
-            referrer_id,
+            affiliate_user_id,
             referred_id.clone(),
             referral_code,
             referred_at_day,
         )
-        .map_err(referral_error)?;
+        .map_err(|error| referral_error(&error))?;
         let mut referrals = self.captured_referrals_by_referred.lock().await;
         if let Some(existing) = referrals.get(&referred_id) {
             return Ok((existing.clone(), false));
@@ -1386,6 +1410,75 @@ impl PostgresAffiliateStore {
     #[must_use]
     pub const fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    async fn ensure_trade_commission_caps(
+        &self,
+        accrual: &CommissionAccrual,
+        traded_at_day: i64,
+    ) -> Result<(), ReferralStoreError> {
+        let month_start_day = traded_at_day - (traded_at_day % DAYS_PER_CAP_MONTH);
+        let cap_row = sqlx::query(
+            r"
+            SELECT COALESCE(SUM(commission_amount), 0)::BIGINT AS current_month_total
+            FROM commission_accruals
+            WHERE referrer_id = $1
+              AND accrued_at >= to_timestamp($2 * 86400)
+              AND accrued_at < to_timestamp(($2 + $3) * 86400)
+            ",
+        )
+        .bind(&accrual.referrer_id)
+        .bind(month_start_day)
+        .bind(DAYS_PER_CAP_MONTH)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        let current_month_total: i64 =
+            cap_row.try_get("current_month_total").map_err(sqlx_error)?;
+        ensure_referrer_monthly_trade_cap(
+            current_month_total,
+            accrual.commission_amount_minor_units,
+        )?;
+        if let Some(group_id) = &accrual.referrer_group_id {
+            self.ensure_group_trade_commission_cap(
+                group_id,
+                month_start_day,
+                accrual.commission_amount_minor_units,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn ensure_group_trade_commission_cap(
+        &self,
+        group_id: &str,
+        month_start_day: i64,
+        next_commission_minor_units: i64,
+    ) -> Result<(), ReferralStoreError> {
+        let group_cap_row = sqlx::query(
+            r"
+            SELECT COALESCE(SUM(commission_amount), 0)::BIGINT AS current_month_total
+            FROM commission_accruals
+            WHERE referrer_group_id = $1
+              AND accrued_at >= to_timestamp($2 * 86400)
+              AND accrued_at < to_timestamp(($2 + $3) * 86400)
+            ",
+        )
+        .bind(group_id)
+        .bind(month_start_day)
+        .bind(DAYS_PER_CAP_MONTH)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        let current_group_month_total: i64 = group_cap_row
+            .try_get("current_month_total")
+            .map_err(sqlx_error)?;
+        ensure_monthly_trade_cap(
+            current_group_month_total,
+            next_commission_minor_units,
+            "group monthly trade commission cap requires EDD review",
+        )
     }
 }
 
@@ -2366,14 +2459,14 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .await
         .map_err(sqlx_error)?
         .ok_or(ReferralStoreError::NotFound)?;
-        let referrer_id: String = referrer_row.try_get("user_id").map_err(sqlx_error)?;
+        let affiliate_user_id: String = referrer_row.try_get("user_id").map_err(sqlx_error)?;
         let pending = ReferralRecord::pending(
-            referrer_id,
+            affiliate_user_id,
             referred_id.clone(),
             referral_code.clone(),
             referred_at_day,
         )
-        .map_err(referral_error)?;
+        .map_err(|error| referral_error(&error))?;
 
         let inserted = sqlx::query(
             r"
@@ -2686,53 +2779,8 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .ok_or(ReferralStoreError::NotFound)?;
         let record = referral_record_from_row(&row)?;
         let accrual = commission_accrual_from_event(&record, &event)?;
-        let month_start_day = event.traded_at_day - (event.traded_at_day % DAYS_PER_CAP_MONTH);
-        let cap_row = sqlx::query(
-            r"
-            SELECT COALESCE(SUM(commission_amount), 0)::BIGINT AS current_month_total
-            FROM commission_accruals
-            WHERE referrer_id = $1
-              AND accrued_at >= to_timestamp($2 * 86400)
-              AND accrued_at < to_timestamp(($2 + $3) * 86400)
-            ",
-        )
-        .bind(&accrual.referrer_id)
-        .bind(month_start_day)
-        .bind(DAYS_PER_CAP_MONTH)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(sqlx_error)?;
-        let current_month_total: i64 =
-            cap_row.try_get("current_month_total").map_err(sqlx_error)?;
-        ensure_referrer_monthly_trade_cap(
-            current_month_total,
-            accrual.commission_amount_minor_units,
-        )?;
-        if let Some(group_id) = &accrual.referrer_group_id {
-            let group_cap_row = sqlx::query(
-                r"
-                SELECT COALESCE(SUM(commission_amount), 0)::BIGINT AS current_month_total
-                FROM commission_accruals
-                WHERE referrer_group_id = $1
-                  AND accrued_at >= to_timestamp($2 * 86400)
-                  AND accrued_at < to_timestamp(($2 + $3) * 86400)
-                ",
-            )
-            .bind(group_id)
-            .bind(month_start_day)
-            .bind(DAYS_PER_CAP_MONTH)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(sqlx_error)?;
-            let current_group_month_total: i64 = group_cap_row
-                .try_get("current_month_total")
-                .map_err(sqlx_error)?;
-            ensure_monthly_trade_cap(
-                current_group_month_total,
-                accrual.commission_amount_minor_units,
-                "group monthly trade commission cap requires EDD review",
-            )?;
-        }
+        self.ensure_trade_commission_caps(&accrual, event.traded_at_day)
+            .await?;
         sqlx::query(
             r"
             INSERT INTO commission_accruals (
@@ -3430,7 +3478,7 @@ fn referral_status_from_str(status: &str) -> Result<ReferralStatus, ReferralStor
     }
 }
 
-fn referral_error(error: ReferralError) -> ReferralStoreError {
+fn referral_error(error: &ReferralError) -> ReferralStoreError {
     ReferralStoreError::Invalid(error.to_string())
 }
 
