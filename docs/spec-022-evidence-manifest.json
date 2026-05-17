@@ -1,6 +1,7 @@
 {
   "last_updated": "2026-05-18",
   "scope": "SPEC-022 Login Event Intelligence",
+  "completion_audit": "docs/spec-022-completion-audit.md",
   "status": "blocked",
   "blocking_items": [
     {

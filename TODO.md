@@ -43,6 +43,7 @@ the full Docker dependency stack.
   channel configured with `USER_SERVICE_LINE_LOGIN_CHANNEL_ID`, a member linked
   through `user_members.line_id`, and an iOS / Android LIFF login run showing
   the resulting `login_success` event. Track this in
+  `docs/spec-022-completion-audit.md` /
   `docs/spec-022-evidence-manifest.json` and keep
   `tools/scripts/check-spec-022-complete.mjs` failing until evidence is
   recorded.
