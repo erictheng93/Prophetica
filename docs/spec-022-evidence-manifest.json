@@ -45,9 +45,10 @@
         "apps/liff/app/api/auth/liff/session/route.ts",
         "services/user-service/src/auth.rs",
         "services/user-service/tests/auth.rs",
+        "services/user-service/tests/liff_linked_account_store.rs",
         "services/_binaries/core-api/src/main.rs"
       ],
-      "evidence": "rtk cargo test -p user-service --test auth liff_session_exchange --locked => 2 passed; rtk pnpm --filter @prophetica/liff lint => passed; rtk cargo check -p core-api --locked => passed."
+      "evidence": "rtk cargo test -p user-service --test auth liff_session_exchange --locked => 2 passed; USER_SERVICE_TEST_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica rtk cargo test -p user-service --test liff_linked_account_store --locked => 1 passed; rtk pnpm --filter @prophetica/liff lint => passed; rtk cargo check -p core-api --locked => passed."
     },
     {
       "id": "latency-budget-local-evidence",
