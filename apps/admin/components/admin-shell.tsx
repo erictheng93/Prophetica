@@ -63,6 +63,13 @@ export function AdminShell({
       label: adminCopy.shell.analytics,
     });
   }
+  if (canAccess("/security/login-events", role)) {
+    baseLinks.push({
+      key: "login-events",
+      href: "/security/login-events",
+      label: "登入事件",
+    });
+  }
   if (canAccess("/faq", role)) {
     baseLinks.push({ key: "faq", href: "/faq", label: adminCopy.shell.faq });
   }

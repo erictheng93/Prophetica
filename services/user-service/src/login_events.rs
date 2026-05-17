@@ -9,7 +9,7 @@ use axum::http::HeaderMap;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha1::Sha1;
+use sha2::Sha256;
 use sqlx::{PgPool, Row};
 use ulid::Ulid;
 
@@ -53,6 +53,27 @@ pub struct LoginEventInput {
 pub struct ClientIp {
     pub ip_address: IpAddr,
     pub ip_source: String,
+    pub trusted_proxy_header_used: bool,
+    pub spoofed_header_ignored: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LoginEventRetentionResult {
+    pub dry_run: bool,
+    pub cutoff_epoch_seconds: u64,
+    pub matched_events: usize,
+    pub deleted_events: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct TrustedProxyConfig {
+    cidrs: Vec<IpCidr>,
+}
+
+#[derive(Clone, Debug)]
+struct IpCidr {
+    network: IpAddr,
+    prefix_len: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -138,6 +159,12 @@ pub trait LoginEventStore: Send + Sync {
         &self,
         limit: usize,
     ) -> Result<Vec<LoginEventRecord>, LoginEventStoreError>;
+
+    async fn delete_older_than(
+        &self,
+        cutoff_epoch_seconds: u64,
+        dry_run: bool,
+    ) -> Result<LoginEventRetentionResult, LoginEventStoreError>;
 }
 
 #[derive(Clone, Default)]
@@ -158,6 +185,93 @@ impl InMemoryLoginEventStore {
             .map(|events| events.clone())
             .unwrap_or_default()
     }
+}
+
+impl Default for TrustedProxyConfig {
+    fn default() -> Self {
+        Self {
+            cidrs: ["127.0.0.1/32", "::1/128"]
+                .into_iter()
+                .filter_map(IpCidr::parse)
+                .collect(),
+        }
+    }
+}
+
+impl TrustedProxyConfig {
+    #[must_use]
+    pub fn from_csv(value: &str) -> Self {
+        let cidrs = value
+            .split(',')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .filter_map(IpCidr::parse)
+            .collect::<Vec<_>>();
+        Self { cidrs }
+    }
+
+    #[must_use]
+    pub fn is_trusted_remote(&self, remote_ip: Option<IpAddr>) -> bool {
+        let remote_ip = remote_ip.unwrap_or_else(|| IpAddr::from([127, 0, 0, 1]));
+        self.contains(remote_ip)
+    }
+
+    fn contains(&self, ip: IpAddr) -> bool {
+        self.cidrs.iter().any(|cidr| cidr.contains(ip))
+    }
+}
+
+impl IpCidr {
+    fn parse(value: &str) -> Option<Self> {
+        let (ip, prefix_len) = value
+            .split_once('/')
+            .map_or((value, None), |(ip, prefix)| (ip, Some(prefix)));
+        let network = ip.parse::<IpAddr>().ok()?;
+        let max_prefix = match network {
+            IpAddr::V4(_) => 32,
+            IpAddr::V6(_) => 128,
+        };
+        let prefix_len = prefix_len
+            .map(str::parse::<u8>)
+            .transpose()
+            .ok()?
+            .unwrap_or(max_prefix);
+        if prefix_len > max_prefix {
+            return None;
+        }
+        Some(Self {
+            network,
+            prefix_len,
+        })
+    }
+
+    fn contains(&self, ip: IpAddr) -> bool {
+        match (self.network, ip) {
+            (IpAddr::V4(network), IpAddr::V4(ip)) => {
+                prefix_matches_u32(u32::from(network), u32::from(ip), self.prefix_len)
+            }
+            (IpAddr::V6(network), IpAddr::V6(ip)) => {
+                prefix_matches_u128(u128::from(network), u128::from(ip), self.prefix_len)
+            }
+            _ => false,
+        }
+    }
+}
+
+fn prefix_matches_u32(network: u32, ip: u32, prefix_len: u8) -> bool {
+    if prefix_len == 0 {
+        return true;
+    }
+    let shift = 32_u8.saturating_sub(prefix_len);
+    (network >> shift) == (ip >> shift)
+}
+
+fn prefix_matches_u128(network: u128, ip: u128, prefix_len: u8) -> bool {
+    if prefix_len == 0 {
+        return true;
+    }
+    let shift = 128_u8.saturating_sub(prefix_len);
+    (network >> shift) == (ip >> shift)
 }
 
 impl PostgresLoginEventStore {
@@ -220,6 +334,30 @@ impl LoginEventStore for InMemoryLoginEventStore {
         });
         events.truncate(limit);
         Ok(events)
+    }
+
+    async fn delete_older_than(
+        &self,
+        cutoff_epoch_seconds: u64,
+        dry_run: bool,
+    ) -> Result<LoginEventRetentionResult, LoginEventStoreError> {
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|_| LoginEventStoreError::Unavailable)?;
+        let matched_events = events
+            .iter()
+            .filter(|event| event.occurred_at_epoch_seconds < cutoff_epoch_seconds)
+            .count();
+        if !dry_run {
+            events.retain(|event| event.occurred_at_epoch_seconds >= cutoff_epoch_seconds);
+        }
+        Ok(LoginEventRetentionResult {
+            dry_run,
+            cutoff_epoch_seconds,
+            matched_events,
+            deleted_events: if dry_run { 0 } else { matched_events },
+        })
     }
 }
 
@@ -350,6 +488,37 @@ impl LoginEventStore for PostgresLoginEventStore {
 
         rows.iter().map(row_to_record).collect()
     }
+
+    async fn delete_older_than(
+        &self,
+        cutoff_epoch_seconds: u64,
+        dry_run: bool,
+    ) -> Result<LoginEventRetentionResult, LoginEventStoreError> {
+        let cutoff = i64::try_from(cutoff_epoch_seconds).unwrap_or(i64::MAX);
+        let matched_events = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM login_events WHERE occurred_at < to_timestamp($1)",
+        )
+        .bind(cutoff)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|_| LoginEventStoreError::Unavailable)?;
+
+        if !dry_run {
+            sqlx::query("DELETE FROM login_events WHERE occurred_at < to_timestamp($1)")
+                .bind(cutoff)
+                .execute(&self.pool)
+                .await
+                .map_err(|_| LoginEventStoreError::Unavailable)?;
+        }
+
+        let matched_events = usize::try_from(matched_events).unwrap_or_default();
+        Ok(LoginEventRetentionResult {
+            dry_run,
+            cutoff_epoch_seconds,
+            matched_events,
+            deleted_events: if dry_run { 0 } else { matched_events },
+        })
+    }
 }
 
 impl LoginEventInput {
@@ -445,32 +614,57 @@ pub fn normalize_login_surface(value: Option<&str>) -> String {
 }
 
 #[must_use]
-pub fn client_ip_from_headers(headers: &HeaderMap) -> ClientIp {
+pub fn client_ip_from_request(
+    headers: &HeaderMap,
+    remote_ip: Option<IpAddr>,
+    trusted_proxies: &TrustedProxyConfig,
+) -> ClientIp {
+    let remote_ip = remote_ip.unwrap_or_else(|| IpAddr::from([127, 0, 0, 1]));
+    if !trusted_proxies.contains(remote_ip) {
+        return ClientIp {
+            ip_address: remote_ip,
+            ip_source: "remote_addr".to_owned(),
+            trusted_proxy_header_used: false,
+            spoofed_header_ignored: has_forwarded_ip_header(headers),
+        };
+    }
+
     header_ip(headers, "cf-connecting-ip")
         .map(|ip| ClientIp {
             ip_address: ip,
             ip_source: "cf_connecting_ip".to_owned(),
+            trusted_proxy_header_used: true,
+            spoofed_header_ignored: false,
         })
         .or_else(|| {
-            x_forwarded_for_ip(headers).map(|ip| ClientIp {
+            x_forwarded_for_ip(headers, trusted_proxies).map(|ip| ClientIp {
                 ip_address: ip,
                 ip_source: "x_forwarded_for".to_owned(),
+                trusted_proxy_header_used: true,
+                spoofed_header_ignored: false,
             })
         })
         .or_else(|| {
             header_ip(headers, "x-real-ip").map(|ip| ClientIp {
                 ip_address: ip,
                 ip_source: "x_real_ip".to_owned(),
+                trusted_proxy_header_used: true,
+                spoofed_header_ignored: false,
             })
         })
-        .unwrap_or_else(|| ClientIp {
-            ip_address: IpAddr::from([127, 0, 0, 1]),
+        .unwrap_or(ClientIp {
+            ip_address: remote_ip,
             ip_source: "remote_addr".to_owned(),
+            trusted_proxy_header_used: false,
+            spoofed_header_ignored: false,
         })
 }
 
 #[must_use]
-pub fn geo_from_headers(headers: &HeaderMap) -> GeoLookupResult {
+pub fn geo_from_headers(headers: &HeaderMap, proxy_headers_trusted: bool) -> GeoLookupResult {
+    if !proxy_headers_trusted {
+        return unknown_geo();
+    }
     let country = header_string(headers, "cf-ipcountry");
     if country.is_some() {
         return GeoLookupResult {
@@ -483,6 +677,11 @@ pub fn geo_from_headers(headers: &HeaderMap) -> GeoLookupResult {
             isp: None,
         };
     }
+    unknown_geo()
+}
+
+#[must_use]
+pub fn unknown_geo() -> GeoLookupResult {
     GeoLookupResult {
         country: None,
         region: None,
@@ -545,7 +744,7 @@ pub fn parse_user_agent(headers: &HeaderMap) -> ParsedUserAgent {
 #[must_use]
 pub fn identifier_hmac(identifier: &str, key: &[u8], key_version: &str) -> (String, String) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    let Ok(mut mac) = Hmac::<Sha1>::new_from_slice(key) else {
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(key) else {
         return (String::new(), key_version.to_owned());
     };
     mac.update(identifier.as_bytes());
@@ -735,11 +934,24 @@ fn header_ip(headers: &HeaderMap, name: &str) -> Option<IpAddr> {
     header_string(headers, name)?.parse().ok()
 }
 
-fn x_forwarded_for_ip(headers: &HeaderMap) -> Option<IpAddr> {
+fn has_forwarded_ip_header(headers: &HeaderMap) -> bool {
+    ["cf-connecting-ip", "x-forwarded-for", "x-real-ip"]
+        .into_iter()
+        .any(|name| header_string(headers, name).is_some())
+}
+
+fn x_forwarded_for_ip(headers: &HeaderMap, trusted_proxies: &TrustedProxyConfig) -> Option<IpAddr> {
     header_string(headers, "x-forwarded-for")?
         .split(',')
         .map(str::trim)
-        .find_map(|candidate| candidate.parse().ok())
+        .filter_map(|candidate| candidate.parse().ok())
+        .find(|ip| !trusted_proxies.contains(*ip))
+        .or_else(|| {
+            header_string(headers, "x-forwarded-for")?
+                .split(',')
+                .map(str::trim)
+                .find_map(|candidate| candidate.parse().ok())
+        })
 }
 
 fn header_string(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -756,4 +968,68 @@ fn unix_now_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use axum::http::{HeaderMap, HeaderValue};
+
+    use super::{TrustedProxyConfig, client_ip_from_request, geo_from_headers, identifier_hmac};
+
+    #[test]
+    fn resolver_ignores_spoofed_headers_from_untrusted_remote() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", HeaderValue::from_static("198.51.100.44"));
+        headers.insert("cf-connecting-ip", HeaderValue::from_static("203.0.113.44"));
+        headers.insert("cf-ipcountry", HeaderValue::from_static("TW"));
+        let trusted = TrustedProxyConfig::from_csv("10.0.0.0/8");
+
+        let client_ip = client_ip_from_request(
+            &headers,
+            Some(IpAddr::V4(Ipv4Addr::new(203, 0, 113, 10))),
+            &trusted,
+        );
+        let geo = geo_from_headers(&headers, client_ip.trusted_proxy_header_used);
+
+        assert_eq!(client_ip.ip_address.to_string(), "203.0.113.10");
+        assert_eq!(client_ip.ip_source, "remote_addr");
+        assert_eq!(geo.accuracy, "unknown");
+        assert!(geo.country.is_none());
+    }
+
+    #[test]
+    fn resolver_prefers_cloudflare_then_xff_then_x_real_ip_from_trusted_remote() {
+        let trusted = TrustedProxyConfig::from_csv("10.0.0.0/8, 127.0.0.1/32");
+        let remote_ip = Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 9)));
+        let mut cloudflare_headers = HeaderMap::new();
+        cloudflare_headers.insert("cf-connecting-ip", HeaderValue::from_static("203.0.113.45"));
+        let cloudflare = client_ip_from_request(&cloudflare_headers, remote_ip, &trusted);
+        assert_eq!(cloudflare.ip_address.to_string(), "203.0.113.45");
+        assert_eq!(cloudflare.ip_source, "cf_connecting_ip");
+
+        let mut xff_headers = HeaderMap::new();
+        xff_headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("198.51.100.22, 10.0.0.5"),
+        );
+        let xff = client_ip_from_request(&xff_headers, remote_ip, &trusted);
+        assert_eq!(xff.ip_address.to_string(), "198.51.100.22");
+        assert_eq!(xff.ip_source, "x_forwarded_for");
+
+        let mut real_ip_headers = HeaderMap::new();
+        real_ip_headers.insert("x-real-ip", HeaderValue::from_static("192.0.2.8"));
+        let real_ip = client_ip_from_request(&real_ip_headers, remote_ip, &trusted);
+        assert_eq!(real_ip.ip_address.to_string(), "192.0.2.8");
+        assert_eq!(real_ip.ip_source, "x_real_ip");
+    }
+
+    #[test]
+    fn identifier_hmac_uses_sha256_length_digest() {
+        let (hash, version) = identifier_hmac("member@example.com", b"secret", "v7");
+
+        assert_eq!(hash.len(), 64);
+        assert_eq!(version, "v7");
+    }
 }

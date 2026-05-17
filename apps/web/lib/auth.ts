@@ -38,6 +38,7 @@ export type PasswordAuthResult =
 export interface AuthenticateWithPasswordOptions {
   baseUrl?: string;
   fetcher?: Fetcher;
+  forwardedHeaders?: HeadersInit;
 }
 
 export interface SessionPayload {
@@ -115,13 +116,13 @@ export async function authenticateWithPassword(
   const fetcher = options.fetcher ?? fetch;
 
   try {
+    const headers = new Headers(options.forwardedHeaders);
+    headers.set("accept", "application/json");
+    headers.set("content-type", "application/json");
     const response = await fetcher(`${baseUrl}${LOGIN_PATH}`, {
       method: "POST",
       cache: "no-store",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         identifier: identifier.canonical,
         identifier_kind: identifier.kind,

@@ -3,8 +3,12 @@ use std::{
     env,
     fs::{self, OpenOptions},
     io::Write,
+    net::SocketAddr,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -12,7 +16,7 @@ use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use async_trait::async_trait;
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{ConnectInfo, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -27,8 +31,9 @@ use sqlx::{PgPool, Row};
 use crate::{
     login_events::{
         InMemoryLoginEventStore, LoginEventInput, LoginEventStore, LoginEventType,
-        client_ip_from_headers, geo_from_headers, identifier_hmac, normalize_login_surface,
-        parse_user_agent, principal_type_from_role, principal_type_from_surface, to_self_response,
+        TrustedProxyConfig, client_ip_from_request, geo_from_headers, identifier_hmac,
+        normalize_login_surface, parse_user_agent, principal_type_from_role,
+        principal_type_from_surface, to_self_response,
     },
     webauthn_runtime::{
         PasskeyAssertionFinish, WebauthnRuntimeConfig, finish_passkey_assertion,
@@ -56,6 +61,8 @@ pub struct AuthConfig {
     login_event_store: Option<Arc<dyn LoginEventStore>>,
     login_identifier_hmac_key: Arc<Vec<u8>>,
     login_identifier_hmac_key_version: String,
+    trusted_proxy_config: TrustedProxyConfig,
+    login_event_metrics: Arc<LoginEventMetrics>,
 }
 
 #[derive(Clone)]
@@ -166,8 +173,33 @@ struct LoginEventsQuery {
     limit: Option<usize>,
 }
 
+#[derive(Debug, Deserialize)]
+struct LoginEventsRetentionRequest {
+    older_than_epoch_seconds: u64,
+    #[serde(default = "default_retention_dry_run")]
+    dry_run: bool,
+}
+
+#[derive(Debug, Default)]
+struct LoginEventMetrics {
+    written: AtomicU64,
+    failed: AtomicU64,
+    spoofed_headers_ignored: AtomicU64,
+}
+
+#[derive(Debug, Serialize)]
+struct LoginEventMetricsSnapshot {
+    #[serde(rename = "login_events_written_total")]
+    events_written: u64,
+    #[serde(rename = "login_events_write_failed_total")]
+    events_write_failed: u64,
+    #[serde(rename = "login_ip_spoof_header_ignored_total")]
+    ip_spoof_header_ignored: u64,
+}
+
 struct SuccessfulLoginInput<'a> {
     headers: &'a HeaderMap,
+    remote_addr: Option<SocketAddr>,
     login_surface: &'a str,
     account: &'a LocalLoginAccount,
     remember: bool,
@@ -282,6 +314,14 @@ pub fn auth_router_with_config(config: AuthConfig) -> Router {
         .route("/v1/users/me/login-events", get(self_login_events))
         .route("/v1/internal/admin/login-events", get(admin_login_events))
         .route(
+            "/v1/internal/admin/login-events/retention",
+            post(admin_login_events_retention),
+        )
+        .route(
+            "/v1/internal/admin/login-events/metrics",
+            get(admin_login_events_metrics),
+        )
+        .route(
             "/v1/auth/webauthn/register/start",
             post(webauthn_register_start),
         )
@@ -319,6 +359,8 @@ impl AuthConfig {
             login_event_store: Some(Arc::new(InMemoryLoginEventStore::default())),
             login_identifier_hmac_key: Arc::new(b"prophetica-login-events-dev-key".to_vec()),
             login_identifier_hmac_key_version: "dev-v1".to_owned(),
+            trusted_proxy_config: TrustedProxyConfig::default(),
+            login_event_metrics: Arc::new(LoginEventMetrics::default()),
         }
     }
 
@@ -372,6 +414,12 @@ impl AuthConfig {
     }
 
     #[must_use]
+    pub fn with_trusted_proxy_cidrs(mut self, cidrs_csv: &str) -> Self {
+        self.trusted_proxy_config = TrustedProxyConfig::from_csv(cidrs_csv);
+        self
+    }
+
+    #[must_use]
     pub fn from_env() -> Self {
         let prophetica_env = env::var("PROPHETICA_ENV").unwrap_or_else(|_| "dev".to_owned());
 
@@ -413,6 +461,9 @@ impl AuthConfig {
             let version = env::var("USER_SERVICE_LOGIN_EVENT_IDENTIFIER_HMAC_KEY_VERSION")
                 .unwrap_or_else(|_| "env-v1".to_owned());
             config = config.with_login_identifier_hmac_key(key.into_bytes(), version);
+        }
+        if let Ok(cidrs) = env::var("USER_SERVICE_TRUSTED_PROXY_CIDRS") {
+            config = config.with_trusted_proxy_cidrs(&cidrs);
         }
         config
     }
@@ -777,9 +828,11 @@ impl LocalLoginAccount {
 
 async fn login(
     State(config): State<AuthConfig>,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     Json(request): Json<LoginRequest>,
 ) -> Response {
+    let remote_addr = connect_info.map(|ConnectInfo(addr)| addr);
     let login_surface = normalize_login_surface(request.login_surface.as_deref());
     if config.accounts.is_empty() && config.credential_store.is_none() {
         return (
@@ -793,6 +846,7 @@ async fn login(
         record_login_failure(
             &config,
             &headers,
+            remote_addr,
             &login_surface,
             None,
             "invalid_identifier",
@@ -806,6 +860,7 @@ async fn login(
         record_login_failure(
             &config,
             &headers,
+            remote_addr,
             &login_surface,
             Some(&identifier),
             "invalid_identifier",
@@ -819,6 +874,7 @@ async fn login(
         record_login_failure(
             &config,
             &headers,
+            remote_addr,
             &login_surface,
             Some(&identifier),
             "invalid_credentials",
@@ -843,13 +899,21 @@ async fn login(
     };
 
     if let Some(account) = account {
-        return authenticated_password_login(&config, &headers, &login_surface, account, &request)
-            .await;
+        return authenticated_password_login(
+            &config,
+            &headers,
+            remote_addr,
+            &login_surface,
+            account,
+            &request,
+        )
+        .await;
     }
 
     record_login_failure(
         &config,
         &headers,
+        remote_addr,
         &login_surface,
         Some(&identifier),
         "invalid_credentials",
@@ -862,6 +926,7 @@ async fn login(
 async fn authenticated_password_login(
     config: &AuthConfig,
     headers: &HeaderMap,
+    remote_addr: Option<SocketAddr>,
     login_surface: &str,
     account: &LocalLoginAccount,
     request: &LoginRequest,
@@ -876,6 +941,7 @@ async fn authenticated_password_login(
             record_login_failure_for_account(
                 config,
                 headers,
+                remote_addr,
                 login_surface,
                 account,
                 "mfa_required",
@@ -899,6 +965,7 @@ async fn authenticated_password_login(
         config,
         SuccessfulLoginInput {
             headers,
+            remote_addr,
             login_surface,
             account,
             remember: request.remember,
@@ -979,6 +1046,52 @@ async fn admin_login_events(
     }
 }
 
+async fn admin_login_events_retention(
+    State(config): State<AuthConfig>,
+    headers: HeaderMap,
+    Json(request): Json<LoginEventsRetentionRequest>,
+) -> Response {
+    if !admin_can_query_login_events(&config, &headers).await {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENT_ACCESS_DENIED" })),
+        )
+            .into_response();
+    }
+    let Some(store) = config.login_event_store.as_ref() else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENTS_UNAVAILABLE" })),
+        )
+            .into_response();
+    };
+    match store
+        .delete_older_than(request.older_than_epoch_seconds, request.dry_run)
+        .await
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(_) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENTS_UNAVAILABLE" })),
+        )
+            .into_response(),
+    }
+}
+
+async fn admin_login_events_metrics(
+    State(config): State<AuthConfig>,
+    headers: HeaderMap,
+) -> Response {
+    if !admin_can_query_login_events(&config, &headers).await {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENT_ACCESS_DENIED" })),
+        )
+            .into_response();
+    }
+    Json(config.login_event_metrics.snapshot()).into_response()
+}
+
 async fn me(State(config): State<AuthConfig>, headers: HeaderMap) -> Response {
     let Some(token) = bearer_token(&headers) else {
         return invalid_credentials();
@@ -1014,6 +1127,36 @@ async fn me(State(config): State<AuthConfig>, headers: HeaderMap) -> Response {
         expires_at_epoch_seconds: session.expires_at_epoch_seconds,
     })
     .into_response()
+}
+
+async fn admin_can_query_login_events(config: &AuthConfig, headers: &HeaderMap) -> bool {
+    let Some(token) = bearer_token(headers) else {
+        return false;
+    };
+    let Some(session) = parse_session_token(config, token) else {
+        return false;
+    };
+    if session.expires_at_epoch_seconds <= unix_now_seconds() {
+        return false;
+    }
+    config
+        .role_for_user_id(&session.user_id)
+        .await
+        .is_some_and(|role| matches!(role.as_str(), "admin" | "manager"))
+}
+
+fn default_retention_dry_run() -> bool {
+    true
+}
+
+impl LoginEventMetrics {
+    fn snapshot(&self) -> LoginEventMetricsSnapshot {
+        LoginEventMetricsSnapshot {
+            events_written: self.written.load(Ordering::Relaxed),
+            events_write_failed: self.failed.load(Ordering::Relaxed),
+            ip_spoof_header_ignored: self.spoofed_headers_ignored.load(Ordering::Relaxed),
+        }
+    }
 }
 
 async fn logout() -> Response {
@@ -1249,9 +1392,11 @@ async fn webauthn_assert_start(State(config): State<AuthConfig>, headers: Header
 
 async fn webauthn_assert_finish(
     State(config): State<AuthConfig>,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
     Json(request): Json<WebauthnAssertionFinishRequest>,
 ) -> Response {
+    let remote_addr = connect_info.map(|ConnectInfo(addr)| addr);
     let Some(token) = bearer_token(&headers) else {
         return invalid_credentials();
     };
@@ -1330,6 +1475,7 @@ async fn webauthn_assert_finish(
         &config,
         SuccessfulLoginInput {
             headers: &headers,
+            remote_addr,
             login_surface: "user_web",
             account,
             remember: false,
@@ -1728,6 +1874,7 @@ async fn successful_login(config: &AuthConfig, input: SuccessfulLoginInput<'_>) 
     record_login_success(
         config,
         input.headers,
+        input.remote_addr,
         input.login_surface,
         input.account,
         input.auth_method,
@@ -1748,10 +1895,21 @@ async fn successful_login(config: &AuthConfig, input: SuccessfulLoginInput<'_>) 
 async fn record_login_success(
     config: &AuthConfig,
     headers: &HeaderMap,
+    remote_addr: Option<SocketAddr>,
     login_surface: &str,
     account: &LocalLoginAccount,
     auth_method: &str,
 ) {
+    let client_ip = client_ip_from_request(
+        headers,
+        remote_addr.map(|addr| addr.ip()),
+        &config.trusted_proxy_config,
+    );
+    record_ip_spoof_metric(config, &client_ip);
+    let proxy_headers_trusted = client_ip.trusted_proxy_header_used
+        || config
+            .trusted_proxy_config
+            .is_trusted_remote(remote_addr.map(|addr| addr.ip()));
     let event = LoginEventInput {
         login_surface: login_surface.to_owned(),
         principal_type: principal_type_from_role(&account.role),
@@ -1765,9 +1923,9 @@ async fn record_login_success(
         account_identifier_hash: None,
         account_identifier_hash_key_version: None,
         event_type: LoginEventType::Success,
-        client_ip: client_ip_from_headers(headers),
+        client_ip,
         user_agent: parse_user_agent(headers),
-        geo: geo_from_headers(headers),
+        geo: geo_from_headers(headers, proxy_headers_trusted),
         session_id: None,
         auth_method: auth_method.to_owned(),
         failure_reason: None,
@@ -1781,11 +1939,22 @@ async fn record_login_success(
 async fn record_login_failure_for_account(
     config: &AuthConfig,
     headers: &HeaderMap,
+    remote_addr: Option<SocketAddr>,
     login_surface: &str,
     account: &LocalLoginAccount,
     failure_reason: &str,
     auth_method: &str,
 ) {
+    let client_ip = client_ip_from_request(
+        headers,
+        remote_addr.map(|addr| addr.ip()),
+        &config.trusted_proxy_config,
+    );
+    record_ip_spoof_metric(config, &client_ip);
+    let proxy_headers_trusted = client_ip.trusted_proxy_header_used
+        || config
+            .trusted_proxy_config
+            .is_trusted_remote(remote_addr.map(|addr| addr.ip()));
     let event = LoginEventInput {
         login_surface: login_surface.to_owned(),
         principal_type: principal_type_from_role(&account.role),
@@ -1799,9 +1968,9 @@ async fn record_login_failure_for_account(
         account_identifier_hash: None,
         account_identifier_hash_key_version: None,
         event_type: LoginEventType::Failure,
-        client_ip: client_ip_from_headers(headers),
+        client_ip,
         user_agent: parse_user_agent(headers),
-        geo: geo_from_headers(headers),
+        geo: geo_from_headers(headers, proxy_headers_trusted),
         session_id: None,
         auth_method: auth_method.to_owned(),
         failure_reason: Some(failure_reason.to_owned()),
@@ -1815,6 +1984,7 @@ async fn record_login_failure_for_account(
 async fn record_login_failure(
     config: &AuthConfig,
     headers: &HeaderMap,
+    remote_addr: Option<SocketAddr>,
     login_surface: &str,
     identifier: Option<&LoginIdentifier>,
     failure_reason: &str,
@@ -1828,6 +1998,16 @@ async fn record_login_failure(
         );
         (Some(hash), Some(key_version))
     });
+    let client_ip = client_ip_from_request(
+        headers,
+        remote_addr.map(|addr| addr.ip()),
+        &config.trusted_proxy_config,
+    );
+    record_ip_spoof_metric(config, &client_ip);
+    let proxy_headers_trusted = client_ip.trusted_proxy_header_used
+        || config
+            .trusted_proxy_config
+            .is_trusted_remote(remote_addr.map(|addr| addr.ip()));
     let event = LoginEventInput {
         login_surface: login_surface.to_owned(),
         principal_type: principal_type_from_surface(login_surface),
@@ -1837,9 +2017,9 @@ async fn record_login_failure(
         account_identifier_hash: hash,
         account_identifier_hash_key_version: key_version,
         event_type: LoginEventType::Failure,
-        client_ip: client_ip_from_headers(headers),
+        client_ip,
         user_agent: parse_user_agent(headers),
-        geo: geo_from_headers(headers),
+        geo: geo_from_headers(headers, proxy_headers_trusted),
         session_id: None,
         auth_method: auth_method.to_owned(),
         failure_reason: Some(failure_reason.to_owned()),
@@ -1852,9 +2032,27 @@ async fn record_login_failure(
 
 async fn write_login_event(config: &AuthConfig, event: LoginEventInput) {
     if let Some(store) = config.login_event_store.as_ref() {
-        if store.write_event(event).await.is_err() {
+        if store.write_event(event).await.is_ok() {
+            config
+                .login_event_metrics
+                .written
+                .fetch_add(1, Ordering::Relaxed);
+        } else {
+            config
+                .login_event_metrics
+                .failed
+                .fetch_add(1, Ordering::Relaxed);
             tracing::error!("login event write failed");
         }
+    }
+}
+
+fn record_ip_spoof_metric(config: &AuthConfig, client_ip: &crate::login_events::ClientIp) {
+    if client_ip.spoofed_header_ignored {
+        config
+            .login_event_metrics
+            .spoofed_headers_ignored
+            .fetch_add(1, Ordering::Relaxed);
     }
 }
 

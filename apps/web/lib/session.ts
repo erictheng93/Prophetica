@@ -16,6 +16,7 @@ export interface Viewer {
 export interface SetViewerSessionInput {
   userId: string;
   remember: boolean;
+  upstreamSessionToken?: string;
 }
 
 export async function getViewer(): Promise<Viewer | null> {
@@ -33,6 +34,7 @@ export async function getViewer(): Promise<Viewer | null> {
 export async function setViewerSession({
   userId,
   remember,
+  upstreamSessionToken,
 }: SetViewerSessionInput): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const ttl = remember ? REMEMBERED_SESSION_TTL_SECONDS : SESSION_TTL_SECONDS;
@@ -50,4 +52,18 @@ export async function setViewerSession({
     path: "/",
     maxAge: ttl,
   });
+  if (upstreamSessionToken) {
+    cookieStore.set("proph_user_service_session", upstreamSessionToken, {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: ttl,
+    });
+  }
+}
+
+export async function getUpstreamSessionToken(): Promise<string | null> {
+  const cookieStore = await cookies();
+  return cookieStore.get("proph_user_service_session")?.value ?? null;
 }

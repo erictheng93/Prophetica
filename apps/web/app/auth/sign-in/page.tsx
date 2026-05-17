@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { cookies } from "next/headers";
+import { headers as requestHeaders } from "next/headers";
 import { redirect } from "next/navigation";
 import { ProphFooter, ProphSubNav, ProphTile } from "@prophetica/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -106,10 +107,16 @@ async function submitSigninAction(formData: FormData) {
     remember,
     mfaCode,
     mfaRecoveryCode,
+  }, {
+    forwardedHeaders: await loginEventForwardHeaders(),
   });
 
   if (result.status === "authenticated") {
-    await setViewerSession({ userId: result.userId, remember });
+    await setViewerSession({
+      userId: result.userId,
+      remember,
+      upstreamSessionToken: result.sessionToken,
+    });
     redirect("/portfolio");
   }
 
@@ -125,6 +132,29 @@ async function submitSigninAction(formData: FormData) {
   }
 
   redirect("/auth/sign-in?login=unavailable");
+}
+
+async function loginEventForwardHeaders(): Promise<Headers> {
+  const incoming = await requestHeaders();
+  const forwarded = new Headers();
+  for (const name of [
+    "user-agent",
+    "cf-connecting-ip",
+    "cf-ipcountry",
+    "cf-region",
+    "cf-ipcity",
+    "cf-asn",
+    "x-forwarded-for",
+    "x-real-ip",
+    "x-request-id",
+    "x-correlation-id",
+  ]) {
+    const value = incoming.get(name);
+    if (value) {
+      forwarded.set(name, value);
+    }
+  }
+  return forwarded;
 }
 
 async function submitSignupAction(formData: FormData) {

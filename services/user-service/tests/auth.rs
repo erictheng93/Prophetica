@@ -244,6 +244,95 @@ async fn self_login_events_query_masks_ip_and_uses_unknown_fallbacks() {
 }
 
 #[tokio::test]
+async fn admin_login_event_retention_supports_dry_run_and_delete() {
+    let events = InMemoryLoginEventStore::default();
+    let app = auth_router_with_config(
+        config_with_fixture().with_login_event_store(Arc::new(events.clone())),
+    );
+    let login = post_login(
+        app.clone(),
+        json!({
+            "identifier": "member@example.com",
+            "identifier_kind": "email",
+            "password": "member"
+        }),
+    )
+    .await;
+    let token = login.body["session_token"]
+        .as_str()
+        .expect("session token should be returned");
+    let cutoff = 4_102_444_800_u64;
+
+    let dry_run = request_with_optional_bearer_json(
+        app.clone(),
+        "POST",
+        "/v1/internal/admin/login-events/retention",
+        Some(token),
+        json!({
+            "older_than_epoch_seconds": cutoff,
+            "dry_run": true
+        }),
+    )
+    .await;
+    let delete = request_with_optional_bearer_json(
+        app,
+        "POST",
+        "/v1/internal/admin/login-events/retention",
+        Some(token),
+        json!({
+            "older_than_epoch_seconds": cutoff,
+            "dry_run": false
+        }),
+    )
+    .await;
+
+    assert_eq!(dry_run.status, StatusCode::OK);
+    assert_eq!(dry_run.body["matched_events"], json!(1));
+    assert_eq!(dry_run.body["deleted_events"], json!(0));
+    assert_eq!(delete.status, StatusCode::OK);
+    assert_eq!(delete.body["matched_events"], json!(1));
+    assert_eq!(delete.body["deleted_events"], json!(1));
+    assert!(events.events().is_empty());
+}
+
+#[tokio::test]
+async fn login_event_metrics_count_writes_and_spoofed_headers() {
+    let app = auth_router_with_config(
+        config_with_fixture()
+            .with_trusted_proxy_cidrs("10.0.0.0/8")
+            .with_login_event_store(Arc::new(InMemoryLoginEventStore::default())),
+    );
+    let login = post_login_with_headers(
+        app.clone(),
+        json!({
+            "identifier": "member@example.com",
+            "identifier_kind": "email",
+            "password": "member"
+        }),
+        &[("x-forwarded-for", "198.51.100.88")],
+    )
+    .await;
+    let token = login.body["session_token"]
+        .as_str()
+        .expect("session token should be returned");
+
+    let metrics = request_with_optional_bearer(
+        app,
+        "GET",
+        "/v1/internal/admin/login-events/metrics",
+        Some(token),
+    )
+    .await;
+
+    assert_eq!(metrics.status, StatusCode::OK);
+    assert_eq!(metrics.body["login_events_written_total"], json!(1));
+    assert_eq!(
+        metrics.body["login_ip_spoof_header_ignored_total"],
+        json!(1)
+    );
+}
+
+#[tokio::test]
 async fn login_fails_closed_when_no_auth_provider_is_configured() {
     let app = auth_router_with_config(AuthConfig::new(Vec::new()));
 

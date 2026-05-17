@@ -1,5 +1,5 @@
 use sdk::{config::ServiceConfig, service_stub};
-use std::env;
+use std::{env, net::SocketAddr};
 use tokio::{net::TcpListener, signal};
 
 #[tokio::main(flavor = "multi_thread")]
@@ -28,9 +28,18 @@ async fn run_stub_http(service_name: &'static str, default_port: u16) -> anyhow:
         service_stub::router(&config)
     };
 
-    axum::serve(listener, app)
+    if service_name == user_service::SERVICE_NAME {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
         .with_graceful_shutdown(shutdown_signal(service_name))
         .await?;
+    } else {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown_signal(service_name))
+            .await?;
+    }
 
     Ok(())
 }
