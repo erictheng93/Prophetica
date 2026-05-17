@@ -64,9 +64,10 @@
         "tools/scripts/record-spec-022-liff-evidence.mjs",
         "tools/scripts/record-spec-022-manual-qa-evidence.mjs",
         "tools/scripts/record-spec-022-evidence.test.mjs",
+        "tools/scripts/finalize-spec-022-complete.mjs",
         "tools/scripts/check-spec-022-complete.mjs"
       ],
-      "evidence": "rtk node --test tools/scripts/record-spec-022-evidence.test.mjs => 2 passed; rtk node tools/scripts/check-spec-022-complete.mjs remains fail-closed while the manifest status is blocked."
+      "evidence": "rtk node --test tools/scripts/*.test.mjs => 12 passed; rtk node tools/scripts/finalize-spec-022-complete.mjs restores the blocked manifest and exits 1 while external evidence is missing; rtk node tools/scripts/check-spec-022-complete.mjs remains fail-closed while the manifest status is blocked."
     },
     {
       "id": "web-admin-ui-and-rbac",

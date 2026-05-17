@@ -11,7 +11,8 @@ concrete artifact plus validation or operational evidence. Passing tests are
 accepted only when the tested surface covers the requirement.
 
 Machine-readable evidence summary: `docs/spec-022-evidence-manifest.json`.
-Formal completion gate: `tools/scripts/check-spec-022-complete.mjs`.
+Formal completion gates: `tools/scripts/finalize-spec-022-complete.mjs` and
+`tools/scripts/check-spec-022-complete.mjs`.
 External evidence runbook: `docs/evidence/spec-022/README.md`.
 
 ## Checklist
@@ -34,7 +35,7 @@ External evidence runbook: `docs/evidence/spec-022/README.md`.
 | Metrics and alerts exist for write failures, outbox backlog, spoofed headers, geo failures, and admin detail reads | `services/user-service/src/auth.rs`, `infra/prometheus/rules/login-events.yml` | `login_event_metrics_count_writes_and_spoofed_headers`, `admin_login_event_detail_is_rbac_protected_and_audited`, outbox fail-open test | Complete |
 | Login event write plus geolocation does not add more than 100ms P95 in local evidence run | `services/user-service/tests/auth.rs` ignored explicit NFR test | `rtk cargo test -p user-service --test auth spec_022_login_event_latency_p95_local_budget --locked -- --ignored`: 1 passed | Complete for local evidence; staging/live evidence optional unless required by release gate |
 | UI uses approximate location wording and `未知` fallback | `apps/web/lib/login-events.ts`, `apps/web/app/account/security/page.tsx`, `apps/admin/app/security/login-events/page.tsx` | Unit/source tests recorded in manifest; live/manual QA evidence still required by runbook | Code complete; manual QA blocked |
-| Evidence gate prevents premature completion | `docs/spec-022-evidence-manifest.json`, `tools/scripts/check-spec-022-complete.mjs`, evidence recorders/tests | `rtk node --test tools/scripts/record-spec-022-evidence.test.mjs`: 4 passed; `rtk node tools/scripts/check-spec-022-complete.mjs`: fails closed while blockers remain | Complete |
+| Evidence gate prevents premature completion | `docs/spec-022-evidence-manifest.json`, `tools/scripts/finalize-spec-022-complete.mjs`, `tools/scripts/check-spec-022-complete.mjs`, evidence recorders/tests | `rtk node --test tools/scripts/*.test.mjs`: 12 passed; `rtk node tools/scripts/finalize-spec-022-complete.mjs`: restores the blocked manifest and exits 1 while external evidence is missing; `rtk node tools/scripts/check-spec-022-complete.mjs`: fails closed while blockers remain | Complete |
 
 ## Formal Declaration Blockers
 
@@ -62,6 +63,7 @@ those JSON files:
 ```bash
 rtk node tools/scripts/record-spec-022-liff-evidence.mjs .tmp/spec-022-liff.log
 rtk node tools/scripts/record-spec-022-manual-qa-evidence.mjs .tmp/spec-022-manual-qa.log
+rtk node tools/scripts/finalize-spec-022-complete.mjs
 rtk node tools/scripts/check-spec-022-complete.mjs
 ```
 
@@ -72,5 +74,6 @@ rtk node tools/scripts/check-spec-022-complete.mjs
 - `rtk cargo test -p user-service --test auth spec_022_login_event_latency_p95_local_budget --locked -- --ignored`: 1 passed.
 - `rtk pnpm --filter @prophetica/liff lint`: passed.
 - `rtk cargo check -p core-api --locked`: passed.
-- `rtk node --test tools/scripts/record-spec-022-evidence.test.mjs`: 4 passed.
+- `rtk node --test tools/scripts/*.test.mjs`: 12 passed.
+- `rtk node tools/scripts/finalize-spec-022-complete.mjs`: correctly restores the blocked manifest and exits 1 while the two external evidence files are missing.
 - `rtk node tools/scripts/check-spec-022-complete.mjs`: correctly fails closed while the two external evidence blockers remain.
