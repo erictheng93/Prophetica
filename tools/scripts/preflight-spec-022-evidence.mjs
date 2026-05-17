@@ -11,13 +11,10 @@ const requiredInputLogs = [
   ".tmp/spec-022-liff.log",
   ".tmp/spec-022-manual-qa.log",
 ];
-const requiredEvidence = [
-  "docs/evidence/spec-022-liff/latest.json",
-  "docs/evidence/spec-022-manual-qa/latest.json",
-];
 
 export function preflightSpec022Evidence(repoRoot, env = process.env) {
   const envFile = readEnvFile(resolve(repoRoot, ".env"));
+  const manifest = readManifest(repoRoot);
   const missing = [];
 
   for (const key of requiredEnv) {
@@ -33,15 +30,62 @@ export function preflightSpec022Evidence(repoRoot, env = process.env) {
     }
   }
 
-  for (const relativePath of requiredEvidence) {
-    if (!existsSync(resolve(repoRoot, relativePath))) {
+  for (const requirement of manifest.required_external_evidence) {
+    const relativePath = requirement.path;
+    const evidencePath = resolve(repoRoot, relativePath);
+    if (!existsSync(evidencePath)) {
       missing.push(`Missing evidence: ${relativePath}`);
+      continue;
+    }
+
+    const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+    for (const field of requirement.required_fields) {
+      if (evidence[field] !== true) {
+        missing.push(`Evidence field not true: ${relativePath} ${field}`);
+      }
     }
   }
 
   return {
     ok: missing.length === 0,
     missing,
+  };
+}
+
+function readManifest(repoRoot) {
+  const manifestPath = resolve(repoRoot, "docs/spec-022-evidence-manifest.json");
+  if (existsSync(manifestPath)) {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    return {
+      required_external_evidence: Array.isArray(manifest.required_external_evidence)
+        ? manifest.required_external_evidence
+        : [],
+    };
+  }
+
+  return {
+    required_external_evidence: [
+      {
+        path: "docs/evidence/spec-022-liff/latest.json",
+        required_fields: [
+          "line_channel_configured",
+          "ios_liff_login_success_event",
+          "android_liff_login_success_event",
+          "login_surface_liff_confirmed",
+          "user_members_line_id_link_confirmed",
+        ],
+      },
+      {
+        path: "docs/evidence/spec-022-manual-qa/latest.json",
+        required_fields: [
+          "desktop_web_recent_login_approximate_location",
+          "mobile_web_recent_login_approximate_location",
+          "admin_login_events_rbac_and_audit_checked",
+          "liff_webview_login_event_visible",
+          "unknown_fallback_visible",
+        ],
+      },
+    ],
   };
 }
 

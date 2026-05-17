@@ -94,8 +94,8 @@ rtk node tools/scripts/check-spec-022-complete.mjs
 ```
 
 The preflight checks for the required local LIFF configuration, both `.tmp`
-input logs, and both generated evidence files. It does not replace the
-completion checker.
+input logs, both generated evidence files, and the required evidence fields. It
+does not replace the completion checker.
 
 The finalize script fails closed and restores the blocked manifest when either
 external evidence file is missing or does not satisfy every required marker.
