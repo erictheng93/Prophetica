@@ -7,13 +7,15 @@
       "id": "live-liff-identity-bridge-evidence",
       "reason": "The LIFF identity exchange code path exists, but formal completion still needs a real LINE Login / LIFF channel configured with USER_SERVICE_LINE_LOGIN_CHANNEL_ID, a user_members.line_id-linked player, and iOS plus Android LIFF login runs showing login_success events with login_surface = liff.",
       "required_evidence": "docs/evidence/spec-022-liff/latest.json",
-      "evidence_recorder": "tools/scripts/record-spec-022-liff-evidence.mjs"
+      "evidence_recorder": "tools/scripts/record-spec-022-liff-evidence.mjs",
+      "runbook": "docs/evidence/spec-022/README.md"
     },
     {
       "id": "manual-qa-evidence",
       "reason": "Desktop web, mobile web, admin, and LIFF/WebView manual QA evidence must confirm approximate location copy and unknown fallback rendering.",
       "required_evidence": "docs/evidence/spec-022-manual-qa/latest.json",
-      "evidence_recorder": "tools/scripts/record-spec-022-manual-qa-evidence.mjs"
+      "evidence_recorder": "tools/scripts/record-spec-022-manual-qa-evidence.mjs",
+      "runbook": "docs/evidence/spec-022/README.md"
     }
   ],
   "completed_evidence": [
