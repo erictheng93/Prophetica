@@ -16,7 +16,7 @@ use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use async_trait::async_trait;
 use axum::{
     Json, Router,
-    extract::{ConnectInfo, Query, State},
+    extract::{ConnectInfo, Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -199,6 +199,7 @@ struct LoginEventMetrics {
     written: AtomicU64,
     failed: AtomicU64,
     spoofed_headers_ignored: AtomicU64,
+    admin_detail_queries: AtomicU64,
 }
 
 #[derive(Debug, Serialize)]
@@ -209,6 +210,8 @@ struct LoginEventMetricsSnapshot {
     events_write_failed: u64,
     #[serde(rename = "login_ip_spoof_header_ignored_total")]
     ip_spoof_header_ignored: u64,
+    #[serde(rename = "login_event_admin_detail_queries_total")]
+    admin_detail_queries: u64,
 }
 
 struct SuccessfulLoginInput<'a> {
@@ -334,6 +337,10 @@ pub fn auth_router_with_config(config: AuthConfig) -> Router {
         .route(
             "/v1/internal/admin/login-events/metrics",
             get(admin_login_events_metrics),
+        )
+        .route(
+            "/v1/internal/admin/login-events/:event_id",
+            get(admin_login_event_detail),
         )
         .route(
             "/v1/auth/webauthn/register/start",
@@ -1072,12 +1079,59 @@ async fn admin_login_events(
     }
 }
 
+async fn admin_login_event_detail(
+    State(config): State<AuthConfig>,
+    headers: HeaderMap,
+    Path(event_id): Path<String>,
+) -> Response {
+    let Some(actor_user_id) = admin_login_event_actor(&config, &headers).await else {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENT_ACCESS_DENIED" })),
+        )
+            .into_response();
+    };
+    let Some(store) = config.login_event_store.as_ref() else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENTS_UNAVAILABLE" })),
+        )
+            .into_response();
+    };
+    match store.get_by_id(&event_id).await {
+        Ok(Some(event)) => {
+            config
+                .login_event_metrics
+                .admin_detail_queries
+                .fetch_add(1, Ordering::Relaxed);
+            tracing::info!(
+                audit.event = "login_event_detail_read",
+                actor.user_id = %actor_user_id,
+                login_event.id = %event.id,
+                principal.type = %event.principal_type,
+                "admin login event detail read"
+            );
+            Json(json!({ "event": event })).into_response()
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENT_NOT_FOUND" })),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENTS_UNAVAILABLE" })),
+        )
+            .into_response(),
+    }
+}
+
 async fn admin_login_events_retention(
     State(config): State<AuthConfig>,
     headers: HeaderMap,
     Json(request): Json<LoginEventsRetentionRequest>,
 ) -> Response {
-    if !admin_can_query_login_events(&config, &headers).await {
+    if admin_login_event_actor(&config, &headers).await.is_none() {
         return (
             StatusCode::FORBIDDEN,
             Json(json!({ "error": "ERROR_CODE_LOGIN_EVENT_ACCESS_DENIED" })),
@@ -1108,7 +1162,7 @@ async fn admin_login_events_metrics(
     State(config): State<AuthConfig>,
     headers: HeaderMap,
 ) -> Response {
-    if !admin_can_query_login_events(&config, &headers).await {
+    if admin_login_event_actor(&config, &headers).await.is_none() {
         return (
             StatusCode::FORBIDDEN,
             Json(json!({ "error": "ERROR_CODE_LOGIN_EVENT_ACCESS_DENIED" })),
@@ -1155,20 +1209,17 @@ async fn me(State(config): State<AuthConfig>, headers: HeaderMap) -> Response {
     .into_response()
 }
 
-async fn admin_can_query_login_events(config: &AuthConfig, headers: &HeaderMap) -> bool {
-    let Some(token) = bearer_token(headers) else {
-        return false;
-    };
-    let Some(session) = parse_session_token(config, token) else {
-        return false;
-    };
+async fn admin_login_event_actor(config: &AuthConfig, headers: &HeaderMap) -> Option<String> {
+    let token = bearer_token(headers)?;
+    let session = parse_session_token(config, token)?;
     if session.expires_at_epoch_seconds <= unix_now_seconds() {
-        return false;
+        return None;
     }
     config
         .role_for_user_id(&session.user_id)
         .await
-        .is_some_and(|role| matches!(role.as_str(), "admin" | "manager"))
+        .filter(|role| matches!(role.as_str(), "admin" | "manager"))
+        .map(|_| session.user_id)
 }
 
 fn default_retention_dry_run() -> bool {
@@ -1181,6 +1232,7 @@ impl LoginEventMetrics {
             events_written: self.written.load(Ordering::Relaxed),
             events_write_failed: self.failed.load(Ordering::Relaxed),
             ip_spoof_header_ignored: self.spoofed_headers_ignored.load(Ordering::Relaxed),
+            admin_detail_queries: self.admin_detail_queries.load(Ordering::Relaxed),
         }
     }
 }

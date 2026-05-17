@@ -177,6 +177,8 @@ pub trait LoginEventStore: Send + Sync {
         filter: AdminLoginEventFilter,
     ) -> Result<Vec<LoginEventRecord>, LoginEventStoreError>;
 
+    async fn get_by_id(&self, id: &str) -> Result<Option<LoginEventRecord>, LoginEventStoreError>;
+
     async fn delete_older_than(
         &self,
         cutoff_epoch_seconds: u64,
@@ -372,6 +374,16 @@ impl LoginEventStore for InMemoryLoginEventStore {
         });
         events.truncate(filter.limit.clamp(1, 200));
         Ok(events)
+    }
+
+    async fn get_by_id(&self, id: &str) -> Result<Option<LoginEventRecord>, LoginEventStoreError> {
+        Ok(self
+            .events
+            .lock()
+            .map_err(|_| LoginEventStoreError::Unavailable)?
+            .iter()
+            .find(|event| event.id == id)
+            .cloned())
     }
 
     async fn delete_older_than(
@@ -594,6 +606,32 @@ impl LoginEventStore for PostgresLoginEventStore {
             .map_err(|_| LoginEventStoreError::Unavailable)?;
 
         rows.iter().map(row_to_record).collect()
+    }
+
+    async fn get_by_id(&self, id: &str) -> Result<Option<LoginEventRecord>, LoginEventStoreError> {
+        let row = sqlx::query(
+            "
+            SELECT id, login_surface, principal_type::text AS principal_type,
+                   principal_id, user_id, principal_external_id,
+                   account_identifier_hash, account_identifier_hash_key_version,
+                   event_type::text AS event_type,
+                   EXTRACT(EPOCH FROM occurred_at)::bigint AS occurred_at_epoch_seconds,
+                   ip_address::text AS ip_address, ip_source, geo_country,
+                   geo_region, geo_city, geo_source, geo_accuracy::text AS geo_accuracy,
+                   asn, isp, user_agent_raw, browser_name, browser_version,
+                   os_name, os_version, device_type::text AS device_type,
+                   device_vendor, device_model, session_id, auth_method,
+                   failure_reason, risk_flags, request_id, correlation_id
+            FROM login_events
+            WHERE id = $1
+            ",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| LoginEventStoreError::Unavailable)?;
+
+        row.as_ref().map(row_to_record).transpose()
     }
 
     async fn delete_older_than(

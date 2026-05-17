@@ -367,6 +367,96 @@ async fn admin_login_events_query_filters_by_principal_ip_event_and_time() {
 }
 
 #[tokio::test]
+async fn admin_login_event_detail_is_rbac_protected_and_audited() {
+    let events = InMemoryLoginEventStore::default();
+    let accounts = AuthConfig::from_local_login_accounts_json(
+        r#"[
+          {
+            "user_id": "U-ADMIN-DETAIL",
+            "email": "admin-detail@prophetica.local",
+            "phone": "0912345618",
+            "password": "admin",
+            "role": "admin"
+          },
+          {
+            "user_id": "U-PLAYER-DETAIL",
+            "email": "player-detail@prophetica.local",
+            "phone": "0912345619",
+            "password": "player",
+            "role": "player"
+          }
+        ]"#,
+    )
+    .expect("accounts parse");
+    let app = auth_router_with_config(
+        AuthConfig::new(accounts).with_login_event_store(Arc::new(events.clone())),
+    );
+    let admin_login = post_login(
+        app.clone(),
+        json!({
+            "identifier": "admin-detail@prophetica.local",
+            "identifier_kind": "email",
+            "password": "admin",
+            "login_surface": "admin_console"
+        }),
+    )
+    .await;
+    let player_login = post_login(
+        app.clone(),
+        json!({
+            "identifier": "player-detail@prophetica.local",
+            "identifier_kind": "email",
+            "password": "player",
+            "login_surface": "user_web"
+        }),
+    )
+    .await;
+    let admin_token = admin_login.body["session_token"]
+        .as_str()
+        .expect("admin session token should be returned");
+    let player_token = player_login.body["session_token"]
+        .as_str()
+        .expect("player session token should be returned");
+    let event_id = events
+        .events()
+        .iter()
+        .find(|event| event.principal_id.as_deref() == Some("U-PLAYER-DETAIL"))
+        .expect("player login event should be stored")
+        .id
+        .clone();
+
+    let forbidden = request_with_optional_bearer(
+        app.clone(),
+        "GET",
+        &format!("/v1/internal/admin/login-events/{event_id}"),
+        Some(player_token),
+    )
+    .await;
+    let detail = request_with_optional_bearer(
+        app.clone(),
+        "GET",
+        &format!("/v1/internal/admin/login-events/{event_id}"),
+        Some(admin_token),
+    )
+    .await;
+    let metrics = request_with_optional_bearer(
+        app,
+        "GET",
+        "/v1/internal/admin/login-events/metrics",
+        Some(admin_token),
+    )
+    .await;
+
+    assert_eq!(forbidden.status, StatusCode::FORBIDDEN);
+    assert_eq!(detail.status, StatusCode::OK);
+    assert_eq!(detail.body["event"]["id"], json!(event_id));
+    assert_eq!(
+        metrics.body["login_event_admin_detail_queries_total"],
+        json!(1)
+    );
+}
+
+#[tokio::test]
 async fn login_event_metrics_count_writes_and_spoofed_headers() {
     let app = auth_router_with_config(
         config_with_fixture()
