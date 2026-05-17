@@ -1,8 +1,9 @@
 #![allow(clippy::expect_used)]
 
-use std::sync::Arc;
+use std::{net::IpAddr, sync::Arc, time::Duration};
 
 use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version, password_hash::SaltString};
+use async_trait::async_trait;
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -16,7 +17,9 @@ use user_service::auth::{
     AuthConfig, InMemoryPasswordCredentialStore, LocalLoginAccount, StoredLoginCredential,
     auth_router_with_config,
 };
-use user_service::login_events::InMemoryLoginEventStore;
+use user_service::login_events::{
+    GeoLookupError, GeoLookupResult, InMemoryLoginEventStore, LoginGeoProvider,
+};
 use user_service::webauthn_runtime::WebauthnRuntimeConfig;
 use user_service::webauthn_store::{
     InMemoryWebauthnStore, WebauthnCeremony, WebauthnChallengeRecord, WebauthnCredentialRecord,
@@ -491,6 +494,49 @@ async fn login_event_metrics_count_writes_and_spoofed_headers() {
         metrics.body["login_ip_spoof_header_ignored_total"],
         json!(1)
     );
+}
+
+#[tokio::test]
+async fn geolocation_provider_timeout_does_not_block_login_or_event_query() {
+    let events = InMemoryLoginEventStore::default();
+    let app = auth_router_with_config(
+        config_with_fixture()
+            .with_login_event_store(Arc::new(events.clone()))
+            .with_login_geo_provider(Arc::new(SlowGeoProvider))
+            .with_login_geo_timeout(Duration::from_millis(5)),
+    );
+
+    let login = post_login_with_headers(
+        app.clone(),
+        json!({
+            "identifier": "member@example.com",
+            "identifier_kind": "email",
+            "password": "member",
+            "login_surface": "user_web"
+        }),
+        &[("x-real-ip", "203.0.113.101")],
+    )
+    .await;
+    let token = login.body["session_token"]
+        .as_str()
+        .expect("session token should be returned");
+    let metrics = request_with_optional_bearer(
+        app,
+        "GET",
+        "/v1/internal/admin/login-events/metrics",
+        Some(token),
+    )
+    .await;
+
+    assert_eq!(login.status, StatusCode::OK);
+    let event = events
+        .events()
+        .into_iter()
+        .find(|event| event.event_type == "login_success")
+        .expect("login event should be stored");
+    assert_eq!(event.geo_accuracy, "unknown");
+    assert!(event.geo_source.is_none());
+    assert_eq!(metrics.body["login_geo_lookup_failed_total"], json!(1));
 }
 
 #[tokio::test]
@@ -1265,6 +1311,24 @@ async fn me_rejects_missing_or_invalid_bearer_token() {
 struct LoginTestResponse {
     status: StatusCode,
     body: Value,
+}
+
+struct SlowGeoProvider;
+
+#[async_trait]
+impl LoginGeoProvider for SlowGeoProvider {
+    async fn lookup(&self, _ip_address: IpAddr) -> Result<GeoLookupResult, GeoLookupError> {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        Ok(GeoLookupResult {
+            country: Some("TW".to_owned()),
+            region: Some("Taipei".to_owned()),
+            city: Some("Taipei".to_owned()),
+            source: Some("slow-test-provider".to_owned()),
+            accuracy: "approximate".to_owned(),
+            asn: None,
+            isp: None,
+        })
+    }
 }
 
 fn config_with_fixture() -> AuthConfig {

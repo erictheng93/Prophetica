@@ -87,6 +87,17 @@ pub struct GeoLookupResult {
     pub isp: Option<String>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum GeoLookupError {
+    #[error("geolocation provider unavailable")]
+    Unavailable,
+}
+
+#[async_trait]
+pub trait LoginGeoProvider: Send + Sync {
+    async fn lookup(&self, ip_address: IpAddr) -> Result<GeoLookupResult, GeoLookupError>;
+}
+
 #[derive(Clone, Debug)]
 pub struct ParsedUserAgent {
     pub raw: String,

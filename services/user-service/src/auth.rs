@@ -9,7 +9,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
@@ -27,13 +27,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha1::{Digest, Sha1};
 use sqlx::{PgPool, Row};
+use tokio::time::timeout;
 
 use crate::{
     login_events::{
         AdminLoginEventFilter, InMemoryLoginEventStore, LoginEventInput, LoginEventStore,
-        LoginEventType, TrustedProxyConfig, client_ip_from_request, geo_from_headers,
-        identifier_hmac, normalize_login_surface, parse_user_agent, principal_type_from_role,
-        principal_type_from_surface, to_self_response,
+        LoginEventType, LoginGeoProvider, TrustedProxyConfig, client_ip_from_request,
+        geo_from_headers, identifier_hmac, normalize_login_surface, parse_user_agent,
+        principal_type_from_role, principal_type_from_surface, to_self_response,
     },
     webauthn_runtime::{
         PasskeyAssertionFinish, WebauthnRuntimeConfig, finish_passkey_assertion,
@@ -59,6 +60,8 @@ pub struct AuthConfig {
     webauthn_store: Arc<dyn WebauthnStore>,
     credential_store: Option<Arc<dyn PasswordCredentialStore>>,
     login_event_store: Option<Arc<dyn LoginEventStore>>,
+    login_geo_provider: Option<Arc<dyn LoginGeoProvider>>,
+    login_geo_timeout: Duration,
     login_identifier_hmac_key: Arc<Vec<u8>>,
     login_identifier_hmac_key_version: String,
     trusted_proxy_config: TrustedProxyConfig,
@@ -200,6 +203,7 @@ struct LoginEventMetrics {
     failed: AtomicU64,
     spoofed_headers_ignored: AtomicU64,
     admin_detail_queries: AtomicU64,
+    geo_lookup_failed: AtomicU64,
 }
 
 #[derive(Debug, Serialize)]
@@ -212,6 +216,8 @@ struct LoginEventMetricsSnapshot {
     ip_spoof_header_ignored: u64,
     #[serde(rename = "login_event_admin_detail_queries_total")]
     admin_detail_queries: u64,
+    #[serde(rename = "login_geo_lookup_failed_total")]
+    geo_lookup_failed: u64,
 }
 
 struct SuccessfulLoginInput<'a> {
@@ -378,6 +384,8 @@ impl AuthConfig {
             webauthn_store: Arc::new(InMemoryWebauthnStore::default()),
             credential_store: None,
             login_event_store: Some(Arc::new(InMemoryLoginEventStore::default())),
+            login_geo_provider: None,
+            login_geo_timeout: Duration::from_millis(50),
             login_identifier_hmac_key: Arc::new(b"prophetica-login-events-dev-key".to_vec()),
             login_identifier_hmac_key_version: "dev-v1".to_owned(),
             trusted_proxy_config: TrustedProxyConfig::default(),
@@ -420,6 +428,18 @@ impl AuthConfig {
     #[must_use]
     pub fn with_login_event_store(mut self, store: Arc<dyn LoginEventStore>) -> Self {
         self.login_event_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn with_login_geo_provider(mut self, provider: Arc<dyn LoginGeoProvider>) -> Self {
+        self.login_geo_provider = Some(provider);
+        self
+    }
+
+    #[must_use]
+    pub fn with_login_geo_timeout(mut self, timeout: Duration) -> Self {
+        self.login_geo_timeout = timeout;
         self
     }
 
@@ -1233,6 +1253,7 @@ impl LoginEventMetrics {
             events_write_failed: self.failed.load(Ordering::Relaxed),
             ip_spoof_header_ignored: self.spoofed_headers_ignored.load(Ordering::Relaxed),
             admin_detail_queries: self.admin_detail_queries.load(Ordering::Relaxed),
+            geo_lookup_failed: self.geo_lookup_failed.load(Ordering::Relaxed),
         }
     }
 }
@@ -1978,16 +1999,7 @@ async fn record_login_success(
     account: &LocalLoginAccount,
     auth_method: &str,
 ) {
-    let client_ip = client_ip_from_request(
-        headers,
-        remote_addr.map(|addr| addr.ip()),
-        &config.trusted_proxy_config,
-    );
-    record_ip_spoof_metric(config, &client_ip);
-    let proxy_headers_trusted = client_ip.trusted_proxy_header_used
-        || config
-            .trusted_proxy_config
-            .is_trusted_remote(remote_addr.map(|addr| addr.ip()));
+    let (client_ip, geo) = login_event_network_context(config, headers, remote_addr).await;
     let event = LoginEventInput {
         login_surface: login_surface.to_owned(),
         principal_type: principal_type_from_role(&account.role),
@@ -2003,7 +2015,7 @@ async fn record_login_success(
         event_type: LoginEventType::Success,
         client_ip,
         user_agent: parse_user_agent(headers),
-        geo: geo_from_headers(headers, proxy_headers_trusted),
+        geo,
         session_id: None,
         auth_method: auth_method.to_owned(),
         failure_reason: None,
@@ -2023,16 +2035,7 @@ async fn record_login_failure_for_account(
     failure_reason: &str,
     auth_method: &str,
 ) {
-    let client_ip = client_ip_from_request(
-        headers,
-        remote_addr.map(|addr| addr.ip()),
-        &config.trusted_proxy_config,
-    );
-    record_ip_spoof_metric(config, &client_ip);
-    let proxy_headers_trusted = client_ip.trusted_proxy_header_used
-        || config
-            .trusted_proxy_config
-            .is_trusted_remote(remote_addr.map(|addr| addr.ip()));
+    let (client_ip, geo) = login_event_network_context(config, headers, remote_addr).await;
     let event = LoginEventInput {
         login_surface: login_surface.to_owned(),
         principal_type: principal_type_from_role(&account.role),
@@ -2048,7 +2051,7 @@ async fn record_login_failure_for_account(
         event_type: LoginEventType::Failure,
         client_ip,
         user_agent: parse_user_agent(headers),
-        geo: geo_from_headers(headers, proxy_headers_trusted),
+        geo,
         session_id: None,
         auth_method: auth_method.to_owned(),
         failure_reason: Some(failure_reason.to_owned()),
@@ -2076,16 +2079,7 @@ async fn record_login_failure(
         );
         (Some(hash), Some(key_version))
     });
-    let client_ip = client_ip_from_request(
-        headers,
-        remote_addr.map(|addr| addr.ip()),
-        &config.trusted_proxy_config,
-    );
-    record_ip_spoof_metric(config, &client_ip);
-    let proxy_headers_trusted = client_ip.trusted_proxy_header_used
-        || config
-            .trusted_proxy_config
-            .is_trusted_remote(remote_addr.map(|addr| addr.ip()));
+    let (client_ip, geo) = login_event_network_context(config, headers, remote_addr).await;
     let event = LoginEventInput {
         login_surface: login_surface.to_owned(),
         principal_type: principal_type_from_surface(login_surface),
@@ -2097,7 +2091,7 @@ async fn record_login_failure(
         event_type: LoginEventType::Failure,
         client_ip,
         user_agent: parse_user_agent(headers),
-        geo: geo_from_headers(headers, proxy_headers_trusted),
+        geo,
         session_id: None,
         auth_method: auth_method.to_owned(),
         failure_reason: Some(failure_reason.to_owned()),
@@ -2123,6 +2117,46 @@ async fn write_login_event(config: &AuthConfig, event: LoginEventInput) {
             tracing::error!("login event write failed");
         }
     }
+}
+
+async fn login_event_network_context(
+    config: &AuthConfig,
+    headers: &HeaderMap,
+    remote_addr: Option<SocketAddr>,
+) -> (
+    crate::login_events::ClientIp,
+    crate::login_events::GeoLookupResult,
+) {
+    let client_ip = client_ip_from_request(
+        headers,
+        remote_addr.map(|addr| addr.ip()),
+        &config.trusted_proxy_config,
+    );
+    record_ip_spoof_metric(config, &client_ip);
+    let proxy_headers_trusted = client_ip.trusted_proxy_header_used
+        || config
+            .trusted_proxy_config
+            .is_trusted_remote(remote_addr.map(|addr| addr.ip()));
+    let header_geo = geo_from_headers(headers, proxy_headers_trusted);
+    if header_geo.accuracy != "unknown" {
+        return (client_ip, header_geo);
+    }
+    let Some(provider) = config.login_geo_provider.as_ref() else {
+        return (client_ip, header_geo);
+    };
+    if let Ok(Ok(geo)) = timeout(
+        config.login_geo_timeout,
+        provider.lookup(client_ip.ip_address),
+    )
+    .await
+    {
+        return (client_ip, geo);
+    }
+    config
+        .login_event_metrics
+        .geo_lookup_failed
+        .fetch_add(1, Ordering::Relaxed);
+    (client_ip, header_geo)
 }
 
 fn record_ip_spoof_metric(config: &AuthConfig, client_ip: &crate::login_events::ClientIp) {
