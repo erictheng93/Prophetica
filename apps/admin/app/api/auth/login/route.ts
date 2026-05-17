@@ -34,12 +34,13 @@ export async function POST(request: Request) {
 
   const upstream = await fetch(new URL("/api/auth/login", USER_SERVICE_URL), {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: loginForwardHeaders(request),
     body: JSON.stringify({
       identifier: email,
       identifier_kind: "email",
       password,
       remember: false,
+      login_surface: "admin_console",
     }),
     cache: "no-store",
   }).catch(() => null);
@@ -82,4 +83,24 @@ export async function POST(request: Request) {
     role,
     redirect: defaultLandingFor(role),
   });
+}
+
+function loginForwardHeaders(request: Request): Headers {
+  const headers = new Headers({ "content-type": "application/json" });
+  for (const name of [
+    "user-agent",
+    "cf-connecting-ip",
+    "cf-ipcountry",
+    "cf-region",
+    "cf-ipcity",
+    "cf-asn",
+    "x-forwarded-for",
+    "x-real-ip",
+    "x-request-id",
+    "x-correlation-id",
+  ]) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  return headers;
 }

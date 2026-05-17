@@ -12,6 +12,9 @@ test("admin login and logout preserve the upstream user-service session in an ht
   const upstreamSession = readAdminFile("lib/upstream-session.ts");
 
   assert.match(loginRoute, /setUpstreamSessionCookie\(user\.session_token\)/);
+  assert.match(loginRoute, /login_surface: "admin_console"/);
+  assert.match(loginRoute, /cf-connecting-ip/);
+  assert.match(loginRoute, /x-forwarded-for/);
   assert.match(logoutRoute, /clearUpstreamSessionCookie\(\)/);
   assert.match(upstreamSession, /httpOnly: true/);
   assert.match(upstreamSession, /sameSite: "strict"/);

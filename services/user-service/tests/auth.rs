@@ -16,6 +16,7 @@ use user_service::auth::{
     AuthConfig, InMemoryPasswordCredentialStore, LocalLoginAccount, StoredLoginCredential,
     auth_router_with_config,
 };
+use user_service::login_events::InMemoryLoginEventStore;
 use user_service::webauthn_runtime::WebauthnRuntimeConfig;
 use user_service::webauthn_store::{
     InMemoryWebauthnStore, WebauthnCeremony, WebauthnChallengeRecord, WebauthnCredentialRecord,
@@ -111,6 +112,135 @@ async fn login_rejects_wrong_password_or_identifier_kind() {
         json!("ERROR_CODE_INVALID_CREDENTIALS")
     );
     assert_eq!(wrong_kind.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn login_events_capture_success_failure_and_surface_identity() {
+    let events = InMemoryLoginEventStore::default();
+    let account = LocalLoginAccount::new(
+        "U-AFF-LOGIN-EVENT",
+        "affiliate-events@prophetica.local",
+        "0912345615",
+        "affiliate",
+    )
+    .expect("fixture account is valid")
+    .with_profile("affiliate", Some("AFF-EVENTS".to_owned()));
+    let app = auth_router_with_config(
+        AuthConfig::new(vec![account]).with_login_event_store(Arc::new(events.clone())),
+    );
+
+    let success = post_login_with_headers(
+        app.clone(),
+        json!({
+            "identifier": "affiliate-events@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate",
+            "login_surface": "affiliate_portal"
+        }),
+        &[
+            (
+                "user-agent",
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari/605.1",
+            ),
+            ("cf-connecting-ip", "203.0.113.45"),
+            ("cf-ipcountry", "TW"),
+            ("x-request-id", "req-login-event-success"),
+        ],
+    )
+    .await;
+    let failure = post_login_with_headers(
+        app,
+        json!({
+            "identifier": "missing-admin@prophetica.local",
+            "identifier_kind": "email",
+            "password": "wrong",
+            "login_surface": "admin_console"
+        }),
+        &[
+            (
+                "user-agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0",
+            ),
+            ("x-forwarded-for", "198.51.100.22"),
+            ("x-request-id", "req-login-event-failure"),
+        ],
+    )
+    .await;
+
+    assert_eq!(success.status, StatusCode::OK);
+    assert_eq!(failure.status, StatusCode::UNAUTHORIZED);
+    let stored = events.events();
+    assert_eq!(stored.len(), 2);
+    let success_event = stored
+        .iter()
+        .find(|event| event.event_type == "login_success")
+        .expect("success event should be written");
+    assert_eq!(success_event.login_surface, "affiliate_portal");
+    assert_eq!(success_event.principal_type, "affiliate");
+    assert_eq!(
+        success_event.principal_id.as_deref(),
+        Some("U-AFF-LOGIN-EVENT")
+    );
+    assert_eq!(
+        success_event.principal_external_id.as_deref(),
+        Some("AFF-EVENTS")
+    );
+    assert_eq!(success_event.risk_flags, json!([]));
+    assert_eq!(success_event.geo_country.as_deref(), Some("TW"));
+    assert_eq!(success_event.geo_accuracy, "approximate");
+
+    let failure_event = stored
+        .iter()
+        .find(|event| event.event_type == "login_failure")
+        .expect("failure event should be written");
+    assert_eq!(failure_event.login_surface, "admin_console");
+    assert_eq!(failure_event.principal_type, "admin");
+    assert!(failure_event.principal_id.is_none());
+    assert!(failure_event.account_identifier_hash.is_some());
+    assert_eq!(
+        failure_event.account_identifier_hash_key_version.as_deref(),
+        Some("dev-v1")
+    );
+    assert_eq!(
+        failure_event.failure_reason.as_deref(),
+        Some("invalid_credentials")
+    );
+}
+
+#[tokio::test]
+async fn self_login_events_query_masks_ip_and_uses_unknown_fallbacks() {
+    let events = InMemoryLoginEventStore::default();
+    let app = auth_router_with_config(
+        config_with_fixture().with_login_event_store(Arc::new(events.clone())),
+    );
+    let login = post_login_with_headers(
+        app.clone(),
+        json!({
+            "identifier": "member@example.com",
+            "identifier_kind": "email",
+            "password": "member",
+            "login_surface": "user_web"
+        }),
+        &[
+            ("x-real-ip", "203.0.113.99"),
+            ("user-agent", "not-a-real-browser"),
+        ],
+    )
+    .await;
+    let token = login.body["session_token"]
+        .as_str()
+        .expect("session token should be returned");
+
+    let response =
+        request_with_optional_bearer(app, "GET", "/v1/users/me/login-events", Some(token)).await;
+
+    assert_eq!(response.status, StatusCode::OK);
+    let first = &response.body["events"][0];
+    assert_eq!(first["ip_masked"], json!("203.0.113.xxx"));
+    assert_eq!(first["location_label"], json!("未知"));
+    assert_eq!(first["device_label"], json!("未知"));
+    assert!(first.get("ip_address").is_none());
+    assert!(first.get("user_agent_raw").is_none());
 }
 
 #[tokio::test]
@@ -981,12 +1111,24 @@ fn base32_decode(input: &str) -> Vec<u8> {
 }
 
 async fn post_login(app: axum::Router, body: Value) -> LoginTestResponse {
+    post_login_with_headers(app, body, &[]).await
+}
+
+async fn post_login_with_headers(
+    app: axum::Router,
+    body: Value,
+    headers: &[(&str, &str)],
+) -> LoginTestResponse {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri("/api/auth/login")
+        .header("content-type", "application/json");
+    for (name, value) in headers {
+        builder = builder.header(*name, *value);
+    }
     let response = app
         .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/auth/login")
-                .header("content-type", "application/json")
+            builder
                 .body(Body::from(body.to_string()))
                 .expect("request builds"),
         )

@@ -12,7 +12,7 @@ use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use async_trait::async_trait;
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -25,6 +25,11 @@ use sha1::{Digest, Sha1};
 use sqlx::{PgPool, Row};
 
 use crate::{
+    login_events::{
+        InMemoryLoginEventStore, LoginEventInput, LoginEventStore, LoginEventType,
+        client_ip_from_headers, geo_from_headers, identifier_hmac, normalize_login_surface,
+        parse_user_agent, principal_type_from_role, principal_type_from_surface, to_self_response,
+    },
     webauthn_runtime::{
         PasskeyAssertionFinish, WebauthnRuntimeConfig, finish_passkey_assertion,
         finish_passkey_registration, start_and_store_passkey_assertion,
@@ -48,6 +53,9 @@ pub struct AuthConfig {
     webauthn_config: Option<WebauthnRuntimeConfig>,
     webauthn_store: Arc<dyn WebauthnStore>,
     credential_store: Option<Arc<dyn PasswordCredentialStore>>,
+    login_event_store: Option<Arc<dyn LoginEventStore>>,
+    login_identifier_hmac_key: Arc<Vec<u8>>,
+    login_identifier_hmac_key_version: String,
 }
 
 #[derive(Clone)]
@@ -148,6 +156,24 @@ struct LoginRequest {
     mfa_code: Option<String>,
     #[serde(default)]
     mfa_recovery_code: Option<String>,
+    #[serde(default)]
+    login_surface: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LoginEventsQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+struct SuccessfulLoginInput<'a> {
+    headers: &'a HeaderMap,
+    login_surface: &'a str,
+    account: &'a LocalLoginAccount,
+    remember: bool,
+    mfa_at_epoch_seconds: Option<u64>,
+    mfa_amr_method: Option<&'static str>,
+    auth_method: &'a str,
 }
 
 #[derive(Debug, Serialize)]
@@ -231,6 +257,14 @@ pub enum LoginIdentifier {
     Phone(String),
 }
 
+impl LoginIdentifier {
+    fn as_normalized_str(&self) -> &str {
+        match self {
+            Self::Email(value) | Self::Phone(value) => value,
+        }
+    }
+}
+
 pub fn auth_router() -> Router {
     auth_router_with_config(AuthConfig::from_env())
 }
@@ -245,6 +279,8 @@ pub fn auth_router_with_config(config: AuthConfig) -> Router {
         .route("/v1/auth/me", get(me))
         .route("/v1/auth/logout", post(logout))
         .route("/v1/auth/jwks", get(jwks))
+        .route("/v1/users/me/login-events", get(self_login_events))
+        .route("/v1/internal/admin/login-events", get(admin_login_events))
         .route(
             "/v1/auth/webauthn/register/start",
             post(webauthn_register_start),
@@ -280,6 +316,9 @@ impl AuthConfig {
             webauthn_config: None,
             webauthn_store: Arc::new(InMemoryWebauthnStore::default()),
             credential_store: None,
+            login_event_store: Some(Arc::new(InMemoryLoginEventStore::default())),
+            login_identifier_hmac_key: Arc::new(b"prophetica-login-events-dev-key".to_vec()),
+            login_identifier_hmac_key_version: "dev-v1".to_owned(),
         }
     }
 
@@ -312,6 +351,23 @@ impl AuthConfig {
     #[must_use]
     pub fn with_credential_store(mut self, store: Arc<dyn PasswordCredentialStore>) -> Self {
         self.credential_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn with_login_event_store(mut self, store: Arc<dyn LoginEventStore>) -> Self {
+        self.login_event_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn with_login_identifier_hmac_key(
+        mut self,
+        key: impl Into<Vec<u8>>,
+        key_version: impl Into<String>,
+    ) -> Self {
+        self.login_identifier_hmac_key = Arc::new(key.into());
+        self.login_identifier_hmac_key_version = key_version.into();
         self
     }
 
@@ -352,6 +408,11 @@ impl AuthConfig {
         }
         if let Some(webauthn_config) = WebauthnRuntimeConfig::from_env() {
             config = config.with_webauthn_config(webauthn_config);
+        }
+        if let Ok(key) = env::var("USER_SERVICE_LOGIN_EVENT_IDENTIFIER_HMAC_KEY") {
+            let version = env::var("USER_SERVICE_LOGIN_EVENT_IDENTIFIER_HMAC_KEY_VERSION")
+                .unwrap_or_else(|_| "env-v1".to_owned());
+            config = config.with_login_identifier_hmac_key(key.into_bytes(), version);
         }
         config
     }
@@ -469,6 +530,15 @@ impl AuthConfig {
             credential.password_hash,
         )
         .map(|account| account.with_profile(credential.role, credential.affiliate_id))
+    }
+
+    async fn role_for_user_id(&self, user_id: &str) -> Option<String> {
+        if let Some(account) = self.account_by_user_id(user_id) {
+            return Some(account.role.clone());
+        }
+        self.stored_account_by_user_id(user_id)
+            .await
+            .map(|account| account.role)
     }
 
     fn consume_recovery_code(&self, account: &LocalLoginAccount, candidate: &str) -> bool {
@@ -705,7 +775,12 @@ impl LocalLoginAccount {
     }
 }
 
-async fn login(State(config): State<AuthConfig>, Json(request): Json<LoginRequest>) -> Response {
+async fn login(
+    State(config): State<AuthConfig>,
+    headers: HeaderMap,
+    Json(request): Json<LoginRequest>,
+) -> Response {
+    let login_surface = normalize_login_surface(request.login_surface.as_deref());
     if config.accounts.is_empty() && config.credential_store.is_none() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -715,14 +790,41 @@ async fn login(State(config): State<AuthConfig>, Json(request): Json<LoginReques
     }
 
     let Some(identifier) = normalize_identifier(&request.identifier) else {
+        record_login_failure(
+            &config,
+            &headers,
+            &login_surface,
+            None,
+            "invalid_identifier",
+            "password",
+        )
+        .await;
         return invalid_credentials();
     };
 
     if !identifier_kind_matches(&request.identifier_kind, &identifier) {
+        record_login_failure(
+            &config,
+            &headers,
+            &login_surface,
+            Some(&identifier),
+            "invalid_identifier",
+            "password",
+        )
+        .await;
         return invalid_credentials();
     }
 
     if request.password.is_empty() {
+        record_login_failure(
+            &config,
+            &headers,
+            &login_surface,
+            Some(&identifier),
+            "invalid_credentials",
+            "password",
+        )
+        .await;
         return invalid_credentials();
     }
 
@@ -740,38 +842,140 @@ async fn login(State(config): State<AuthConfig>, Json(request): Json<LoginReques
         stored_account.as_ref()
     };
 
-    match account {
-        Some(account) => {
-            let (mfa_at_epoch_seconds, mfa_amr_method) = if account.requires_mfa_challenge() {
-                let Some(method) = account.verify_mfa_challenge(
-                    request.mfa_code.as_deref(),
-                    request.mfa_recovery_code.as_deref(),
-                    unix_now_seconds(),
-                    &config,
-                ) else {
-                    return (
-                        StatusCode::UNAUTHORIZED,
-                        Json(json!({ "error": "ERROR_CODE_MFA_REQUIRED" })),
-                    )
-                        .into_response();
-                };
-                (Some(unix_now_seconds()), Some(method))
-            } else {
-                (
-                    account.mfa_at_epoch_seconds,
-                    has_hardware_mfa(&account.mfa_methods, account.mfa_at_epoch_seconds)
-                        .then_some("hwk"),
-                )
-            };
-            successful_login(
-                &config,
+    if let Some(account) = account {
+        return authenticated_password_login(&config, &headers, &login_surface, account, &request)
+            .await;
+    }
+
+    record_login_failure(
+        &config,
+        &headers,
+        &login_surface,
+        Some(&identifier),
+        "invalid_credentials",
+        "password",
+    )
+    .await;
+    invalid_credentials()
+}
+
+async fn authenticated_password_login(
+    config: &AuthConfig,
+    headers: &HeaderMap,
+    login_surface: &str,
+    account: &LocalLoginAccount,
+    request: &LoginRequest,
+) -> Response {
+    let (mfa_at_epoch_seconds, mfa_amr_method) = if account.requires_mfa_challenge() {
+        let Some(method) = account.verify_mfa_challenge(
+            request.mfa_code.as_deref(),
+            request.mfa_recovery_code.as_deref(),
+            unix_now_seconds(),
+            config,
+        ) else {
+            record_login_failure_for_account(
+                config,
+                headers,
+                login_surface,
                 account,
-                request.remember,
-                mfa_at_epoch_seconds,
-                mfa_amr_method,
+                "mfa_required",
+                "password",
             )
+            .await;
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({ "error": "ERROR_CODE_MFA_REQUIRED" })),
+            )
+                .into_response();
+        };
+        (Some(unix_now_seconds()), Some(method))
+    } else {
+        (
+            account.mfa_at_epoch_seconds,
+            has_hardware_mfa(&account.mfa_methods, account.mfa_at_epoch_seconds).then_some("hwk"),
+        )
+    };
+    successful_login(
+        config,
+        SuccessfulLoginInput {
+            headers,
+            login_surface,
+            account,
+            remember: request.remember,
+            mfa_at_epoch_seconds,
+            mfa_amr_method,
+            auth_method: "password",
+        },
+    )
+    .await
+}
+
+async fn self_login_events(
+    State(config): State<AuthConfig>,
+    headers: HeaderMap,
+    Query(query): Query<LoginEventsQuery>,
+) -> Response {
+    let Some(token) = bearer_token(&headers) else {
+        return invalid_credentials();
+    };
+    let Some(session) = parse_session_token(&config, token) else {
+        return invalid_credentials();
+    };
+    if session.expires_at_epoch_seconds <= unix_now_seconds() {
+        return invalid_credentials();
+    }
+    let limit = query.limit.unwrap_or(20).clamp(1, 50);
+    let Some(store) = config.login_event_store.as_ref() else {
+        return Json(json!({ "events": [] })).into_response();
+    };
+    match store.list_for_principal(&session.user_id, limit).await {
+        Ok(events) => {
+            let events = events.iter().map(to_self_response).collect::<Vec<_>>();
+            Json(json!({ "events": events })).into_response()
         }
-        None => invalid_credentials(),
+        Err(_) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENTS_UNAVAILABLE" })),
+        )
+            .into_response(),
+    }
+}
+
+async fn admin_login_events(
+    State(config): State<AuthConfig>,
+    headers: HeaderMap,
+    Query(query): Query<LoginEventsQuery>,
+) -> Response {
+    let Some(token) = bearer_token(&headers) else {
+        return invalid_credentials();
+    };
+    let Some(session) = parse_session_token(&config, token) else {
+        return invalid_credentials();
+    };
+    if session.expires_at_epoch_seconds <= unix_now_seconds() {
+        return invalid_credentials();
+    }
+    let Some(role) = config.role_for_user_id(&session.user_id).await else {
+        return invalid_credentials();
+    };
+    if !matches!(role.as_str(), "admin" | "manager") {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENT_ACCESS_DENIED" })),
+        )
+            .into_response();
+    }
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let Some(store) = config.login_event_store.as_ref() else {
+        return Json(json!({ "events": [] })).into_response();
+    };
+    match store.list_recent(limit).await {
+        Ok(events) => Json(json!({ "events": events })).into_response(),
+        Err(_) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_LOGIN_EVENTS_UNAVAILABLE" })),
+        )
+            .into_response(),
     }
 }
 
@@ -1124,11 +1328,17 @@ async fn webauthn_assert_finish(
 
     successful_login(
         &config,
-        account,
-        false,
-        Some(unix_now_seconds()),
-        Some("hwk"),
+        SuccessfulLoginInput {
+            headers: &headers,
+            login_surface: "user_web",
+            account,
+            remember: false,
+            mfa_at_epoch_seconds: Some(unix_now_seconds()),
+            mfa_amr_method: Some("hwk"),
+            auth_method: "passkey",
+        },
     )
+    .await
 }
 
 fn registered_webauthn_credential_record(
@@ -1487,45 +1697,175 @@ fn persist_consumed_recovery_codes(
     Ok(())
 }
 
-fn successful_login(
-    config: &AuthConfig,
-    account: &LocalLoginAccount,
-    remember: bool,
-    mfa_at_epoch_seconds: Option<u64>,
-    mfa_amr_method: Option<&'static str>,
-) -> Response {
+async fn successful_login(config: &AuthConfig, input: SuccessfulLoginInput<'_>) -> Response {
     let now = unix_now_seconds();
     let expires_at_epoch_seconds = now + LOCAL_ACCESS_TOKEN_TTL_SECONDS;
-    let scope = if remember { "remembered" } else { "session" };
+    let scope = if input.remember {
+        "remembered"
+    } else {
+        "session"
+    };
 
     let session_token = config
         .session_signer
         .as_ref()
         .and_then(|signer| {
             signer.sign_account_session(
-                account,
+                input.account,
                 now,
                 expires_at_epoch_seconds,
-                mfa_at_epoch_seconds,
-                mfa_amr_method,
+                input.mfa_at_epoch_seconds,
+                input.mfa_amr_method,
             )
         })
         .unwrap_or_else(|| {
             format!(
                 "local-user-service:{scope}:{}:{expires_at_epoch_seconds}",
-                account.user_id
+                input.account.user_id
             )
         });
 
+    record_login_success(
+        config,
+        input.headers,
+        input.login_surface,
+        input.account,
+        input.auth_method,
+    )
+    .await;
+
     Json(LoginResponse {
-        user_id: account.user_id.clone(),
-        role: account.role.clone(),
-        affiliate_id: account.affiliate_id.clone(),
-        mfa_at_epoch_seconds,
+        user_id: input.account.user_id.clone(),
+        role: input.account.role.clone(),
+        affiliate_id: input.account.affiliate_id.clone(),
+        mfa_at_epoch_seconds: input.mfa_at_epoch_seconds,
         session_token,
         expires_at_epoch_seconds,
     })
     .into_response()
+}
+
+async fn record_login_success(
+    config: &AuthConfig,
+    headers: &HeaderMap,
+    login_surface: &str,
+    account: &LocalLoginAccount,
+    auth_method: &str,
+) {
+    let event = LoginEventInput {
+        login_surface: login_surface.to_owned(),
+        principal_type: principal_type_from_role(&account.role),
+        principal_id: Some(account.user_id.clone()),
+        user_id: matches!(
+            principal_type_from_role(&account.role),
+            crate::login_events::LoginPrincipalType::User
+        )
+        .then(|| account.user_id.clone()),
+        principal_external_id: account.affiliate_id.clone(),
+        account_identifier_hash: None,
+        account_identifier_hash_key_version: None,
+        event_type: LoginEventType::Success,
+        client_ip: client_ip_from_headers(headers),
+        user_agent: parse_user_agent(headers),
+        geo: geo_from_headers(headers),
+        session_id: None,
+        auth_method: auth_method.to_owned(),
+        failure_reason: None,
+        risk_flags: json!([]),
+        request_id: header_value(headers, "x-request-id"),
+        correlation_id: header_value(headers, "x-correlation-id"),
+    };
+    write_login_event(config, event).await;
+}
+
+async fn record_login_failure_for_account(
+    config: &AuthConfig,
+    headers: &HeaderMap,
+    login_surface: &str,
+    account: &LocalLoginAccount,
+    failure_reason: &str,
+    auth_method: &str,
+) {
+    let event = LoginEventInput {
+        login_surface: login_surface.to_owned(),
+        principal_type: principal_type_from_role(&account.role),
+        principal_id: Some(account.user_id.clone()),
+        user_id: matches!(
+            principal_type_from_role(&account.role),
+            crate::login_events::LoginPrincipalType::User
+        )
+        .then(|| account.user_id.clone()),
+        principal_external_id: account.affiliate_id.clone(),
+        account_identifier_hash: None,
+        account_identifier_hash_key_version: None,
+        event_type: LoginEventType::Failure,
+        client_ip: client_ip_from_headers(headers),
+        user_agent: parse_user_agent(headers),
+        geo: geo_from_headers(headers),
+        session_id: None,
+        auth_method: auth_method.to_owned(),
+        failure_reason: Some(failure_reason.to_owned()),
+        risk_flags: json!([]),
+        request_id: header_value(headers, "x-request-id"),
+        correlation_id: header_value(headers, "x-correlation-id"),
+    };
+    write_login_event(config, event).await;
+}
+
+async fn record_login_failure(
+    config: &AuthConfig,
+    headers: &HeaderMap,
+    login_surface: &str,
+    identifier: Option<&LoginIdentifier>,
+    failure_reason: &str,
+    auth_method: &str,
+) {
+    let (hash, key_version) = identifier.map_or((None, None), |identifier| {
+        let (hash, key_version) = identifier_hmac(
+            identifier.as_normalized_str(),
+            config.login_identifier_hmac_key.as_slice(),
+            &config.login_identifier_hmac_key_version,
+        );
+        (Some(hash), Some(key_version))
+    });
+    let event = LoginEventInput {
+        login_surface: login_surface.to_owned(),
+        principal_type: principal_type_from_surface(login_surface),
+        principal_id: None,
+        user_id: None,
+        principal_external_id: None,
+        account_identifier_hash: hash,
+        account_identifier_hash_key_version: key_version,
+        event_type: LoginEventType::Failure,
+        client_ip: client_ip_from_headers(headers),
+        user_agent: parse_user_agent(headers),
+        geo: geo_from_headers(headers),
+        session_id: None,
+        auth_method: auth_method.to_owned(),
+        failure_reason: Some(failure_reason.to_owned()),
+        risk_flags: json!([]),
+        request_id: header_value(headers, "x-request-id"),
+        correlation_id: header_value(headers, "x-correlation-id"),
+    };
+    write_login_event(config, event).await;
+}
+
+async fn write_login_event(config: &AuthConfig, event: LoginEventInput) {
+    if let Some(store) = config.login_event_store.as_ref() {
+        if store.write_event(event).await.is_err() {
+            tracing::error!("login event write failed");
+        }
+    }
+}
+
+fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)?
+        .to_str()
+        .ok()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
 }
 
 struct LocalSessionToken {

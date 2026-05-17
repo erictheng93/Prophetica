@@ -127,6 +127,7 @@ export async function authenticateWithPassword(
         identifier_kind: identifier.kind,
         password: input.password,
         remember: input.remember,
+        login_surface: "user_web",
         mfa_code: nonEmptyString(input.mfaCode),
         mfa_recovery_code: nonEmptyString(input.mfaRecoveryCode),
       }),
