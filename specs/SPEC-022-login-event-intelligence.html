@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-022-login-event-intelligence</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.5;
+    }
+    img { max-width: 100%; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre {
+      overflow: auto;
+      padding: 1rem;
+      background: #f6f8fa;
+      border: 1px solid #d8dee3;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    a { color: #0969da; }
+    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
+    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
+    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .changelog-entry p,
+    .changelog-entry ul { margin: 0.35rem 0; }
+    .changelog-entry ul { padding-left: 1.15rem; }
+    .changelog-entry li { margin-bottom: 0.35rem; }
+  </style>
+</head>
+<body>
+<h1>SPEC-022 — 登入事件情報（Login Event Intelligence）</h1>
+<blockquote>
+  <p>優先級：<strong>P1</strong><br>
+  版本：v0.1.3 · 最後更新：2026-05-17<br>
+  依賴：SPEC-010, SPEC-014, SPEC-018<br>
+  被依賴：未來登入通知、異常登入偵測、可信裝置、MFA step-up、客服帳號安全查詢</p>
+</blockquote>
+<section class="changelog">
+  <div class="changelog-list">
+    <article class="changelog-entry">
+      <h3>v0.1.3 變更</h3>
+      <p>收斂實作前資料契約：<code>geo_accuracy</code> 預設改為 <code>unknown</code>；補上登入入口 <code>login_surface</code>、失敗登入 identity 規則、<code>account_identifier_hash</code> HMAC 契約、affiliate 外部識別欄位，以及 outbox 補寫與失敗語意。</p>
+    </article>
+    <article class="changelog-entry">
+      <h3>v0.1.2 變更</h3>
+      <p>補上工程實作計畫連結，對應 <a href="../docs/implementation-plans/SPEC-022-login-event-intelligence-implementation-plan.html">SPEC-022-login-event-intelligence-implementation-plan.html</a>。</p>
+    </article>
+    <article class="changelog-entry">
+      <h3>v0.1.1 變更</h3>
+      <p>補強登入主體範圍，明確要求 admin、manager、affiliate、一般 user 與後續新增互動式帳號類型都必須產生一致的 login event；資料模型新增 <code>principal_type</code> / <code>principal_id</code>，避免只以 <code>user_id</code> 覆蓋一般玩家。</p>
+    </article>
+    <article class="changelog-entry">
+      <h3>v0.1.0 變更</h3>
+      <p>新增登入事件情報規格，定義登入時取得 IP、IP 推估地點、登入裝置資訊、資料可信度、隱私保存、查詢權限與測試驗收要求。</p>
+    </article>
+  </div>
+</section>
+<hr>
+
+<h2>1. Objective</h2>
+<p>在每次互動式帳號登入成功或失敗時，系統必須記錄登入事件，包含來源 IP、根據 IP 推估的登入地點、User-Agent 解析出的登入裝置，以及必要的安全風險訊號。此資料用於帳號安全稽核、客服排查、事故追查、未來異常登入偵測、MFA step-up 與登入通知。</p>
+<p>本 SPEC 的登入主體包含一般玩家 <code>user</code>、管理員 <code>admin</code>、營運 / 客服主管 <code>manager</code>、代理 <code>affiliate</code>，以及未來新增的任何可互動登入後台或前台的帳號類型。服務對服務憑證、cron job 與機器帳號不屬於本 SPEC；它們應走服務憑證稽核或操作留痕。</p>
+<p>本功能不得宣稱取得精準 GPS 位置。登入地點僅能以「根據 IP 推估」方式呈現，並需保留資料來源與可信度欄位。</p>
+<p><strong>工程實作計畫：</strong><a href="../docs/implementation-plans/SPEC-022-login-event-intelligence-implementation-plan.html">SPEC-022-login-event-intelligence-implementation-plan.html</a></p>
+
+<h2>2. Scope</h2>
+<h3>2.1 In Scope</h3>
+<ul>
+  <li>登入成功時寫入 login event。</li>
+  <li>登入失敗時寫入 login failure event；若可識別登入主體，需關聯 <code>principal_type</code> 與 <code>principal_id</code>。</li>
+  <li>所有互動式登入主體都必須覆蓋：<code>user</code>、<code>admin</code>、<code>manager</code>、<code>affiliate</code>。</li>
+  <li>從可信 proxy header 或 remote address 取得 client IP。</li>
+  <li>根據 IP 推估國家、城市、區域、ASN / ISP。</li>
+  <li>解析 <code>User-Agent</code> 取得瀏覽器、作業系統、裝置類型與可用的裝置型號資訊。</li>
+  <li>建立可查詢、可稽核的登入事件資料模型。</li>
+  <li>支援內部後台或客服安全查詢最近登入紀錄。</li>
+  <li>定義資料保存期限、遮罩規則、存取權限與第三方 provider 風險。</li>
+</ul>
+
+<h3>2.2 Out of Scope</h3>
+<ul>
+  <li>精準 GPS 定位或背景定位。</li>
+  <li>以瀏覽器 fingerprinting 作為唯一裝置身份。</li>
+  <li>自動封鎖登入、完整風控引擎或風險分數模型。</li>
+  <li>登入通知、可信裝置、passkey / MFA 政策調整；這些應另開 SPEC 或在 SPEC-010 中延伸。</li>
+</ul>
+
+<h2>3. Data Model</h2>
+<p>建議建立 <code>login_events</code> 表或等價事件儲存結構。欄位名稱可依服務既有命名調整，但語義必須完整保留。資料模型不得只依賴 <code>user_id</code>，因為 admin、manager、affiliate 可能不在一般玩家 user table 內。</p>
+<table>
+  <thead>
+    <tr>
+      <th>欄位</th>
+      <th>型別建議</th>
+      <th>要求</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>UUID / ULID</td><td>登入事件唯一識別碼。</td></tr>
+    <tr><td><code>login_surface</code></td><td>enum / text</td><td>登入入口宣告的 surface：<code>user_web</code>, <code>admin_console</code>, <code>affiliate_portal</code>, <code>liff</code> 等。未知帳號的失敗登入必須由入口提供此欄位，避免所有不存在帳號嘗試都被誤歸類為一般玩家。</td></tr>
+    <tr><td><code>principal_type</code></td><td>enum</td><td>登入主體類型：<code>user</code>, <code>admin</code>, <code>manager</code>, <code>affiliate</code>；未來新增互動式帳號類型時必須擴充此 enum 或等價分類。登入失敗且帳號不存在時，可由 <code>login_surface</code> 推導 attempted principal type。</td></tr>
+    <tr><td><code>principal_id</code></td><td>UUID / nullable</td><td>登入主體唯一識別碼。登入成功必填；登入失敗若能識別帳號則填入。</td></tr>
+    <tr><td><code>user_id</code></td><td>UUID / nullable</td><td>一般玩家關聯欄位。僅 <code>principal_type = user</code> 時必填；不得用此欄位代表 admin、manager 或 affiliate。</td></tr>
+    <tr><td><code>principal_external_id</code></td><td>text / nullable</td><td>非 user principal 的外部業務識別，例如 affiliate account id。不得塞入 <code>risk_flags</code>；若未來有多種外部識別，需改為受控 metadata schema。</td></tr>
+    <tr><td><code>account_identifier_hash</code></td><td>text / nullable</td><td>登入失敗時保存 email / phone / username 的標準化 HMAC，用於暴力嘗試偵測；不得保存明文 identifier、密碼或 OTP。HMAC key 由 Vault / secret manager 管理並支援 key version，normalization 必須與登入 identifier canonicalization 共用。<code>login_failure</code> 至少需有 <code>principal_id</code> 或 <code>account_identifier_hash</code> 之一；只有 identifier 無法標準化時才可為 null，並需記錄 failure class。</td></tr>
+    <tr><td><code>event_type</code></td><td>enum</td><td><code>login_success</code>, <code>login_failure</code>, <code>session_refresh</code>（可選）。</td></tr>
+    <tr><td><code>occurred_at</code></td><td>timestamp with time zone</td><td>事件發生時間。</td></tr>
+    <tr><td><code>ip_address</code></td><td>inet / text</td><td>標準化後的 client IP。</td></tr>
+    <tr><td><code>ip_source</code></td><td>text</td><td>例如 <code>cf_connecting_ip</code>, <code>x_forwarded_for</code>, <code>x_real_ip</code>, <code>remote_addr</code>。</td></tr>
+    <tr><td><code>geo_country</code></td><td>text / nullable</td><td>IP geolocation 推估國家。</td></tr>
+    <tr><td><code>geo_region</code></td><td>text / nullable</td><td>IP geolocation 推估區域。</td></tr>
+    <tr><td><code>geo_city</code></td><td>text / nullable</td><td>IP geolocation 推估城市。</td></tr>
+    <tr><td><code>geo_latitude</code></td><td>numeric / nullable</td><td>推估緯度；不得視為精準定位。</td></tr>
+    <tr><td><code>geo_longitude</code></td><td>numeric / nullable</td><td>推估經度；不得視為精準定位。</td></tr>
+    <tr><td><code>geo_source</code></td><td>text / nullable</td><td>例如 <code>cloudflare</code>, <code>maxmind</code>, <code>ipinfo</code>。</td></tr>
+    <tr><td><code>geo_accuracy</code></td><td>enum</td><td>預設 <code>unknown</code>；writer 取得 geolocation provider 結果時必須明確設為 <code>approximate</code> 並填入 <code>geo_source</code>。不得使用 <code>precise</code>。</td></tr>
+    <tr><td><code>asn</code></td><td>text / nullable</td><td>Autonomous System Number。</td></tr>
+    <tr><td><code>isp</code></td><td>text / nullable</td><td>ISP 或組織名稱。</td></tr>
+    <tr><td><code>user_agent_raw</code></td><td>text</td><td>原始 User-Agent；需受保存期限與查詢權限限制。</td></tr>
+    <tr><td><code>browser_name</code></td><td>text / nullable</td><td>解析出的瀏覽器名稱。</td></tr>
+    <tr><td><code>browser_version</code></td><td>text / nullable</td><td>解析出的瀏覽器版本。</td></tr>
+    <tr><td><code>os_name</code></td><td>text / nullable</td><td>解析出的作業系統。</td></tr>
+    <tr><td><code>os_version</code></td><td>text / nullable</td><td>解析出的作業系統版本。</td></tr>
+    <tr><td><code>device_type</code></td><td>enum</td><td><code>desktop</code>, <code>mobile</code>, <code>tablet</code>, <code>bot</code>, <code>unknown</code>。</td></tr>
+    <tr><td><code>device_vendor</code></td><td>text / nullable</td><td>可解析時填入，例如 Apple、Samsung。</td></tr>
+    <tr><td><code>device_model</code></td><td>text / nullable</td><td>可解析時填入；不可作為可信裝置唯一身份。</td></tr>
+    <tr><td><code>session_id</code></td><td>UUID / nullable</td><td>成功登入後建立的 session 關聯。</td></tr>
+    <tr><td><code>auth_method</code></td><td>text</td><td>例如 password、passkey、oauth、liff、admin_sso、manager_sso、affiliate_password。</td></tr>
+    <tr><td><code>failure_reason</code></td><td>text / nullable</td><td>登入失敗分類；不得包含密碼、OTP 或 token。</td></tr>
+    <tr><td><code>risk_flags</code></td><td>jsonb</td><td>例如 <code>new_country</code>, <code>new_device</code>, <code>vpn_detected</code>, <code>tor_detected</code>；MVP 可為空陣列。</td></tr>
+    <tr><td><code>created_at</code></td><td>timestamp with time zone</td><td>資料建立時間。</td></tr>
+  </tbody>
+</table>
+
+<h2>4. IP Resolution</h2>
+<p>系統必須只信任來自已知 proxy / load balancer 的轉發 header。不得無條件採用任意 client 傳入的 <code>X-Forwarded-For</code>，避免 IP spoofing。</p>
+<p>部署在 Cloudflare 後方時，建議優先順序如下：</p>
+<ol>
+  <li><code>CF-Connecting-IP</code>，僅當 request 來源確定來自 Cloudflare。</li>
+  <li><code>X-Forwarded-For</code>，僅當 request 來源確定來自已知 reverse proxy / load balancer；取第一個未被信任 proxy 覆蓋的 client IP。</li>
+  <li><code>X-Real-IP</code>，僅當 request 來源確定來自已知 proxy。</li>
+  <li>TCP remote address fallback。</li>
+</ol>
+<p>IP 解析結果需記錄 <code>ip_source</code>，以便稽核與排錯。</p>
+
+<h2>5. Principal Coverage</h2>
+<p>所有登入入口都必須接入同一個 login event 記錄契約，不得由各 app 各自用不同格式記錄。至少包含下列入口：</p>
+<table>
+  <thead>
+    <tr>
+      <th>登入主體</th>
+      <th>典型入口</th>
+      <th>記錄要求</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>user</code></td><td>玩家 web app、LIFF、未來 native app</td><td>必須記錄 <code>principal_type = user</code>、<code>principal_id</code>、<code>user_id</code>、session、IP、地點與裝置。</td></tr>
+    <tr><td><code>admin</code></td><td>Admin app、SSO、hardware MFA 流程</td><td>必須記錄 <code>principal_type = admin</code>、<code>principal_id</code>、admin role、auth method、IP、地點與裝置；完整查詢需 audit trail。</td></tr>
+    <tr><td><code>manager</code></td><td>營運 / 客服主管後台</td><td>必須記錄 <code>principal_type = manager</code>、<code>principal_id</code>、role、IP、地點與裝置；高敏操作另需呼應 SPEC-018 操作留痕。</td></tr>
+    <tr><td><code>affiliate</code></td><td>代理後台、代理登入 API</td><td>必須記錄 <code>principal_type = affiliate</code>、<code>principal_id</code>、affiliate account id、IP、地點與裝置；信用帳戶管控另呼應 SPEC-011。</td></tr>
+  </tbody>
+</table>
+<p>若某登入入口因架構限制暫時無法同步寫入事件，必須在同一個 durable transaction 內 enqueue transactional outbox，或透過 message queue 等價機制補寫，並保證最終可查詢。不得因 app 分離導致 admin 或 affiliate 登入缺失。若 login event table 與 outbox / queue 都不可用，登入流程可 fail-open，但必須寫入不含完整登入情報的 error summary、累加 metrics、觸發告警，且不得聲稱該登入事件已被持久化。</p>
+
+<h2>6. Geolocation</h2>
+<p>IP 地點查詢需支援 provider 抽象，避免業務邏輯綁死單一供應商。可接受來源包含 Cloudflare geo headers、MaxMind GeoIP2、IPinfo 或經審核的等價服務。</p>
+<ul>
+  <li>Geolocation 失敗不得阻塞登入。</li>
+  <li>Provider timeout 應使用短 timeout 與 fallback，避免拉高登入延遲。</li>
+  <li>UI、通知與客服後台需標示為「根據 IP 推估」。</li>
+  <li>若使用第三方 API 查詢 IP，需確認隱私政策、資料傳輸區域與保存條款。</li>
+</ul>
+
+<h2>7. Device Parsing</h2>
+<p>裝置資訊應由 <code>User-Agent</code> 解析取得。解析失敗時，登入事件仍需寫入，並將相關欄位標示為 <code>unknown</code> 或 <code>null</code>。</p>
+<p><code>User-Agent</code> 可被瀏覽器、App WebView、VPN 工具或自動化程式改寫，因此不得作為強身份識別。若未來要做可信裝置，必須另行設計 device token、長期 cookie、passkey、MFA 或 session binding。</p>
+
+<h2>8. Privacy, Retention, And Access Control</h2>
+<ul>
+  <li>IP address、User-Agent、登入地點與 ASN / ISP 應視為個人資料或敏感稽核資料。</li>
+  <li>一般客服列表預設遮罩 IP，例如 <code>203.0.113.xxx</code>；只有授權角色可查看完整 IP。</li>
+  <li>完整登入事件保存期限需設定產品預設值；MVP 建議 180 天，可由合規需求調整。</li>
+  <li>超過保存期限的事件需刪除、彙總或匿名化。</li>
+  <li>不得記錄密碼、OTP、access token、refresh token、session secret 或第三方 OAuth token。</li>
+  <li>不得將完整登入情報寫入一般 application log；必要時僅記錄 event id。</li>
+  <li>後台查詢完整登入事件必須產生 audit trail，呼應 SPEC-018。</li>
+</ul>
+
+<h2>9. Product And Admin UX Requirements</h2>
+<ul>
+  <li>使用者安全頁可顯示最近登入時間、約略位置、裝置類型與瀏覽器。</li>
+  <li>客服 / 管理員後台可依 principal type、principal id、user、IP、時間範圍、event type 查詢登入事件。</li>
+  <li>所有位置文字必須使用「約略位置」或「根據 IP 推估」等表述。</li>
+  <li>若地點或裝置解析失敗，UI 應顯示「未知」而不是空白或錯誤。</li>
+  <li>MVP 不主動通知使用者新登入；登入通知需另行定義觸發條件與誤判處理。</li>
+</ul>
+
+<h2>10. Non-Functional Requirements</h2>
+<table>
+  <thead>
+    <tr>
+      <th>項目</th>
+      <th>要求</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>登入延遲</td><td>事件寫入與 geolocation 不得使登入 P95 額外增加超過 100ms；第三方查詢建議走非同步 enrichment。</td></tr>
+    <tr><td>可用性</td><td>Provider 不可用時登入流程仍需成功，事件以 <code>geo_source = null</code> 或 <code>unknown</code> 寫入。</td></tr>
+    <tr><td>稽核性</td><td>事件需可追溯 IP 來源、provider、解析時間與查詢人員。</td></tr>
+    <tr><td>安全性</td><td>完整 IP 與 User-Agent 查詢需受 RBAC 控制。</td></tr>
+    <tr><td>資料最小化</td><td>只保存登入安全與稽核必要欄位，不收集 GPS 或不必要 fingerprinting 訊號。</td></tr>
+  </tbody>
+</table>
+
+<h2>11. Commands</h2>
+<p>實作本 SPEC 時需依實際觸碰範圍選擇最小驗證命令。常用命令如下：</p>
+<pre><code>rtk pnpm lint
+rtk pnpm typecheck
+rtk pnpm test
+rtk cargo check -p &lt;crate&gt; --locked
+rtk cargo test -p &lt;crate&gt; --locked
+rtk cargo clippy -p &lt;crate&gt; --all-targets --locked -- -D warnings</code></pre>
+<p>若變更共享資料模型、SQLx metadata、認證服務或跨服務事件契約，需依 <code>AGENTS.md</code> 的 Development Compute Policy 安排完整 workspace 驗證或 CI 驗證。</p>
+
+<h2>12. Testing Strategy</h2>
+<ul>
+  <li>Unit tests：覆蓋 IP header 解析優先序、可信 proxy 判斷、spoofed header 拒絕、User-Agent parsing fallback、identifier normalization / HMAC。</li>
+  <li>Integration tests：覆蓋 <code>user</code>、<code>admin</code>、<code>manager</code>、<code>affiliate</code> 的登入成功 / 失敗事件寫入、未知帳號依 <code>login_surface</code> 正確分類、geolocation provider timeout fallback、資料欄位不含 secret。</li>
+  <li>Authorization tests：覆蓋客服、管理員、一般使用者對完整 IP / 遮罩 IP 的查詢權限。</li>
+  <li>Migration tests：確認 <code>login_events</code> schema 可正確建立、索引符合常見查詢。</li>
+  <li>Manual QA：以桌面、手機、WebView / LIFF 登入，確認後台顯示約略位置與裝置資訊。</li>
+</ul>
+
+<h2>13. Success Criteria</h2>
+<ul>
+  <li>每次 <code>user</code>、<code>admin</code>、<code>manager</code>、<code>affiliate</code> 登入成功都會產生一筆可查詢的 <code>login_success</code> 事件。</li>
+  <li>登入失敗會產生 <code>login_failure</code> 事件，且不保存密碼、OTP、token 或 session secret。</li>
+  <li>成功登入事件必須包含 <code>principal_type</code> 與 <code>principal_id</code>；一般玩家事件額外包含 <code>user_id</code>。</li>
+  <li>未知帳號的登入失敗必須保留 <code>login_surface</code>、attempted <code>principal_type</code> 與可用的 <code>account_identifier_hash</code> / key version；identifier 無法標準化時需以 <code>failure_reason</code> 標記。</li>
+  <li>affiliate 登入事件的 affiliate account id 必須落在 <code>principal_external_id</code> 或等價受控欄位，不得塞入 <code>risk_flags</code>。</li>
+  <li>IP 解析只信任明確設定的 proxy header，並保留 <code>ip_source</code>。</li>
+  <li>Geolocation 與 User-Agent parsing 失敗不阻塞登入。</li>
+  <li>UI / 後台不得將 IP geolocation 表述為精準位置。</li>
+  <li>完整 IP、User-Agent 與登入事件查詢受 RBAC 與 audit trail 保護。</li>
+  <li>測試覆蓋 IP spoofing 防護、provider fallback、登入事件寫入與查詢授權。</li>
+</ul>
+
+<h2>14. Boundaries</h2>
+<h3>14.1 Always</h3>
+<ul>
+  <li>所有互動式登入入口都寫入同一份 login event contract。</li>
+  <li>使用可信 proxy allowlist 判斷 client IP。</li>
+  <li>將 geolocation 標示為 approximate。</li>
+  <li>保留 provider 失敗時的 graceful fallback。</li>
+  <li>在登入事件中避免保存任何 secret。</li>
+</ul>
+
+<h3>14.2 Ask First</h3>
+<ul>
+  <li>新增第三方 geolocation、VPN detection 或 device intelligence provider。</li>
+  <li>變更登入事件保存期限。</li>
+  <li>將登入事件資料外送至第三方分析或風控服務。</li>
+  <li>啟用自動封鎖、MFA 強制觸發或使用者登入通知。</li>
+</ul>
+
+<h3>14.3 Never</h3>
+<ul>
+  <li>只記錄一般玩家登入而漏掉 admin、manager 或 affiliate 登入。</li>
+  <li>宣稱 IP geolocation 是精準 GPS 位置。</li>
+  <li>無條件信任 <code>X-Forwarded-For</code>。</li>
+  <li>用 User-Agent 作為唯一可信裝置身份。</li>
+  <li>保存密碼、OTP、access token、refresh token、session secret。</li>
+  <li>把完整登入情報寫入一般 application log。</li>
+</ul>
+
+<h2>15. Open Questions</h2>
+<ul>
+  <li>正式部署是否一定經過 Cloudflare？若不是，需列出各環境可信 proxy / load balancer 清單。</li>
+  <li>登入流程目前由哪個 service 作為唯一寫入點？Web、Admin、LIFF 是否共用認證服務？</li>
+  <li>admin、manager、affiliate 是否共用同一個 identity table，或分屬不同資料表？需決定 <code>principal_id</code> 的來源與唯一性。</li>
+  <li>MVP geolocation provider 優先使用 Cloudflare header、MaxMind local DB，還是外部 API？</li>
+  <li>登入事件保存期限採 180 天、365 天，或依地區合規要求分流？</li>
+  <li>哪些後台角色可查看完整 IP？哪些角色只能看遮罩 IP？</li>
+  <li>是否需要在第一版加入 VPN / Tor / proxy detection，或延後至 SPEC-010 風控規則擴充？</li>
+</ul>
+</body>
+</html>
