@@ -33,15 +33,16 @@ test("login form uses document navigation after a successful auth cookie respons
   assert.doesNotMatch(source, /router\.replace\(intendedRedirect/);
 });
 
-test("login form forwards optional MFA step-up evidence", () => {
+test("login form omits temporary two-step verification fields", () => {
   const source = readAdminFile("components/login-form.tsx");
   const route = readAdminFile("app/api/auth/login/route.ts");
 
-  assert.match(source, /const \[mfaCode, setMfaCode\]/);
-  assert.match(source, /const \[mfaRecoveryCode, setMfaRecoveryCode\]/);
-  assert.match(source, /autoComplete="one-time-code"/);
-  assert.match(source, /pattern="\[0-9\]\{6\}"/);
-  assert.match(source, /JSON\.stringify\(\{ email, password, mfaCode, mfaRecoveryCode \}\)/);
-  assert.match(route, /mfa_code: mfaCode/);
-  assert.match(route, /mfa_recovery_code: mfaRecoveryCode/);
+  assert.match(source, /JSON\.stringify\(\{ email, password \}\)/);
+  assert.doesNotMatch(source, /mfaCode/);
+  assert.doesNotMatch(source, /mfaRecoveryCode/);
+  assert.doesNotMatch(source, /one-time-code/);
+  assert.doesNotMatch(route, /mfaCode/);
+  assert.doesNotMatch(route, /mfaRecoveryCode/);
+  assert.doesNotMatch(route, /mfa_code/);
+  assert.doesNotMatch(route, /mfa_recovery_code/);
 });

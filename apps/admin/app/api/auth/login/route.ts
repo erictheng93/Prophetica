@@ -7,8 +7,6 @@ import { setUpstreamSessionCookie } from "@/lib/upstream-session";
 interface LoginBody {
   email?: unknown;
   password?: unknown;
-  mfaCode?: unknown;
-  mfaRecoveryCode?: unknown;
 }
 
 interface UserServiceLoginResponse {
@@ -29,9 +27,6 @@ export async function POST(request: Request) {
   }
   const email = typeof body.email === "string" ? body.email : "";
   const password = typeof body.password === "string" ? body.password : "";
-  const mfaCode = typeof body.mfaCode === "string" ? body.mfaCode.trim() : "";
-  const mfaRecoveryCode =
-    typeof body.mfaRecoveryCode === "string" ? body.mfaRecoveryCode.trim() : "";
 
   if (!email || !password) {
     return NextResponse.json({ error: "missing_credentials" }, { status: 400 });
@@ -45,8 +40,6 @@ export async function POST(request: Request) {
       identifier_kind: "email",
       password,
       remember: false,
-      ...(mfaCode ? { mfa_code: mfaCode } : {}),
-      ...(mfaRecoveryCode ? { mfa_recovery_code: mfaRecoveryCode } : {}),
     }),
     cache: "no-store",
   }).catch(() => null);
