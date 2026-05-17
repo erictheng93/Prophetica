@@ -65,6 +65,14 @@ pub struct LoginEventRetentionResult {
     pub deleted_events: usize,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct LoginEventOutboxRecord {
+    pub id: String,
+    pub login_event_id: String,
+    pub payload: Value,
+    pub failure_reason: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct TrustedProxyConfig {
     cidrs: Vec<IpCidr>,
@@ -165,6 +173,12 @@ pub enum LoginEventStoreError {
     Unavailable,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum LoginEventOutboxError {
+    #[error("login event outbox unavailable")]
+    Unavailable,
+}
+
 #[async_trait]
 pub trait LoginEventStore: Send + Sync {
     async fn write_event(
@@ -197,13 +211,32 @@ pub trait LoginEventStore: Send + Sync {
     ) -> Result<LoginEventRetentionResult, LoginEventStoreError>;
 }
 
+#[async_trait]
+pub trait LoginEventOutbox: Send + Sync {
+    async fn enqueue(
+        &self,
+        event: LoginEventRecord,
+        failure_reason: &str,
+    ) -> Result<LoginEventOutboxRecord, LoginEventOutboxError>;
+}
+
 #[derive(Clone, Default)]
 pub struct InMemoryLoginEventStore {
     events: Arc<Mutex<Vec<LoginEventRecord>>>,
 }
 
+#[derive(Clone, Default)]
+pub struct InMemoryLoginEventOutbox {
+    records: Arc<Mutex<Vec<LoginEventOutboxRecord>>>,
+}
+
 #[derive(Clone)]
 pub struct PostgresLoginEventStore {
+    pool: PgPool,
+}
+
+#[derive(Clone)]
+pub struct PostgresLoginEventOutbox {
     pool: PgPool,
 }
 
@@ -213,6 +246,16 @@ impl InMemoryLoginEventStore {
         self.events
             .lock()
             .map(|events| events.clone())
+            .unwrap_or_default()
+    }
+}
+
+impl InMemoryLoginEventOutbox {
+    #[must_use]
+    pub fn records(&self) -> Vec<LoginEventOutboxRecord> {
+        self.records
+            .lock()
+            .map(|records| records.clone())
             .unwrap_or_default()
     }
 }
@@ -305,6 +348,13 @@ fn prefix_matches_u128(network: u128, ip: u128, prefix_len: u8) -> bool {
 }
 
 impl PostgresLoginEventStore {
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl PostgresLoginEventOutbox {
     #[must_use]
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -419,6 +469,27 @@ impl LoginEventStore for InMemoryLoginEventStore {
             matched_events,
             deleted_events: if dry_run { 0 } else { matched_events },
         })
+    }
+}
+
+#[async_trait]
+impl LoginEventOutbox for InMemoryLoginEventOutbox {
+    async fn enqueue(
+        &self,
+        event: LoginEventRecord,
+        failure_reason: &str,
+    ) -> Result<LoginEventOutboxRecord, LoginEventOutboxError> {
+        let record = LoginEventOutboxRecord {
+            id: Ulid::new().to_string(),
+            login_event_id: event.id.clone(),
+            payload: serde_json::to_value(event).map_err(|_| LoginEventOutboxError::Unavailable)?,
+            failure_reason: failure_reason.to_owned(),
+        };
+        self.records
+            .lock()
+            .map_err(|_| LoginEventOutboxError::Unavailable)?
+            .push(record.clone());
+        Ok(record)
     }
 }
 
@@ -677,8 +748,39 @@ impl LoginEventStore for PostgresLoginEventStore {
     }
 }
 
+#[async_trait]
+impl LoginEventOutbox for PostgresLoginEventOutbox {
+    async fn enqueue(
+        &self,
+        event: LoginEventRecord,
+        failure_reason: &str,
+    ) -> Result<LoginEventOutboxRecord, LoginEventOutboxError> {
+        let record = LoginEventOutboxRecord {
+            id: Ulid::new().to_string(),
+            login_event_id: event.id.clone(),
+            payload: serde_json::to_value(event).map_err(|_| LoginEventOutboxError::Unavailable)?,
+            failure_reason: failure_reason.to_owned(),
+        };
+        sqlx::query(
+            "
+            INSERT INTO login_event_outbox (id, login_event_id, payload, failure_reason)
+            VALUES ($1, $2, $3, $4)
+            ",
+        )
+        .bind(&record.id)
+        .bind(&record.login_event_id)
+        .bind(&record.payload)
+        .bind(&record.failure_reason)
+        .execute(&self.pool)
+        .await
+        .map_err(|_| LoginEventOutboxError::Unavailable)?;
+        Ok(record)
+    }
+}
+
 impl LoginEventInput {
-    fn into_record(self) -> LoginEventRecord {
+    #[must_use]
+    pub fn into_record(self) -> LoginEventRecord {
         LoginEventRecord {
             id: Ulid::new().to_string(),
             login_surface: self.login_surface,

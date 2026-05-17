@@ -18,7 +18,9 @@ use user_service::auth::{
     auth_router_with_config,
 };
 use user_service::login_events::{
-    GeoLookupError, GeoLookupResult, InMemoryLoginEventStore, LoginGeoProvider,
+    AdminLoginEventFilter, GeoLookupError, GeoLookupResult, InMemoryLoginEventOutbox,
+    InMemoryLoginEventStore, LoginEventInput, LoginEventRecord, LoginEventRetentionResult,
+    LoginEventStore, LoginEventStoreError, LoginGeoProvider,
 };
 use user_service::webauthn_runtime::WebauthnRuntimeConfig;
 use user_service::webauthn_store::{
@@ -537,6 +539,42 @@ async fn geolocation_provider_timeout_does_not_block_login_or_event_query() {
     assert_eq!(event.geo_accuracy, "unknown");
     assert!(event.geo_source.is_none());
     assert_eq!(metrics.body["login_geo_lookup_failed_total"], json!(1));
+}
+
+#[tokio::test]
+async fn failed_login_event_write_enqueues_outbox_and_keeps_login_fail_open() {
+    let outbox = InMemoryLoginEventOutbox::default();
+    let app = auth_router_with_config(
+        config_with_fixture()
+            .with_login_event_store(Arc::new(UnavailableLoginEventStore))
+            .with_login_event_outbox(Arc::new(outbox.clone())),
+    );
+
+    let login = post_login(
+        app.clone(),
+        json!({
+            "identifier": "member@example.com",
+            "identifier_kind": "email",
+            "password": "member",
+            "login_surface": "user_web"
+        }),
+    )
+    .await;
+    let token = login.body["session_token"]
+        .as_str()
+        .expect("session token should be returned");
+    let metrics = request_with_optional_bearer(
+        app,
+        "GET",
+        "/v1/internal/admin/login-events/metrics",
+        Some(token),
+    )
+    .await;
+
+    assert_eq!(login.status, StatusCode::OK);
+    assert_eq!(outbox.records().len(), 1);
+    assert_eq!(metrics.body["login_events_write_failed_total"], json!(1));
+    assert_eq!(metrics.body["login_events_outbox_enqueued_total"], json!(1));
 }
 
 #[tokio::test]
@@ -1314,6 +1352,57 @@ struct LoginTestResponse {
 }
 
 struct SlowGeoProvider;
+
+struct UnavailableLoginEventStore;
+
+#[async_trait]
+impl LoginEventStore for UnavailableLoginEventStore {
+    async fn write_event(
+        &self,
+        _event: LoginEventInput,
+    ) -> Result<LoginEventRecord, LoginEventStoreError> {
+        Err(LoginEventStoreError::Unavailable)
+    }
+
+    async fn list_for_principal(
+        &self,
+        _principal_id: &str,
+        _limit: usize,
+    ) -> Result<Vec<LoginEventRecord>, LoginEventStoreError> {
+        Err(LoginEventStoreError::Unavailable)
+    }
+
+    async fn list_recent(
+        &self,
+        _limit: usize,
+    ) -> Result<Vec<LoginEventRecord>, LoginEventStoreError> {
+        Err(LoginEventStoreError::Unavailable)
+    }
+
+    async fn list_admin(
+        &self,
+        _filter: AdminLoginEventFilter,
+    ) -> Result<Vec<LoginEventRecord>, LoginEventStoreError> {
+        Err(LoginEventStoreError::Unavailable)
+    }
+
+    async fn get_by_id(&self, _id: &str) -> Result<Option<LoginEventRecord>, LoginEventStoreError> {
+        Err(LoginEventStoreError::Unavailable)
+    }
+
+    async fn delete_older_than(
+        &self,
+        cutoff_epoch_seconds: u64,
+        dry_run: bool,
+    ) -> Result<LoginEventRetentionResult, LoginEventStoreError> {
+        Ok(LoginEventRetentionResult {
+            dry_run,
+            cutoff_epoch_seconds,
+            matched_events: 0,
+            deleted_events: 0,
+        })
+    }
+}
 
 #[async_trait]
 impl LoginGeoProvider for SlowGeoProvider {

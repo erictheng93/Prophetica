@@ -31,10 +31,10 @@ use tokio::time::timeout;
 
 use crate::{
     login_events::{
-        AdminLoginEventFilter, InMemoryLoginEventStore, LoginEventInput, LoginEventStore,
-        LoginEventType, LoginGeoProvider, TrustedProxyConfig, client_ip_from_request,
-        geo_from_headers, identifier_hmac, normalize_login_surface, parse_user_agent,
-        principal_type_from_role, principal_type_from_surface, to_self_response,
+        AdminLoginEventFilter, InMemoryLoginEventStore, LoginEventInput, LoginEventOutbox,
+        LoginEventStore, LoginEventType, LoginGeoProvider, TrustedProxyConfig,
+        client_ip_from_request, geo_from_headers, identifier_hmac, normalize_login_surface,
+        parse_user_agent, principal_type_from_role, principal_type_from_surface, to_self_response,
     },
     webauthn_runtime::{
         PasskeyAssertionFinish, WebauthnRuntimeConfig, finish_passkey_assertion,
@@ -60,6 +60,7 @@ pub struct AuthConfig {
     webauthn_store: Arc<dyn WebauthnStore>,
     credential_store: Option<Arc<dyn PasswordCredentialStore>>,
     login_event_store: Option<Arc<dyn LoginEventStore>>,
+    login_event_outbox: Option<Arc<dyn LoginEventOutbox>>,
     login_geo_provider: Option<Arc<dyn LoginGeoProvider>>,
     login_geo_timeout: Duration,
     login_identifier_hmac_key: Arc<Vec<u8>>,
@@ -204,6 +205,7 @@ struct LoginEventMetrics {
     spoofed_headers_ignored: AtomicU64,
     admin_detail_queries: AtomicU64,
     geo_lookup_failed: AtomicU64,
+    outbox_enqueued: AtomicU64,
 }
 
 #[derive(Debug, Serialize)]
@@ -218,6 +220,8 @@ struct LoginEventMetricsSnapshot {
     admin_detail_queries: u64,
     #[serde(rename = "login_geo_lookup_failed_total")]
     geo_lookup_failed: u64,
+    #[serde(rename = "login_events_outbox_enqueued_total")]
+    outbox_enqueued: u64,
 }
 
 struct SuccessfulLoginInput<'a> {
@@ -384,6 +388,7 @@ impl AuthConfig {
             webauthn_store: Arc::new(InMemoryWebauthnStore::default()),
             credential_store: None,
             login_event_store: Some(Arc::new(InMemoryLoginEventStore::default())),
+            login_event_outbox: None,
             login_geo_provider: None,
             login_geo_timeout: Duration::from_millis(50),
             login_identifier_hmac_key: Arc::new(b"prophetica-login-events-dev-key".to_vec()),
@@ -428,6 +433,12 @@ impl AuthConfig {
     #[must_use]
     pub fn with_login_event_store(mut self, store: Arc<dyn LoginEventStore>) -> Self {
         self.login_event_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn with_login_event_outbox(mut self, outbox: Arc<dyn LoginEventOutbox>) -> Self {
+        self.login_event_outbox = Some(outbox);
         self
     }
 
@@ -1254,6 +1265,7 @@ impl LoginEventMetrics {
             ip_spoof_header_ignored: self.spoofed_headers_ignored.load(Ordering::Relaxed),
             admin_detail_queries: self.admin_detail_queries.load(Ordering::Relaxed),
             geo_lookup_failed: self.geo_lookup_failed.load(Ordering::Relaxed),
+            outbox_enqueued: self.outbox_enqueued.load(Ordering::Relaxed),
         }
     }
 }
@@ -2104,6 +2116,7 @@ async fn record_login_failure(
 
 async fn write_login_event(config: &AuthConfig, event: LoginEventInput) {
     if let Some(store) = config.login_event_store.as_ref() {
+        let outbox_fallback = event.clone().into_record();
         if store.write_event(event).await.is_ok() {
             config
                 .login_event_metrics
@@ -2114,6 +2127,18 @@ async fn write_login_event(config: &AuthConfig, event: LoginEventInput) {
                 .login_event_metrics
                 .failed
                 .fetch_add(1, Ordering::Relaxed);
+            if let Some(outbox) = config.login_event_outbox.as_ref() {
+                if outbox
+                    .enqueue(outbox_fallback, "login_events_write_failed")
+                    .await
+                    .is_ok()
+                {
+                    config
+                        .login_event_metrics
+                        .outbox_enqueued
+                        .fetch_add(1, Ordering::Relaxed);
+                }
+            }
             tracing::error!("login event write failed");
         }
     }

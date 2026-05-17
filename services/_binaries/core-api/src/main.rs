@@ -70,6 +70,9 @@ async fn build_user_service_router(config: &ServiceConfig) -> anyhow::Result<axu
                     .with_login_event_store(std::sync::Arc::new(
                         user_service::login_events::PostgresLoginEventStore::new(pool.clone()),
                     ))
+                    .with_login_event_outbox(std::sync::Arc::new(
+                        user_service::login_events::PostgresLoginEventOutbox::new(pool.clone()),
+                    ))
                     .with_webauthn_store(std::sync::Arc::new(
                         user_service::webauthn_store::PostgresWebauthnStore::new(pool.clone()),
                     )),
