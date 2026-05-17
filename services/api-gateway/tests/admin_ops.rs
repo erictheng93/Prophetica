@@ -443,9 +443,9 @@ async fn member_management_proxy_persists_to_postgres_user_service() {
 
     let listed = app
         .clone()
-        .oneshot(empty_get(&format!(
-            "/api/internal/admin/members?affiliate_id=AFF-E2E"
-        )))
+        .oneshot(empty_get(
+            "/api/internal/admin/members?affiliate_id=AFF-E2E",
+        ))
         .await
         .expect("list request should be handled");
     assert_eq!(listed.status(), StatusCode::OK);
@@ -562,6 +562,7 @@ async fn approved_member_action_applies_restriction_to_postgres_user_service() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn approved_withdrawal_restriction_freezes_wallet_and_records_risk_event() {
     let Some(member_pool) = postgres_test_pool().await else {
         return;
@@ -698,6 +699,7 @@ async fn approved_withdrawal_restriction_freezes_wallet_and_records_risk_event()
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn approved_kyc_review_action_creates_kyc_task_and_restricts_member() {
     let Some(member_pool) = postgres_test_pool().await else {
         return;

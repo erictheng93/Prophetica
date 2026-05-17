@@ -33,7 +33,7 @@ async fn run_trade_accrual() -> anyhow::Result<()> {
     let limit = env::var("REFERRAL_TRADE_ACCRUAL_BATCH_LIMIT")
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
-        .unwrap_or(DEFAULT_BATCH_LIMIT as i64);
+        .unwrap_or_else(|| i64::try_from(DEFAULT_BATCH_LIMIT).unwrap_or(i64::MAX));
 
     let referral_pool = PgPoolOptions::new()
         .max_connections(5)
@@ -250,7 +250,9 @@ async fn run_daily_payout() -> anyhow::Result<()> {
 fn current_epoch_day() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| (duration.as_secs() / 86_400) as i64)
+        .map_or(0, |duration| {
+            i64::try_from(duration.as_secs() / 86_400).unwrap_or(i64::MAX)
+        })
 }
 
 struct HttpQualificationInputs {
@@ -332,6 +334,7 @@ impl QualificationInputProvider for HttpQualificationInputs {
 
 #[async_trait]
 impl QualificationInputProvider for PostgresQualificationInputs {
+    #[allow(clippy::too_many_lines)]
     async fn qualification_event_for(
         &self,
         due: &DueQualificationReferral,
