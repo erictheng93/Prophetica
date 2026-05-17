@@ -608,6 +608,26 @@
           "unavailable": "Pansamantalang hindi available ang sign-in. Subukan muli mamaya.",
           "mfaRequired": "Kailangan ng account na ito ng two-step verification. Tapusin muna ang verification."
         }
+      },
+      "signup": {
+        "form": {
+          "eyebrow": "Public beta",
+          "heading": "Gumawa ng account",
+          "body": "Isumite ang basic details para mag-register. Awtomatikong isasama ang referral code mula sa URL.",
+          "displayName": "Display name",
+          "email": "Email",
+          "phone": "Mobile number",
+          "phoneHint": "Gamitin ang 0912345698 o 912345698.",
+          "password": "Password",
+          "submit": "Gumawa ng account",
+          "signinCta": "May account na? Mag-sign in"
+        },
+        "status": {
+          "missing": "Punan ang lahat ng required fields.",
+          "invalid": "Suriin ang format ng Email, mobile number, at password.",
+          "conflict": "Rehistrado na ang Email o mobile number na ito.",
+          "unavailable": "Pansamantalang hindi available ang registration. Subukan muli mamaya."
+        }
       }
     }
   },

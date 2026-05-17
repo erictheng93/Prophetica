@@ -1,0 +1,19 @@
+{
+  "recorded_at": "2026-05-16T13:07:54.091Z",
+  "scope": "Public signup referral attribution",
+  "signup_submit_path": true,
+  "referral_cookie_submitted": true,
+  "registration_endpoint_confirmed": true,
+  "durable_login_confirmed": true,
+  "referral_capture_confirmed": true,
+  "signup_log": {
+    "file": "public-signup-referral-signup.log",
+    "sha256": "f185b61ddcb9161aece8ad1967f910484a4c87c47713f0561212d22867cc79f0",
+    "bytes": 121
+  },
+  "referral_capture_log": {
+    "file": "public-signup-referral-capture.log",
+    "sha256": "c54677dcc8c1f8125de468f2155ee8ac64daafb63f8b104a60676e89ec76b821",
+    "bytes": 32
+  }
+}

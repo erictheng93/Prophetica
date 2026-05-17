@@ -42,6 +42,21 @@ export const adminCopy = {
     ],
     devHintCredentialsHeading: "開發憑證（本機）：",
   },
+  passkeys: {
+    title: "Passkey 硬體驗證",
+    description:
+      "在已登入的管理 session 中註冊或驗證 passkey。瀏覽器 ceremony 會透過 admin BFF 轉送至 user-service，session token 保留於 httpOnly cookie，不暴露給前端 JavaScript。",
+    statusReady: "可使用",
+    statusUnavailable: "瀏覽器不支援",
+    registerCta: "註冊這台裝置的 passkey",
+    registering: "正在註冊…",
+    assertCta: "使用 passkey 重新驗證",
+    asserting: "正在驗證…",
+    registered: "Passkey 已註冊。",
+    asserted: "Passkey 驗證成功，已更新硬體 MFA session。",
+    unsupported: "此瀏覽器不支援 passkey。",
+    failed: "Passkey ceremony 未完成，請重試或改用另一個已核准裝置。",
+  },
   forbidden: {
     eyebrow: "存取被拒",
     title: "權限不足",

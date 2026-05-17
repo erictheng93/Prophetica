@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ProphFooter, ProphSubNav, ProphTile } from "@prophetica/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { authenticateWithPassword } from "@/lib/auth";
+import { REFERRAL_ATTRIBUTION_COOKIE } from "@/lib/referral-attribution";
 import { setViewerSession } from "@/lib/session";
+import { registerPublicAccount } from "@/lib/signup";
 import {
   Brand,
   FooterLegalRow,
@@ -17,16 +20,13 @@ interface PageProps {
   searchParams: Promise<{
     mode?: string | string[];
     login?: string | string[];
+    signup?: string | string[];
   }>;
 }
 
 type AuthCopy = Awaited<ReturnType<typeof getTranslations<"auth.signIn">>>;
 type SigninStatusKey = "missing" | "invalid" | "unavailable" | "mfaRequired";
-
-const officialLineHref =
-  process.env.NEXT_PUBLIC_OFFICIAL_LINE_URL ||
-  "/support/contact?topic=beta-access";
-const officialLineIsExternal = officialLineHref.startsWith("http");
+type SignupStatusKey = "missing" | "invalid" | "conflict" | "unavailable";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("auth.signIn.metadata");
@@ -47,6 +47,7 @@ export default async function AuthPage({ searchParams }: PageProps) {
   const raw = Array.isArray(params.mode) ? params.mode[0] : params.mode;
   const mode: "signin" | "signup" = raw === "signup" ? "signup" : "signin";
   const signinStatus = signinStatusFromParam(params.login);
+  const signupStatus = signupStatusFromParam(params.signup);
 
   return (
     <main className="min-h-screen bg-proph-canvas">
@@ -76,7 +77,7 @@ export default async function AuthPage({ searchParams }: PageProps) {
       <ModeToggle mode={mode} t={t} />
 
       {mode === "signup" ? (
-        <SignupForm t={t} />
+        <SignupForm t={t} status={signupStatus} />
       ) : (
         <SigninForm t={t} status={signinStatus} />
       )}
@@ -124,6 +125,39 @@ async function submitSigninAction(formData: FormData) {
   }
 
   redirect("/auth/sign-in?login=unavailable");
+}
+
+async function submitSignupAction(formData: FormData) {
+  "use server";
+
+  const email = readFormValue(formData, "email");
+  const phone = readFormValue(formData, "phone");
+  const password = readFormValue(formData, "password");
+  const displayName = readFormValue(formData, "displayName");
+  const referralCode = (await cookies()).get(REFERRAL_ATTRIBUTION_COOKIE)?.value;
+
+  if (!email.trim() || !phone.trim() || !password || !displayName.trim()) {
+    redirect("/auth/sign-in?mode=signup&signup=missing");
+  }
+
+  const result = await registerPublicAccount({
+    email,
+    phone,
+    password,
+    displayName,
+    referralCode,
+  });
+
+  switch (result.status) {
+    case "registered":
+      redirect("/auth/sign-in?signup=registered");
+    case "invalid":
+      redirect("/auth/sign-in?mode=signup&signup=invalid");
+    case "conflict":
+      redirect("/auth/sign-in?mode=signup&signup=conflict");
+    case "unavailable":
+      redirect("/auth/sign-in?mode=signup&signup=unavailable");
+  }
 }
 function ModeToggle({ mode, t }: { mode: "signin" | "signup"; t: AuthCopy }) {
   return (
@@ -320,45 +354,138 @@ function SigninStatusBanner({
   );
 }
 
-function SignupForm({ t }: { t: AuthCopy }) {
+function SignupForm({
+  t,
+  status,
+}: {
+  t: AuthCopy;
+  status?: SignupStatusKey;
+}) {
+  const statusBannerId = status ? `signup-status-${status}` : undefined;
+
   return (
-    <section
-      className="bg-proph-canvas"
-      aria-labelledby="signup-beta-gate-heading"
-    >
+    <section className="bg-proph-canvas" aria-labelledby="signup-heading">
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
-        <div className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 md:p-8">
+        <form
+          action={submitSignupAction}
+          className="space-y-6 rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 md:p-8"
+        >
           <p className="font-text text-[12px] uppercase leading-none tracking-[0] text-proph-primary">
-            {t("signup.betaGate.eyebrow")}
+            {t("signup.form.eyebrow")}
           </p>
           <h2
-            id="signup-beta-gate-heading"
+            id="signup-heading"
             className="mt-4 font-display text-[28px] font-semibold leading-[1.1] tracking-[0] text-proph-ink sm:text-[34px]"
           >
-            {t("signup.betaGate.heading")}
+            {t("signup.form.heading")}
           </h2>
           <p className="mt-4 font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
-            {t("signup.betaGate.body")}
+            {t("signup.form.body")}
           </p>
+
+          {status && statusBannerId ? (
+            <SignupStatusBanner id={statusBannerId} t={t} status={status} />
+          ) : null}
+
+          <label className="block">
+            <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+              {t("signup.form.displayName")}
+            </span>
+            <input
+              type="text"
+              name="displayName"
+              autoComplete="name"
+              required
+              className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+            />
+          </label>
+
+          <label className="block">
+            <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+              {t("signup.form.email")}
+            </span>
+            <input
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+            />
+          </label>
+
+          <label className="block">
+            <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+              {t("signup.form.phone")}
+            </span>
+            <input
+              type="tel"
+              name="phone"
+              autoComplete="tel"
+              inputMode="tel"
+              required
+              aria-describedby="signup-phone-hint"
+              className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+            />
+            <span
+              id="signup-phone-hint"
+              className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48"
+            >
+              {t("signup.form.phoneHint")}
+            </span>
+          </label>
+
+          <label className="block">
+            <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+              {t("signup.form.password")}
+            </span>
+            <input
+              type="password"
+              name="password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+              className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+            />
+          </label>
+
           <div className="mt-6 flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 sm:flex-row sm:items-center">
-            <a
-              href={officialLineHref}
-              target={officialLineIsExternal ? "_blank" : undefined}
-              rel={officialLineIsExternal ? "noreferrer" : undefined}
+            <button
+              type="submit"
               className="inline-flex min-h-11 select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary transition-colors hover:bg-proph-primary-focus"
             >
-              {t("signup.betaGate.lineCta")}
-            </a>
+              {t("signup.form.submit")}
+            </button>
             <a
               href="/auth/sign-in"
               className="inline-flex min-h-11 select-none items-center justify-center rounded-proph-pill border border-proph-hairline bg-proph-canvas px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80 transition-colors hover:border-proph-primary hover:text-proph-ink"
             >
-              {t("signup.betaGate.signinCta")}
+              {t("signup.form.signinCta")}
             </a>
           </div>
-        </div>
+        </form>
       </div>
     </section>
+  );
+}
+
+function SignupStatusBanner({
+  id,
+  t,
+  status,
+}: {
+  id: string;
+  t: AuthCopy;
+  status: SignupStatusKey;
+}) {
+  return (
+    <p
+      id={id}
+      role="alert"
+      aria-live="polite"
+      className="rounded-proph-md border border-proph-feedback-error/40 bg-proph-feedback-error/10 px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink"
+    >
+      {t(`signup.status.${status}`)}
+    </p>
   );
 }
 
@@ -374,6 +501,22 @@ function signinStatusFromParam(
       return status;
     case "mfa-required":
       return "mfaRequired";
+    default:
+      return undefined;
+  }
+}
+
+function signupStatusFromParam(
+  value: string | string[] | undefined,
+): SignupStatusKey | undefined {
+  const status = Array.isArray(value) ? value[0] : value;
+
+  switch (status) {
+    case "missing":
+    case "invalid":
+    case "conflict":
+    case "unavailable":
+      return status;
     default:
       return undefined;
   }

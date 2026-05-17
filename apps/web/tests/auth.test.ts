@@ -7,6 +7,7 @@ import {
   normalizeLoginIdentifier,
   verifySessionToken,
 } from "../lib/auth.js";
+import { registerPublicAccount } from "../lib/signup.js";
 
 test("normalizeLoginIdentifier lowercases email identifiers", () => {
   assert.deepEqual(normalizeLoginIdentifier("  Member@Example.COM  "), {
@@ -137,6 +138,110 @@ test("authenticateWithPassword maps invalid and unavailable responses", async ()
 
   assert.deepEqual(invalid, { status: "invalid_credentials" });
   assert.deepEqual(unavailable, { status: "unavailable" });
+});
+
+test("registerPublicAccount submits normalized signup data with referral attribution", async () => {
+  const calls: Array<{ url: string; body: unknown }> = [];
+
+  const result = await registerPublicAccount(
+    {
+      email: " New.Member@Example.COM ",
+      phone: "0912-345-698",
+      password: "correct horse battery staple",
+      displayName: " New Member ",
+      referralCode: " AFF_2026 ",
+    },
+    {
+      baseUrl: "http://user-service.local/",
+      referralCaptureBaseUrl: "http://api-gateway.local",
+      fetcher: async (input, init) => {
+        calls.push({
+          url: String(input),
+          body: JSON.parse(String(init?.body)),
+        });
+
+        if (String(input).endsWith("/api/internal/referrals/capture")) {
+          return Response.json({
+            captured: true,
+          });
+        }
+
+        return Response.json({
+          user_id: "MEM-2026",
+        });
+      },
+    },
+  );
+
+  assert.deepEqual(calls, [
+    {
+      url: "http://user-service.local/v1/public/registrations",
+      body: {
+        email: "new.member@example.com",
+        phone: "+886912345698",
+        password: "correct horse battery staple",
+        display_name: "New Member",
+        referral_code: "AFF_2026",
+      },
+    },
+    {
+      url: "http://api-gateway.local/api/internal/referrals/capture",
+      body: {
+        referral_code: "AFF_2026",
+        referred_user_id: "MEM-2026",
+        source: "public-web-signup",
+      },
+    },
+  ]);
+  assert.deepEqual(result, { status: "registered", userId: "MEM-2026" });
+});
+
+test("registerPublicAccount fails closed when referral capture is unavailable", async () => {
+  const result = await registerPublicAccount(
+    {
+      email: "member@example.com",
+      phone: "0912345698",
+      password: "correct horse battery staple",
+      displayName: "Member",
+      referralCode: "AFF_2026",
+    },
+    {
+      fetcher: async (input) => {
+        if (String(input).endsWith("/api/internal/referrals/capture")) {
+          return new Response("{}", { status: 502 });
+        }
+
+        return Response.json({
+          user_id: "MEM-2026",
+        });
+      },
+    },
+  );
+
+  assert.deepEqual(result, { status: "unavailable" });
+});
+
+test("registerPublicAccount rejects invalid local input before calling registration service", async () => {
+  let called = false;
+
+  const result = await registerPublicAccount(
+    {
+      email: "not-an-email",
+      phone: "0812345698",
+      password: "short",
+      displayName: "",
+      referralCode: "AFF_2026",
+    },
+    {
+      fetcher: async () => {
+        called = true;
+        return Response.json({});
+      },
+    },
+  );
+
+  assert.deepEqual(result, { status: "invalid" });
+  assert.equal(called, false);
 });
 
 test("session tokens are signed and expire", async () => {

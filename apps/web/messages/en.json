@@ -608,6 +608,26 @@
           "unavailable": "Sign-in is temporarily unavailable. Try again later.",
           "mfaRequired": "This account requires two-step verification. Complete verification first."
         }
+      },
+      "signup": {
+        "form": {
+          "eyebrow": "Public beta",
+          "heading": "Create account",
+          "body": "Submit your basic details to register. Referral codes saved from the URL are attached automatically.",
+          "displayName": "Display name",
+          "email": "Email",
+          "phone": "Mobile number",
+          "phoneHint": "Use 0912345698 or 912345698.",
+          "password": "Password",
+          "submit": "Create account",
+          "signinCta": "Already have an account? Sign in"
+        },
+        "status": {
+          "missing": "Fill in all required fields.",
+          "invalid": "Check the Email, mobile number, and password format.",
+          "conflict": "This Email or mobile number is already registered.",
+          "unavailable": "Registration is temporarily unavailable. Try again later."
+        }
       }
     }
   },

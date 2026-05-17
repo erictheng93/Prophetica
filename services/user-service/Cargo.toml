@@ -23,6 +23,8 @@ thiserror.workspace = true
 tokio.workspace = true
 tower = "0.5"
 tracing.workspace = true
+ulid.workspace = true
+webauthn-rs.workspace = true
 
 [lints]
 workspace = true

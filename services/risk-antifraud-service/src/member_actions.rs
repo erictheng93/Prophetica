@@ -18,7 +18,7 @@ impl InMemoryRiskEventStore {
     pub fn events_for_user(&self, target_user_id: &str) -> Vec<MemberActionRiskEvent> {
         self.events
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
             .filter(|event| event.target_user_id == target_user_id)
             .cloned()
@@ -29,7 +29,7 @@ impl InMemoryRiskEventStore {
         let mut events = self
             .events
             .lock()
-            .unwrap_or_else(|error| error.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let event = MemberActionRiskEvent {
             event_id: format!("risk-member-action-{:06}", events.len() + 1),
             target_user_id: request.target_user_id,
@@ -134,7 +134,7 @@ mod tests {
     use tower::ServiceExt;
 
     #[tokio::test]
-    async fn records_and_lists_member_action_risk_event() {
+    async fn records_and_lists_member_action_risk_event() -> TestResult {
         let store = super::InMemoryRiskEventStore::default();
         let app = super::router(store);
 
@@ -154,14 +154,12 @@ mod tests {
                             "reason": "risk hold"
                         })
                         .to_string(),
-                    ))
-                    .expect("request builds"),
+                    ))?,
             )
-            .await
-            .expect("request handled");
+            .await?;
         assert_eq!(created.status(), StatusCode::CREATED);
         assert_eq!(
-            response_json(created).await["event_id"],
+            response_json(created).await?["event_id"],
             "risk-member-action-000001"
         );
 
@@ -169,22 +167,19 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/internal/risk/member-actions?target_user_id=MEM-1")
-                    .body(Body::empty())
-                    .expect("request builds"),
+                    .body(Body::empty())?,
             )
-            .await
-            .expect("request handled");
+            .await?;
         assert_eq!(listed.status(), StatusCode::OK);
-        let body = response_json(listed).await;
+        let body = response_json(listed).await?;
         assert_eq!(body["events"][0]["action_type"], "restrict_withdrawals");
+        Ok(())
     }
 
-    async fn response_json(response: axum::response::Response) -> Value {
-        let collected = response
-            .into_body()
-            .collect()
-            .await
-            .expect("response body should collect");
-        serde_json::from_slice(&collected.to_bytes()).expect("response should be json")
+    type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
+    async fn response_json(response: axum::response::Response) -> TestResult<Value> {
+        let collected = response.into_body().collect().await?;
+        Ok(serde_json::from_slice(&collected.to_bytes())?)
     }
 }

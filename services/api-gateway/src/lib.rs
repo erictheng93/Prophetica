@@ -1691,9 +1691,16 @@ pub async fn run_http() -> anyhow::Result<()> {
 async fn admin_ops_router() -> anyhow::Result<Router> {
     let upstream = admin_ops::HttpAdminOpsStore::from_env()
         .map_err(|error| anyhow::anyhow!(error.message().to_owned()))?;
-    let database_url = env::var("ADMIN_OPS_DATABASE_URL").or_else(|_| env::var("DATABASE_URL"));
+    let database_url = env::var("ADMIN_OPS_DATABASE_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            env::var("DATABASE_URL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        });
     match database_url {
-        Ok(database_url) => {
+        Some(database_url) => {
             let pool = sqlx::PgPool::connect(&database_url).await?;
             sqlx::migrate!("./migrations").run(&pool).await?;
             Ok(admin_ops::internal_admin_router(
@@ -1703,10 +1710,10 @@ async fn admin_ops_router() -> anyhow::Result<Router> {
                 ),
             ))
         }
-        Err(_) if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") => {
+        None if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") => {
             anyhow::bail!("ADMIN_OPS_DATABASE_URL or DATABASE_URL is required in production")
         }
-        Err(_) => Ok(admin_ops::internal_admin_router(upstream)),
+        None => Ok(admin_ops::internal_admin_router(upstream)),
     }
 }
 

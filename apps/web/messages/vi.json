@@ -608,6 +608,26 @@
           "unavailable": "Dịch vụ đăng nhập tạm thời không khả dụng. Vui lòng thử lại sau.",
           "mfaRequired": "Tài khoản này cần xác minh hai bước. Vui lòng hoàn tất xác minh trước."
         }
+      },
+      "signup": {
+        "form": {
+          "eyebrow": "Public beta",
+          "heading": "Tạo tài khoản",
+          "body": "Gửi thông tin cơ bản để đăng ký. Mã giới thiệu đã lưu từ URL sẽ được gửi tự động.",
+          "displayName": "Tên hiển thị",
+          "email": "Email",
+          "phone": "Số điện thoại",
+          "phoneHint": "Dùng 0912345698 hoặc 912345698.",
+          "password": "Mật khẩu",
+          "submit": "Tạo tài khoản",
+          "signinCta": "Đã có tài khoản? Đăng nhập"
+        },
+        "status": {
+          "missing": "Điền tất cả trường bắt buộc.",
+          "invalid": "Kiểm tra định dạng Email, số điện thoại và mật khẩu.",
+          "conflict": "Email hoặc số điện thoại này đã được đăng ký.",
+          "unavailable": "Dịch vụ đăng ký tạm thời không khả dụng. Thử lại sau."
+        }
       }
     }
   },

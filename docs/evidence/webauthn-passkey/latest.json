@@ -1,0 +1,20 @@
+{
+  "recorded_at": "2026-05-16T17:03:03.116Z",
+  "scope": "WebAuthn / passkey P0 browser ceremony",
+  "contract": "docs/webauthn-passkey-p0-contract.md",
+  "registration_round_trip": true,
+  "registration_replay_rejected": true,
+  "assertion_round_trip": true,
+  "assertion_replay_rejected": true,
+  "wrong_origin_rejected": true,
+  "unknown_credential_rejected": true,
+  "revoked_credential_rejected": true,
+  "fresh_hardware_mfa_session": true,
+  "admin_step_up_fresh_accepts": true,
+  "admin_step_up_stale_rejects": true,
+  "browser_log": {
+    "file": "webauthn-passkey.log",
+    "sha256": "5db2ce054fd74dd22d42f67e29bfff6397b1169ea4ccd8ed7c6aa9baf3172a7c",
+    "bytes": 311
+  }
+}

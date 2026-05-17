@@ -81,10 +81,50 @@ Implemented:
 - `services/user-service/src/webauthn_store.rs` defines the store trait and an
   in-memory implementation covering one-time challenge consumption and
   credential revocation lifecycle.
+- `services/user-service/src/webauthn_runtime.rs` integrates the official
+  `webauthn-rs` verifier crate and can generate passkey registration options
+  plus serializable registration state from relying-party configuration, then
+  persist that state into `WebauthnStore` with a short challenge TTL.
+- `POST /v1/auth/webauthn/register/start` is available for authenticated
+  sessions and returns a challenge id plus browser `publicKey` creation options.
+- Runtime support for `finish_passkey_registration` is wired through
+  `webauthn-rs` payload/state types, so the finish endpoint can use the official
+  verifier instead of hand-rolled validation.
+- `POST /v1/auth/webauthn/register/finish` consumes the stored registration
+  challenge, verifies submitted browser credential payloads through
+  `webauthn-rs`, and persists the resulting credential record. Invalid browser
+  payload coverage confirms the endpoint fails closed through the verifier path.
+- `POST /v1/auth/webauthn/assert/start` returns browser `publicKey` request
+  options for active credentials and stores short-lived assertion state.
+- `POST /v1/auth/webauthn/assert/finish` consumes assertion state, verifies
+  submitted browser credential payloads through `webauthn-rs`, updates
+  credential metadata, and issues a fresh hardware-MFA session on successful
+  assertion. Invalid browser payload coverage confirms the endpoint fails
+  closed through the verifier path.
+- `POST /v1/auth/webauthn/credentials/revoke` is available for authenticated
+  users and revokes one of their active passkeys so revoked credentials are
+  excluded from subsequent assertion starts.
+- `AuthConfig::from_env()` enables WebAuthn when
+  `USER_SERVICE_WEBAUTHN_RP_ID` and `USER_SERVICE_WEBAUTHN_RP_ORIGIN` are set.
+  Core-api Postgres mode wires `PostgresWebauthnStore` into the auth router so
+  challenge / credential state is durable outside local tests.
+- Admin passkey UX exists in `apps/admin/components/passkey-security-panel.tsx`
+  and calls `apps/admin/app/api/auth/passkeys/[action]/route.ts`; the BFF proxy
+  keeps the user-service bearer session in httpOnly cookies while the browser
+  performs WebAuthn ceremonies.
+- `apps/admin/tests/e2e/passkey-webauthn.spec.ts` defines the browser evidence
+  flow and writes `.tmp/webauthn-passkey.log` markers for the fail-closed
+  recorder.
+- `tools/scripts/record-webauthn-passkey-evidence.mjs` now fails closed unless
+  the browser evidence log contains explicit markers for registration round
+  trip, registration replay rejection, assertion round trip, assertion replay
+  rejection, wrong-origin rejection, unknown-credential rejection,
+  revoked-credential rejection, fresh hardware-MFA session, and admin step-up
+  fresh/stale outcomes.
 
-Not yet implemented:
+Completion evidence:
 
-- Browser WebAuthn enrollment UX.
-- Server WebAuthn registration start / finish endpoints.
-- Server WebAuthn assertion start / finish endpoints.
-- End-to-end browser evidence.
+- `rtk pnpm --filter @prophetica/admin test:e2e:passkey`: 1 passed.
+- `rtk node tools/scripts/record-webauthn-passkey-evidence.mjs
+  .tmp/webauthn-passkey.log`: recorded
+  `docs/evidence/webauthn-passkey/latest.json` with every required marker true.

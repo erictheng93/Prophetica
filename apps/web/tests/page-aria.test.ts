@@ -286,7 +286,7 @@ test("sign-in copy explains phone numbers may include or omit the leading zero",
   assert.match(String(identifier.hint), /912345698/);
 });
 
-test("signup mode is an invite-only beta gate instead of a registration form", () => {
+test("signup mode renders an enabled registration form with referral-aware server action", () => {
   const source = signupFormSource();
   const pageSource = readSignInPageSource();
   const messages = JSON.parse(
@@ -295,10 +295,10 @@ test("signup mode is an invite-only beta gate instead of a registration form", (
     auth: {
       signIn: {
         signup: {
-          betaGate?: {
+          form?: {
             heading?: string;
             body?: string;
-            lineCta?: string;
+            submit?: string;
             signinCta?: string;
           };
         };
@@ -306,20 +306,18 @@ test("signup mode is an invite-only beta gate instead of a registration form", (
     };
   };
 
-  assert.match(source, /signup\.betaGate\.heading/);
-  assert.match(source, /signup\.betaGate\.body/);
-  assert.match(source, /signup\.betaGate\.lineCta/);
-  assert.match(source, /signup\.betaGate\.signinCta/);
-  assert.doesNotMatch(source, /name="email"/);
-  assert.doesNotMatch(source, /name="birthday"/);
-  assert.doesNotMatch(source, /name="country"/);
-  assert.doesNotMatch(source, /<fieldset\b/);
+  assert.match(source, /<form\s+action=\{submitSignupAction\}/);
+  assert.match(source, /name="displayName"/);
+  assert.match(source, /name="email"/);
+  assert.match(source, /name="phone"/);
+  assert.match(source, /name="password"/);
+  assert.match(pageSource, /REFERRAL_ATTRIBUTION_COOKIE/);
+  assert.match(pageSource, /registerPublicAccount/);
+  assert.doesNotMatch(source, /signup\.betaGate/);
+  assert.doesNotMatch(source, /<button[\s\S]*?\sdisabled(?:\s|=)/);
   assert.doesNotMatch(pageSource, /<PostSignupPreview\b/);
-  assert.equal(
-    messages.auth.signIn.signup.betaGate?.body?.includes("目前內測中"),
-    true,
-  );
-  assert.equal(messages.auth.signIn.signup.betaGate?.lineCta, "加入官方 LINE");
+  assert.equal(messages.auth.signIn.signup.form?.heading, "建立帳戶");
+  assert.equal(messages.auth.signIn.signup.form?.submit, "建立帳戶");
 });
 
 test("action forms are not shipped disabled", () => {

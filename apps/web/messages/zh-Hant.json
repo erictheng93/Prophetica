@@ -2176,12 +2176,23 @@
         "signupPrompt": "沒有帳戶？ <signupLink>註冊一個</signupLink>"
       },
       "signup": {
-        "betaGate": {
-          "eyebrow": "Closed beta",
-          "heading": "目前內測中",
-          "body": "目前內測中，暫時不開放自主註冊。如果希望可以搶先體驗的用戶，請加入我們的官方 LINE。",
-          "lineCta": "加入官方 LINE",
+        "form": {
+          "eyebrow": "Public beta",
+          "heading": "建立帳戶",
+          "body": "填寫基本資料後送出註冊；如果網址含有推薦碼，我們會自動保留並送出。",
+          "displayName": "顯示名稱",
+          "email": "Email",
+          "phone": "手機號碼",
+          "phoneHint": "可輸入 0912345698 或 912345698。",
+          "password": "密碼",
+          "submit": "建立帳戶",
           "signinCta": "已有帳號，前往登入"
+        },
+        "status": {
+          "missing": "請填寫所有必填欄位。",
+          "invalid": "註冊資料格式不正確，請檢查 Email、手機號碼與密碼。",
+          "conflict": "此 Email 或手機號碼已註冊。",
+          "unavailable": "註冊服務暫時無法使用，請稍後再試。"
         }
       }
     }

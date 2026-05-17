@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    env,
     sync::{Arc, Mutex},
 };
 
@@ -685,6 +686,7 @@ pub struct HttpAdminOpsStore {
     user_service_url: Url,
     wallet_ledger_url: Option<Url>,
     risk_service_url: Option<Url>,
+    notification_service_url: Option<Url>,
 }
 
 impl HttpAdminOpsStore {
@@ -707,6 +709,7 @@ impl HttpAdminOpsStore {
             user_service_url,
             wallet_ledger_url: None,
             risk_service_url: None,
+            notification_service_url: None,
         })
     }
 
@@ -733,6 +736,22 @@ impl HttpAdminOpsStore {
         Ok(store)
     }
 
+    /// Adds notification-service as the persisted reminder outbox.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the upstream base URL is invalid.
+    pub fn with_notification_service(
+        mut self,
+        notification_service_url: impl AsRef<str>,
+    ) -> Result<Self, AdminOpsStoreError> {
+        self.notification_service_url = Some(
+            Url::parse(notification_service_url.as_ref())
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        );
+        Ok(self)
+    }
+
     /// Loads upstream service URLs from the process environment.
     ///
     /// # Errors
@@ -740,15 +759,22 @@ impl HttpAdminOpsStore {
     /// Returns an error when the configured KYC service URL is invalid.
     pub fn from_env() -> Result<Self, AdminOpsStoreError> {
         let kyc_service_url =
-            std::env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned());
-        let user_service_url = std::env::var("USER_SERVICE_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:8084".to_owned());
-        Self::with_side_effect_services(
+            env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned());
+        let user_service_url =
+            env::var("USER_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8084".to_owned());
+        let store = Self::with_side_effect_services(
             kyc_service_url,
             user_service_url,
-            std::env::var("WALLET_LEDGER_BASE_URL").ok(),
-            std::env::var("RISK_SERVICE_URL").ok(),
-        )
+            env::var("WALLET_LEDGER_BASE_URL").ok(),
+            env::var("RISK_SERVICE_URL").ok(),
+        )?;
+        match env::var("NOTIFICATION_SERVICE_URL") {
+            Ok(url) => store.with_notification_service(url),
+            Err(_) if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") => Err(
+                AdminOpsStoreError::new("NOTIFICATION_SERVICE_URL is required in production"),
+            ),
+            Err(_) => Ok(store),
+        }
     }
 
     fn pending_cases_url(
@@ -982,6 +1008,88 @@ impl HttpAdminOpsStore {
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         Ok(())
     }
+
+    async fn enqueue_notification_reminder(&self, body: Value) -> Result<(), AdminOpsStoreError> {
+        let Some(notification_service_url) = &self.notification_service_url else {
+            return Ok(());
+        };
+        self.client
+            .post(
+                notification_service_url
+                    .join("/internal/notifications/reminders")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            )
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(())
+    }
+
+    async fn enqueue_pending_case_reminders(
+        &self,
+        response: &PendingMemberCasesResponse,
+    ) -> Result<(), AdminOpsStoreError> {
+        for item in &response.items {
+            self.enqueue_notification_reminder(json!({
+                "dedupe_key": format!(
+                    "pending-case:{}:{}:{}",
+                    item.member_id, item.restriction_reason, item.kyc_status
+                ),
+                "reminder_type": "pending_case",
+                "target_user_id": &item.member_id,
+                "title": "Pending member case requires review",
+                "body": format!(
+                    "{} ({}) requires review for {}.",
+                    item.display_name, item.member_id, item.restriction_reason
+                ),
+                "channels": ["email", "in_app"],
+                "recipients": [{
+                    "recipient_role": "risk_ops",
+                    "email": risk_ops_notification_email()
+                }],
+                "metadata": {
+                    "status": &item.status,
+                    "kyc_status": &item.kyc_status,
+                    "affiliate_id": &item.affiliate_id
+                }
+            }))
+            .await?;
+        }
+        Ok(())
+    }
+
+    async fn enqueue_member_action_approval_reminder(
+        &self,
+        response: &MemberActionResponse,
+    ) -> Result<(), AdminOpsStoreError> {
+        self.enqueue_notification_reminder(json!({
+            "dedupe_key": format!("member-action:{}:approval-required", response.action_id),
+            "reminder_type": "approval_required",
+            "target_user_id": &response.target_user_id,
+            "action_id": &response.action_id,
+            "title": "Member action requires second approval",
+            "body": format!(
+                "{} for {} is waiting for a second approver.",
+                response.action_type, response.target_user_id
+            ),
+            "channels": ["email", "in_app"],
+            "recipients": [{
+                "recipient_role": "ops_control",
+                "email": ops_control_notification_email()
+            }],
+            "metadata": {
+                "action_type": &response.action_type,
+                "ticket_id": &response.audit.ticket_id,
+                "actor_user_id": &response.audit.actor_user_id,
+                "actor_role": &response.audit.actor_role,
+                "correlation_id": &response.audit.correlation_id
+            }
+        }))
+        .await
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -1003,6 +1111,16 @@ struct LookupMaskedContact {
 
 fn url_encode_path_segment(value: &str) -> String {
     value.replace('/', "%2F")
+}
+
+fn risk_ops_notification_email() -> String {
+    env::var("NOTIFICATION_RISK_OPS_EMAIL")
+        .unwrap_or_else(|_| "risk-ops@prophetica.internal".to_owned())
+}
+
+fn ops_control_notification_email() -> String {
+    env::var("NOTIFICATION_OPS_CONTROL_EMAIL")
+        .unwrap_or_else(|_| "ops-control@prophetica.internal".to_owned())
 }
 
 fn request_hash<T: Serialize>(request: &T) -> Result<String, AdminOpsStoreError> {
@@ -1193,9 +1311,16 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         request: MemberActionRequest,
         context: AdminOpsRequestContext,
     ) -> Result<MemberActionResponse, AdminOpsStoreError> {
-        self.compensation
+        let response = self
+            .compensation
             .create_member_action(request, context)
-            .await
+            .await?;
+        if response.requires_second_approval {
+            self.upstream
+                .enqueue_member_action_approval_reminder(&response)
+                .await?;
+        }
+        Ok(response)
     }
 
     async fn review_member_action(
@@ -1903,6 +2028,7 @@ impl AdminOpsStore for HttpAdminOpsStore {
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
 
         self.enrich_pending_contacts(&mut response).await?;
+        self.enqueue_pending_case_reminders(&response).await?;
         Ok(response)
     }
 

@@ -1,24 +1,17 @@
 {
-  "last_updated": "2026-05-16",
+  "last_updated": "2026-05-17",
   "scope": "LG-9 Affiliate / referral production readiness P0",
   "status": "blocked",
   "blocking_items": [
     {
-      "id": "auth-webauthn-passkey",
-      "reason": "Real WebAuthn / passkey registration endpoints, assertion endpoints, and browser ceremony are not implemented. Durable credential and challenge-state tables exist.",
-      "contract": "docs/webauthn-passkey-p0-contract.md"
-    },
-    {
       "id": "cloudflare-access-apply-evidence",
-      "reason": "Cloudflare Zero Trust Terraform is present and structurally validated, but has not been applied in the target account and no plan/apply evidence is archived.",
+      "reason": "Cloudflare Zero Trust Terraform is present, but target-account apply evidence is still missing. This environment has no terraform/tofu binary, no Cloudflare target-account variables, and no archived docs/evidence/cloudflare-admin-access/latest.json plan/apply evidence with hashes, byte counts, and success summaries. Run tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply in the target environment, then tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply.",
       "terraform": "infra/cloudflare/zero-trust/admin-access.tf",
       "verifier": "tools/scripts/validate-cloudflare-admin-access.mjs",
-      "evidence_recorder": "tools/scripts/record-cloudflare-admin-access-evidence.mjs"
-    },
-    {
-      "id": "public-signup-submit",
-      "reason": "Public signup is still a closed-beta gate. Referral attribution is preserved in a cookie, but there is no production registration submit path to attach it to.",
-      "attribution": "apps/web/lib/referral-attribution.ts"
+      "evidence_recorder": "tools/scripts/record-cloudflare-admin-access-evidence.mjs",
+      "preflight": "tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply",
+      "apply_wrapper": "tools/scripts/apply-cloudflare-admin-access-evidence.mjs",
+      "required_evidence": "docs/evidence/cloudflare-admin-access/latest.json"
     }
   ],
   "completed_evidence": [
@@ -37,9 +30,17 @@
         "services/user-service/tests/auth.rs",
         "services/user-service/migrations/202605160003_create_webauthn_tables.sql",
         "services/user-service/src/webauthn_store.rs",
-        "services/user-service/tests/webauthn_store.rs"
+        "services/user-service/tests/webauthn_store.rs",
+        "services/user-service/src/webauthn_runtime.rs",
+        "apps/admin/components/passkey-security-panel.tsx",
+        "apps/admin/lib/passkey-client.ts",
+        "apps/admin/app/api/auth/passkeys/[action]/route.ts",
+        "apps/admin/tests/e2e/passkey-webauthn.spec.ts",
+        "apps/admin/playwright.passkey.config.ts",
+        "services/_binaries/core-api/src/main.rs",
+        "tools/scripts/record-webauthn-passkey-evidence.mjs"
       ],
-      "evidence": "rtk cargo test -p user-service --test auth --locked => 13 passed; webauthn migration structural check passed; rtk cargo test -p user-service --test webauthn_store --locked => 2 passed"
+      "evidence": "rtk cargo fmt -p user-service => passed; rtk cargo test -p user-service --test auth --locked => 16 passed, including WebAuthn registration finish and assertion finish fail-closed invalid browser payload coverage plus env-backed WebAuthn config; webauthn migration structural check passed; rtk cargo test -p user-service --test webauthn_store --locked => 2 passed; rtk cargo test -p user-service webauthn_runtime --locked => 6 passed, 26 filtered out; rtk cargo check -p core-api --locked => passed with PostgresWebauthnStore wiring; rtk node --check tools/scripts/record-webauthn-passkey-evidence.mjs => passed; admin passkey UX/proxy/client source and passkey browser evidence spec added; rtk pnpm --filter @prophetica/admin test:e2e:passkey => 1 passed, recording registration/assertion round trip, replay rejection, unknown credential rejection, fresh/stale hardware MFA step-up, wrong-origin rejection, and revoked-credential rejection; rtk node tools/scripts/record-webauthn-passkey-evidence.mjs .tmp/webauthn-passkey.log => recorded docs/evidence/webauthn-passkey/latest.json"
     },
     {
       "id": "admin-session-ed25519-and-step-up",
@@ -68,9 +69,13 @@
         "infra/cloudflare/zero-trust/admin-access.tf",
         "infra/cloudflare/zero-trust/README.md",
         "tools/scripts/validate-cloudflare-admin-access.mjs",
-        "tools/scripts/record-cloudflare-admin-access-evidence.mjs"
+        "tools/scripts/record-cloudflare-admin-access-evidence.mjs",
+        "tools/scripts/preflight-cloudflare-admin-access-evidence.mjs",
+        "tools/scripts/apply-cloudflare-admin-access-evidence.mjs",
+        "docs/evidence/cloudflare-admin-access/README.md",
+        "docs/affiliate-p0-completion-checklist.md"
       ],
-      "evidence": "rtk node tools/scripts/validate-cloudflare-admin-access.mjs => 9 checks passed; rtk node --check tools/scripts/record-cloudflare-admin-access-evidence.mjs => passed"
+      "evidence": "rtk node tools/scripts/validate-cloudflare-admin-access.mjs => 9 checks passed earlier; target-account apply evidence remains blocked until docs/evidence/cloudflare-admin-access/latest.json is recorded with plan/apply hashes, byte counts, and success summaries."
     },
     {
       "id": "first-touch-referral-capture",
@@ -87,9 +92,20 @@
       "artifacts": [
         "apps/web/middleware.ts",
         "apps/web/lib/referral-attribution.ts",
-        "apps/web/tests/referral-attribution.test.ts"
+        "apps/web/lib/signup.ts",
+        "apps/web/app/auth/sign-in/page.tsx",
+        "apps/web/tests/referral-attribution.test.ts",
+        "apps/web/tests/auth.test.ts",
+        "apps/web/tests/page-aria.test.ts",
+        "services/user-service/src/members.rs",
+        "services/user-service/tests/members.rs",
+        "services/user-service/src/auth.rs",
+        "services/user-service/tests/auth.rs",
+        "services/user-service/migrations/202605160004_create_user_login_credentials.sql",
+        "services/_binaries/core-api/src/main.rs",
+        "tools/scripts/record-public-signup-referral-evidence.mjs"
       ],
-      "evidence": "apps/web referral attribution targeted test => 3 passed"
+      "evidence": "apps/web referral attribution targeted test => 3 passed; rtk pnpm --filter @prophetica/web test => 177 passed, including registration client referral_code payload, referral capture call, capture fail-closed coverage, and signup form source contract; rtk cargo test -p user-service --test auth --test members --locked => 22 passed, including stored credential login, /v1/auth/me, public registration member creation, and referral audit persistence; rtk cargo check -p core-api --locked => passed; rtk node --check tools/scripts/record-public-signup-referral-evidence.mjs => passed; rtk pnpm --filter @prophetica/web test:e2e:signup-referral => 1 passed; rtk node tools/scripts/record-public-signup-referral-evidence.mjs .tmp/public-signup-referral-signup.log .tmp/public-signup-referral-capture.log => recorded docs/evidence/public-signup-referral/latest.json with signup submit, referral cookie, registration endpoint, durable login, and referral capture markers true"
     },
     {
       "id": "web-auth-client-mfa-forwarding",

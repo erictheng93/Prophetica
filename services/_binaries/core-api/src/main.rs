@@ -53,7 +53,15 @@ async fn build_user_service_router(config: &ServiceConfig) -> anyhow::Result<axu
             .run(&pool)
             .await?;
         Ok(service_stub::router(config)
-            .merge(user_service::auth::auth_router())
+            .merge(user_service::auth::auth_router_with_config(
+                user_service::auth::AuthConfig::from_env()
+                    .with_credential_store(std::sync::Arc::new(
+                        user_service::auth::PostgresPasswordCredentialStore::new(pool.clone()),
+                    ))
+                    .with_webauthn_store(std::sync::Arc::new(
+                        user_service::webauthn_store::PostgresWebauthnStore::new(pool.clone()),
+                    )),
+            ))
             .merge(user_service::members::internal_members_router(
                 user_service::members::PostgresMemberStore::new(pool),
             )))

@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version, password_hash::SaltString};
 use async_trait::async_trait;
 use axum::{
     Json, Router,
@@ -14,6 +15,7 @@ use sdk::masking::mask_email;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{PgPool, Row};
+use ulid::Ulid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberContactSummary {
@@ -114,6 +116,21 @@ pub struct CreateMemberRequest {
     pub tier: String,
     pub affiliate_id: Option<String>,
     pub registration_audit: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PublicRegistrationRequest {
+    pub email: String,
+    pub phone: String,
+    pub password: String,
+    pub display_name: String,
+    pub referral_code: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicRegistrationResponse {
+    pub user_id: String,
+    pub member: MemberManagementSummary,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -220,6 +237,16 @@ pub trait MemberStore: Clone + Send + Sync + 'static {
         &self,
         ids: Vec<String>,
     ) -> Result<Vec<MaskedContact>, MemberStoreError>;
+
+    async fn provision_login_credential(
+        &self,
+        _user_id: &str,
+        _email: &str,
+        _phone: &str,
+        _password_hash: &str,
+    ) -> Result<(), MemberStoreError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -260,6 +287,10 @@ where
     Router::new()
         .route("/v1/internal/admin/members", get(list_members::<S>))
         .route("/v1/internal/admin/members", post(create_member::<S>))
+        .route(
+            "/v1/public/registrations",
+            post(register_public_member::<S>),
+        )
         .route(
             "/v1/internal/admin/members/:user_id/summary",
             get(member_summary::<S>),
@@ -319,6 +350,38 @@ where
         .await
         .map(|summary| (StatusCode::CREATED, Json(summary)))
         .map_err(store_error)
+}
+
+async fn register_public_member<S>(
+    State(store): State<S>,
+    Json(request): Json<PublicRegistrationRequest>,
+) -> Result<(StatusCode, Json<PublicRegistrationResponse>), (StatusCode, Json<ErrorResponse>)>
+where
+    S: MemberStore,
+{
+    let password_hash = hash_public_registration_password(&request.password)?;
+    let create = public_registration_to_create_member(request)?;
+    let summary = store
+        .create_member(create.clone())
+        .await
+        .map_err(store_error)?;
+    store
+        .provision_login_credential(
+            &create.user_id,
+            &create.email,
+            &create.phone,
+            &password_hash,
+        )
+        .await
+        .map_err(store_error)?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(PublicRegistrationResponse {
+            user_id: summary.member.user_id.clone(),
+            member: summary,
+        }),
+    ))
 }
 
 async fn update_member<S>(
@@ -638,6 +701,41 @@ impl MemberStore for PostgresMemberStore {
             })
             .collect::<Result<Vec<_>, MemberStoreError>>()?)
     }
+
+    async fn provision_login_credential(
+        &self,
+        user_id: &str,
+        email: &str,
+        phone: &str,
+        password_hash: &str,
+    ) -> Result<(), MemberStoreError> {
+        sqlx::query(
+            r"
+            INSERT INTO user_login_credentials (
+                user_id,
+                email,
+                phone,
+                password_hash,
+                role,
+                affiliate_id
+            )
+            VALUES ($1, $2, $3, $4, 'player', NULL)
+            ON CONFLICT (user_id) DO UPDATE SET
+                email = EXCLUDED.email,
+                phone = EXCLUDED.phone,
+                password_hash = EXCLUDED.password_hash,
+                disabled_at = NULL
+            ",
+        )
+        .bind(user_id)
+        .bind(email)
+        .bind(phone)
+        .bind(password_hash)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        Ok(())
+    }
 }
 
 fn validate_create_member(request: &CreateMemberRequest) -> Result<(), MemberStoreError> {
@@ -652,6 +750,99 @@ fn validate_create_member(request: &CreateMemberRequest) -> Result<(), MemberSto
         return Err(MemberStoreError::Invalid);
     }
     Ok(())
+}
+
+fn public_registration_to_create_member(
+    request: PublicRegistrationRequest,
+) -> Result<CreateMemberRequest, (StatusCode, Json<ErrorResponse>)> {
+    let email = request.email.trim().to_ascii_lowercase();
+    let phone = normalize_taiwan_mobile(&request.phone).ok_or_else(invalid_registration)?;
+    let display_name = request.display_name.trim().to_owned();
+    let password = request.password.trim();
+    if !is_valid_email(&email) || display_name.is_empty() || password.len() < 8 {
+        return Err(invalid_registration());
+    }
+    let referral_code = request
+        .referral_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let user_id = format!("MEM-{}", Ulid::new());
+
+    Ok(CreateMemberRequest {
+        user_id: user_id.clone(),
+        display_name,
+        email,
+        phone,
+        line_id: None,
+        country: "TW".to_owned(),
+        timezone: "Asia/Taipei".to_owned(),
+        tier: "Tier 0".to_owned(),
+        affiliate_id: None,
+        registration_audit: Some(serde_json::json!({
+            "source": "public-web-signup",
+            "referral_capture_required": referral_code.is_some(),
+            "referral_code": referral_code,
+            "referred_user_id": user_id
+        })),
+    })
+}
+
+fn hash_public_registration_password(
+    password: &str,
+) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
+    let password = password.trim();
+    if password.len() < 8 {
+        return Err(invalid_registration());
+    }
+    let params = Params::new(19_456, 2, 1, None).map_err(|_| invalid_registration())?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let salt = SaltString::encode_b64(Ulid::new().to_string().as_bytes())
+        .map_err(|_| invalid_registration())?;
+    argon2
+        .hash_password(password.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|_| invalid_registration())
+}
+
+fn invalid_registration() -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            error: "ERROR_CODE_INVALID_REGISTRATION",
+        }),
+    )
+}
+
+fn is_valid_email(value: &str) -> bool {
+    let Some((local, domain)) = value.split_once('@') else {
+        return false;
+    };
+    !local.is_empty() && domain.contains('.') && !domain.ends_with('.')
+}
+
+fn normalize_taiwan_mobile(value: &str) -> Option<String> {
+    let compact = value
+        .trim()
+        .chars()
+        .filter(|ch| !matches!(ch, ' ' | '-' | '(' | ')' | '.'))
+        .collect::<String>();
+    if !compact
+        .strip_prefix('+')
+        .unwrap_or(&compact)
+        .chars()
+        .all(|ch| ch.is_ascii_digit())
+    {
+        return None;
+    }
+    let digits = compact.strip_prefix('+').unwrap_or(&compact);
+    let subscriber = digits
+        .strip_prefix("886")
+        .or_else(|| digits.strip_prefix('0'))
+        .unwrap_or(digits);
+
+    (subscriber.len() == 9 && subscriber.starts_with('9')).then(|| format!("+886{subscriber}"))
 }
 
 fn record_from_create(request: &CreateMemberRequest) -> MemberRecord {

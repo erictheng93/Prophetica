@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { toAdminRole } from "@/lib/admin-auth";
 import { defaultLandingFor, type Role } from "@/lib/rbac";
 import { setSessionCookie } from "@/lib/session";
+import { setUpstreamSessionCookie } from "@/lib/upstream-session";
 
 interface LoginBody {
   email?: unknown;
@@ -17,10 +19,6 @@ interface UserServiceLoginResponse {
 }
 
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL ?? "http://localhost:8084";
-
-function toAdminRole(value: unknown): Role | null {
-  return value === "admin" || value === "manager" || value === "affiliate" ? value : null;
-}
 
 export async function POST(request: Request) {
   let body: LoginBody;
@@ -85,6 +83,7 @@ export async function POST(request: Request) {
     role,
     ...(affiliateId ? { affiliateId } : {}),
   });
+  await setUpstreamSessionCookie(user.session_token);
 
   return NextResponse.json({
     role,

@@ -25,6 +25,7 @@ tracing.workspace = true
 [dev-dependencies]
 kyc-service = { path = "../kyc-service" }
 matching-engine = { path = "../matching-engine" }
+notification-service = { path = "../notification-service" }
 proto = { path = "../../crates/proto" }
 risk-antifraud-service = { path = "../risk-antifraud-service" }
 settlement-worker = { path = "../settlement-worker" }

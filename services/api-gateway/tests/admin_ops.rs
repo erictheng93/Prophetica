@@ -12,6 +12,7 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use kyc_service::{SecretConfig, api::router as kyc_router, kyc::PostgresKycStore};
+use notification_service::{InMemoryNotificationStore, router as notification_router};
 use risk_antifraud_service::member_actions::{
     InMemoryRiskEventStore, router as risk_member_actions_router,
 };
@@ -165,6 +166,104 @@ async fn pending_member_cases_proxy_to_kyc_service() {
         body["items"][0]["contact"]["email_masked"],
         "r***@example.com"
     );
+}
+
+#[tokio::test]
+async fn pending_member_cases_proxy_enqueues_email_and_in_app_reminders() {
+    let upstream = Router::new()
+        .route(
+            "/v1/internal/admin/members/pending-cases",
+            get(|| async {
+                Json(json!({
+                    "items": [{
+                        "member_id": "member_pending_notification",
+                        "display_name": "Pending Notification Member",
+                        "restriction_reason": "withdrawals_locked",
+                        "contact": {
+                            "email_masked": "not_available",
+                            "phone_masked": "not_available"
+                        },
+                        "status": "restricted",
+                        "kyc_status": "review_required",
+                        "affiliate_id": null
+                    }],
+                    "page": 1,
+                    "page_size": 10,
+                    "total": 1,
+                    "source": "kyc-service:kyc-store"
+                }))
+            }),
+        )
+        .route(
+            "/v1/internal/users/contacts:lookup-masked",
+            post(|| async {
+                Json(json!({
+                    "contacts": [{
+                        "id": "member_pending_notification",
+                        "email_masked": "p***@example.com",
+                        "phone_masked": "0912***998"
+                    }]
+                }))
+            }),
+        );
+    let upstream_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind upstream");
+    let upstream_url = format!(
+        "http://{}",
+        upstream_listener.local_addr().expect("local addr")
+    );
+    tokio::spawn(async move {
+        axum::serve(upstream_listener, upstream)
+            .await
+            .expect("serve upstream");
+    });
+
+    let notification_store = InMemoryNotificationStore::default();
+    let notification_service = notification_router(notification_store);
+    let notification_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind notification service");
+    let notification_url = format!(
+        "http://{}",
+        notification_listener.local_addr().expect("local addr")
+    );
+    tokio::spawn(async move {
+        axum::serve(notification_listener, notification_service)
+            .await
+            .expect("serve notification service");
+    });
+
+    let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url)
+        .expect("store config")
+        .with_notification_service(notification_url.clone())
+        .expect("notification config");
+    let app = internal_admin_router(store);
+    let response = app
+        .oneshot(empty_get(
+            "/api/internal/admin/members/pending-cases?status=restricted",
+        ))
+        .await
+        .expect("pending cases request handled");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let messages = reqwest::Client::new()
+        .get(format!(
+            "{notification_url}/internal/notifications/messages?recipient_role=risk_ops&status=queued"
+        ))
+        .send()
+        .await
+        .expect("notification list request sends")
+        .error_for_status()
+        .expect("notification list request succeeds")
+        .json::<Value>()
+        .await
+        .expect("notification list decodes");
+    assert_eq!(messages["messages"].as_array().map(Vec::len), Some(2));
+    assert!(messages["messages"].as_array().is_some_and(|items| {
+        items.iter().any(|item| item["channel"] == "email")
+            && items.iter().any(|item| item["channel"] == "in_app")
+    }));
 }
 
 #[tokio::test]
@@ -865,6 +964,72 @@ async fn member_action_accepts_admin_context_and_records_audit_metadata() {
     assert_eq!(body["audit"]["actor_role"], json!("admin"));
     assert_eq!(body["audit"]["correlation_id"], json!("case-kyc-123"));
     assert_eq!(body["audit"]["ledger_transaction_posted"], json!(false));
+}
+
+#[tokio::test]
+async fn production_member_action_enqueues_second_approval_reminder() {
+    let Some(pool) = postgres_test_pool().await else {
+        return;
+    };
+    ensure_admin_member_actions_table(&pool).await;
+    let user_id = unique_test_id("MEM-NOTIFY-ACTION");
+    cleanup_member_actions(&pool, &user_id).await;
+
+    let notification_store = InMemoryNotificationStore::default();
+    let notification_service = notification_router(notification_store);
+    let notification_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind notification service");
+    let notification_url = format!(
+        "http://{}",
+        notification_listener.local_addr().expect("local addr")
+    );
+    tokio::spawn(async move {
+        axum::serve(notification_listener, notification_service)
+            .await
+            .expect("serve notification service");
+    });
+
+    let upstream = HttpAdminOpsStore::new("http://127.0.0.1:1", "http://127.0.0.1:1")
+        .expect("store config")
+        .with_notification_service(notification_url.clone())
+        .expect("notification config");
+    let store =
+        ProductionAdminOpsStore::new(upstream, PostgresCompensationProposalStore::new(pool));
+    let app = internal_admin_router(store);
+
+    let created = app
+        .oneshot(json_post(
+            "/api/internal/admin/members/actions",
+            &json!({
+                "target_user_id": user_id,
+                "action_type": "restrict_withdrawals",
+                "ticket_id": "TICKET-NOTIFY-ACTION",
+                "reason": "risk review hold",
+                "correlation_id": "case-notification-action"
+            }),
+        ))
+        .await
+        .expect("valid member action request should be handled");
+    assert_eq!(created.status(), StatusCode::ACCEPTED);
+
+    let messages = reqwest::Client::new()
+        .get(format!(
+            "{notification_url}/internal/notifications/messages?recipient_role=ops_control&status=queued"
+        ))
+        .send()
+        .await
+        .expect("notification list request sends")
+        .error_for_status()
+        .expect("notification list request succeeds")
+        .json::<Value>()
+        .await
+        .expect("notification list decodes");
+    assert_eq!(messages["messages"].as_array().map(Vec::len), Some(2));
+    assert!(messages["messages"].as_array().is_some_and(|items| {
+        items.iter().any(|item| item["channel"] == "email")
+            && items.iter().any(|item| item["channel"] == "in_app")
+    }));
 }
 
 #[tokio::test]

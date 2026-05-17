@@ -10,5 +10,5 @@
     "types": ["node"]
   },
   "include": ["tests/**/*.ts", "lib/**/*.ts"],
-  "exclude": ["lib/analytics-server-fetch.ts", "lib/session.ts"]
+  "exclude": ["lib/analytics-server-fetch.ts", "lib/session.ts", "lib/upstream-session.ts"]
 }

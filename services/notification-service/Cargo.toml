@@ -8,8 +8,15 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+http-body-util = "0.1"
 sdk = { path = "../../crates/sdk" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sqlx.workspace = true
 tokio.workspace = true
+tower = "0.5"
 
 [lints]
 workspace = true

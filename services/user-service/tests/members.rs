@@ -119,6 +119,79 @@ async fn contact_lookup_reads_masked_contact_from_member_store() {
 }
 
 #[tokio::test]
+async fn public_registration_creates_inactive_member_with_referral_audit() {
+    let app = internal_members_router(InMemoryMemberStore::default());
+
+    let response = request_json(
+        app,
+        "POST",
+        "/v1/public/registrations",
+        Some(json!({
+            "email": " New.Member@Example.COM ",
+            "phone": "0912-345-698",
+            "password": "correct horse battery staple",
+            "display_name": " New Member ",
+            "referral_code": "AFF_2026"
+        })),
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::CREATED);
+    assert!(
+        response.body["user_id"]
+            .as_str()
+            .expect("user_id should be returned")
+            .starts_with("MEM-")
+    );
+    assert_eq!(response.body["member"]["member"]["status"], "inactive");
+    assert_eq!(
+        response.body["member"]["member"]["display_name"],
+        "New Member"
+    );
+    assert_eq!(
+        response.body["member"]["member"]["contact"]["email_masked"],
+        "n***@example.com"
+    );
+    assert_eq!(
+        response.body["member"]["audit"]["registration_audit"]["source"],
+        "public-web-signup"
+    );
+    assert_eq!(
+        response.body["member"]["audit"]["registration_audit"]["referral_code"],
+        "AFF_2026"
+    );
+    assert_eq!(
+        response.body["member"]["audit"]["registration_audit"]["referred_user_id"],
+        response.body["user_id"]
+    );
+}
+
+#[tokio::test]
+async fn public_registration_rejects_invalid_input_before_member_create() {
+    let app = internal_members_router(InMemoryMemberStore::default());
+
+    let response = request_json(
+        app,
+        "POST",
+        "/v1/public/registrations",
+        Some(json!({
+            "email": "not-an-email",
+            "phone": "0812345698",
+            "password": "short",
+            "display_name": "",
+            "referral_code": "AFF_2026"
+        })),
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.body["error"],
+        json!("ERROR_CODE_INVALID_REGISTRATION")
+    );
+}
+
+#[tokio::test]
 async fn postgres_member_store_persists_crud_soft_delete_and_constraints() {
     let Some(pool) = postgres_test_pool().await else {
         return;

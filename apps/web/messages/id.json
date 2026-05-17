@@ -608,6 +608,26 @@
           "unavailable": "Layanan masuk sementara tidak tersedia. Coba lagi nanti.",
           "mfaRequired": "Akun ini memerlukan verifikasi dua langkah. Selesaikan verifikasi terlebih dahulu."
         }
+      },
+      "signup": {
+        "form": {
+          "eyebrow": "Public beta",
+          "heading": "Buat akun",
+          "body": "Kirim detail dasar untuk mendaftar. Kode referral dari URL akan dikirim otomatis.",
+          "displayName": "Nama tampilan",
+          "email": "Email",
+          "phone": "Nomor ponsel",
+          "phoneHint": "Gunakan 0912345698 atau 912345698.",
+          "password": "Kata sandi",
+          "submit": "Buat akun",
+          "signinCta": "Sudah punya akun? Masuk"
+        },
+        "status": {
+          "missing": "Isi semua kolom wajib.",
+          "invalid": "Periksa format Email, nomor ponsel, dan kata sandi.",
+          "conflict": "Email atau nomor ponsel ini sudah terdaftar.",
+          "unavailable": "Pendaftaran sementara tidak tersedia. Coba lagi nanti."
+        }
       }
     }
   },

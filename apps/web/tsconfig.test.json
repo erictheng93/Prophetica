@@ -22,5 +22,6 @@
     "lib/support-faq.ts",
     "lib/ws-client.ts",
     "lib/observability/**/*.ts"
-  ]
+  ],
+  "exclude": ["tests/e2e/**"]
 }

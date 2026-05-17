@@ -12,6 +12,7 @@ axum.workspace = true
 notification-service = { path = "../../notification-service" }
 risk-antifraud-service = { path = "../../risk-antifraud-service" }
 sdk = { path = "../../../crates/sdk" }
+sqlx.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 

@@ -9,6 +9,7 @@ use std::{
 };
 
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::State,
@@ -21,6 +22,17 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha1::{Digest, Sha1};
+use sqlx::{PgPool, Row};
+
+use crate::{
+    webauthn_runtime::{
+        WebauthnRuntimeConfig, finish_passkey_assertion, finish_passkey_registration,
+        start_and_store_passkey_assertion, start_and_store_passkey_registration,
+    },
+    webauthn_store::{
+        InMemoryWebauthnStore, WebauthnCeremony, WebauthnCredentialRecord, WebauthnStore,
+    },
+};
 
 const LOCAL_ACCESS_TOKEN_TTL_SECONDS: u64 = 60 * 60 * 24;
 const TOTP_STEP_SECONDS: u64 = 30;
@@ -32,6 +44,9 @@ pub struct AuthConfig {
     session_signer: Option<SessionSigner>,
     consumed_recovery_codes: Arc<Mutex<HashSet<String>>>,
     consumed_recovery_code_store_path: Option<Arc<PathBuf>>,
+    webauthn_config: Option<WebauthnRuntimeConfig>,
+    webauthn_store: Arc<dyn WebauthnStore>,
+    credential_store: Option<Arc<dyn PasswordCredentialStore>>,
 }
 
 #[derive(Clone)]
@@ -60,6 +75,8 @@ struct LocalLoginAccountSpec {
     totp_secret_base32: Option<String>,
     #[serde(default)]
     recovery_codes: Vec<String>,
+    #[serde(default)]
+    webauthn_user_uuid: Option<String>,
 }
 
 #[derive(Clone)]
@@ -74,6 +91,46 @@ pub struct LocalLoginAccount {
     mfa_at_epoch_seconds: Option<u64>,
     totp_secret_base32: Option<String>,
     recovery_codes: Vec<String>,
+    webauthn_user_uuid: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredLoginCredential {
+    pub user_id: String,
+    pub email: String,
+    pub phone: String,
+    pub password_hash: String,
+    pub role: String,
+    pub affiliate_id: Option<String>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PasswordCredentialStoreError {
+    #[error("password credential store unavailable")]
+    Unavailable,
+}
+
+#[async_trait]
+pub trait PasswordCredentialStore: Send + Sync {
+    async fn credential_by_identifier(
+        &self,
+        identifier: &LoginIdentifier,
+    ) -> Result<Option<StoredLoginCredential>, PasswordCredentialStoreError>;
+
+    async fn credential_by_user_id(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<StoredLoginCredential>, PasswordCredentialStoreError>;
+}
+
+#[derive(Clone, Default)]
+pub struct InMemoryPasswordCredentialStore {
+    credentials: Arc<Vec<StoredLoginCredential>>,
+}
+
+#[derive(Clone)]
+pub struct PostgresPasswordCredentialStore {
+    pool: PgPool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,6 +162,42 @@ struct LoginResponse {
 }
 
 #[derive(Debug, Serialize)]
+struct WebauthnRegistrationStartResponse {
+    challenge_id: String,
+    expires_at_epoch_seconds: i64,
+    creation_options: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct WebauthnRegistrationFinishRequest {
+    #[serde(default)]
+    challenge_id: String,
+    #[serde(default)]
+    registration_data: Value,
+}
+
+#[derive(Debug, Serialize)]
+struct WebauthnAssertionStartResponse {
+    challenge_id: String,
+    expires_at_epoch_seconds: i64,
+    request_options: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct WebauthnAssertionFinishRequest {
+    #[serde(default)]
+    challenge_id: String,
+    #[serde(default)]
+    assertion_data: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct WebauthnCredentialRevokeRequest {
+    #[serde(default)]
+    credential_id: String,
+}
+
+#[derive(Debug, Serialize)]
 struct MeResponse {
     user_id: String,
     role: String,
@@ -132,7 +225,7 @@ struct JwkResponse {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum LoginIdentifier {
+pub enum LoginIdentifier {
     Email(String),
     Phone(String),
 }
@@ -151,6 +244,26 @@ pub fn auth_router_with_config(config: AuthConfig) -> Router {
         .route("/v1/auth/me", get(me))
         .route("/v1/auth/logout", post(logout))
         .route("/v1/auth/jwks", get(jwks))
+        .route(
+            "/v1/auth/webauthn/register/start",
+            post(webauthn_register_start),
+        )
+        .route(
+            "/v1/auth/webauthn/register/finish",
+            post(webauthn_register_finish),
+        )
+        .route(
+            "/v1/auth/webauthn/assert/start",
+            post(webauthn_assert_start),
+        )
+        .route(
+            "/v1/auth/webauthn/assert/finish",
+            post(webauthn_assert_finish),
+        )
+        .route(
+            "/v1/auth/webauthn/credentials/revoke",
+            post(webauthn_credential_revoke),
+        )
         .route("/.well-known/jwks.json", get(jwks))
         .with_state(config)
 }
@@ -163,6 +276,9 @@ impl AuthConfig {
             session_signer: None,
             consumed_recovery_codes: Arc::new(Mutex::new(HashSet::new())),
             consumed_recovery_code_store_path: None,
+            webauthn_config: None,
+            webauthn_store: Arc::new(InMemoryWebauthnStore::default()),
+            credential_store: None,
         }
     }
 
@@ -181,6 +297,24 @@ impl AuthConfig {
     }
 
     #[must_use]
+    pub fn with_webauthn_config(mut self, config: WebauthnRuntimeConfig) -> Self {
+        self.webauthn_config = Some(config);
+        self
+    }
+
+    #[must_use]
+    pub fn with_webauthn_store(mut self, store: Arc<dyn WebauthnStore>) -> Self {
+        self.webauthn_store = store;
+        self
+    }
+
+    #[must_use]
+    pub fn with_credential_store(mut self, store: Arc<dyn PasswordCredentialStore>) -> Self {
+        self.credential_store = Some(store);
+        self
+    }
+
+    #[must_use]
     pub fn from_env() -> Self {
         let prophetica_env = env::var("PROPHETICA_ENV").unwrap_or_else(|_| "dev".to_owned());
 
@@ -188,25 +322,25 @@ impl AuthConfig {
             return Self::new(Vec::new());
         }
 
-        if let Some(accounts) = Self::from_local_login_accounts_json_env() {
-            return Self::new(accounts);
-        }
+        let accounts = if let Some(accounts) = Self::from_local_login_accounts_json_env() {
+            accounts
+        } else {
+            let user_id = env::var("USER_SERVICE_LOCAL_LOGIN_USER_ID")
+                .unwrap_or_else(|_| "user_42".to_owned());
+            let email = env::var("USER_SERVICE_LOCAL_LOGIN_EMAIL")
+                .unwrap_or_else(|_| "member@example.com".to_owned());
+            let phone = env::var("USER_SERVICE_LOCAL_LOGIN_PHONE")
+                .unwrap_or_else(|_| "0912345698".to_owned());
+            let password = env::var("USER_SERVICE_LOCAL_LOGIN_PASSWORD")
+                .unwrap_or_else(|_| "member".to_owned());
+            let role =
+                env::var("USER_SERVICE_LOCAL_LOGIN_ROLE").unwrap_or_else(|_| "player".to_owned());
+            let affiliate_id = env::var("USER_SERVICE_LOCAL_LOGIN_AFFILIATE_ID").ok();
 
-        let user_id =
-            env::var("USER_SERVICE_LOCAL_LOGIN_USER_ID").unwrap_or_else(|_| "user_42".to_owned());
-        let email = env::var("USER_SERVICE_LOCAL_LOGIN_EMAIL")
-            .unwrap_or_else(|_| "member@example.com".to_owned());
-        let phone =
-            env::var("USER_SERVICE_LOCAL_LOGIN_PHONE").unwrap_or_else(|_| "0912345698".to_owned());
-        let password =
-            env::var("USER_SERVICE_LOCAL_LOGIN_PASSWORD").unwrap_or_else(|_| "member".to_owned());
-        let role =
-            env::var("USER_SERVICE_LOCAL_LOGIN_ROLE").unwrap_or_else(|_| "player".to_owned());
-        let affiliate_id = env::var("USER_SERVICE_LOCAL_LOGIN_AFFILIATE_ID").ok();
-
-        let accounts = LocalLoginAccount::new(user_id, email, phone, password)
-            .map(|account| account.with_profile(role, affiliate_id))
-            .map_or_else(Vec::new, |account| vec![account]);
+            LocalLoginAccount::new(user_id, email, phone, password)
+                .map(|account| account.with_profile(role, affiliate_id))
+                .map_or_else(Vec::new, |account| vec![account])
+        };
 
         let mut config = Self::new(accounts);
         if let Ok(private_jwk) = env::var("USER_SERVICE_ED25519_SESSION_PRIVATE_JWK") {
@@ -214,6 +348,9 @@ impl AuthConfig {
         }
         if let Ok(path) = env::var("USER_SERVICE_RECOVERY_CODE_CONSUMED_PATH") {
             config = config.with_recovery_code_store_path(path);
+        }
+        if let Some(webauthn_config) = WebauthnRuntimeConfig::from_env() {
+            config = config.with_webauthn_config(webauthn_config);
         }
         config
     }
@@ -275,6 +412,7 @@ impl AuthConfig {
                             .with_profile(role, spec.affiliate_id)
                             .with_mfa(spec.mfa_methods, spec.mfa_at_epoch_seconds)
                             .with_totp(spec.totp_secret_base32, spec.recovery_codes)
+                            .with_webauthn_user_uuid(spec.webauthn_user_uuid)
                     },
                 )
             })
@@ -291,6 +429,45 @@ impl AuthConfig {
         self.accounts
             .iter()
             .find(|account| account.user_id == user_id)
+    }
+
+    async fn stored_account_for_login(
+        &self,
+        identifier: &LoginIdentifier,
+        password: &str,
+    ) -> Option<LocalLoginAccount> {
+        let credential = self
+            .credential_store
+            .as_ref()?
+            .credential_by_identifier(identifier)
+            .await
+            .ok()??;
+        if !verify_argon2id_password(&credential.password_hash, password) {
+            return None;
+        }
+        LocalLoginAccount::new(
+            credential.user_id,
+            credential.email,
+            credential.phone,
+            credential.password_hash,
+        )
+        .map(|account| account.with_profile(credential.role, credential.affiliate_id))
+    }
+
+    async fn stored_account_by_user_id(&self, user_id: &str) -> Option<LocalLoginAccount> {
+        let credential = self
+            .credential_store
+            .as_ref()?
+            .credential_by_user_id(user_id)
+            .await
+            .ok()??;
+        LocalLoginAccount::new(
+            credential.user_id,
+            credential.email,
+            credential.phone,
+            credential.password_hash,
+        )
+        .map(|account| account.with_profile(credential.role, credential.affiliate_id))
     }
 
     fn consume_recovery_code(&self, account: &LocalLoginAccount, candidate: &str) -> bool {
@@ -316,6 +493,113 @@ impl AuthConfig {
         }
         true
     }
+}
+
+impl InMemoryPasswordCredentialStore {
+    #[must_use]
+    pub fn new(credentials: Vec<StoredLoginCredential>) -> Self {
+        Self {
+            credentials: Arc::new(credentials),
+        }
+    }
+}
+
+impl PostgresPasswordCredentialStore {
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl PasswordCredentialStore for InMemoryPasswordCredentialStore {
+    async fn credential_by_identifier(
+        &self,
+        identifier: &LoginIdentifier,
+    ) -> Result<Option<StoredLoginCredential>, PasswordCredentialStoreError> {
+        Ok(self
+            .credentials
+            .iter()
+            .find(|credential| match identifier {
+                LoginIdentifier::Email(email) => credential.email == *email,
+                LoginIdentifier::Phone(phone) => credential.phone == *phone,
+            })
+            .cloned())
+    }
+
+    async fn credential_by_user_id(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<StoredLoginCredential>, PasswordCredentialStoreError> {
+        Ok(self
+            .credentials
+            .iter()
+            .find(|credential| credential.user_id == user_id)
+            .cloned())
+    }
+}
+
+#[async_trait]
+impl PasswordCredentialStore for PostgresPasswordCredentialStore {
+    async fn credential_by_identifier(
+        &self,
+        identifier: &LoginIdentifier,
+    ) -> Result<Option<StoredLoginCredential>, PasswordCredentialStoreError> {
+        let (column, value) = match identifier {
+            LoginIdentifier::Email(email) => ("email", email.as_str()),
+            LoginIdentifier::Phone(phone) => ("phone", phone.as_str()),
+        };
+        let query = format!(
+            "SELECT user_id, email, phone, password_hash, role, affiliate_id FROM user_login_credentials WHERE {column} = $1 AND disabled_at IS NULL"
+        );
+        let row = sqlx::query(&query)
+            .bind(value)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|_| PasswordCredentialStoreError::Unavailable)?;
+
+        row.map(row_to_stored_login_credential).transpose()
+    }
+
+    async fn credential_by_user_id(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<StoredLoginCredential>, PasswordCredentialStoreError> {
+        let row = sqlx::query(
+            "SELECT user_id, email, phone, password_hash, role, affiliate_id FROM user_login_credentials WHERE user_id = $1 AND disabled_at IS NULL",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| PasswordCredentialStoreError::Unavailable)?;
+
+        row.map(row_to_stored_login_credential).transpose()
+    }
+}
+
+fn row_to_stored_login_credential(
+    row: sqlx::postgres::PgRow,
+) -> Result<StoredLoginCredential, PasswordCredentialStoreError> {
+    Ok(StoredLoginCredential {
+        user_id: row
+            .try_get("user_id")
+            .map_err(|_| PasswordCredentialStoreError::Unavailable)?,
+        email: row
+            .try_get("email")
+            .map_err(|_| PasswordCredentialStoreError::Unavailable)?,
+        phone: row
+            .try_get("phone")
+            .map_err(|_| PasswordCredentialStoreError::Unavailable)?,
+        password_hash: row
+            .try_get("password_hash")
+            .map_err(|_| PasswordCredentialStoreError::Unavailable)?,
+        role: row
+            .try_get("role")
+            .map_err(|_| PasswordCredentialStoreError::Unavailable)?,
+        affiliate_id: row
+            .try_get("affiliate_id")
+            .map_err(|_| PasswordCredentialStoreError::Unavailable)?,
+    })
 }
 
 fn env_flag(name: &str) -> bool {
@@ -366,6 +650,7 @@ impl LocalLoginAccount {
             mfa_at_epoch_seconds: None,
             totp_secret_base32: None,
             recovery_codes: Vec::new(),
+            webauthn_user_uuid: None,
         })
     }
 
@@ -409,10 +694,18 @@ impl LocalLoginAccount {
             .collect();
         self
     }
+
+    #[must_use]
+    pub fn with_webauthn_user_uuid(mut self, user_uuid: Option<String>) -> Self {
+        self.webauthn_user_uuid = user_uuid
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
+        self
+    }
 }
 
 async fn login(State(config): State<AuthConfig>, Json(request): Json<LoginRequest>) -> Response {
-    if config.accounts.is_empty() {
+    if config.accounts.is_empty() && config.credential_store.is_none() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "error": "ERROR_CODE_AUTH_PROVIDER_UNAVAILABLE" })),
@@ -435,6 +728,16 @@ async fn login(State(config): State<AuthConfig>, Json(request): Json<LoginReques
     let account = config.accounts.iter().find(|account| {
         account.matches_identifier(&identifier) && account.verify_password(&request.password)
     });
+
+    let stored_account;
+    let account = if let Some(account) = account {
+        Some(account)
+    } else {
+        stored_account = config
+            .stored_account_for_login(&identifier, &request.password)
+            .await;
+        stored_account.as_ref()
+    };
 
     match account {
         Some(account) => {
@@ -481,13 +784,25 @@ async fn me(State(config): State<AuthConfig>, headers: HeaderMap) -> Response {
     if session.expires_at_epoch_seconds <= unix_now_seconds() {
         return invalid_credentials();
     }
-    let Some(account) = config.account_by_user_id(&session.user_id) else {
+    if let Some(account) = config.account_by_user_id(&session.user_id) {
+        return Json(MeResponse {
+            user_id: account.user_id.clone(),
+            role: account.role.clone(),
+            affiliate_id: account.affiliate_id.clone(),
+            mfa_at_epoch_seconds: session
+                .mfa_at_epoch_seconds
+                .or(account.mfa_at_epoch_seconds),
+            expires_at_epoch_seconds: session.expires_at_epoch_seconds,
+        })
+        .into_response();
+    }
+    let Some(account) = config.stored_account_by_user_id(&session.user_id).await else {
         return invalid_credentials();
     };
     Json(MeResponse {
-        user_id: account.user_id.clone(),
-        role: account.role.clone(),
-        affiliate_id: account.affiliate_id.clone(),
+        user_id: account.user_id,
+        role: account.role,
+        affiliate_id: account.affiliate_id,
         mfa_at_epoch_seconds: session
             .mfa_at_epoch_seconds
             .or(account.mfa_at_epoch_seconds),
@@ -518,6 +833,438 @@ async fn jwks(State(config): State<AuthConfig>) -> Response {
     Json(JwksResponse { keys }).into_response()
 }
 
+async fn webauthn_register_start(State(config): State<AuthConfig>, headers: HeaderMap) -> Response {
+    let Some(token) = bearer_token(&headers) else {
+        return invalid_credentials();
+    };
+    let Some(session) = parse_session_token(&config, token) else {
+        return invalid_credentials();
+    };
+    if session.expires_at_epoch_seconds <= unix_now_seconds() {
+        return invalid_credentials();
+    }
+    let Some(account) = config.account_by_user_id(&session.user_id) else {
+        return invalid_credentials();
+    };
+    let Some(webauthn_config) = config.webauthn_config.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_UNAVAILABLE" })),
+        )
+            .into_response();
+    };
+    let Some(user_uuid) = account.webauthn_user_uuid.as_deref() else {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_USER_UUID_REQUIRED" })),
+        )
+            .into_response();
+    };
+    let now = i64::try_from(unix_now_seconds()).unwrap_or(i64::MAX);
+    let Ok(start) = start_and_store_passkey_registration(
+        config.webauthn_store.as_ref(),
+        webauthn_config,
+        &account.user_id,
+        user_uuid,
+        &account.email,
+        &account.email,
+        now,
+    )
+    .await
+    else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_REGISTRATION_START_FAILED" })),
+        )
+            .into_response();
+    };
+
+    Json(WebauthnRegistrationStartResponse {
+        challenge_id: start.challenge_id,
+        expires_at_epoch_seconds: start.expires_at_epoch_seconds,
+        creation_options: start.creation_options,
+    })
+    .into_response()
+}
+
+async fn webauthn_register_finish(
+    State(config): State<AuthConfig>,
+    headers: HeaderMap,
+    Json(request): Json<WebauthnRegistrationFinishRequest>,
+) -> Response {
+    let Some(token) = bearer_token(&headers) else {
+        return invalid_credentials();
+    };
+    let Some(session) = parse_session_token(&config, token) else {
+        return invalid_credentials();
+    };
+    if session.expires_at_epoch_seconds <= unix_now_seconds() {
+        return invalid_credentials();
+    }
+    let Some(account) = config.account_by_user_id(&session.user_id) else {
+        return invalid_credentials();
+    };
+    let Some(webauthn_config) = config.webauthn_config.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_UNAVAILABLE" })),
+        )
+            .into_response();
+    };
+    let Some(user_uuid) = account.webauthn_user_uuid.as_deref() else {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_USER_UUID_REQUIRED" })),
+        )
+            .into_response();
+    };
+    if request.challenge_id.trim().is_empty() || !request.registration_data.is_object() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "ERROR_CODE_INVALID_WEBAUTHN_REGISTRATION_FINISH" })),
+        )
+            .into_response();
+    }
+    let now = i64::try_from(unix_now_seconds()).unwrap_or(i64::MAX);
+    let Ok(challenge) = config
+        .webauthn_store
+        .consume_challenge(&request.challenge_id, now)
+        .await
+    else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CHALLENGE_INVALID" })),
+        )
+            .into_response();
+    };
+    if challenge.user_id != account.user_id || challenge.ceremony != WebauthnCeremony::Registration
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CHALLENGE_INVALID" })),
+        )
+            .into_response();
+    }
+    let registration_credential_id =
+        webauthn_registration_credential_id(&request.registration_data);
+    let Ok(mut passkey) = finish_passkey_registration(
+        webauthn_config,
+        request.registration_data,
+        challenge.state_json,
+    ) else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_REGISTRATION_FINISH_FAILED" })),
+        )
+            .into_response();
+    };
+    let Some(credential_id) = webauthn_credential_id(&passkey).or(registration_credential_id)
+    else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_ID_MISSING" })),
+        )
+            .into_response();
+    };
+    if let Some(passkey_object) = passkey.as_object_mut() {
+        passkey_object
+            .entry("credential_id")
+            .or_insert_with(|| json!(credential_id.clone()));
+    }
+    if config
+        .webauthn_store
+        .put_credential(WebauthnCredentialRecord {
+            credential_id: credential_id.clone(),
+            user_id: account.user_id.clone(),
+            user_webauthn_uuid: user_uuid.to_owned(),
+            display_name: account.email.clone(),
+            public_key_cose: passkey.clone(),
+            signature_counter: 0,
+            transports: json!([]),
+            user_verified: true,
+            backup_eligible: false,
+            backup_state: false,
+            registration_policy: "required".to_owned(),
+            attestation_format: None,
+            attestation: json!({}),
+            created_at_epoch_seconds: now,
+            last_used_at_epoch_seconds: None,
+            revoked_at_epoch_seconds: None,
+            metadata: json!({ "passkey": passkey }),
+        })
+        .await
+        .is_err()
+    {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_STORE_FAILED" })),
+        )
+            .into_response();
+    }
+
+    Json(json!({ "credential_id": credential_id })).into_response()
+}
+
+async fn webauthn_assert_start(State(config): State<AuthConfig>, headers: HeaderMap) -> Response {
+    let Some(token) = bearer_token(&headers) else {
+        return invalid_credentials();
+    };
+    let Some(session) = parse_session_token(&config, token) else {
+        return invalid_credentials();
+    };
+    if session.expires_at_epoch_seconds <= unix_now_seconds() {
+        return invalid_credentials();
+    }
+    let Some(account) = config.account_by_user_id(&session.user_id) else {
+        return invalid_credentials();
+    };
+    let Some(webauthn_config) = config.webauthn_config.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_UNAVAILABLE" })),
+        )
+            .into_response();
+    };
+    let Ok(credentials) = config
+        .webauthn_store
+        .list_active_credentials(&account.user_id)
+        .await
+    else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_LOOKUP_FAILED" })),
+        )
+            .into_response();
+    };
+    if credentials.is_empty() {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_REQUIRED" })),
+        )
+            .into_response();
+    }
+    let now = i64::try_from(unix_now_seconds()).unwrap_or(i64::MAX);
+    let Ok(start) = start_and_store_passkey_assertion(
+        config.webauthn_store.as_ref(),
+        webauthn_config,
+        &account.user_id,
+        &credentials,
+        now,
+    )
+    .await
+    else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_ASSERTION_START_FAILED" })),
+        )
+            .into_response();
+    };
+
+    Json(WebauthnAssertionStartResponse {
+        challenge_id: start.challenge_id,
+        expires_at_epoch_seconds: start.expires_at_epoch_seconds,
+        request_options: start.request_options,
+    })
+    .into_response()
+}
+
+async fn webauthn_assert_finish(
+    State(config): State<AuthConfig>,
+    headers: HeaderMap,
+    Json(request): Json<WebauthnAssertionFinishRequest>,
+) -> Response {
+    let Some(token) = bearer_token(&headers) else {
+        return invalid_credentials();
+    };
+    let Some(session) = parse_session_token(&config, token) else {
+        return invalid_credentials();
+    };
+    if session.expires_at_epoch_seconds <= unix_now_seconds() {
+        return invalid_credentials();
+    }
+    let Some(account) = config.account_by_user_id(&session.user_id) else {
+        return invalid_credentials();
+    };
+    let Some(webauthn_config) = config.webauthn_config.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_UNAVAILABLE" })),
+        )
+            .into_response();
+    };
+    if request.challenge_id.trim().is_empty() || !request.assertion_data.is_object() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "ERROR_CODE_INVALID_WEBAUTHN_ASSERTION_FINISH" })),
+        )
+            .into_response();
+    }
+    let now = i64::try_from(unix_now_seconds()).unwrap_or(i64::MAX);
+    let Ok(challenge) = config
+        .webauthn_store
+        .consume_challenge(&request.challenge_id, now)
+        .await
+    else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CHALLENGE_INVALID" })),
+        )
+            .into_response();
+    };
+    if challenge.user_id != account.user_id || challenge.ceremony != WebauthnCeremony::Assertion {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CHALLENGE_INVALID" })),
+        )
+            .into_response();
+    }
+    let Ok(credentials) = config
+        .webauthn_store
+        .list_active_credentials(&account.user_id)
+        .await
+    else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_LOOKUP_FAILED" })),
+        )
+            .into_response();
+    };
+    let Ok(assertion) = finish_passkey_assertion(
+        webauthn_config,
+        request.assertion_data,
+        challenge.state_json,
+        &credentials,
+    ) else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_ASSERTION_FINISH_FAILED" })),
+        )
+            .into_response();
+    };
+    let Some(mut credential) = credentials
+        .into_iter()
+        .find(|record| record.credential_id == assertion.credential_id)
+    else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_NOT_FOUND" })),
+        )
+            .into_response();
+    };
+    credential.public_key_cose = assertion.updated_passkey;
+    credential.signature_counter = assertion.signature_counter;
+    credential.user_verified = assertion.user_verified;
+    credential.backup_eligible = assertion.backup_eligible;
+    credential.backup_state = assertion.backup_state;
+    credential.last_used_at_epoch_seconds = Some(now);
+    credential.metadata = json!({ "authentication_result": assertion.authentication_result });
+    if config
+        .webauthn_store
+        .put_credential(credential)
+        .await
+        .is_err()
+    {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_STORE_FAILED" })),
+        )
+            .into_response();
+    }
+
+    successful_login(
+        &config,
+        account,
+        false,
+        Some(unix_now_seconds()),
+        Some("hwk"),
+    )
+}
+
+async fn webauthn_credential_revoke(
+    State(config): State<AuthConfig>,
+    headers: HeaderMap,
+    Json(request): Json<WebauthnCredentialRevokeRequest>,
+) -> Response {
+    let Some(token) = bearer_token(&headers) else {
+        return invalid_credentials();
+    };
+    let Some(session) = parse_session_token(&config, token) else {
+        return invalid_credentials();
+    };
+    if session.expires_at_epoch_seconds <= unix_now_seconds() {
+        return invalid_credentials();
+    }
+    let Some(account) = config.account_by_user_id(&session.user_id) else {
+        return invalid_credentials();
+    };
+    let credential_id = request.credential_id.trim();
+    if credential_id.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_ID_REQUIRED" })),
+        )
+            .into_response();
+    }
+    let Ok(credentials) = config
+        .webauthn_store
+        .list_active_credentials(&account.user_id)
+        .await
+    else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_LOOKUP_FAILED" })),
+        )
+            .into_response();
+    };
+    if !credentials
+        .iter()
+        .any(|credential| credential.credential_id == credential_id)
+    {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_NOT_FOUND" })),
+        )
+            .into_response();
+    }
+    let now = i64::try_from(unix_now_seconds()).unwrap_or(i64::MAX);
+    if config
+        .webauthn_store
+        .revoke_credential(credential_id, now)
+        .await
+        .is_err()
+    {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "ERROR_CODE_WEBAUTHN_CREDENTIAL_REVOKE_FAILED" })),
+        )
+            .into_response();
+    }
+
+    Json(json!({ "credential_id": credential_id, "revoked": true })).into_response()
+}
+
+fn webauthn_credential_id(passkey: &Value) -> Option<String> {
+    passkey
+        .get("cred_id")
+        .or_else(|| passkey.get("credential_id"))
+        .and_then(|value| {
+            value
+                .as_str()
+                .map(ToOwned::to_owned)
+                .or_else(|| serde_json::to_string(value).ok())
+        })
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn webauthn_registration_credential_id(registration_data: &Value) -> Option<String> {
+    registration_data
+        .get("id")
+        .or_else(|| registration_data.get("rawId"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .filter(|value| !value.trim().is_empty())
+}
+
 impl LocalLoginAccount {
     fn matches_identifier(&self, identifier: &LoginIdentifier) -> bool {
         match identifier {
@@ -526,15 +1273,7 @@ impl LocalLoginAccount {
         }
     }
 
-    fn session_amr(&self) -> Vec<&'static str> {
-        let mut methods = vec!["pwd"];
-        if has_hardware_mfa(&self.mfa_methods, self.mfa_at_epoch_seconds) {
-            methods.push("hwk");
-        }
-        methods
-    }
-
-    fn session_amr_with_method(&self, mfa_amr_method: Option<&'static str>) -> Vec<&'static str> {
+    fn session_amr_with_method(mfa_amr_method: Option<&'static str>) -> Vec<&'static str> {
         let mut methods = vec!["pwd"];
         if let Some(method) = mfa_amr_method {
             methods.push(method);
@@ -676,15 +1415,20 @@ fn constant_time_equals_str(a: &str, b: &str) -> bool {
 }
 
 fn recovery_code_consumed_key(user_id: &str, recovery_code: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
     let mut hasher = Sha1::new();
     hasher.update(user_id.as_bytes());
     hasher.update(b":");
     hasher.update(recovery_code.as_bytes());
     let digest = hasher.finalize();
-    digest
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>()
+
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        out.push(char::from(HEX[usize::from(byte >> 4)]));
+        out.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    out
 }
 
 fn read_consumed_recovery_codes(path: &PathBuf) -> HashSet<String> {
@@ -851,7 +1595,7 @@ impl SessionSigner {
         }
         if let Some(mfa_at) = mfa_at_epoch_seconds {
             payload["mfa_at"] = json!(mfa_at);
-            payload["amr"] = json!(account.session_amr_with_method(mfa_amr_method));
+            payload["amr"] = json!(LocalLoginAccount::session_amr_with_method(mfa_amr_method));
         }
         let header = base64_url_encode(serde_json::to_string(&header).ok()?.as_bytes());
         let payload = base64_url_encode(serde_json::to_string(&payload).ok()?.as_bytes());

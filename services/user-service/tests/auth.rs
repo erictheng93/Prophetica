@@ -1,5 +1,7 @@
 #![allow(clippy::expect_used)]
 
+use std::sync::Arc;
+
 use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version, password_hash::SaltString};
 use axum::{
     body::Body,
@@ -10,7 +12,15 @@ use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use sha1::Sha1;
 use tower::ServiceExt;
-use user_service::auth::{AuthConfig, LocalLoginAccount, auth_router_with_config};
+use user_service::auth::{
+    AuthConfig, InMemoryPasswordCredentialStore, LocalLoginAccount, StoredLoginCredential,
+    auth_router_with_config,
+};
+use user_service::webauthn_runtime::WebauthnRuntimeConfig;
+use user_service::webauthn_store::{
+    InMemoryWebauthnStore, WebauthnCeremony, WebauthnChallengeRecord, WebauthnCredentialRecord,
+    WebauthnStore,
+};
 
 #[tokio::test]
 async fn login_accepts_email_or_canonical_taiwan_mobile() {
@@ -228,6 +238,41 @@ async fn affiliate_login_accepts_argon2id_hash_and_rejects_weak_parameters() {
 }
 
 #[tokio::test]
+async fn login_accepts_argon2id_credentials_from_registered_account_store() {
+    let password_hash = argon2id_hash("registered-password", 19_456, 2, 1);
+    let app = auth_router_with_config(AuthConfig::new(Vec::new()).with_credential_store(Arc::new(
+        InMemoryPasswordCredentialStore::new(vec![StoredLoginCredential {
+            user_id: "MEM-REGISTERED-001".to_owned(),
+            email: "registered@example.com".to_owned(),
+            phone: "+886912345699".to_owned(),
+            password_hash,
+            role: "player".to_owned(),
+            affiliate_id: None,
+        }]),
+    )));
+
+    let response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "registered@example.com",
+            "identifier_kind": "email",
+            "password": "registered-password"
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(response.body["user_id"], json!("MEM-REGISTERED-001"));
+    assert_eq!(response.body["role"], json!("player"));
+    let token = response.body["session_token"]
+        .as_str()
+        .expect("session token should be present");
+    let me_response = request_with_optional_bearer(app, "GET", "/v1/auth/me", Some(token)).await;
+    assert_eq!(me_response.status, StatusCode::OK);
+    assert_eq!(me_response.body["user_id"], json!("MEM-REGISTERED-001"));
+}
+
+#[tokio::test]
 async fn strict_credential_policy_rejects_plaintext_affiliate_accounts() {
     let strong_hash = argon2id_hash("affiliate", 19_456, 2, 1);
     let accounts = AuthConfig::from_local_login_accounts_json_with_policy(
@@ -341,14 +386,14 @@ async fn strict_hardware_mfa_policy_rejects_privileged_accounts_without_webauthn
     assert_eq!(webauthn_response.status, StatusCode::OK);
     assert_eq!(
         webauthn_response.body["mfa_at_epoch_seconds"],
-        json!(1778880000_u64)
+        json!(1_778_880_000_u64)
     );
     let payload = jwt_payload(
         webauthn_response.body["session_token"]
             .as_str()
             .expect("session token should be present"),
     );
-    assert_eq!(payload["mfa_at"], json!(1778880000_u64));
+    assert_eq!(payload["mfa_at"], json!(1_778_880_000_u64));
     assert_eq!(payload["amr"], json!(["pwd", "hwk"]));
 }
 
@@ -568,6 +613,264 @@ async fn login_issues_ed25519_jws_and_publishes_jwks_when_signer_configured() {
 }
 
 #[tokio::test]
+async fn webauthn_registration_start_requires_session_and_persists_challenge() {
+    let account = LocalLoginAccount::new(
+        "U-WEBAUTHN-001",
+        "webauthn@prophetica.local",
+        "0912345611",
+        "member",
+    )
+    .expect("fixture account is valid")
+    .with_profile("manager", None)
+    .with_webauthn_user_uuid(Some("018f6f70-1c40-7000-8000-000000000001".to_owned()));
+    let app = auth_router_with_config(AuthConfig::new(vec![account]).with_webauthn_config(
+        WebauthnRuntimeConfig {
+            rp_id: "prophetica.local".to_owned(),
+            rp_origin: "https://prophetica.local".to_owned(),
+        },
+    ));
+    let login_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "webauthn@prophetica.local",
+            "identifier_kind": "email",
+            "password": "member"
+        }),
+    )
+    .await;
+    let token = login_response.body["session_token"]
+        .as_str()
+        .expect("session token should be present");
+
+    let missing_session = request_with_optional_bearer(
+        app.clone(),
+        "POST",
+        "/v1/auth/webauthn/register/start",
+        None,
+    )
+    .await;
+    let start_response = request_with_optional_bearer(
+        app.clone(),
+        "POST",
+        "/v1/auth/webauthn/register/start",
+        Some(token),
+    )
+    .await;
+
+    assert_eq!(missing_session.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(start_response.status, StatusCode::OK);
+    assert!(start_response.body["challenge_id"].as_str().is_some());
+    assert!(start_response.body["creation_options"]["publicKey"].is_object());
+
+    let finish_response = request_with_optional_bearer_json(
+        app,
+        "POST",
+        "/v1/auth/webauthn/register/finish",
+        Some(token),
+        json!({
+            "challenge_id": start_response.body["challenge_id"]
+                .as_str()
+                .expect("challenge id should be returned"),
+            "registration_data": { "not": "a browser RegisterPublicKeyCredential" }
+        }),
+    )
+    .await;
+
+    assert_eq!(finish_response.status, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        finish_response.body["error"],
+        json!("ERROR_CODE_WEBAUTHN_REGISTRATION_FINISH_FAILED")
+    );
+}
+
+#[tokio::test]
+async fn webauthn_assertion_endpoints_require_credentials_and_verify_payloads() {
+    let store = InMemoryWebauthnStore::default();
+    let account = LocalLoginAccount::new(
+        "U-WEBAUTHN-ASSERT-001",
+        "webauthn-assert@prophetica.local",
+        "0912345612",
+        "member",
+    )
+    .expect("fixture account is valid")
+    .with_profile("manager", None)
+    .with_webauthn_user_uuid(Some("018f6f70-1c40-7000-8000-000000000002".to_owned()));
+    let app = auth_router_with_config(
+        AuthConfig::new(vec![account])
+            .with_webauthn_config(WebauthnRuntimeConfig {
+                rp_id: "prophetica.local".to_owned(),
+                rp_origin: "https://prophetica.local".to_owned(),
+            })
+            .with_webauthn_store(Arc::new(store.clone())),
+    );
+    let login_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "webauthn-assert@prophetica.local",
+            "identifier_kind": "email",
+            "password": "member"
+        }),
+    )
+    .await;
+    let token = login_response.body["session_token"]
+        .as_str()
+        .expect("session token should be present");
+
+    let missing_credential_response = request_with_optional_bearer(
+        app.clone(),
+        "POST",
+        "/v1/auth/webauthn/assert/start",
+        Some(token),
+    )
+    .await;
+    assert_eq!(missing_credential_response.status, StatusCode::CONFLICT);
+    assert_eq!(
+        missing_credential_response.body["error"],
+        json!("ERROR_CODE_WEBAUTHN_CREDENTIAL_REQUIRED")
+    );
+
+    store
+        .put_credential(WebauthnCredentialRecord {
+            credential_id: "credential-assert-1".to_owned(),
+            user_id: "U-WEBAUTHN-ASSERT-001".to_owned(),
+            user_webauthn_uuid: "018f6f70-1c40-7000-8000-000000000002".to_owned(),
+            display_name: "webauthn-assert@prophetica.local".to_owned(),
+            public_key_cose: json!({ "not": "a serialized passkey" }),
+            signature_counter: 0,
+            transports: json!([]),
+            user_verified: true,
+            backup_eligible: false,
+            backup_state: false,
+            registration_policy: "required".to_owned(),
+            attestation_format: None,
+            attestation: json!({}),
+            created_at_epoch_seconds: 1000,
+            last_used_at_epoch_seconds: None,
+            revoked_at_epoch_seconds: None,
+            metadata: json!({}),
+        })
+        .await
+        .expect("fixture credential should be stored");
+    store
+        .put_challenge(WebauthnChallengeRecord {
+            challenge_id: "assertion-challenge-1".to_owned(),
+            user_id: "U-WEBAUTHN-ASSERT-001".to_owned(),
+            ceremony: WebauthnCeremony::Assertion,
+            state_json: json!({ "not": "authentication state" }),
+            expires_at_epoch_seconds: 4_102_444_800,
+            consumed_at_epoch_seconds: None,
+            created_at_epoch_seconds: 1_000,
+        })
+        .await
+        .expect("fixture challenge should be stored");
+
+    let finish_response = request_with_optional_bearer_json(
+        app,
+        "POST",
+        "/v1/auth/webauthn/assert/finish",
+        Some(token),
+        json!({
+            "challenge_id": "assertion-challenge-1",
+            "assertion_data": { "not": "a browser PublicKeyCredential" }
+        }),
+    )
+    .await;
+
+    assert_eq!(finish_response.status, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        finish_response.body["error"],
+        json!("ERROR_CODE_WEBAUTHN_ASSERTION_FINISH_FAILED")
+    );
+}
+
+#[tokio::test]
+async fn webauthn_credential_revoke_requires_session_and_removes_active_credential() {
+    let store = InMemoryWebauthnStore::default();
+    let account = LocalLoginAccount::new(
+        "U-WEBAUTHN-REVOKE-001",
+        "webauthn-revoke@prophetica.local",
+        "0912345613",
+        "member",
+    )
+    .expect("fixture account is valid")
+    .with_profile("manager", None)
+    .with_webauthn_user_uuid(Some("018f6f70-1c40-7000-8000-000000000003".to_owned()));
+    let app = auth_router_with_config(
+        AuthConfig::new(vec![account])
+            .with_webauthn_config(WebauthnRuntimeConfig {
+                rp_id: "prophetica.local".to_owned(),
+                rp_origin: "https://prophetica.local".to_owned(),
+            })
+            .with_webauthn_store(Arc::new(store.clone())),
+    );
+    let login_response = post_login(
+        app.clone(),
+        json!({
+            "identifier": "webauthn-revoke@prophetica.local",
+            "identifier_kind": "email",
+            "password": "member"
+        }),
+    )
+    .await;
+    let token = login_response.body["session_token"]
+        .as_str()
+        .expect("session token should be present");
+
+    store
+        .put_credential(WebauthnCredentialRecord {
+            credential_id: "credential-revoke-1".to_owned(),
+            user_id: "U-WEBAUTHN-REVOKE-001".to_owned(),
+            user_webauthn_uuid: "018f6f70-1c40-7000-8000-000000000003".to_owned(),
+            display_name: "webauthn-revoke@prophetica.local".to_owned(),
+            public_key_cose: json!({ "fixture": "passkey" }),
+            signature_counter: 0,
+            transports: json!([]),
+            user_verified: true,
+            backup_eligible: false,
+            backup_state: false,
+            registration_policy: "required".to_owned(),
+            attestation_format: None,
+            attestation: json!({}),
+            created_at_epoch_seconds: 1000,
+            last_used_at_epoch_seconds: None,
+            revoked_at_epoch_seconds: None,
+            metadata: json!({}),
+        })
+        .await
+        .expect("fixture credential should be stored");
+
+    let missing_session = request_with_optional_bearer_json(
+        app.clone(),
+        "POST",
+        "/v1/auth/webauthn/credentials/revoke",
+        None,
+        json!({ "credential_id": "credential-revoke-1" }),
+    )
+    .await;
+    assert_eq!(missing_session.status, StatusCode::UNAUTHORIZED);
+
+    let revoke_response = request_with_optional_bearer_json(
+        app.clone(),
+        "POST",
+        "/v1/auth/webauthn/credentials/revoke",
+        Some(token),
+        json!({ "credential_id": "credential-revoke-1" }),
+    )
+    .await;
+    assert_eq!(revoke_response.status, StatusCode::OK);
+    assert_eq!(revoke_response.body["revoked"], json!(true));
+
+    let assert_start_response =
+        request_with_optional_bearer(app, "POST", "/v1/auth/webauthn/assert/start", Some(token))
+            .await;
+    assert_eq!(assert_start_response.status, StatusCode::CONFLICT);
+    assert_eq!(
+        assert_start_response.body["error"],
+        json!("ERROR_CODE_WEBAUTHN_CREDENTIAL_REQUIRED")
+    );
+}
+
+#[tokio::test]
 async fn me_rejects_missing_or_invalid_bearer_token() {
     let app = auth_router_with_config(config_with_fixture());
     let missing = request_with_optional_bearer(app.clone(), "GET", "/v1/auth/me", None).await;
@@ -713,6 +1016,44 @@ async fn request_with_optional_bearer(
     }
     let response = app
         .oneshot(builder.body(Body::empty()).expect("request builds"))
+        .await
+        .expect("request handled");
+    let status = response.status();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body = if bytes.is_empty() {
+        json!(null)
+    } else {
+        serde_json::from_slice(&bytes).expect("json response body")
+    };
+
+    LoginTestResponse { status, body }
+}
+
+async fn request_with_optional_bearer_json(
+    app: axum::Router,
+    method: &str,
+    uri: &str,
+    token: Option<&str>,
+    body: Value,
+) -> LoginTestResponse {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json");
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request builds"),
+        )
         .await
         .expect("request handled");
     let status = response.status();

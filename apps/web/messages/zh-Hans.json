@@ -608,6 +608,26 @@
           "unavailable": "登录服务暂时无法使用，请稍后再试。",
           "mfaRequired": "此账号需要两步验证，请先完成验证流程。"
         }
+      },
+      "signup": {
+        "form": {
+          "eyebrow": "Public beta",
+          "heading": "创建账户",
+          "body": "填写基本资料后提交注册；如果网址含有推荐码，我们会自动保留并送出。",
+          "displayName": "显示名称",
+          "email": "Email",
+          "phone": "手机号码",
+          "phoneHint": "可输入 0912345698 或 912345698。",
+          "password": "密码",
+          "submit": "创建账户",
+          "signinCta": "已有账户，前往登录"
+        },
+        "status": {
+          "missing": "请填写所有必填字段。",
+          "invalid": "注册资料格式不正确，请检查 Email、手机号码与密码。",
+          "conflict": "此 Email 或手机号码已注册。",
+          "unavailable": "注册服务暂时无法使用，请稍后再试。"
+        }
       }
     }
   },

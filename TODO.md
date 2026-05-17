@@ -114,9 +114,40 @@ inside `apps/admin/`. None of the items below can ride to production as-is.
   `services/user-service/migrations/202605160003_create_webauthn_tables.sql`.
   `services/user-service/src/webauthn_store.rs` defines the store trait and
   in-memory lifecycle implementation for one-time challenge consumption and
-  credential revocation.
-  Remaining work is implementing real WebAuthn / passkey registration and
-  assertion endpoints against those tables, plus recovery-code rotation.
+  credential revocation. `services/user-service/src/webauthn_runtime.rs`
+  integrates the official `webauthn-rs` verifier crate and can generate
+  passkey registration options plus serializable registration state from
+  relying-party configuration, then persist that state into `WebauthnStore`
+  with a short challenge TTL. `POST /v1/auth/webauthn/register/start` is
+  implemented for authenticated sessions and returns a challenge id plus browser
+  `publicKey` creation options. Runtime support for
+  `finish_passkey_registration` is wired through `webauthn-rs` payload/state
+  types. `POST /v1/auth/webauthn/register/finish` now consumes the stored
+  registration challenge, verifies submitted browser credential payloads through
+  `webauthn-rs`, and stores the resulting credential record; invalid browser
+  payloads fail closed through the verifier path.
+  `POST /v1/auth/webauthn/assert/start` and
+  `POST /v1/auth/webauthn/assert/finish` now persist assertion challenge state,
+  verify browser assertion payloads through `webauthn-rs`, update credential
+  metadata, and issue a fresh hardware-MFA session on successful assertion;
+  invalid browser payloads fail closed through the verifier path.
+  `AuthConfig::from_env()` now enables WebAuthn when
+  `USER_SERVICE_WEBAUTHN_RP_ID` and `USER_SERVICE_WEBAUTHN_RP_ORIGIN` are
+  configured, and core-api Postgres mode wires `PostgresWebauthnStore` into the
+  auth router so challenge / credential state is durable in production mode.
+  Admin browser enrollment / assertion UX now exists in
+  `apps/admin/components/passkey-security-panel.tsx`, with WebAuthn option /
+  credential conversion in `apps/admin/lib/passkey-client.ts` and a BFF proxy in
+  `apps/admin/app/api/auth/passkeys/[action]/route.ts` so the user-service
+  session token stays in httpOnly cookies. `user-service` also exposes
+  authenticated credential revocation at
+  `POST /v1/auth/webauthn/credentials/revoke`, and
+  `apps/admin/tests/e2e/passkey-webauthn.spec.ts` defines the Chromium virtual
+  authenticator evidence flow. Remaining work is running that browser evidence
+  flow, recording `docs/evidence/webauthn-passkey/latest.json`, plus
+  recovery-code rotation.
+  Browser ceremony evidence should be recorded with
+  `tools/scripts/record-webauthn-passkey-evidence.mjs`.
 - Configure Cloudflare Access with bypass policies for `/login` and
   `/me/affiliate/*` so external affiliates can reach the app surface, while
   `/`, `/dashboard`, and the six internal domain routes still require SSO.
@@ -156,12 +187,12 @@ production deploy or backend coordination.
 
 ### LG-9: Affiliate / referral production readiness
 
-Current state as of 2026-05-16: SPEC-011 data models, referral-service
+Current state as of 2026-05-17: SPEC-011 data models, referral-service
 migrations, admin affiliate CRUD, affiliate portal pages, RBAC, and frontend
 API clients exist. The remaining work below is ordered by production risk and
 dependency. Strict P0 completion evidence is tracked in
 `docs/affiliate-p0-completion-audit.md` and
-`docs/affiliate-p0-evidence-manifest.json`; the remaining WebAuthn / passkey
+`docs/affiliate-p0-evidence-manifest.json`; the WebAuthn / passkey
 contract is specified in `docs/webauthn-passkey-p0-contract.md`. Formal
 completion must pass `tools/scripts/check-affiliate-p0-complete.mjs`, which
 fails closed while blocking items remain.
@@ -202,10 +233,18 @@ fails closed while blocking items remain.
   available under `infra/cloudflare/zero-trust`, with a local structural
   verifier in `tools/scripts/validate-cloudflare-admin-access.mjs` and an
   evidence recorder in
-  `tools/scripts/record-cloudflare-admin-access-evidence.mjs`. Remaining work:
-  implement the real WebAuthn / passkey registration and assertion endpoints,
-  rotate recovery codes operationally, apply Cloudflare policy in the target
-  account, and capture real plan / apply evidence.
+  `tools/scripts/record-cloudflare-admin-access-evidence.mjs`. WebAuthn /
+  passkey browser evidence is recorded at
+  `docs/evidence/webauthn-passkey/latest.json`. Remaining work: rotate recovery
+  codes operationally, run
+  `rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply`
+  in the target environment, install/provide Terraform or OpenTofu plus Cloudflare
+  target-account variables, then run
+  `rtk node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply`
+  to capture plan/apply logs and record the evidence. The operator procedure is
+  documented in `docs/evidence/cloudflare-admin-access/README.md`.
+  target-account variables, apply Cloudflare policy in the target account, and
+  capture real plan / apply evidence.
 - P0: Wire first-touch referral capture into all registration surfaces. Phase A
   landed the referral-service capture API (`POST /internal/referrals/capture`)
   with first-touch idempotency, self-referral rejection, and Postgres
@@ -220,7 +259,20 @@ fails closed while blocking items remain.
   or `affiliate_code` query values in a 30-day `proph_referral_code` cookie
   without overwriting an existing cookie. Remaining work: when the public signup
   form replaces the current closed-beta gate, submit the cookie value with the
-  registration request and call the existing referral capture path.
+  registration request and call the existing referral capture path. `apps/web`
+  now replaces the closed-beta signup gate with an enabled registration form,
+  reads `proph_referral_code` server-side, and sends it as `referral_code`
+  through the public registration client contract. On successful registration,
+  the web client calls the existing referral capture path and fail-closes when
+  capture is unavailable so attribution is not silently lost. `user-service`
+  now exposes `POST /v1/public/registrations` to create an inactive Tier 0
+  member, persist referral registration audit metadata, hash the submitted
+  password with Argon2id, and provision a durable Postgres login credential.
+  `user-service` auth can authenticate those stored credentials and resolve
+  `/v1/auth/me` from the credential store when running with Postgres-backed
+  core-api wiring. Browser submit-to-referral-capture evidence is recorded at
+  `docs/evidence/public-signup-referral/latest.json` through the fail-closed
+  recorder `tools/scripts/record-public-signup-referral-evidence.mjs`.
 - P0: Complete the 30-day qualification evaluator. Phase A landed the
   referral-service evaluator API
   (`POST /internal/referrals/qualification-evaluate`) for single-referral

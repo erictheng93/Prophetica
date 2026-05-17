@@ -254,7 +254,7 @@ impl WebauthnStore for PostgresWebauthnStore {
         }
         let ceremony = ceremony_as_str(&record.ceremony);
         sqlx::query(
-            r#"
+            r"
             INSERT INTO user_webauthn_challenges (
                 challenge_id,
                 user_id,
@@ -277,7 +277,7 @@ impl WebauthnStore for PostgresWebauthnStore {
                 state_json = EXCLUDED.state_json,
                 expires_at = EXCLUDED.expires_at,
                 consumed_at = EXCLUDED.consumed_at
-            "#,
+            ",
         )
         .bind(&record.challenge_id)
         .bind(&record.user_id)
@@ -298,7 +298,7 @@ impl WebauthnStore for PostgresWebauthnStore {
         now_epoch_seconds: i64,
     ) -> Result<WebauthnChallengeRecord, WebauthnStoreError> {
         let row = sqlx::query(
-            r#"
+            r"
             SELECT
                 challenge_id,
                 user_id,
@@ -309,7 +309,7 @@ impl WebauthnStore for PostgresWebauthnStore {
                 EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_epoch_seconds
             FROM user_webauthn_challenges
             WHERE challenge_id = $1
-            "#,
+            ",
         )
         .bind(challenge_id)
         .fetch_optional(&self.pool)
@@ -324,11 +324,11 @@ impl WebauthnStore for PostgresWebauthnStore {
             return Err(WebauthnStoreError::ChallengeExpired);
         }
         sqlx::query(
-            r#"
+            r"
             UPDATE user_webauthn_challenges
             SET consumed_at = to_timestamp($2)
             WHERE challenge_id = $1
-            "#,
+            ",
         )
         .bind(challenge_id)
         .bind(now_epoch_seconds)
@@ -350,7 +350,7 @@ impl WebauthnStore for PostgresWebauthnStore {
             return Err(WebauthnStoreError::InvalidRecord);
         }
         sqlx::query(
-            r#"
+            r"
             INSERT INTO user_webauthn_credentials (
                 credential_id,
                 user_id,
@@ -403,7 +403,7 @@ impl WebauthnStore for PostgresWebauthnStore {
                 last_used_at = EXCLUDED.last_used_at,
                 revoked_at = EXCLUDED.revoked_at,
                 metadata = EXCLUDED.metadata
-            "#,
+            ",
         )
         .bind(&record.credential_id)
         .bind(&record.user_id)
@@ -433,7 +433,7 @@ impl WebauthnStore for PostgresWebauthnStore {
         user_id: &str,
     ) -> Result<Vec<WebauthnCredentialRecord>, WebauthnStoreError> {
         let rows = sqlx::query(
-            r#"
+            r"
             SELECT
                 credential_id,
                 user_id,
@@ -455,7 +455,7 @@ impl WebauthnStore for PostgresWebauthnStore {
             FROM user_webauthn_credentials
             WHERE user_id = $1 AND revoked_at IS NULL
             ORDER BY created_at ASC
-            "#,
+            ",
         )
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -472,11 +472,11 @@ impl WebauthnStore for PostgresWebauthnStore {
         used_at_epoch_seconds: i64,
     ) -> Result<(), WebauthnStoreError> {
         let result = sqlx::query(
-            r#"
+            r"
             UPDATE user_webauthn_credentials
             SET signature_counter = $2, last_used_at = to_timestamp($3)
             WHERE credential_id = $1
-            "#,
+            ",
         )
         .bind(credential_id)
         .bind(signature_counter)
@@ -496,11 +496,11 @@ impl WebauthnStore for PostgresWebauthnStore {
         revoked_at_epoch_seconds: i64,
     ) -> Result<(), WebauthnStoreError> {
         let result = sqlx::query(
-            r#"
+            r"
             UPDATE user_webauthn_credentials
             SET revoked_at = to_timestamp($2)
             WHERE credential_id = $1
-            "#,
+            ",
         )
         .bind(credential_id)
         .bind(revoked_at_epoch_seconds)
@@ -581,10 +581,13 @@ fn row_to_credential(
 }
 
 fn sqlx_error(error: sqlx::Error) -> WebauthnStoreError {
-    WebauthnStoreError::Database(error.to_string())
+    let message = error.to_string();
+    drop(error);
+    WebauthnStoreError::Database(message)
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use serde_json::json;
 
