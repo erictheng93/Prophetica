@@ -43,10 +43,6 @@ the full Docker dependency stack.
   channel configured with `USER_SERVICE_LINE_LOGIN_CHANNEL_ID`, a member linked
   through `user_members.line_id`, and an iOS / Android LIFF login run showing
   the resulting `login_success` event.
-- Capture SPEC-022 §10 latency evidence showing login event write plus
-  geolocation does not add more than 100ms to login P95. Unit coverage confirms
-  timeout fallback behavior, but formal completion still needs a targeted
-  benchmark, staging trace, or CI perf evidence for the actual login path.
 - Run and record manual QA for desktop web, mobile web, and LIFF/WebView login
   surfaces after the LIFF session path exists, confirming admin and user UIs
   show approximate location language and `未知` fallback instead of blank

@@ -1,6 +1,10 @@
 #![allow(clippy::expect_used)]
 
-use std::{net::IpAddr, sync::Arc, time::Duration};
+use std::{
+    net::IpAddr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version, password_hash::SaltString};
 use async_trait::async_trait;
@@ -540,6 +544,43 @@ async fn geolocation_provider_timeout_does_not_block_login_or_event_query() {
     assert_eq!(event.geo_accuracy, "unknown");
     assert!(event.geo_source.is_none());
     assert_eq!(metrics.body["login_geo_lookup_failed_total"], json!(1));
+}
+
+#[tokio::test]
+#[ignore = "local SPEC-022 latency evidence; run explicitly when validating the NFR"]
+async fn spec_022_login_event_latency_p95_local_budget() {
+    let events = InMemoryLoginEventStore::default();
+    let app = auth_router_with_config(
+        config_with_fixture()
+            .with_login_event_store(Arc::new(events))
+            .with_login_geo_provider(Arc::new(SlowGeoProvider))
+            .with_login_geo_timeout(Duration::from_millis(5)),
+    );
+    let mut samples = Vec::with_capacity(40);
+
+    for _ in 0..40 {
+        let started = Instant::now();
+        let response = post_login_with_headers(
+            app.clone(),
+            json!({
+                "identifier": "member@example.com",
+                "identifier_kind": "email",
+                "password": "member",
+                "login_surface": "user_web"
+            }),
+            &[("x-real-ip", "203.0.113.101")],
+        )
+        .await;
+        assert_eq!(response.status, StatusCode::OK);
+        samples.push(started.elapsed());
+    }
+
+    samples.sort_unstable();
+    let p95 = samples[(samples.len() * 95).div_ceil(100) - 1];
+    assert!(
+        p95 < Duration::from_millis(100),
+        "SPEC-022 local login event + geo timeout p95 exceeded 100ms: {p95:?}"
+    );
 }
 
 #[tokio::test]
