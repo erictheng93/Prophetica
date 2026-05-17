@@ -10,7 +10,7 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::Sha256;
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use ulid::Ulid;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -136,6 +136,18 @@ pub struct LoginEventRecord {
     pub correlation_id: Option<String>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct AdminLoginEventFilter {
+    pub limit: usize,
+    pub principal_type: Option<String>,
+    pub principal_id: Option<String>,
+    pub user_id: Option<String>,
+    pub ip_address: Option<String>,
+    pub event_type: Option<String>,
+    pub from_epoch_seconds: Option<u64>,
+    pub to_epoch_seconds: Option<u64>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum LoginEventStoreError {
     #[error("login event store unavailable")]
@@ -158,6 +170,11 @@ pub trait LoginEventStore: Send + Sync {
     async fn list_recent(
         &self,
         limit: usize,
+    ) -> Result<Vec<LoginEventRecord>, LoginEventStoreError>;
+
+    async fn list_admin(
+        &self,
+        filter: AdminLoginEventFilter,
     ) -> Result<Vec<LoginEventRecord>, LoginEventStoreError>;
 
     async fn delete_older_than(
@@ -336,6 +353,27 @@ impl LoginEventStore for InMemoryLoginEventStore {
         Ok(events)
     }
 
+    async fn list_admin(
+        &self,
+        filter: AdminLoginEventFilter,
+    ) -> Result<Vec<LoginEventRecord>, LoginEventStoreError> {
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|_| LoginEventStoreError::Unavailable)?
+            .iter()
+            .filter(|event| admin_filter_matches(event, &filter))
+            .cloned()
+            .collect::<Vec<_>>();
+        events.sort_by(|left, right| {
+            right
+                .occurred_at_epoch_seconds
+                .cmp(&left.occurred_at_epoch_seconds)
+        });
+        events.truncate(filter.limit.clamp(1, 200));
+        Ok(events)
+    }
+
     async fn delete_older_than(
         &self,
         cutoff_epoch_seconds: u64,
@@ -485,6 +523,75 @@ impl LoginEventStore for PostgresLoginEventStore {
         .fetch_all(&self.pool)
         .await
         .map_err(|_| LoginEventStoreError::Unavailable)?;
+
+        rows.iter().map(row_to_record).collect()
+    }
+
+    async fn list_admin(
+        &self,
+        filter: AdminLoginEventFilter,
+    ) -> Result<Vec<LoginEventRecord>, LoginEventStoreError> {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "
+            SELECT id, login_surface, principal_type::text AS principal_type,
+                   principal_id, user_id, principal_external_id,
+                   account_identifier_hash, account_identifier_hash_key_version,
+                   event_type::text AS event_type,
+                   EXTRACT(EPOCH FROM occurred_at)::bigint AS occurred_at_epoch_seconds,
+                   ip_address::text AS ip_address, ip_source, geo_country,
+                   geo_region, geo_city, geo_source, geo_accuracy::text AS geo_accuracy,
+                   asn, isp, user_agent_raw, browser_name, browser_version,
+                   os_name, os_version, device_type::text AS device_type,
+                   device_vendor, device_model, session_id, auth_method,
+                   failure_reason, risk_flags, request_id, correlation_id
+            FROM login_events
+            WHERE 1 = 1
+            ",
+        );
+        if let Some(principal_type) = non_empty_filter(filter.principal_type.as_ref()) {
+            query
+                .push(" AND principal_type = ")
+                .push_bind(principal_type)
+                .push("::login_principal_type");
+        }
+        if let Some(principal_id) = non_empty_filter(filter.principal_id.as_ref()) {
+            query.push(" AND principal_id = ").push_bind(principal_id);
+        }
+        if let Some(user_id) = non_empty_filter(filter.user_id.as_ref()) {
+            query.push(" AND user_id = ").push_bind(user_id);
+        }
+        if let Some(ip_address) = non_empty_filter(filter.ip_address.as_ref()) {
+            query
+                .push(" AND ip_address = ")
+                .push_bind(ip_address)
+                .push("::inet");
+        }
+        if let Some(event_type) = non_empty_filter(filter.event_type.as_ref()) {
+            query
+                .push(" AND event_type = ")
+                .push_bind(event_type)
+                .push("::login_event_type");
+        }
+        if let Some(from_epoch_seconds) = filter.from_epoch_seconds {
+            query
+                .push(" AND occurred_at >= to_timestamp(")
+                .push_bind(i64::try_from(from_epoch_seconds).unwrap_or(i64::MAX))
+                .push(")");
+        }
+        if let Some(to_epoch_seconds) = filter.to_epoch_seconds {
+            query
+                .push(" AND occurred_at <= to_timestamp(")
+                .push_bind(i64::try_from(to_epoch_seconds).unwrap_or(i64::MAX))
+                .push(")");
+        }
+        query.push(" ORDER BY occurred_at DESC LIMIT ");
+        query.push_bind(i64::try_from(filter.limit.clamp(1, 200)).unwrap_or(50));
+
+        let rows = query
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|_| LoginEventStoreError::Unavailable)?;
 
         rows.iter().map(row_to_record).collect()
     }
@@ -928,6 +1035,35 @@ fn device_label(event: &LoginEventRecord) -> String {
     } else {
         event.device_type.clone()
     }
+}
+
+fn admin_filter_matches(event: &LoginEventRecord, filter: &AdminLoginEventFilter) -> bool {
+    field_matches(&event.principal_type, filter.principal_type.as_ref())
+        && option_field_matches(event.principal_id.as_ref(), filter.principal_id.as_ref())
+        && option_field_matches(event.user_id.as_ref(), filter.user_id.as_ref())
+        && field_matches(&event.ip_address, filter.ip_address.as_ref())
+        && field_matches(&event.event_type, filter.event_type.as_ref())
+        && filter
+            .from_epoch_seconds
+            .is_none_or(|from| event.occurred_at_epoch_seconds >= from)
+        && filter
+            .to_epoch_seconds
+            .is_none_or(|to| event.occurred_at_epoch_seconds <= to)
+}
+
+fn field_matches(value: &str, filter: Option<&String>) -> bool {
+    non_empty_filter(filter).is_none_or(|expected| value == expected)
+}
+
+fn option_field_matches(value: Option<&String>, filter: Option<&String>) -> bool {
+    non_empty_filter(filter).is_none_or(|expected| value.map(String::as_str) == Some(expected))
+}
+
+fn non_empty_filter(value: Option<&String>) -> Option<&str> {
+    value
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
 
 fn header_ip(headers: &HeaderMap, name: &str) -> Option<IpAddr> {

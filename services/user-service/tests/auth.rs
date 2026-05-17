@@ -296,6 +296,77 @@ async fn admin_login_event_retention_supports_dry_run_and_delete() {
 }
 
 #[tokio::test]
+async fn admin_login_events_query_filters_by_principal_ip_event_and_time() {
+    let events = InMemoryLoginEventStore::default();
+    let accounts = AuthConfig::from_local_login_accounts_json(
+        r#"[
+          {
+            "user_id": "U-MANAGER-FILTER",
+            "email": "manager-filter@prophetica.local",
+            "phone": "0912345616",
+            "password": "manager",
+            "role": "manager"
+          },
+          {
+            "user_id": "U-AFF-FILTER",
+            "email": "affiliate-filter@prophetica.local",
+            "phone": "0912345617",
+            "password": "affiliate",
+            "role": "affiliate",
+            "affiliate_id": "AFF-FILTER"
+          }
+        ]"#,
+    )
+    .expect("accounts parse");
+    let app = auth_router_with_config(
+        AuthConfig::new(accounts).with_login_event_store(Arc::new(events.clone())),
+    );
+    let manager_login = post_login_with_headers(
+        app.clone(),
+        json!({
+            "identifier": "manager-filter@prophetica.local",
+            "identifier_kind": "email",
+            "password": "manager",
+            "login_surface": "admin_console"
+        }),
+        &[("cf-connecting-ip", "203.0.113.11")],
+    )
+    .await;
+    let token = manager_login.body["session_token"]
+        .as_str()
+        .expect("session token should be returned");
+    let affiliate_login = post_login_with_headers(
+        app.clone(),
+        json!({
+            "identifier": "affiliate-filter@prophetica.local",
+            "identifier_kind": "email",
+            "password": "affiliate",
+            "login_surface": "affiliate_portal"
+        }),
+        &[("cf-connecting-ip", "203.0.113.12")],
+    )
+    .await;
+
+    let filtered = request_with_optional_bearer(
+        app,
+        "GET",
+        "/v1/internal/admin/login-events?principal_type=affiliate&event_type=login_success&ip_address=203.0.113.12&from_epoch_seconds=1&to_epoch_seconds=4102444800",
+        Some(token),
+    )
+    .await;
+
+    assert_eq!(manager_login.status, StatusCode::OK);
+    assert_eq!(affiliate_login.status, StatusCode::OK);
+    assert_eq!(filtered.status, StatusCode::OK);
+    let events = filtered.body["events"].as_array().expect("events array");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["principal_type"], json!("affiliate"));
+    assert_eq!(events[0]["principal_id"], json!("U-AFF-FILTER"));
+    assert_eq!(events[0]["principal_external_id"], json!("AFF-FILTER"));
+    assert_eq!(events[0]["ip_address"], json!("203.0.113.12"));
+}
+
+#[tokio::test]
 async fn login_event_metrics_count_writes_and_spoofed_headers() {
     let app = auth_router_with_config(
         config_with_fixture()

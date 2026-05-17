@@ -30,6 +30,7 @@ export async function fetchAdminLoginEvents(
   upstreamSessionToken: string,
   options: {
     limit?: number;
+    filters?: AdminLoginEventFilters;
     fetcher?: typeof fetch;
     baseUrl?: string;
   } = {},
@@ -40,6 +41,12 @@ export async function fetchAdminLoginEvents(
   const params = new URLSearchParams({
     limit: String(options.limit ?? 50),
   });
+  for (const [key, value] of Object.entries(options.filters ?? {})) {
+    const text = String(value ?? "").trim();
+    if (text) {
+      params.set(key, text);
+    }
+  }
   const response = await (options.fetcher ?? fetch)(
     `${baseUrl}/v1/internal/admin/login-events?${params.toString()}`,
     {
@@ -57,6 +64,16 @@ export async function fetchAdminLoginEvents(
 
   const body = (await response.json()) as { events?: AdminLoginEvent[] };
   return Array.isArray(body.events) ? body.events : [];
+}
+
+export interface AdminLoginEventFilters {
+  principal_type?: string;
+  principal_id?: string;
+  user_id?: string;
+  ip_address?: string;
+  event_type?: string;
+  from_epoch_seconds?: string | number;
+  to_epoch_seconds?: string | number;
 }
 
 export function adminLoginLocationLabel(event: AdminLoginEvent): string {

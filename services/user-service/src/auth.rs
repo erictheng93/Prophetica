@@ -30,9 +30,9 @@ use sqlx::{PgPool, Row};
 
 use crate::{
     login_events::{
-        InMemoryLoginEventStore, LoginEventInput, LoginEventStore, LoginEventType,
-        TrustedProxyConfig, client_ip_from_request, geo_from_headers, identifier_hmac,
-        normalize_login_surface, parse_user_agent, principal_type_from_role,
+        AdminLoginEventFilter, InMemoryLoginEventStore, LoginEventInput, LoginEventStore,
+        LoginEventType, TrustedProxyConfig, client_ip_from_request, geo_from_headers,
+        identifier_hmac, normalize_login_surface, parse_user_agent, principal_type_from_role,
         principal_type_from_surface, to_self_response,
     },
     webauthn_runtime::{
@@ -171,6 +171,20 @@ struct LoginRequest {
 struct LoginEventsQuery {
     #[serde(default)]
     limit: Option<usize>,
+    #[serde(default)]
+    principal_type: Option<String>,
+    #[serde(default)]
+    principal_id: Option<String>,
+    #[serde(default)]
+    user_id: Option<String>,
+    #[serde(default)]
+    ip_address: Option<String>,
+    #[serde(default)]
+    event_type: Option<String>,
+    #[serde(default)]
+    from_epoch_seconds: Option<u64>,
+    #[serde(default)]
+    to_epoch_seconds: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1036,7 +1050,19 @@ async fn admin_login_events(
     let Some(store) = config.login_event_store.as_ref() else {
         return Json(json!({ "events": [] })).into_response();
     };
-    match store.list_recent(limit).await {
+    match store
+        .list_admin(AdminLoginEventFilter {
+            limit,
+            principal_type: query.principal_type,
+            principal_id: query.principal_id,
+            user_id: query.user_id,
+            ip_address: query.ip_address,
+            event_type: query.event_type,
+            from_epoch_seconds: query.from_epoch_seconds,
+            to_epoch_seconds: query.to_epoch_seconds,
+        })
+        .await
+    {
         Ok(events) => Json(json!({ "events": events })).into_response(),
         Err(_) => (
             StatusCode::BAD_GATEWAY,

@@ -33,11 +33,18 @@ test("login form uses document navigation after a successful auth cookie respons
   assert.doesNotMatch(source, /router\.replace\(intendedRedirect/);
 });
 
+test("login form marks affiliate portal attempts from intended route", () => {
+  const source = readAdminFile("components/login-form.tsx");
+
+  assert.match(source, /startsWith\("\/me\/affiliate"\)/);
+  assert.match(source, /login_surface: loginSurface/);
+});
+
 test("login form omits temporary two-step verification fields", () => {
   const source = readAdminFile("components/login-form.tsx");
   const route = readAdminFile("app/api/auth/login/route.ts");
 
-  assert.match(source, /JSON\.stringify\(\{ email, password \}\)/);
+  assert.match(source, /JSON\.stringify\(\{ email, password, login_surface: loginSurface \}\)/);
   assert.doesNotMatch(source, /mfaCode/);
   assert.doesNotMatch(source, /mfaRecoveryCode/);
   assert.doesNotMatch(source, /one-time-code/);

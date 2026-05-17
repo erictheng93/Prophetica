@@ -18,6 +18,9 @@ export function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
 
   const intendedRedirect = params?.get("from") ?? null;
+  const loginSurface = intendedRedirect?.startsWith("/me/affiliate")
+    ? "affiliate_portal"
+    : "admin_console";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,7 +31,7 @@ export function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, login_surface: loginSurface }),
       });
       if (res.ok) {
         const data = (await res.json()) as { redirect: string };

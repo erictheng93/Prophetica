@@ -7,6 +7,7 @@ import { setUpstreamSessionCookie } from "@/lib/upstream-session";
 interface LoginBody {
   email?: unknown;
   password?: unknown;
+  login_surface?: unknown;
 }
 
 interface UserServiceLoginResponse {
@@ -27,6 +28,8 @@ export async function POST(request: Request) {
   }
   const email = typeof body.email === "string" ? body.email : "";
   const password = typeof body.password === "string" ? body.password : "";
+  const loginSurface =
+    body.login_surface === "affiliate_portal" ? "affiliate_portal" : "admin_console";
 
   if (!email || !password) {
     return NextResponse.json({ error: "missing_credentials" }, { status: 400 });
@@ -40,7 +43,7 @@ export async function POST(request: Request) {
       identifier_kind: "email",
       password,
       remember: false,
-      login_surface: "admin_console",
+      login_surface: loginSurface,
     }),
     cache: "no-store",
   }).catch(() => null);
