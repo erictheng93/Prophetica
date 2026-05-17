@@ -1,0 +1,91 @@
+{
+  "last_updated": "2026-05-18",
+  "scope": "SPEC-022 Login Event Intelligence",
+  "status": "blocked",
+  "blocking_items": [
+    {
+      "id": "live-liff-identity-bridge-evidence",
+      "reason": "The LIFF identity exchange code path exists, but formal completion still needs a real LINE Login / LIFF channel configured with USER_SERVICE_LINE_LOGIN_CHANNEL_ID, a user_members.line_id-linked player, and iOS plus Android LIFF login runs showing login_success events with login_surface = liff.",
+      "required_evidence": "docs/evidence/spec-022-liff/latest.json"
+    },
+    {
+      "id": "manual-qa-evidence",
+      "reason": "Desktop web, mobile web, admin, and LIFF/WebView manual QA evidence must confirm approximate location copy and unknown fallback rendering.",
+      "required_evidence": "docs/evidence/spec-022-manual-qa/latest.json"
+    }
+  ],
+  "completed_evidence": [
+    {
+      "id": "schema-migration-contract",
+      "artifacts": [
+        "services/user-service/migrations/202605180001_create_login_events.sql",
+        "services/user-service/migrations/202605180002_create_login_event_outbox.sql",
+        "services/user-service/tests/login_event_migrations.rs"
+      ],
+      "evidence": "USER_SERVICE_TEST_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica rtk cargo test -p user-service --test login_event_migrations --locked => 1 passed; constraints and indexes verified on real Postgres."
+    },
+    {
+      "id": "auth-writer-query-retention-observability",
+      "artifacts": [
+        "services/user-service/src/auth.rs",
+        "services/user-service/src/login_events.rs",
+        "services/user-service/tests/auth.rs",
+        "infra/prometheus/rules/login-events.yml"
+      ],
+      "evidence": "USER_SERVICE_TEST_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica rtk cargo test -p user-service --locked => 47 passed, 1 ignored; rtk cargo clippy -p user-service --all-targets --locked -- -D warnings => no issues."
+    },
+    {
+      "id": "liff-session-exchange-contract",
+      "artifacts": [
+        "apps/liff/components/liff-bootstrap.tsx",
+        "apps/liff/app/api/auth/liff/session/route.ts",
+        "services/user-service/src/auth.rs",
+        "services/user-service/tests/auth.rs",
+        "services/_binaries/core-api/src/main.rs"
+      ],
+      "evidence": "rtk cargo test -p user-service --test auth liff_session_exchange --locked => 2 passed; rtk pnpm --filter @prophetica/liff lint => passed; rtk cargo check -p core-api --locked => passed."
+    },
+    {
+      "id": "latency-budget-local-evidence",
+      "artifacts": [
+        "services/user-service/tests/auth.rs"
+      ],
+      "evidence": "rtk cargo test -p user-service --test auth spec_022_login_event_latency_p95_local_budget --locked -- --ignored => 1 passed, 27 filtered out; local login event + geo timeout P95 stayed below 100ms."
+    },
+    {
+      "id": "web-admin-ui-and-rbac",
+      "artifacts": [
+        "apps/web/app/account/security/page.tsx",
+        "apps/web/app/api/account/login-events/route.ts",
+        "apps/web/lib/login-events.ts",
+        "apps/admin/app/security/login-events/page.tsx",
+        "apps/admin/app/api/login-events/route.ts",
+        "apps/admin/lib/login-events-bff.ts",
+        "apps/admin/lib/rbac.ts"
+      ],
+      "evidence": "Earlier targeted verification in this thread: rtk pnpm --filter @prophetica/web test => 177 passed; rtk pnpm --filter @prophetica/web lint => passed; rtk pnpm --filter @prophetica/admin test => 105 passed; rtk pnpm --filter @prophetica/admin lint => passed."
+    }
+  ],
+  "required_external_evidence": [
+    {
+      "path": "docs/evidence/spec-022-liff/latest.json",
+      "required_fields": [
+        "line_channel_configured",
+        "ios_liff_login_success_event",
+        "android_liff_login_success_event",
+        "login_surface_liff_confirmed",
+        "user_members_line_id_link_confirmed"
+      ]
+    },
+    {
+      "path": "docs/evidence/spec-022-manual-qa/latest.json",
+      "required_fields": [
+        "desktop_web_recent_login_approximate_location",
+        "mobile_web_recent_login_approximate_location",
+        "admin_login_events_rbac_and_audit_checked",
+        "liff_webview_login_event_visible",
+        "unknown_fallback_visible"
+      ]
+    }
+  ]
+}

@@ -42,7 +42,10 @@ the full Docker dependency stack.
   records `login_surface = liff`, but formal completion still needs a LINE
   channel configured with `USER_SERVICE_LINE_LOGIN_CHANNEL_ID`, a member linked
   through `user_members.line_id`, and an iOS / Android LIFF login run showing
-  the resulting `login_success` event.
+  the resulting `login_success` event. Track this in
+  `docs/spec-022-evidence-manifest.json` and keep
+  `tools/scripts/check-spec-022-complete.mjs` failing until evidence is
+  recorded.
 - Run and record manual QA for desktop web, mobile web, and LIFF/WebView login
   surfaces after the LIFF session path exists, confirming admin and user UIs
   show approximate location language and `未知` fallback instead of blank
