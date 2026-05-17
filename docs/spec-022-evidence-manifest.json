@@ -55,6 +55,16 @@
       "evidence": "rtk cargo test -p user-service --test auth spec_022_login_event_latency_p95_local_budget --locked -- --ignored => 1 passed, 27 filtered out; local login event + geo timeout P95 stayed below 100ms."
     },
     {
+      "id": "external-evidence-recorder-contract",
+      "artifacts": [
+        "tools/scripts/record-spec-022-liff-evidence.mjs",
+        "tools/scripts/record-spec-022-manual-qa-evidence.mjs",
+        "tools/scripts/record-spec-022-evidence.test.mjs",
+        "tools/scripts/check-spec-022-complete.mjs"
+      ],
+      "evidence": "rtk node --test tools/scripts/record-spec-022-evidence.test.mjs => 2 passed; rtk node tools/scripts/check-spec-022-complete.mjs remains fail-closed while the manifest status is blocked."
+    },
+    {
       "id": "web-admin-ui-and-rbac",
       "artifacts": [
         "apps/web/app/account/security/page.tsx",
