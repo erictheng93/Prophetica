@@ -12,7 +12,6 @@ export default function ApprovalsPage() {
         <AdminShell
           title={route.label}
           description={route.summary}
-          role={viewer.role}
         >
           <MemberManagement
             showActionQueue

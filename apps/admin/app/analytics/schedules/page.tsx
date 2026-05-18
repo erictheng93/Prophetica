@@ -17,7 +17,6 @@ export default function AnalyticsSchedulesPage() {
             eyebrow={adminCopy.analytics.eyebrow}
             title={adminCopy.analytics.schedulesTitle}
             description={adminCopy.analytics.schedulesDescription}
-            role={viewer.role}
           >
             <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
               <header className="px-5 pt-5 md:px-6 md:pt-6">

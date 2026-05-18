@@ -18,7 +18,6 @@ export default function AffiliatePage() {
             eyebrow={route.label}
             title={adminCopy.affiliateAdmin.listHeading}
             description={adminCopy.affiliateAdmin.listDescription}
-            role={viewer.role}
           >
             <div className="space-y-8">
               <AffiliateCreateForm role={viewer.role} />

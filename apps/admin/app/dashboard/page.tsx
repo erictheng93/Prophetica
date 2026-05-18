@@ -16,7 +16,6 @@ export default function DecisionSupportDashboardPage() {
           eyebrow={adminCopy.dashboard.eyebrow}
           title={adminCopy.dashboard.title}
           description={adminCopy.dashboard.description}
-          role={viewer.role}
         >
           <AnalyticsReportingContent />
         </AdminShell>

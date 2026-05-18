@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { signInternalCall } from "./internal-call.js";
 import type { SessionPayload } from "./session-crypto.js";
 import {
@@ -108,14 +109,23 @@ export async function fetchAffiliatePayoutReviews(
 export async function fetchAffiliateDashboard(
   viewer: SessionPayload,
 ): Promise<AffiliatePortalDashboard | null> {
-  if (viewer.role !== "affiliate") return null;
-  const response = await proxyAccountGatewayRequest(
-    viewer,
-    "/v1/account/affiliate?limit=200",
-  );
-  if (!response?.ok) return null;
-  return (await response.json()) as AffiliatePortalDashboard;
+  return fetchAffiliateDashboardForViewer(viewer.sub, viewer.role);
 }
+
+const fetchAffiliateDashboardForViewer = cache(
+  async function fetchAffiliateDashboardForViewer(
+    sub: string,
+    role: SessionPayload["role"],
+  ): Promise<AffiliatePortalDashboard | null> {
+    if (role !== "affiliate") return null;
+    const response = await proxyAccountGatewayRequest(
+      sub,
+      "/v1/account/affiliate?limit=200",
+    );
+    if (!response?.ok) return null;
+    return (await response.json()) as AffiliatePortalDashboard;
+  },
+);
 
 async function proxyAffiliateGatewayRequest(
   viewer: SessionPayload,
@@ -145,7 +155,7 @@ async function proxyAffiliateGatewayRequest(
 }
 
 async function proxyAccountGatewayRequest(
-  viewer: SessionPayload,
+  sub: string,
   path: string,
 ): Promise<Response | null> {
   const gatewayUrl = process.env.API_GATEWAY_URL;
@@ -153,7 +163,7 @@ async function proxyAccountGatewayRequest(
   return fetch(new URL(path, gatewayUrl), {
     method: "GET",
     headers: {
-      "x-user-id": viewer.sub,
+      "x-user-id": sub,
       "x-request-id": crypto.randomUUID(),
     },
     cache: "no-store",

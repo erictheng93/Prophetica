@@ -18,7 +18,6 @@ export default function AffiliatePayoutsPage() {
             eyebrow={route.label}
             title={adminCopy.affiliateAdmin.payoutsTitle}
             description={adminCopy.affiliateAdmin.payoutsDescription}
-            role={viewer.role}
           >
             <div className="space-y-8">
               <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">

@@ -44,7 +44,6 @@ export default async function AnalyticsJobDetailPage({ params }: JobPageProps) {
             eyebrow={adminCopy.analytics.eyebrow}
             title={`${adminCopy.analytics.detailTitle} · ${job.templateName}`}
             description={`${job.id} · ${job.version}`}
-            role={viewer.role}
           >
             <div className="space-y-8">
               <Link

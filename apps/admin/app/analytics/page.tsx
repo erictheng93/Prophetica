@@ -25,7 +25,6 @@ export default function AnalyticsTemplatesPage() {
               eyebrow={adminCopy.analytics.eyebrow}
               title={adminCopy.analytics.listTitle}
               description={adminCopy.analytics.listDescription}
-              role={viewer.role}
             >
               <AnalyticsUnavailableState />
             </AdminShell>
@@ -37,7 +36,6 @@ export default function AnalyticsTemplatesPage() {
             eyebrow={adminCopy.analytics.eyebrow}
             title={adminCopy.analytics.listTitle}
             description={adminCopy.analytics.listDescription}
-            role={viewer.role}
           >
             <div className="grid gap-4 lg:grid-cols-2">
               {templates.map((template) => (

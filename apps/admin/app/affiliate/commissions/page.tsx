@@ -19,7 +19,6 @@ export default function AffiliateCommissionsPage() {
             eyebrow={route.label}
             title={adminCopy.affiliateAdmin.commissionsTitle}
             description={adminCopy.affiliateAdmin.commissionsDescription}
-            role={viewer.role}
           >
             <div className="space-y-8">
               <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">

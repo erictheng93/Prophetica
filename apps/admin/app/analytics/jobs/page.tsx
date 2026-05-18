@@ -19,7 +19,6 @@ export default function AnalyticsJobsPage() {
             eyebrow={adminCopy.analytics.eyebrow}
             title={adminCopy.analytics.jobsTitle}
             description={adminCopy.analytics.jobsDescription}
-            role={viewer.role}
           >
             <section
               aria-labelledby="analytics-jobs-title"

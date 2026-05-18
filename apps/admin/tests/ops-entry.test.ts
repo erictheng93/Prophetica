@@ -264,6 +264,18 @@ test("admin affiliate operations are grouped under the management area", () => {
   assert.match(drawerSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
 });
 
+test("affiliate portal dashboard reads are render-pass cached by stable primitives", () => {
+  const bffSource = readAdminFile("lib/affiliate-management-bff.ts");
+
+  assert.match(bffSource, /import \{ cache \} from "react"/);
+  assert.match(bffSource, /const fetchAffiliateDashboardForViewer = cache/);
+  assert.match(
+    bffSource,
+    /return fetchAffiliateDashboardForViewer\(viewer\.sub, viewer\.role\)/,
+  );
+  assert.match(bffSource, /proxyAccountGatewayRequest\(\s*sub,/);
+});
+
 test("admin pages do not ship forms with unsupported aria-disabled", () => {
   const pageFiles = [
     "app/page.tsx",

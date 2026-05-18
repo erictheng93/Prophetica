@@ -36,7 +36,6 @@ export default function AdminLoginEventsPage({
           <AdminShell
             title="登入事件查詢"
             description="查詢最近登入事件、來源 IP、約略位置、裝置與失敗原因。"
-            role={viewer.role}
           >
             <form
               action="/security/login-events"

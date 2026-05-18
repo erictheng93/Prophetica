@@ -46,7 +46,6 @@ export default async function AdminOperationsPage() {
     <AdminShell
       title={adminCopy.overview.title}
       description={adminCopy.overview.description}
-      role={viewer.role}
     >
       <div className="space-y-8">
         <QueueSummary summaries={snapshot.summaries} />

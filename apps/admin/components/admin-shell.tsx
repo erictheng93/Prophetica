@@ -6,7 +6,6 @@ interface AdminShellProps {
   eyebrow?: string;
   title: string;
   description: string;
-  role?: unknown;
 }
 
 export function AdminShell({

@@ -26,7 +26,6 @@ export default async function AffiliateDetailPage({
             eyebrow={adminCopy.affiliateAdmin.detailEyebrow}
             title={affiliate.displayName}
             description={`${affiliate.id} · ${affiliate.emailMasked}`}
-            role={viewer.role}
           >
             <AffiliateDetailView
               affiliate={affiliate}

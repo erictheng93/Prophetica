@@ -11,7 +11,6 @@ export default function KycRiskPage() {
         <AdminShell
           title={route.label}
           description={route.summary}
-          role={viewer.role}
         >
           <></>
         </AdminShell>

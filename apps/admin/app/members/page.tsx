@@ -18,7 +18,6 @@ export default async function MembersPage({
         <AdminShell
           title={route.label}
           description={route.summary}
-          role={viewer.role}
         >
           <div className="space-y-8">
             <MemberManagement

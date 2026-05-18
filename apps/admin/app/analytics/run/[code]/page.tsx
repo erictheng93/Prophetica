@@ -35,7 +35,6 @@ export default async function AnalyticsRunPage({ params }: RunPageProps) {
             eyebrow={adminCopy.analytics.eyebrow}
             title={`${adminCopy.analytics.builderTitle} · ${template.name}`}
             description={adminCopy.analytics.builderDescription}
-            role={viewer.role}
           >
             <div className="space-y-6">
               <Link

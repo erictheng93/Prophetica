@@ -22,7 +22,6 @@ export default async function AdminFaqPage() {
       title={adminCopy.faq.title}
       description={adminCopy.faq.description}
       eyebrow={adminCopy.faq.eyebrow}
-      role={viewer.role}
     >
       <FaqManagementForm
         initialCatalog={view.catalog}
