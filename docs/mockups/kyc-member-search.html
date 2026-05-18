@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KYC 審核 — 會員查詢版面方案 mockup</title>
+<style>
+  :root {
+    --primary: #0066cc;
+    --primary-focus: #0071e3;
+    --ink: #1d1d1f;
+    --ink-80: #333333;
+    --ink-48: #595959;
+    --hairline: #e0e0e0;
+    --divider-soft: #f0f0f0;
+    --canvas: #ffffff;
+    --parchment: #f5f5f7;
+    --pearl: #fafafc;
+    --on-primary: #ffffff;
+    --error: #c92020;
+    --warning: #8a5800;
+    --success: #1f7a3f;
+    --shadow: rgba(0, 0, 0, 0.22) 3px 5px 30px 0;
+    --font-display: "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, Inter, sans-serif;
+    --font-text: "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, Inter, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--parchment);
+    color: var(--ink);
+    font-family: var(--font-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-size: 15px;
+    line-height: 1.47;
+    letter-spacing: -0.32px;
+  }
+
+  h1, h2, h3, h4 { font-family: var(--font-display); margin: 0; }
+
+  .page { max-width: 1180px; margin: 0 auto; padding: 32px 24px 96px; }
+
+  /* ---- page chrome ---- */
+  .masthead { margin-bottom: 24px; }
+  .masthead .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--ink-48);
+  }
+  .masthead h1 { font-size: 30px; line-height: 1.15; margin-top: 6px; }
+  .masthead p { margin: 8px 0 0; max-width: 640px; color: var(--ink-80); font-size: 14px; }
+
+  /* ---- tabs ---- */
+  .tabs {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 14px 0; margin-bottom: 8px;
+    background: var(--parchment);
+  }
+  .tab {
+    appearance: none; cursor: pointer;
+    border: 1px solid var(--hairline); background: var(--canvas);
+    border-radius: 9999px; padding: 9px 16px;
+    font-family: var(--font-text); font-size: 13px; font-weight: 600;
+    color: var(--ink-80);
+  }
+  .tab:hover { border-color: var(--primary-focus); color: var(--ink); }
+  .tab[aria-selected="true"] {
+    background: var(--ink); color: #fff; border-color: var(--ink);
+  }
+  .tab .star { color: #ffcf3f; }
+
+  .panel { display: none; }
+  .panel[data-active="true"] { display: block; }
+
+  .caption {
+    border-left: 3px solid var(--primary);
+    background: var(--canvas);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px; margin-bottom: 18px;
+    font-size: 13px; color: var(--ink-80);
+  }
+  .caption strong { color: var(--ink); }
+  .caption.warn { border-left-color: var(--error); }
+  .caption .tag {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    color: var(--success); margin-left: 8px;
+  }
+
+  /* ---- generic card ---- */
+  .card {
+    background: var(--canvas);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+    padding: 24px;
+  }
+  .card + .card { margin-top: 20px; }
+  .card h2 { font-size: 20px; letter-spacing: 0.2px; }
+  .card .sub { margin: 8px 0 0; font-size: 13px; color: var(--ink-80); }
+
+  /* ---- search ---- */
+  .search-row { display: flex; gap: 12px; margin-top: 18px; }
+  .field { flex: 1; min-width: 0; }
+  .field label {
+    display: block; font-size: 12px; font-weight: 600; color: var(--ink-80);
+    margin-bottom: 6px;
+  }
+  .input {
+    width: 100%; height: 44px;
+    border: 1px solid var(--hairline); background: var(--pearl);
+    border-radius: 8px; padding: 0 12px;
+    font-family: var(--font-text); font-size: 14px; color: var(--ink);
+    outline: none;
+  }
+  .input:focus { border-color: var(--primary-focus); }
+  textarea.input { height: 84px; padding: 10px 12px; resize: none; }
+  .btn-primary {
+    align-self: flex-end;
+    height: 44px; padding: 0 22px;
+    border: none; border-radius: 9999px;
+    background: var(--primary); color: var(--on-primary);
+    font-family: var(--font-text); font-size: 14px; font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-ghost {
+    height: 40px; padding: 0 16px;
+    border: 1px solid var(--hairline); background: var(--pearl);
+    border-radius: 9999px; color: var(--ink);
+    font-family: var(--font-text); font-size: 13px; font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* ---- member list ---- */
+  .member-list { display: grid; gap: 10px; margin-top: 18px; }
+  .member-row {
+    display: flex; align-items: center; gap: 12px;
+    border: 1px solid var(--divider-soft); background: var(--pearl);
+    border-radius: 12px; padding: 12px 14px;
+    cursor: pointer; text-align: left; width: 100%;
+    font-family: var(--font-text);
+  }
+  .member-row:hover { border-color: var(--primary-focus); }
+  .member-row[aria-selected="true"] {
+    border-color: var(--primary); background: #f0f7ff;
+  }
+  .member-row .avatar {
+    width: 38px; height: 38px; border-radius: 9999px; flex: none;
+    background: linear-gradient(135deg, #0071e3, #2997ff);
+    color: #fff; font-weight: 700; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .member-row .who { flex: 1; min-width: 0; }
+  .member-row .who .name { font-weight: 600; font-size: 14px; }
+  .member-row .who .id { font-size: 12px; color: var(--ink-48); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  /* ---- pills ---- */
+  .pill {
+    display: inline-flex; align-items: center;
+    height: 24px; padding: 0 10px; border-radius: 9999px;
+    font-size: 11px; font-weight: 700;
+    background: #eef0f2; color: var(--ink-80);
+  }
+  .pill.success { background: #e3f3e9; color: var(--success); }
+  .pill.warning { background: #f6efdc; color: var(--warning); }
+  .pill.critical { background: #f6e1e1; color: var(--error); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .muted { color: var(--ink-48); }
+
+  /* ---- detail ---- */
+  .detail-head .pills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .detail-head h3 { font-size: 23px; margin-top: 12px; }
+  .detail-head .meta { margin: 4px 0 0; font-size: 13px; color: var(--ink-80); }
+
+  .infocards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+  .infocard {
+    border: 1px solid var(--divider-soft); background: var(--pearl);
+    border-radius: 12px; padding: 14px;
+  }
+  .infocard h4 { font-size: 13px; color: var(--ink); }
+  .infocard dl { margin: 12px 0 0; display: grid; gap: 8px; }
+  .metric {
+    display: flex; justify-content: space-between; gap: 12px;
+    border: 1px solid var(--divider-soft); background: var(--canvas);
+    border-radius: 8px; padding: 7px 10px;
+  }
+  .metric dt { font-size: 11px; font-weight: 600; color: var(--ink-80); }
+  .metric dd { margin: 0; font-size: 12px; text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .inset {
+    border: 1px solid var(--hairline); border-radius: 12px;
+    padding: 16px; margin-top: 20px;
+  }
+  .inset h4 { font-size: 15px; margin-bottom: 12px; }
+  .case-row {
+    display: flex; justify-content: space-between; align-items: center;
+    border: 1px solid var(--divider-soft); background: var(--pearl);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .case-row .cid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 700; }
+  .form-grid { display: grid; gap: 12px; }
+  .form-grid .lbl { font-size: 12px; font-weight: 600; color: var(--ink-80); margin-bottom: 6px; display: block; }
+  select.input { appearance: none; }
+
+  /* ---- annotation arrow ---- */
+  .annot {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--error); font-size: 13px; font-weight: 600;
+    margin: 14px 0;
+  }
+  .annot::before { content: "↑"; font-size: 18px; }
+
+  /* ============ OPTION A — master/detail ============ */
+  .md-grid { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+  .md-grid .detail-pane { position: sticky; top: 78px; }
+  @media (max-width: 880px) { .md-grid { grid-template-columns: 1fr; } }
+
+  /* ============ OPTION B — slide-over ============ */
+  .stage { position: relative; overflow: hidden; border-radius: 18px; }
+  .scrim {
+    position: absolute; inset: 0; background: rgba(29,29,31,0.32);
+    opacity: 0; pointer-events: none; transition: opacity .25s ease;
+    border-radius: 18px; z-index: 5;
+  }
+  .scrim[data-open="true"] { opacity: 1; pointer-events: auto; }
+  .slideover {
+    position: absolute; top: 0; right: 0; bottom: 0;
+    width: min(460px, 86%);
+    background: var(--canvas);
+    border-left: 1px solid var(--hairline);
+    box-shadow: var(--shadow);
+    transform: translateX(102%); transition: transform .28s cubic-bezier(.32,.72,0,1);
+    z-index: 10; overflow-y: auto;
+    border-radius: 0 18px 18px 0;
+  }
+  .slideover[data-open="true"] { transform: translateX(0); }
+  .slideover .so-head {
+    position: sticky; top: 0; background: var(--canvas);
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; border-bottom: 1px solid var(--hairline);
+  }
+  .slideover .so-body { padding: 20px; }
+
+  /* ============ OPTION D — inline expand ============ */
+  .accordion .member-row { border-radius: 12px 12px 0 0; }
+  .accordion .acc-item.open .member-row { border-color: var(--primary); background: #f0f7ff; }
+  .acc-panel { display: none; }
+  .acc-item.open .acc-panel {
+    display: block;
+    border: 1px solid var(--primary); border-top: none;
+    border-radius: 0 0 12px 12px;
+    padding: 18px; background: var(--canvas);
+  }
+  .acc-item.open + .acc-item { margin-top: 10px; }
+
+  .hint { margin-top: 14px; font-size: 12px; color: var(--ink-48); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="masthead">
+    <div class="eyebrow">Prophetica · Admin</div>
+    <h1>KYC 審核 — 會員查詢版面方案</h1>
+    <p>同一份「會員查詢」流程的五種版面。切換上方分頁比較;方案 A 與 B 可直接點會員列互動。</p>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="now" aria-selected="true">目前（問題）</button>
+    <button class="tab" role="tab" data-tab="a" aria-selected="false">方案 A · 雙欄主從 <span class="star">★</span></button>
+    <button class="tab" role="tab" data-tab="b" aria-selected="false">方案 B · 右側滑出</button>
+    <button class="tab" role="tab" data-tab="c" aria-selected="false">方案 C · 結果置頂</button>
+    <button class="tab" role="tab" data-tab="d" aria-selected="false">方案 D · 名單就地展開</button>
+  </div>
+
+  <!-- ============ 目前 ============ -->
+  <section class="panel" data-panel="now" data-active="true">
+    <div class="caption warn">
+      <strong>目前的問題</strong>：你在最上方搜尋並點選,結果卻渲染在「會員名單」<strong>下方</strong>。
+      名單夾在搜尋與結果中間,你得捲過整份名單才看得到剛查的人;動作與結果在空間上完全分離。
+    </div>
+
+    <div class="card">
+      <h2>會員查詢</h2>
+      <p class="sub">以會員 ID 或姓名查詢聯絡資料遮罩、帳戶點數、風險狀態、限制與待處理案件。</p>
+      <div class="search-row">
+        <div class="field">
+          <label>會員 ID 或姓名</label>
+          <input class="input" value="王" />
+        </div>
+        <button class="btn-primary">查詢會員</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>會員名單</h2>
+      <p class="sub">顯示所有會員,並標識直接註冊或由哪個代理帶入。</p>
+      <div class="member-list" id="now-list"></div>
+    </div>
+
+    <div class="annot">查了上面，結果卻在這裡 — 中間隔著整份名單</div>
+
+    <div class="card" id="now-detail"></div>
+  </section>
+
+  <!-- ============ 方案 A ============ -->
+  <section class="panel" data-panel="a">
+    <div class="caption">
+      <span class="tag">★ 推薦</span>
+      <strong>雙欄主從式 (master-detail)</strong>：左欄搜尋+名單,右欄詳情<strong>固定在同一處</strong>,
+      sticky 跟著捲動。點任何會員 → 右欄原地更新。無長捲動、無 modal、無模式切換 —
+      macOS 設定 / Mail 的招牌模式,最適合桌面審核工具。
+      <br /><em class="muted">試試：點左欄任一位會員。</em>
+    </div>
+
+    <div class="card">
+      <h2>會員查詢</h2>
+      <div class="search-row">
+        <div class="field">
+          <label>會員 ID 或姓名</label>
+          <input class="input" placeholder="輸入即時過濾左側名單…" />
+        </div>
+      </div>
+
+      <div class="md-grid" style="margin-top:20px">
+        <div>
+          <div class="member-list" id="a-list"></div>
+        </div>
+        <div class="detail-pane">
+          <div class="card" id="a-detail" style="padding:20px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 方案 B ============ -->
+  <section class="panel" data-panel="b">
+    <div class="caption">
+      <strong>右側滑出面板 (slide-over)</strong>：點會員 → 詳情從右側滑出覆蓋,名單留在原位;
+      關閉即回名單。改動中等,不需重排頁面骨架。類似 Apple Mail / iOS 設定的詳情。
+      <br /><em class="muted">試試：點任一位會員開啟面板。</em>
+    </div>
+
+    <div class="card stage" id="b-stage">
+      <h2>會員查詢</h2>
+      <div class="search-row">
+        <div class="field">
+          <label>會員 ID 或姓名</label>
+          <input class="input" placeholder="輸入即時過濾名單…" />
+        </div>
+      </div>
+      <div class="member-list" id="b-list" style="margin-top:18px"></div>
+
+      <div class="scrim" id="b-scrim"></div>
+      <aside class="slideover" id="b-slideover">
+        <div class="so-head">
+          <strong>會員詳情</strong>
+          <button class="btn-ghost" id="b-close">關閉</button>
+        </div>
+        <div class="so-body" id="b-detail"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ 方案 C ============ -->
+  <section class="panel" data-panel="c">
+    <div class="caption">
+      <strong>結果移到搜尋框下方</strong>：詳情面板改渲染在「會員查詢」區塊<strong>正下方</strong>、名單之上,
+      選取後自動捲動聚焦。動作與結果相鄰。改動最小 — 只調整渲染順序。
+    </div>
+
+    <div class="card">
+      <h2>會員查詢</h2>
+      <div class="search-row">
+        <div class="field">
+          <label>會員 ID 或姓名</label>
+          <input class="input" value="王小明" />
+        </div>
+        <button class="btn-primary">查詢會員</button>
+      </div>
+    </div>
+
+    <div class="card" id="c-detail" style="border-color:var(--primary)"></div>
+    <div class="hint" style="text-align:center">↓ 名單收在結果之後,需要時才往下找 ↓</div>
+
+    <div class="card">
+      <h2>會員名單</h2>
+      <div class="member-list" id="c-list"></div>
+    </div>
+  </section>
+
+  <!-- ============ 方案 D ============ -->
+  <section class="panel" data-panel="d">
+    <div class="caption">
+      <strong>名單就地展開 (inline accordion)</strong>：搜尋即時過濾名單,點選的那一列就地展開完整詳情。
+      瀏覽與詳情合併成單一區塊,沒有第二個面板。
+      <br /><em class="muted">試試：點任一位會員展開 / 收合。</em>
+    </div>
+
+    <div class="card">
+      <h2>會員查詢</h2>
+      <div class="search-row">
+        <div class="field">
+          <label>會員 ID 或姓名</label>
+          <input class="input" placeholder="輸入即時過濾下方名單…" />
+        </div>
+      </div>
+      <div class="accordion" id="d-list" style="margin-top:18px"></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  "use strict";
+
+  const members = [
+    { id:'MEM-001', name:'王小明', initial:'王', status:'active', risk:'low', tier:'Standard',
+      reg:'2024年3月12日', email:'a***@example.com', phone:'0912-***-678', line:'未綁定',
+      region:'TW / Asia/Taipei', avail:'12,500', locked:'0', frozen:'0', twofa:'已啟用',
+      kyc:'verified', score:'18', restrict:'無', reviewed:'2025年1月8日',
+      cases:[{ id:'KYC-2291', type:'kyc_review / compliance', status:'blocked', tone:'warning' }] },
+    { id:'MEM-002', name:'李大華', initial:'李', status:'restricted', risk:'high', tier:'Gold',
+      reg:'2023年8月2日', email:'l***@example.com', phone:'0922-***-114', line:'已綁定',
+      region:'TW / Asia/Taipei', avail:'0', locked:'4,000', frozen:'9,800', twofa:'未啟用',
+      kyc:'review_required', score:'82', restrict:'提款限制', reviewed:'2025年4月30日',
+      cases:[{ id:'KYC-3380', type:'aml_escalation', status:'blocked', tone:'critical' },
+             { id:'OPS-1042', type:'restrict_withdrawals', status:'pending', tone:'warning' }] },
+    { id:'MEM-003', name:'陳美麗', initial:'陳', status:'active', risk:'medium', tier:'Standard',
+      reg:'2024年11月20日', email:'m***@example.com', phone:'0933-***-507', line:'未綁定',
+      region:'TW / Asia/Taipei', avail:'3,200', locked:'0', frozen:'0', twofa:'已啟用',
+      kyc:'verified', score:'44', restrict:'無', reviewed:'2025年3月15日', cases:[] },
+    { id:'MEM-004', name:'張建國', initial:'張', status:'inactive', risk:'medium', tier:'Standard',
+      reg:'2025年5月1日', email:'c***@example.com', phone:'0955-***-220', line:'未綁定',
+      region:'TW / Asia/Taipei', avail:'0', locked:'0', frozen:'0', twofa:'未啟用',
+      kyc:'pending', score:'50', restrict:'無', reviewed:'尚無紀錄', cases:[] },
+    { id:'MEM-005', name:'林雅婷', initial:'林', status:'suspended', risk:'high', tier:'Gold',
+      reg:'2022年12月9日', email:'y***@example.com', phone:'0966-***-781', line:'已綁定',
+      region:'TW / Asia/Taipei', avail:'0', locked:'0', frozen:'21,400', twofa:'已啟用',
+      kyc:'review_required', score:'91', restrict:'帳戶停權', reviewed:'2025年2月2日',
+      cases:[{ id:'KYC-3501', type:'fraud_review', status:'blocked', tone:'critical' }] },
+    { id:'MEM-006', name:'黃志豪', initial:'黃', status:'active', risk:'low', tier:'Standard',
+      reg:'2024年6月18日', email:'h***@example.com', phone:'0911-***-009', line:'未綁定',
+      region:'TW / Asia/Taipei', avail:'8,750', locked:'0', frozen:'0', twofa:'已啟用',
+      kyc:'verified', score:'12', restrict:'無', reviewed:'2025年4月10日', cases:[] },
+  ];
+
+  const statusLabel = { active:'正常', restricted:'限制中', suspended:'停權', inactive:'未激活' };
+  const statusTone  = { active:'success', restricted:'warning', suspended:'critical', inactive:'' };
+  const riskLabel   = { low:'低風險', medium:'中風險', high:'高風險' };
+  const riskTone    = { low:'success', medium:'', high:'critical' };
+
+  // Tiny hyperscript helper — builds DOM nodes with textContent only (no innerHTML).
+  function h(tag, attrs) {
+    const el = document.createElement(tag);
+    if (attrs) {
+      for (const key in attrs) {
+        if (key === 'class') el.className = attrs[key];
+        else if (key === 'text') el.textContent = attrs[key];
+        else el.setAttribute(key, attrs[key]);
+      }
+    }
+    for (let i = 2; i < arguments.length; i++) {
+      const kid = arguments[i];
+      if (kid == null) continue;
+      const list = Array.isArray(kid) ? kid : [kid];
+      list.forEach(function (node) {
+        if (node == null) return;
+        el.appendChild(typeof node === 'string' ? document.createTextNode(node) : node);
+      });
+    }
+    return el;
+  }
+
+  function frag() {
+    const f = document.createDocumentFragment();
+    for (let i = 0; i < arguments.length; i++) {
+      const kid = arguments[i];
+      if (kid != null) f.appendChild(kid);
+    }
+    return f;
+  }
+
+  function pill(text, tone) {
+    return h('span', { class: 'pill' + (tone ? ' ' + tone : ''), text: text });
+  }
+
+  function memberRow(m, selected) {
+    const attrs = { class: 'member-row', 'data-id': m.id };
+    if (selected) attrs['aria-selected'] = 'true';
+    return h('button', attrs,
+      h('span', { class: 'avatar', text: m.initial }),
+      h('span', { class: 'who' },
+        h('span', { class: 'name', text: m.name }),
+        h('br'),
+        h('span', { class: 'id', text: m.id })),
+      pill(statusLabel[m.status], statusTone[m.status]),
+      pill(riskLabel[m.risk], riskTone[m.risk]));
+  }
+
+  function metric(label, value) {
+    return h('div', { class: 'metric' }, h('dt', { text: label }), h('dd', { text: value }));
+  }
+
+  function infocard(title, metrics) {
+    return h('section', { class: 'infocard' }, h('h4', { text: title }), h('dl', null, metrics));
+  }
+
+  function detailNodes(m) {
+    const caseNodes = m.cases.length
+      ? m.cases.map(function (c) {
+          return h('div', { class: 'case-row', style: 'margin-top:8px' },
+            h('span', { class: 'cid', text: c.id }),
+            h('span', { class: 'muted', style: 'font-size:12px', text: c.type }),
+            pill(c.status, c.tone));
+        })
+      : [h('p', { class: 'muted', style: 'font-size:13px;margin:0', text: '目前沒有未結案件。' })];
+
+    const head = h('div', { class: 'detail-head' },
+      h('div', { class: 'pills' },
+        pill(statusLabel[m.status], statusTone[m.status]),
+        pill(riskLabel[m.risk], riskTone[m.risk]),
+        h('span', { class: 'mono muted', style: 'font-size:12px', text: m.id })),
+      h('h3', { text: m.name }),
+      h('p', { class: 'meta', text: m.tier + ' / 註冊於 ' + m.reg }));
+
+    const cards = h('div', { class: 'infocards' },
+      infocard('聯絡資料', [metric('Email', m.email), metric('手機', m.phone),
+        metric('LINE', m.line), metric('地區', m.region)]),
+      infocard('帳戶摘要', [metric('可用點數', m.avail), metric('鎖定點數', m.locked),
+        metric('凍結點數', m.frozen), metric('2FA', m.twofa)]),
+      infocard('狀態與風控', [metric('KYC', m.kyc), metric('風險分數', m.score),
+        metric('限制', m.restrict), metric('最近覆核', m.reviewed)]),
+      infocard('稽核姿態', [metric('來源', 'api-gateway'),
+        metric('需稽核', m.risk === 'high' ? '是' : '否'),
+        metric('Correlation', 'adm-…' + m.id.slice(-3))]));
+
+    const casesBox = h('div', { class: 'inset' }, h('h4', { text: '待處理案件' }), caseNodes);
+
+    const select = h('select', { class: 'input' });
+    ['新增處理註記', '提交 KYC 覆核', '提交提款限制', '升級工單審批'].forEach(function (opt) {
+      select.appendChild(h('option', { text: opt }));
+    });
+    const actionBox = h('div', { class: 'inset' },
+      h('h4', { text: '提交處理動作' }),
+      h('div', { class: 'form-grid' },
+        h('div', null, h('span', { class: 'lbl', text: '動作' }), select),
+        h('div', null, h('span', { class: 'lbl', text: '工單 ID' }),
+          h('input', { class: 'input', value: 'OPS-' })),
+        h('div', null, h('span', { class: 'lbl', text: '處理原因' }),
+          h('textarea', { class: 'input', placeholder: '描述客服、合規或營運判斷依據' })),
+        h('button', { class: 'btn-primary', style: 'align-self:start', text: '提交動作' })));
+
+    return frag(head, cards, casesBox, actionBox);
+  }
+
+  function mount(id, node) {
+    document.getElementById(id).replaceChildren(node);
+  }
+
+  /* ---- tabs ---- */
+  document.querySelectorAll('.tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (t) {
+        t.setAttribute('aria-selected', String(t === tab));
+      });
+      const name = tab.dataset.tab;
+      document.querySelectorAll('.panel').forEach(function (p) {
+        p.setAttribute('data-active', String(p.dataset.panel === name));
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  /* ---- 目前 ---- */
+  mount('now-list', frag.apply(null, members.map(function (m) { return memberRow(m); })));
+  mount('now-detail', detailNodes(members[0]));
+
+  /* ---- 方案 C ---- */
+  mount('c-list', frag.apply(null, members.map(function (m) { return memberRow(m); })));
+  mount('c-detail', detailNodes(members[0]));
+
+  /* ---- 方案 A (master-detail) ---- */
+  const aList = document.getElementById('a-list');
+  function renderA(id) {
+    aList.replaceChildren.apply(aList, members.map(function (m) {
+      return memberRow(m, m.id === id);
+    }));
+    mount('a-detail', detailNodes(members.find(function (m) { return m.id === id; })));
+  }
+  aList.addEventListener('click', function (e) {
+    const row = e.target.closest('.member-row');
+    if (row) renderA(row.dataset.id);
+  });
+  renderA('MEM-001');
+
+  /* ---- 方案 B (slide-over) ---- */
+  const bList = document.getElementById('b-list');
+  const bPanel = document.getElementById('b-slideover');
+  const bScrim = document.getElementById('b-scrim');
+  bList.replaceChildren.apply(bList, members.map(function (m) { return memberRow(m); }));
+  function openB(id) {
+    mount('b-detail', detailNodes(members.find(function (m) { return m.id === id; })));
+    bPanel.setAttribute('data-open', 'true');
+    bScrim.setAttribute('data-open', 'true');
+  }
+  function closeB() {
+    bPanel.removeAttribute('data-open');
+    bScrim.removeAttribute('data-open');
+  }
+  bList.addEventListener('click', function (e) {
+    const row = e.target.closest('.member-row');
+    if (row) openB(row.dataset.id);
+  });
+  document.getElementById('b-close').addEventListener('click', closeB);
+  bScrim.addEventListener('click', closeB);
+
+  /* ---- 方案 D (inline accordion) ---- */
+  const dList = document.getElementById('d-list');
+  dList.replaceChildren.apply(dList, members.map(function (m) {
+    return h('div', { class: 'acc-item', 'data-id': m.id },
+      memberRow(m),
+      h('div', { class: 'acc-panel' }, detailNodes(m)));
+  }));
+  dList.addEventListener('click', function (e) {
+    const row = e.target.closest('.member-row');
+    if (!row) return;
+    const item = row.closest('.acc-item');
+    const wasOpen = item.classList.contains('open');
+    dList.querySelectorAll('.acc-item').forEach(function (i) { i.classList.remove('open'); });
+    if (!wasOpen) item.classList.add('open');
+  });
+  dList.querySelector('.acc-item').classList.add('open');
+</script>
+</body>
+</html>
