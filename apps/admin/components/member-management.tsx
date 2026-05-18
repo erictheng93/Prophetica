@@ -562,7 +562,7 @@ export function MemberManagement({
                     suggestionsOpen && memberSuggestions.length > 0
                   }
                   className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus"
-                  placeholder="輸入 2 個字以上即顯示建議，例如 MEM-001"
+                  placeholder="輸入 2 個字以上即顯示符合的會員"
                 />
                 {suggestionsOpen && memberSuggestions.length > 0 && (
                   <ul
