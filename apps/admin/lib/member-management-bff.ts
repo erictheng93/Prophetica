@@ -115,22 +115,45 @@ export async function proxyMemberPendingCasesRequest(
       role: input.viewer.role,
       secret: input.secret,
     });
-    const upstream = await (input.fetchImpl ?? fetch)(
-      new URL(adminPath, gatewayUrl),
-      {
-        method: "GET",
-        headers: {
-          ...headers,
-          "x-request-id": crypto.randomUUID(),
+    let upstream: Response;
+    try {
+      upstream = await (input.fetchImpl ?? fetch)(
+        new URL(adminPath, gatewayUrl),
+        {
+          method: "GET",
+          headers: {
+            ...headers,
+            "x-request-id": crypto.randomUUID(),
+          },
+          cache: "no-store",
         },
-        cache: "no-store",
-      },
-    );
+      );
+    } catch {
+      if (allowMockFallback) {
+        return Response.json(
+          listMemberPendingCases({
+            query: input.searchParams?.get("q") ?? undefined,
+            status: parseStatus(input.searchParams?.get("status")),
+            restriction: input.searchParams?.get("restriction") ?? undefined,
+            page: parsePositiveInt(input.searchParams?.get("page")),
+            pageSize: parsePositiveInt(input.searchParams?.get("page_size")),
+          }),
+          { status: 200 },
+        );
+      }
+      return Response.json({ error: "gateway_unavailable" }, { status: 502 });
+    }
     if (upstream.ok) {
       const body = (await upstream.json()) as GatewayPendingCasesResponse;
       return Response.json(normalizeGatewayPendingCases(body), { status: 200 });
     }
     if (upstream.status !== 404 && upstream.status !== 501) {
+      if (upstream.status === 502) {
+        return Response.json(
+          { error: "pending_cases_upstream_unavailable" },
+          { status: 502 },
+        );
+      }
       return Response.json(
         { error: "pending_cases_upstream_error" },
         { status: upstream.status },

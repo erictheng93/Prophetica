@@ -16,6 +16,15 @@ service = "prophetica-web-poc"
 binding = "FAQ_CONTENT_KV"
 id = "prophetica_faq_content"
 
+# SPEC-005 §5: KYC evidence is archived to private R2 buckets.
+[[r2_buckets]]
+binding = "KYC_DOCUMENTS_BUCKET"
+bucket_name = "prophetica-kyc-documents"
+
+[[r2_buckets]]
+binding = "KYC_LIVENESS_BUCKET"
+bucket_name = "prophetica-kyc-liveness"
+
 [vars]
 KYC_SERVICE_BASE_URL = "http://127.0.0.1:8085"
 PROPHETICA_DEV_USER_ID = "user_01"

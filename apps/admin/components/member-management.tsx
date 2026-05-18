@@ -1308,6 +1308,12 @@ function MemberOverview({ summary }: { summary: MemberManagementSummary }) {
             value={formatOptionalDateTime(summary.kyc_risk.last_reviewed_at)}
           />
         </InfoCard>
+        <InfoCard title="KYC 證件材料">
+          <Metric label="證件影像" value="KYC_DOCUMENTS_BUCKET" />
+          <Metric label="自拍 / Liveness" value="KYC_LIVENESS_BUCKET" />
+          <Metric label="保存策略" value="R2 EU / 7 年 Bucket Lock" />
+          <Metric label="審核存取" value="後端代理 + 短期 token" />
+        </InfoCard>
         <InfoCard title="登入與裝置">
           <Metric
             label="最近登入"

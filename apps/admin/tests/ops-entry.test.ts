@@ -239,6 +239,9 @@ test("members page exposes complete member management operations", () => {
   assert.match(componentSource, /聯絡資料/);
   assert.match(componentSource, /帳戶摘要/);
   assert.match(componentSource, /狀態與風控/);
+  assert.match(componentSource, /KYC 證件材料/);
+  assert.match(componentSource, /KYC_DOCUMENTS_BUCKET/);
+  assert.match(componentSource, /KYC_LIVENESS_BUCKET/);
   assert.match(componentSource, /提交處理動作/);
   assert.match(componentSource, /\/api\/members/);
   assert.match(bffSource, /proxyMemberSummaryRequest/);
@@ -328,6 +331,19 @@ test("admin worker has the shared FAQ content KV binding", () => {
 
   assert.match(wranglerConfig, /^\[\[kv_namespaces\]\]$/m);
   assert.match(wranglerConfig, /^binding = ["']FAQ_CONTENT_KV["']$/m);
+});
+
+test("admin worker has KYC R2 archive bucket bindings", () => {
+  const wranglerConfig = readAdminFile("wrangler.toml");
+  const envSource = readAdminFile("cloudflare-env.d.ts");
+
+  assert.match(wranglerConfig, /^\[\[r2_buckets\]\]$/m);
+  assert.match(wranglerConfig, /^binding = ["']KYC_DOCUMENTS_BUCKET["']$/m);
+  assert.match(wranglerConfig, /^bucket_name = ["']prophetica-kyc-documents["']$/m);
+  assert.match(wranglerConfig, /^binding = ["']KYC_LIVENESS_BUCKET["']$/m);
+  assert.match(wranglerConfig, /^bucket_name = ["']prophetica-kyc-liveness["']$/m);
+  assert.match(envSource, /KYC_DOCUMENTS_BUCKET\?: R2Bucket/);
+  assert.match(envSource, /KYC_LIVENESS_BUCKET\?: R2Bucket/);
 });
 
 test("admin dev server allows configured LAN origins", async () => {

@@ -5,6 +5,7 @@ import {
   proxyMemberActionReviewRequest,
   proxyMemberCreateRequest,
   proxyMemberListRequest,
+  proxyMemberPendingCasesRequest,
 } from "../lib/member-management-bff.js";
 
 const OLD_ENV = { ...process.env };
@@ -78,6 +79,97 @@ test("member list BFF returns structured gateway error when upstream fetch fails
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("pending cases BFF returns structured gateway error when upstream fetch fails", async () => {
+  process.env.API_GATEWAY_URL = "http://gateway.local";
+  process.env.ADMIN_INTERNAL_CALL_SECRET = SECRET;
+  process.env.MEMBER_MANAGEMENT_ALLOW_MOCK_FALLBACK = "false";
+
+  const response = await proxyMemberPendingCasesRequest({
+    viewer: {
+      sub: "U-ADMIN-001",
+      role: "admin",
+      iat: 1,
+      exp: 2,
+    },
+    fetchImpl: async () => {
+      throw new TypeError("connect ECONNREFUSED");
+    },
+  });
+
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: "gateway_unavailable" });
+});
+
+test("pending cases BFF forwards signed admin context and query to gateway", async () => {
+  process.env.API_GATEWAY_URL = "http://gateway.local";
+  process.env.ADMIN_INTERNAL_CALL_SECRET = SECRET;
+  process.env.MEMBER_MANAGEMENT_ALLOW_MOCK_FALLBACK = "false";
+  const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+
+  const response = await proxyMemberPendingCasesRequest({
+    viewer: {
+      sub: "U-MGR-001",
+      role: "manager",
+      iat: 1,
+      exp: 2,
+    },
+    searchParams: new URLSearchParams({
+      q: "MEM-1042",
+      status: "restricted",
+      restriction: "manual_review_required",
+      page: "2",
+      page_size: "5",
+    }),
+    fetchImpl: async (input, init) => {
+      calls.push([input, init]);
+      return new Response(
+        JSON.stringify({
+          items: [],
+          page: 2,
+          page_size: 5,
+          total: 0,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    String(calls[0]?.[0]),
+    "http://gateway.local/api/internal/admin/members/pending-cases?q=MEM-1042&status=restricted&restriction=manual_review_required&page=2&page_size=5",
+  );
+  const headers = calls[0]?.[1]?.headers as Record<string, string>;
+  assert.equal(headers["x-actor-id"], "U-MGR-001");
+  assert.equal(headers["x-operator-role"], "manager");
+  assert.match(headers["x-internal-call-signature"] ?? "", /^[a-f0-9]{64}$/);
+});
+
+test("pending cases BFF maps upstream 502 to a specific unavailable error", async () => {
+  process.env.API_GATEWAY_URL = "http://gateway.local";
+  process.env.ADMIN_INTERNAL_CALL_SECRET = SECRET;
+  process.env.MEMBER_MANAGEMENT_ALLOW_MOCK_FALLBACK = "false";
+
+  const response = await proxyMemberPendingCasesRequest({
+    viewer: {
+      sub: "U-ADMIN-001",
+      role: "admin",
+      iat: 1,
+      exp: 2,
+    },
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ error: "ERROR_CODE_KYC_SERVICE_UNAVAILABLE" }), {
+        status: 502,
+        headers: { "content-type": "application/json" },
+      }),
+  });
+
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    error: "pending_cases_upstream_unavailable",
+  });
 });
 
 test("member create BFF overwrites affiliate source before forwarding", async () => {

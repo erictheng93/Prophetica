@@ -15,3 +15,12 @@ service = "prophetica-admin-poc"
 [[kv_namespaces]]
 binding = "FAQ_CONTENT_KV"
 id = "prophetica_faq_content"
+
+# SPEC-005 §5: KYC evidence is archived to private R2 buckets.
+[[r2_buckets]]
+binding = "KYC_DOCUMENTS_BUCKET"
+bucket_name = "prophetica-kyc-documents"
+
+[[r2_buckets]]
+binding = "KYC_LIVENESS_BUCKET"
+bucket_name = "prophetica-kyc-liveness"

@@ -169,6 +169,32 @@ async fn pending_member_cases_proxy_to_kyc_service() {
 }
 
 #[tokio::test]
+async fn pending_member_cases_returns_bad_gateway_when_kyc_service_is_unavailable() {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind unused port");
+    let upstream_url = format!("http://{}", listener.local_addr().expect("local addr"));
+    drop(listener);
+
+    let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
+    let app = internal_admin_router(store);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/internal/admin/members/pending-cases?restriction=manual_review_required")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("handled");
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = response_json(response).await;
+    assert_eq!(body["error"], json!("ERROR_CODE_KYC_SERVICE_UNAVAILABLE"));
+}
+
+#[tokio::test]
 async fn pending_member_cases_proxy_enqueues_email_and_in_app_reminders() {
     let upstream = Router::new()
         .route(

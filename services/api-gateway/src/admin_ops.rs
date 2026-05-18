@@ -413,7 +413,7 @@ where
         .pending_member_cases(query)
         .await
         .map(Json)
-        .map_err(|_| internal_error())
+        .map_err(|error| pending_member_cases_error(&error))
 }
 
 async fn member_summary<S>(
@@ -661,6 +661,22 @@ fn internal_error() -> (StatusCode, Json<ErrorResponse>) {
             error: "ERROR_CODE_INTERNAL",
         }),
     )
+}
+
+fn pending_member_cases_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>) {
+    let message = error.message();
+    if message.contains("error sending request")
+        || message.contains("connection refused")
+        || message.contains("Connection refused")
+    {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_KYC_SERVICE_UNAVAILABLE",
+            }),
+        );
+    }
+    internal_error()
 }
 
 fn review_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>) {
