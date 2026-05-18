@@ -8,6 +8,8 @@ interface AdminShellProps {
   description: string;
 }
 
+// Page shell only: renders the per-page header and body. Persistent navigation
+// chrome lives in app/layout.tsx so route changes do not reset nav UI state.
 export function AdminShell({
   children,
   eyebrow = adminCopy.shell.defaultEyebrow,
