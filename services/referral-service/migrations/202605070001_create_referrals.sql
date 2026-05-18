@@ -14,7 +14,7 @@ CREATE TABLE referrals (
         'pending_review',
         'pending_eddreview'
     )),
-    signup_bonus_txn_id BIGINT REFERENCES ledger_transactions(id),
+    signup_bonus_txn_id BIGINT,
     metadata JSONB NOT NULL DEFAULT '{}',
     CONSTRAINT referrals_no_self_referral CHECK (referrer_id <> referred_id),
     CONSTRAINT referrals_qualified_timestamp_required CHECK (
@@ -40,7 +40,7 @@ CREATE TABLE commission_accruals (
     fee_amount BIGINT NOT NULL CHECK (fee_amount > 0),
     commission_amount BIGINT NOT NULL CHECK (commission_amount > 0),
     accrued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    paid_out_txn_id BIGINT REFERENCES ledger_transactions(id),
+    paid_out_txn_id BIGINT,
     paid_out_at TIMESTAMPTZ
 );
 
