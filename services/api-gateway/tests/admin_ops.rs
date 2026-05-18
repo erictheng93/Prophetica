@@ -66,6 +66,65 @@ async fn summary_returns_aggregate_shape() {
 }
 
 #[tokio::test]
+async fn member_summary_proxies_member_not_found_from_user_service() {
+    let upstream = Router::new().route(
+        "/v1/internal/admin/members/missing_user/summary",
+        get(|| async {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "ERROR_CODE_MEMBER_NOT_FOUND"
+                })),
+            )
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind upstream");
+    let upstream_url = format!("http://{}", listener.local_addr().expect("local addr"));
+    tokio::spawn(async move {
+        axum::serve(listener, upstream)
+            .await
+            .expect("serve upstream");
+    });
+
+    let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
+    let app = internal_admin_router(store);
+    let response = app
+        .oneshot(empty_get(
+            "/api/internal/admin/members/missing_user/summary",
+        ))
+        .await
+        .expect("summary request should be handled");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = response_json(response).await;
+    assert_eq!(body["error"], json!("ERROR_CODE_MEMBER_NOT_FOUND"));
+}
+
+#[tokio::test]
+async fn member_summary_returns_bad_gateway_when_user_service_is_unavailable() {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind unused port");
+    let upstream_url = format!("http://{}", listener.local_addr().expect("local addr"));
+    drop(listener);
+
+    let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
+    let app = internal_admin_router(store);
+    let response = app
+        .oneshot(empty_get(
+            "/api/internal/admin/members/missing_user/summary",
+        ))
+        .await
+        .expect("summary request should be handled");
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = response_json(response).await;
+    assert_eq!(body["error"], json!("ERROR_CODE_USER_SERVICE_UNAVAILABLE"));
+}
+
+#[tokio::test]
 async fn pending_member_cases_filter_and_paginate() {
     let app = internal_admin_router(InMemoryAdminOpsStore::default());
 

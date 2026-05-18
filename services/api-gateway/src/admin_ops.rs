@@ -327,9 +327,16 @@ struct ErrorResponse {
     error: &'static str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct UpstreamError {
+    error: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdminOpsStoreError {
     message: String,
+    upstream_status: Option<u16>,
+    upstream_code: Option<String>,
 }
 
 impl AdminOpsStoreError {
@@ -337,12 +344,33 @@ impl AdminOpsStoreError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            upstream_status: None,
+            upstream_code: None,
+        }
+    }
+
+    #[must_use]
+    pub fn from_upstream(status: u16, code: Option<String>, message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            upstream_status: Some(status),
+            upstream_code: code,
         }
     }
 
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    #[must_use]
+    pub const fn upstream_status(&self) -> Option<u16> {
+        self.upstream_status
+    }
+
+    #[must_use]
+    pub fn upstream_code(&self) -> Option<&str> {
+        self.upstream_code.as_deref()
     }
 }
 
@@ -427,7 +455,7 @@ where
         .member_summary(&user_id)
         .await
         .map(Json)
-        .map_err(|_| internal_error())
+        .map_err(|error| member_summary_error(&error))
 }
 
 async fn create_member<S>(
@@ -679,6 +707,55 @@ fn pending_member_cases_error(error: &AdminOpsStoreError) -> (StatusCode, Json<E
     internal_error()
 }
 
+fn member_summary_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>) {
+    if let Some(upstream_status) = error.upstream_status() {
+        let status =
+            StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let code = error
+            .upstream_code()
+            .and_then(member_summary_upstream_error_code)
+            .unwrap_or_else(|| member_summary_status_error_code(status));
+        return (status, Json(ErrorResponse { error: code }));
+    }
+
+    if is_transport_error(error) {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_USER_SERVICE_UNAVAILABLE",
+            }),
+        );
+    }
+
+    internal_error()
+}
+
+fn member_summary_upstream_error_code(code: &str) -> Option<&'static str> {
+    match code {
+        "ERROR_CODE_MEMBER_NOT_FOUND" => Some("ERROR_CODE_MEMBER_NOT_FOUND"),
+        "ERROR_CODE_INVALID_MEMBER" => Some("ERROR_CODE_INVALID_MEMBER"),
+        "ERROR_CODE_MEMBER_EXISTS" => Some("ERROR_CODE_MEMBER_EXISTS"),
+        "ERROR_CODE_INTERNAL" => Some("ERROR_CODE_INTERNAL"),
+        _ => None,
+    }
+}
+
+fn member_summary_status_error_code(status: StatusCode) -> &'static str {
+    match status {
+        StatusCode::NOT_FOUND => "ERROR_CODE_MEMBER_NOT_FOUND",
+        StatusCode::BAD_REQUEST => "ERROR_CODE_INVALID_MEMBER",
+        StatusCode::CONFLICT => "ERROR_CODE_MEMBER_EXISTS",
+        _ => "ERROR_CODE_INTERNAL",
+    }
+}
+
+fn is_transport_error(error: &AdminOpsStoreError) -> bool {
+    let message = error.message();
+    message.contains("error sending request")
+        || message.contains("connection refused")
+        || message.contains("Connection refused")
+}
+
 fn review_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>) {
     let (status, code) = match error.message() {
         "member action self approval is not allowed" => (
@@ -846,12 +923,28 @@ impl HttpAdminOpsStore {
         &self,
         request: reqwest::RequestBuilder,
     ) -> Result<Value, AdminOpsStoreError> {
-        request
+        let response = request
             .send()
             .await
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
-            .error_for_status()
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            let upstream_code = serde_json::from_str::<UpstreamError>(&body)
+                .ok()
+                .map(|error| error.error);
+            let message = upstream_code
+                .as_deref()
+                .unwrap_or("user service returned non-success status")
+                .to_owned();
+            return Err(AdminOpsStoreError::from_upstream(
+                status.as_u16(),
+                upstream_code,
+                message,
+            ));
+        }
+
+        response
             .json::<Value>()
             .await
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))
