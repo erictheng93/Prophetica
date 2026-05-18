@@ -21,6 +21,7 @@ use sdk::{
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use thiserror::Error;
+use uuid::Uuid;
 
 const QUALIFICATION_DEPOSIT_MINOR_UNITS: i64 = 50_000;
 const QUALIFICATION_MIN_KYC_TIER: u8 = 1;
@@ -399,6 +400,7 @@ pub struct AffiliateSummary {
 pub struct AdminAffiliateMutationRequest {
     pub id: Option<String>,
     pub user_id: Option<String>,
+    pub email: Option<String>,
     pub display_name: Option<String>,
     pub email_masked: Option<String>,
     pub status: Option<String>,
@@ -1283,18 +1285,21 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
         actor: AdminAffiliateActor,
     ) -> Result<AdminAffiliateMutationResponse, ReferralStoreError> {
         validate_admin_affiliate_mutation(&request, true, &actor)?;
-        let affiliate_id = request
-            .id
-            .clone()
-            .ok_or_else(|| ReferralStoreError::Invalid("id is required".to_owned()))?;
+        let affiliate_id = request.id.clone().unwrap_or_else(generate_affiliate_id);
+        let user_id = request.user_id.clone().unwrap_or_else(new_uuid_v7_string);
+        let email_masked = request
+            .email
+            .as_deref()
+            .and_then(mask_email)
+            .ok_or_else(|| ReferralStoreError::Invalid("email is required".to_owned()))?;
         let now = now_string();
         let audit_correlation_id = audit_correlation_id("affiliate-create", &affiliate_id, &actor);
         let detail = AffiliateDetail {
             summary: AffiliateSummary {
                 id: affiliate_id.clone(),
-                user_id: request.user_id,
+                user_id: Some(user_id),
                 display_name: request.display_name.unwrap_or_default(),
-                email_masked: request.email_masked.unwrap_or_default(),
+                email_masked,
                 status: request.status.unwrap_or_else(|| "onboarding".to_owned()),
                 owner_sponsor_id: request.owner_sponsor_id,
                 commission_rate_bps: request.commission_rate_bps.unwrap_or(0),
@@ -1928,16 +1933,7 @@ fn validate_admin_affiliate_mutation(
             "reason and authorizationBasis are required".to_owned(),
         ));
     }
-    if create
-        && (request.id.as_deref().is_none_or(str::is_empty)
-            || request.user_id.as_deref().is_none_or(str::is_empty)
-            || request.display_name.as_deref().is_none_or(str::is_empty)
-            || request.email_masked.as_deref().is_none_or(str::is_empty))
-    {
-        return Err(ReferralStoreError::Invalid(
-            "id, userId, displayName and emailMasked are required".to_owned(),
-        ));
-    }
+    validate_admin_affiliate_identity_fields(request, create)?;
     if request.status.as_deref().is_some_and(|status| {
         !matches!(
             status,
@@ -1995,6 +1991,97 @@ fn validate_admin_affiliate_mutation(
         ));
     }
     Ok(())
+}
+
+fn validate_admin_affiliate_identity_fields(
+    request: &AdminAffiliateMutationRequest,
+    create: bool,
+) -> Result<(), ReferralStoreError> {
+    if create
+        && request
+            .display_name
+            .as_deref()
+            .is_none_or(|value| value.trim().is_empty())
+    {
+        return Err(ReferralStoreError::Invalid(
+            "displayName is required".to_owned(),
+        ));
+    }
+    if request.email_masked.is_some()
+        || (create && request.email.as_deref().and_then(mask_email).is_none())
+    {
+        return Err(ReferralStoreError::Invalid(
+            "email is required and emailMasked must be derived by the service".to_owned(),
+        ));
+    }
+    if request
+        .email
+        .as_deref()
+        .is_some_and(|email| mask_email(email).is_none())
+    {
+        return Err(ReferralStoreError::Invalid(
+            "email must be a valid address".to_owned(),
+        ));
+    }
+    if request
+        .id
+        .as_deref()
+        .is_some_and(|affiliate_id| !is_valid_affiliate_id(affiliate_id))
+    {
+        return Err(ReferralStoreError::Invalid(
+            "affiliate id must match AFF-[A-Z0-9]{3,16}".to_owned(),
+        ));
+    }
+    if request
+        .user_id
+        .as_deref()
+        .is_some_and(|user_id| !is_uuid_v7(user_id))
+    {
+        return Err(ReferralStoreError::Invalid(
+            "userId must be a UUID v7 when supplied".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn generate_affiliate_id() -> String {
+    let uuid_hex = Uuid::now_v7().simple().to_string().to_ascii_uppercase();
+    format!("AFF-{}", &uuid_hex[..12])
+}
+
+fn new_uuid_v7_string() -> String {
+    Uuid::now_v7().to_string()
+}
+
+fn is_uuid_v7(value: &str) -> bool {
+    Uuid::parse_str(value.trim()).is_ok_and(|uuid| uuid.get_version_num() == 7)
+}
+
+fn is_valid_affiliate_id(value: &str) -> bool {
+    let Some(suffix) = value.strip_prefix("AFF-") else {
+        return false;
+    };
+    (3..=16).contains(&suffix.len())
+        && suffix
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+}
+
+fn mask_email(value: &str) -> Option<String> {
+    let normalized = value.trim();
+    let (local, domain) = normalized.split_once('@')?;
+    let local = local.trim();
+    let domain = domain.trim().to_ascii_lowercase();
+    if local.is_empty()
+        || domain.is_empty()
+        || !domain.contains('.')
+        || domain.starts_with('.')
+        || domain.ends_with('.')
+    {
+        return None;
+    }
+    let first = local.chars().next()?.to_ascii_lowercase();
+    Some(format!("{first}***@{domain}"))
 }
 
 impl CaptureReferralResponse {
@@ -2304,7 +2391,7 @@ fn apply_affiliate_mutation(
     if let Some(display_name) = request.display_name {
         detail.summary.display_name = display_name;
     }
-    if let Some(email_masked) = request.email_masked {
+    if let Some(email_masked) = request.email.as_deref().and_then(mask_email) {
         detail.summary.email_masked = email_masked;
     }
     if let Some(status) = request.status {
@@ -3083,30 +3170,35 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         actor: AdminAffiliateActor,
     ) -> Result<AdminAffiliateMutationResponse, ReferralStoreError> {
         validate_admin_affiliate_mutation(&request, true, &actor)?;
-        let affiliate_id = request
-            .id
-            .clone()
-            .ok_or_else(|| ReferralStoreError::Invalid("id is required".to_owned()))?;
+        let affiliate_id = request.id.clone().unwrap_or_else(generate_affiliate_id);
+        let profile_uuid = Uuid::now_v7();
+        let user_id = request.user_id.clone().unwrap_or_else(new_uuid_v7_string);
+        let email_masked = request
+            .email
+            .as_deref()
+            .and_then(mask_email)
+            .ok_or_else(|| ReferralStoreError::Invalid("email is required".to_owned()))?;
         let audit_correlation_id = audit_correlation_id("affiliate-create", &affiliate_id, &actor);
         sqlx::query(
             r"
             INSERT INTO affiliate_profiles (
-                affiliate_id, user_id, display_name, email_masked, status, owner_sponsor_id,
+                affiliate_id, profile_uuid, user_id, display_name, email_masked, status, owner_sponsor_id,
                 commission_rate_bps, tier, credit_rating, credit_status,
                 max_active_credit_accounts, total_credit_limit_minor_units,
                 per_account_limit_minor_units, credit_review_expires_at,
                 credit_last_changed_by, credit_audit_correlation_ids
             )
-            VALUES ($1, $2, $3, $4, COALESCE($5, 'onboarding'), $6,
-                    COALESCE($7, 0), COALESCE($8, 1), COALESCE($9, 'restricted'),
-                    COALESCE($10, 'pending_review'), COALESCE($11, 0),
-                    COALESCE($12, 0), COALESCE($13, 0), $14::DATE, $15, ARRAY[$16])
+            VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'onboarding'), $7,
+                    COALESCE($8, 0), COALESCE($9, 1), COALESCE($10, 'restricted'),
+                    COALESCE($11, 'pending_review'), COALESCE($12, 0),
+                    COALESCE($13, 0), COALESCE($14, 0), $15::DATE, $16, ARRAY[$17])
             ",
         )
         .bind(&affiliate_id)
-        .bind(request.user_id.as_deref())
+        .bind(profile_uuid)
+        .bind(&user_id)
         .bind(request.display_name.as_deref())
-        .bind(request.email_masked.as_deref())
+        .bind(&email_masked)
         .bind(request.status.as_deref())
         .bind(request.owner_sponsor_id.as_deref())
         .bind(request.commission_rate_bps)
@@ -3147,6 +3239,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         validate_admin_affiliate_mutation(&request, false, &actor)?;
         let before = self.admin_affiliate_detail(affiliate_id).await?;
         let audit_correlation_id = audit_correlation_id("affiliate-update", affiliate_id, &actor);
+        let email_masked = request.email.as_deref().and_then(mask_email);
         sqlx::query(
             r"
             UPDATE affiliate_profiles
@@ -3171,7 +3264,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         )
         .bind(affiliate_id)
         .bind(request.display_name.as_deref())
-        .bind(request.email_masked.as_deref())
+        .bind(email_masked.as_deref())
         .bind(request.status.as_deref())
         .bind(request.owner_sponsor_id.as_deref())
         .bind(request.commission_rate_bps)

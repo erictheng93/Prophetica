@@ -31,10 +31,8 @@ test("affiliate BFF forwards CRUD mutations with signed admin context", async ()
   globalThis.fetch = fetchImpl as typeof fetch;
   try {
     await createAdminAffiliate(viewer, {
-      id: "AFF-200",
-      userId: "user_aff_200",
       displayName: "Orion Partners",
-      emailMasked: "o***@example.com",
+      email: "ops@example.com",
       reason: "onboarding",
       authorizationBasis: "SPEC-011",
     });
@@ -70,10 +68,8 @@ test("affiliate BFF rejects affiliate role mutations before upstream call", asyn
   const result = await createAdminAffiliate(
     { sub: "U-AFF-001", role: "affiliate", affiliateId: "AFF-001", iat: 1, exp: 2 },
     {
-      id: "AFF-201",
-      userId: "user_aff_201",
       displayName: "Blocked",
-      emailMasked: "b***@example.com",
+      email: "blocked@example.com",
       reason: "blocked",
       authorizationBasis: "SPEC-011",
     },

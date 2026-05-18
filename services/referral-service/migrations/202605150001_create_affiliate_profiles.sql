@@ -1,5 +1,6 @@
 CREATE TABLE affiliate_profiles (
     affiliate_id TEXT PRIMARY KEY,
+    profile_uuid UUID NOT NULL UNIQUE,
     user_id TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
     email_masked TEXT NOT NULL,

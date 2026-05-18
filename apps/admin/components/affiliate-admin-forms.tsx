@@ -22,10 +22,8 @@ export function AffiliateCreateForm({ role }: { role: Role }) {
         新增代理
       </h2>
       <form action={createAffiliateAction} className="mt-4 grid gap-3 md:grid-cols-4">
-        <Field name="id" label="代理 ID" placeholder="AFF-200" required />
-        <Field name="userId" label="User ID" placeholder="user_aff_200" required />
         <Field name="displayName" label="名稱" placeholder="Orion Partners" required />
-        <Field name="emailMasked" label="脫敏 Email" placeholder="o***@example.com" required />
+        <Field name="email" label="登入 Email" type="email" placeholder="ops@example.com" required />
         <Select name="status" label="狀態" defaultValue="onboarding" options={affiliateStatusOptions} />
         <NumberField name="commissionRateBps" label="佣金 BPS" defaultValue={600} />
         <Select name="tier" label="層級" defaultValue="1" options={tierOptions} />
@@ -75,7 +73,7 @@ export function AffiliateUpdateForm({
       <form action={updateAffiliateAction} className="mt-4 grid gap-3 md:grid-cols-4">
         <input type="hidden" name="affiliateId" value={affiliate.id} />
         <Field name="displayName" label="名稱" defaultValue={affiliate.displayName} />
-        <Field name="emailMasked" label="脫敏 Email" defaultValue={affiliate.emailMasked} />
+        <Field name="email" label="更新 Email" type="email" placeholder={affiliate.emailMasked} />
         <Select name="status" label="狀態" defaultValue={affiliate.status} options={affiliateStatusOptions} />
         <NumberField name="commissionRateBps" label="佣金 BPS" defaultValue={affiliate.commissionRateBps} />
         <Select name="tier" label="層級" defaultValue={String(affiliate.tier)} options={tierOptions} />

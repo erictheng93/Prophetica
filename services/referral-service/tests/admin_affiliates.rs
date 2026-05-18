@@ -763,10 +763,8 @@ async fn admin_affiliate_crud_mutates_with_audit_context() {
             "POST",
             "/internal/admin/affiliates",
             &json!({
-                "id": "AFF-200",
-                "userId": "user_aff_200",
                 "displayName": "Orion Partners",
-                "emailMasked": "o***@orion.partners",
+                "email": "ops@orion.partners",
                 "status": "onboarding",
                 "commissionRateBps": 600,
                 "tier": 1,
@@ -780,20 +778,34 @@ async fn admin_affiliate_crud_mutates_with_audit_context() {
         .expect("create should be handled");
     assert_eq!(created.status(), StatusCode::CREATED);
     let body = response_json(created).await;
-    assert_eq!(body["affiliate"]["id"], "AFF-200");
+    let created_id = body["affiliate"]["id"]
+        .as_str()
+        .expect("generated affiliate id should be a string")
+        .to_owned();
+    assert!(created_id.starts_with("AFF-"));
+    assert_eq!(
+        body["affiliate"]["userId"]
+            .as_str()
+            .expect("generated user id should be a string")
+            .chars()
+            .nth(14),
+        Some('7')
+    );
     assert_eq!(body["affiliate"]["displayName"], "Orion Partners");
+    assert_eq!(body["affiliate"]["emailMasked"], "o***@orion.partners");
     assert_eq!(
         body["auditCorrelationId"],
-        "audit:affiliate-create:AFF-200:req-1"
+        format!("audit:affiliate-create:{created_id}:req-1")
     );
 
     let updated = app
         .clone()
         .oneshot(json_request(
             "PATCH",
-            "/internal/admin/affiliates/AFF-200",
+            &format!("/internal/admin/affiliates/{created_id}"),
             &json!({
                 "displayName": "Orion Growth Partners",
+                "email": "growth@orion.partners",
                 "commissionRateBps": 700,
                 "creditRating": "B",
                 "creditStatus": "active",
@@ -818,7 +830,7 @@ async fn admin_affiliate_crud_mutates_with_audit_context() {
         .clone()
         .oneshot(json_request(
             "DELETE",
-            "/internal/admin/affiliates/AFF-200",
+            &format!("/internal/admin/affiliates/{created_id}"),
             &json!({
                 "reason": "offboarding requested by legal",
                 "authorizationBasis": "B2B termination notice"
@@ -844,6 +856,34 @@ async fn admin_affiliate_crud_mutates_with_audit_context() {
     let body = response_json(list).await;
     assert_eq!(body.as_array().expect("list is array").len(), 1);
     assert_eq!(body[0]["id"], "AFF-100");
+}
+
+#[tokio::test]
+async fn admin_affiliate_create_rejects_manual_non_uuid_user_id_and_masked_email() {
+    let store = InMemoryAffiliateDashboardStore::default().with_admin_affiliates(vec![sample()]);
+    let app = router(store);
+
+    let response = app
+        .oneshot(json_request(
+            "POST",
+            "/internal/admin/affiliates",
+            &json!({
+                "id": "AFF-200",
+                "userId": "user_aff_200",
+                "displayName": "Orion Partners",
+                "emailMasked": "o***@orion.partners",
+                "reason": "signed B2B onboarding packet",
+                "authorizationBasis": "SPEC-011 §4.7"
+            }),
+        ))
+        .await
+        .expect("create should be handled");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response_json(response).await["message"],
+        "invalid affiliate request: email is required and emailMasked must be derived by the service"
+    );
 }
 
 #[tokio::test]

@@ -17,7 +17,7 @@ import { getViewer } from "@/lib/session";
 
 export async function createAffiliateAction(formData: FormData): Promise<void> {
   const viewer = await requireAdminViewer();
-  const payload = mutationPayloadFromForm(formData, true);
+  const payload = mutationPayloadFromForm(formData);
   const result = await createAdminAffiliate(viewer, payload);
   if (!result) redirect("/affiliate?error=affiliate-create-failed");
   revalidatePath("/affiliate");
@@ -30,7 +30,7 @@ export async function updateAffiliateAction(formData: FormData): Promise<void> {
   const result = await updateAdminAffiliate(
     viewer,
     affiliateId,
-    mutationPayloadFromForm(formData, false),
+    mutationPayloadFromForm(formData),
   );
   if (!result)
     redirect(
@@ -65,20 +65,13 @@ async function requireAdminViewer() {
   return viewer;
 }
 
-function mutationPayloadFromForm(
-  formData: FormData,
-  includeIdentity: boolean,
-): AffiliateMutationPayload {
+function mutationPayloadFromForm(formData: FormData): AffiliateMutationPayload {
   const payload: AffiliateMutationPayload = {
     reason: requiredText(formData, "reason"),
     authorizationBasis: requiredText(formData, "authorizationBasis"),
   };
-  if (includeIdentity) {
-    payload.id = requiredText(formData, "id");
-    payload.userId = requiredText(formData, "userId");
-  }
   assignText(formData, payload, "displayName");
-  assignText(formData, payload, "emailMasked");
+  assignText(formData, payload, "email");
   assignText(formData, payload, "ownerSponsorId");
   assignText(formData, payload, "effectiveAt");
   assignText(formData, payload, "expiresAt");
@@ -114,7 +107,7 @@ function assignText(
   payload: AffiliateMutationPayload,
   key:
     | "displayName"
-    | "emailMasked"
+    | "email"
     | "ownerSponsorId"
     | "effectiveAt"
     | "expiresAt"
