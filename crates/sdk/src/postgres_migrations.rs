@@ -7,7 +7,7 @@ use std::{
 use sqlx::{
     Connection, Executor, PgConnection, PgPool,
     migrate::{AppliedMigration, Migrate, MigrateError, Migration, Migrator},
-    query, query_as,
+    query, query_as, query_scalar,
 };
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -16,7 +16,33 @@ pub const USER_SERVICE_MIGRATION_TABLE: &str = "_sqlx_migrations_user_service";
 pub const API_GATEWAY_MIGRATION_TABLE: &str = "_sqlx_migrations_api_gateway";
 pub const REFERRAL_SERVICE_MIGRATION_TABLE: &str = "_sqlx_migrations_referral_service";
 
+/// Shared migration table used before per-service isolation. A database created by an older
+/// build records every service's migrations here; [`adopt_legacy_migrations`] bridges those rows
+/// into the service-specific table so already-applied migrations are not re-run.
+const LEGACY_MIGRATION_TABLE: &str = "_sqlx_migrations";
+
+struct OwnedMigration {
+    version: i64,
+    description: String,
+    checksum: Vec<u8>,
+}
+
 /// Runs `SQLx` Postgres migrations while recording applied versions in a service-specific table.
+///
+/// Each service in a process that shares one database keeps its own migration-metadata table,
+/// because the services' migration version numbers collide and a shared `_sqlx_migrations` table
+/// cannot tell them apart.
+///
+/// ## Upgrading a database created before per-service isolation
+///
+/// Such a database has only the shared `_sqlx_migrations` table, so the service-specific table
+/// starts empty — which would otherwise re-run every migration and fail on objects that already
+/// exist. [`adopt_legacy_migrations`] bridges this: for every migration the legacy table already
+/// applied successfully under the same `(version, description)`, it records an applied row in the
+/// service-specific table using the *current* migration's checksum. The legacy table is never
+/// modified. This bridge is a one-way legacy upgrade path, not a license to edit applied
+/// migrations — merged migrations stay immutable and schema changes ship as new forward
+/// migrations.
 ///
 /// # Errors
 ///
@@ -28,12 +54,25 @@ pub async fn run_postgres_migrations(
     table_name: &str,
 ) -> anyhow::Result<()> {
     let table_name = migration_table_identifier(table_name)?;
+    let owned_migrations = migrator
+        .iter()
+        .filter(|migration| !migration.migration_type.is_down_migration())
+        .map(|migration| OwnedMigration {
+            version: migration.version,
+            description: migration.description.to_string(),
+            checksum: migration.checksum.to_vec(),
+        })
+        .collect();
     let mut conn = pool.acquire().await?;
     let mut conn = MigrationTableConnection {
         conn: &mut conn,
         table_name,
+        owned_migrations,
     };
 
+    // SQLx 0.8 has no stable migration-table setter. This wrapper implements
+    // `Migrate` with service-specific bookkeeping and uses `run_direct` as the
+    // narrow escape hatch that bypasses the default `_sqlx_migrations` table.
     migrator.run_direct(&mut conn).await?;
 
     Ok(())
@@ -59,6 +98,9 @@ fn migration_table_identifier(table_name: &str) -> anyhow::Result<String> {
 struct MigrationTableConnection<'c> {
     conn: &'c mut PgConnection,
     table_name: String,
+    /// This service's up-migrations (version, description, current checksum), used to adopt
+    /// already-applied rows from the legacy shared migration table.
+    owned_migrations: Vec<OwnedMigration>,
 }
 
 impl Migrate for MigrationTableConnection<'_> {
@@ -78,6 +120,9 @@ CREATE TABLE IF NOT EXISTS {table_name} (
                         ",
                     table_name = self.table_name
                 ))
+                .await?;
+
+            adopt_legacy_migrations(&mut *self.conn, &self.table_name, &self.owned_migrations)
                 .await?;
 
             Ok(())
@@ -177,6 +222,74 @@ CREATE TABLE IF NOT EXISTS {table_name} (
     }
 }
 
+/// Bridges a database created before per-service migration isolation into the service-specific
+/// migration table.
+///
+/// A pre-isolation database records every service's migrations in the single shared
+/// `_sqlx_migrations` table. On the first run with isolated tables the service-specific table is
+/// empty, so without this bridge every migration would be re-applied and fail on objects that
+/// already exist.
+///
+/// For each of this service's migrations, if the legacy table holds a successful row with the
+/// same `(version, description)`, that migration is recorded as applied in the service-specific
+/// table using the *current* migration's checksum. Matching on `description` (derived from the
+/// migration filename) rather than `checksum`:
+///   * keeps the bridge working when a migration's body was edited after being applied, and
+///   * still distinguishes services whose migrations collide on version numbers — a version slot
+///     the legacy table recorded for a different service has a different description and is left
+///     for that service to apply normally.
+///
+/// Rows are inserted only for versions the service-specific table does not already record
+/// (`ON CONFLICT DO NOTHING`), and the legacy table itself is never modified or dropped.
+///
+/// This is strictly a one-way legacy upgrade bridge. It is NOT a sanctioned way to mutate an
+/// applied migration: a merged migration must stay immutable, and schema changes must ship as
+/// new forward migrations.
+async fn adopt_legacy_migrations(
+    conn: &mut PgConnection,
+    table_name: &str,
+    owned_migrations: &[OwnedMigration],
+) -> Result<(), MigrateError> {
+    let legacy_present: bool = query_scalar("SELECT to_regclass($1) IS NOT NULL")
+        .bind(LEGACY_MIGRATION_TABLE)
+        .fetch_one(&mut *conn)
+        .await?;
+
+    if !legacy_present {
+        return Ok(());
+    }
+
+    let adopt_sql = format!(
+        "
+INSERT INTO {table_name} ( version, description, installed_on, success, checksum, execution_time )
+SELECT $1, $2, legacy.installed_on, TRUE, $3, legacy.execution_time
+FROM {LEGACY_MIGRATION_TABLE} AS legacy
+WHERE legacy.version = $1 AND legacy.description = $2 AND legacy.success = TRUE
+ON CONFLICT (version) DO NOTHING
+        "
+    );
+
+    for migration in owned_migrations {
+        let result = query(&adopt_sql)
+            .bind(migration.version)
+            .bind(&migration.description)
+            .bind(migration.checksum.as_slice())
+            .execute(&mut *conn)
+            .await?;
+
+        if result.rows_affected() > 0 {
+            tracing::info!(
+                version = migration.version,
+                description = %migration.description,
+                table = table_name,
+                "adopted already-applied migration from the legacy shared _sqlx_migrations table"
+            );
+        }
+    }
+
+    Ok(())
+}
+
 async fn execute_migration(
     conn: &mut PgConnection,
     migration: &Migration,
@@ -223,7 +336,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::{
-        API_GATEWAY_MIGRATION_TABLE, REFERRAL_SERVICE_MIGRATION_TABLE,
+        API_GATEWAY_MIGRATION_TABLE, LEGACY_MIGRATION_TABLE, REFERRAL_SERVICE_MIGRATION_TABLE,
         USER_SERVICE_MIGRATION_TABLE, migration_table_identifier,
     };
 
@@ -239,6 +352,17 @@ mod tests {
             tables.into_iter().collect::<HashSet<_>>().len(),
             tables.len()
         );
+    }
+
+    #[test]
+    fn service_migration_tables_differ_from_legacy_table() {
+        for table in [
+            USER_SERVICE_MIGRATION_TABLE,
+            API_GATEWAY_MIGRATION_TABLE,
+            REFERRAL_SERVICE_MIGRATION_TABLE,
+        ] {
+            assert_ne!(table, LEGACY_MIGRATION_TABLE);
+        }
     }
 
     #[test]
