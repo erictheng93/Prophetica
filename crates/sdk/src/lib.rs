@@ -5,5 +5,6 @@ pub mod feature_flags;
 pub mod ledger;
 pub mod masking;
 pub mod observability;
+pub mod postgres_migrations;
 pub mod referral;
 pub mod service_stub;

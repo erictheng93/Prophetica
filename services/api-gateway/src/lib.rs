@@ -14,7 +14,12 @@ use axum::{
     routing::{delete, get, post},
 };
 use reqwest::Url;
-use sdk::{config::ServiceConfig, observability, service_stub};
+use sdk::{
+    config::ServiceConfig,
+    observability,
+    postgres_migrations::{API_GATEWAY_MIGRATION_TABLE, run_postgres_migrations},
+    service_stub,
+};
 use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, signal};
 
@@ -1702,7 +1707,12 @@ async fn admin_ops_router() -> anyhow::Result<Router> {
     match database_url {
         Some(database_url) => {
             let pool = sqlx::PgPool::connect(&database_url).await?;
-            sqlx::migrate!("./migrations").run(&pool).await?;
+            run_postgres_migrations(
+                sqlx::migrate!("./migrations"),
+                &pool,
+                API_GATEWAY_MIGRATION_TABLE,
+            )
+            .await?;
             Ok(admin_ops::internal_admin_router(
                 admin_ops::ProductionAdminOpsStore::new(
                     upstream,

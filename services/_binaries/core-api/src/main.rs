@@ -1,4 +1,10 @@
-use sdk::{config::ServiceConfig, service_stub};
+use sdk::{
+    config::ServiceConfig,
+    postgres_migrations::{
+        REFERRAL_SERVICE_MIGRATION_TABLE, USER_SERVICE_MIGRATION_TABLE, run_postgres_migrations,
+    },
+    service_stub,
+};
 use std::{env, net::SocketAddr};
 use tokio::{net::TcpListener, signal};
 
@@ -58,9 +64,12 @@ async fn build_user_service_router(config: &ServiceConfig) -> anyhow::Result<axu
                 )
             })?;
         let pool = sqlx::PgPool::connect(&database_url).await?;
-        sqlx::migrate!("../../user-service/migrations")
-            .run(&pool)
-            .await?;
+        run_postgres_migrations(
+            sqlx::migrate!("../../user-service/migrations"),
+            &pool,
+            USER_SERVICE_MIGRATION_TABLE,
+        )
+        .await?;
         Ok(service_stub::router(config)
             .merge(user_service::auth::auth_router_with_config(
                 user_service::auth::AuthConfig::from_env()
@@ -123,9 +132,12 @@ async fn run_referral_http() -> anyhow::Result<()> {
                 )
             })?;
         let pool = sqlx::PgPool::connect(&database_url).await?;
-        sqlx::migrate!("../../referral-service/migrations")
-            .run(&pool)
-            .await?;
+        run_postgres_migrations(
+            sqlx::migrate!("../../referral-service/migrations"),
+            &pool,
+            REFERRAL_SERVICE_MIGRATION_TABLE,
+        )
+        .await?;
         service_stub::router(&config).merge(referral_service::router(
             referral_service::PostgresAffiliateStore::new(pool),
         ))
