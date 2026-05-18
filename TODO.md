@@ -37,25 +37,32 @@ the full Docker dependency stack.
 
 ## SPEC-022 Completion Blockers
 
-- Capture live LIFF identity-bridge evidence before declaring SPEC-022 complete.
-  The code path now exchanges a LINE ID token for a `user-service` session and
-  records `login_surface = liff`, but formal completion still needs a LINE
-  channel configured with `USER_SERVICE_LINE_LOGIN_CHANNEL_ID`, a member linked
-  through `user_members.line_id`, and an iOS / Android LIFF login run showing
-  the resulting `login_success` event. Track this in
-  `docs/spec-022-completion-audit.md` /
-  `docs/spec-022-evidence-manifest.json` and keep
-  `tools/scripts/check-spec-022-complete.mjs` failing until evidence is
-  recorded.
-- Run and record manual QA for desktop web, mobile web, and LIFF/WebView login
-  surfaces after the LIFF session path exists, confirming admin and user UIs
-  show approximate location language and `未知` fallback instead of blank
-  fields. Use `tools/scripts/record-spec-022-liff-evidence.mjs` and
-  `tools/scripts/record-spec-022-manual-qa-evidence.mjs` to produce the two
-  required `docs/evidence/spec-022-*/latest.json` files, then run
-  `tools/scripts/preflight-spec-022-evidence.mjs` before finalizing; follow
-  `docs/evidence/spec-022/README.md` for the exact markers and completion
-  process.
+SPEC-022 is code-complete locally, but formal completion is blocked by external
+LINE/LIFF and manual QA evidence that cannot be generated from this workstation.
+Keep `tools/scripts/check-spec-022-complete.mjs` failing until all items below
+are recorded and the manifest has no blockers.
+
+- Collect live LIFF identity-bridge evidence:
+  - Configure the target environment with `NEXT_PUBLIC_LIFF_ID`,
+    `USER_SERVICE_LINE_LOGIN_CHANNEL_ID`, and `USER_SERVICE_BASE_URL`.
+  - Use a target member linked through `user_members.line_id`.
+  - Capture iOS and Android LINE LIFF login runs that produce `login_success`
+    events with `login_surface = liff`.
+  - Save the sanitized marker log at `.tmp/spec-022-liff.log`, then run
+    `rtk node tools/scripts/record-spec-022-liff-evidence.mjs .tmp/spec-022-liff.log`
+    to create `docs/evidence/spec-022-liff/latest.json`.
+- Collect manual QA evidence:
+  - Verify desktop and mobile self-service recent-login pages show approximate
+    location wording.
+  - Verify admin login-events RBAC, audit, query, and LIFF/WebView visibility.
+  - Verify unknown location fallback renders `未知` instead of blank fields.
+  - Save the sanitized marker log at `.tmp/spec-022-manual-qa.log`, then run
+    `rtk node tools/scripts/record-spec-022-manual-qa-evidence.mjs .tmp/spec-022-manual-qa.log`
+    to create `docs/evidence/spec-022-manual-qa/latest.json`.
+- Finalize only after both evidence JSON files exist and pass:
+  - `rtk node tools/scripts/preflight-spec-022-evidence.mjs`
+  - `rtk node tools/scripts/finalize-spec-022-complete.mjs`
+  - `rtk node tools/scripts/check-spec-022-complete.mjs`
 
 ## Public Beta Launch Gate Blockers
 

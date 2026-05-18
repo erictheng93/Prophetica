@@ -43,6 +43,33 @@ SPEC-022 cannot be formally declared complete until these external evidence
 items exist and the manifest is updated to `status = complete` with no blocking
 items:
 
+### 待辦：Current Blocking Gap
+
+The local implementation, tests, docs, and evidence gates are complete. The
+remaining gap is external proof from a configured LINE/LIFF environment and a
+manual QA run:
+
+- Missing target environment configuration:
+  - `NEXT_PUBLIC_LIFF_ID`
+  - `USER_SERVICE_LINE_LOGIN_CHANNEL_ID`
+  - `USER_SERVICE_BASE_URL`
+- Missing input marker logs:
+  - `.tmp/spec-022-liff.log`
+  - `.tmp/spec-022-manual-qa.log`
+- Missing generated evidence artifacts:
+  - `docs/evidence/spec-022-liff/latest.json`
+  - `docs/evidence/spec-022-manual-qa/latest.json`
+- Missing live LIFF proof:
+  - A target player linked through `user_members.line_id`.
+  - iOS and Android LINE LIFF login runs.
+  - `login_success` events recorded with `login_surface = liff`.
+- Missing manual QA proof:
+  - Desktop and mobile self-service recent-login pages show approximate
+    location wording.
+  - Admin login-events RBAC, audit, query, and LIFF/WebView visibility are
+    checked.
+  - Unknown location fallback renders `未知` instead of blank fields.
+
 1. `docs/evidence/spec-022-liff/latest.json`
    - Real LINE Login / LIFF channel configured.
    - `USER_SERVICE_LINE_LOGIN_CHANNEL_ID` set in the target environment.
