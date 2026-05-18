@@ -262,7 +262,11 @@ export function MemberManagement({
       );
       if (!response.ok) {
         setSummary(null);
-        setLookupError(`查詢失敗：${await errorText(response)}`);
+        setLookupError(
+          response.status === 404
+            ? "查無此會員，請確認輸入的會員 ID 是否正確。"
+            : "查詢服務暫時無法使用，請稍後再試。",
+        );
         return;
       }
       const nextSummary = (await response.json()) as MemberManagementSummary;
@@ -271,7 +275,7 @@ export function MemberManagement({
       startEditing(nextSummary);
     } catch {
       setSummary(null);
-      setLookupError("查詢失敗：無法連線至會員管理 BFF。");
+      setLookupError("查詢服務暫時無法使用，請稍後再試。");
     } finally {
       setLookupLoading(false);
     }
