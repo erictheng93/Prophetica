@@ -15,6 +15,7 @@ type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub const USER_SERVICE_MIGRATION_TABLE: &str = "_sqlx_migrations_user_service";
 pub const API_GATEWAY_MIGRATION_TABLE: &str = "_sqlx_migrations_api_gateway";
 pub const REFERRAL_SERVICE_MIGRATION_TABLE: &str = "_sqlx_migrations_referral_service";
+pub const KYC_SERVICE_MIGRATION_TABLE: &str = "_sqlx_migrations_kyc_service";
 
 /// Shared migration table used before per-service isolation. A database created by an older
 /// build records every service's migrations here; [`adopt_legacy_migrations`] bridges those rows

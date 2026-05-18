@@ -1,5 +1,10 @@
 use axum::Router;
-use sdk::{config::ServiceConfig, observability, service_stub};
+use sdk::{
+    config::ServiceConfig,
+    observability,
+    postgres_migrations::{KYC_SERVICE_MIGRATION_TABLE, run_postgres_migrations},
+    service_stub,
+};
 use std::env;
 use tokio::{net::TcpListener, signal};
 
@@ -20,9 +25,12 @@ async fn main() -> anyhow::Result<()> {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| anyhow::anyhow!("DATABASE_URL is required when KYC_STORE=postgres"))?;
         let pool = sqlx::PgPool::connect(&database_url).await?;
-        sqlx::migrate!("../../kyc-service/migrations")
-            .run(&pool)
-            .await?;
+        run_postgres_migrations(
+            sqlx::migrate!("../../kyc-service/migrations"),
+            &pool,
+            KYC_SERVICE_MIGRATION_TABLE,
+        )
+        .await?;
         let store =
             kyc_service::kyc::PostgresKycStore::new(pool, secrets.document_hash_salt.clone());
         let app = Router::new()
