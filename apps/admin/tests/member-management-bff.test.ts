@@ -54,6 +54,32 @@ test("member list BFF forwards affiliate scope with signed admin context", async
   }
 });
 
+test("member list BFF returns structured gateway error when upstream fetch fails", async () => {
+  process.env.API_GATEWAY_URL = "http://gateway.local";
+  process.env.ADMIN_INTERNAL_CALL_SECRET = SECRET;
+  process.env.MEMBER_MANAGEMENT_ALLOW_MOCK_FALLBACK = "false";
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new TypeError("connect ECONNREFUSED");
+  }) as typeof fetch;
+
+  try {
+    const response = await proxyMemberListRequest({
+      viewer: {
+        sub: "U-ADMIN-001",
+        role: "admin",
+        iat: 1,
+        exp: 2,
+      },
+    });
+
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: "gateway_unavailable" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("member create BFF overwrites affiliate source before forwarding", async () => {
   process.env.API_GATEWAY_URL = "http://gateway.local";
   process.env.ADMIN_INTERNAL_CALL_SECRET = SECRET;

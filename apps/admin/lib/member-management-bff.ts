@@ -446,12 +446,19 @@ async function proxyMemberGatewayRequest(
     requestHeaders["content-type"] = "application/json";
   }
 
-  const upstream = await fetch(new URL(input.adminPath, gatewayUrl), {
-    method: input.method,
-    headers: requestHeaders,
-    body: body.length > 0 ? body : undefined,
-    cache: "no-store",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(new URL(input.adminPath, gatewayUrl), {
+      method: input.method,
+      headers: requestHeaders,
+      body: body.length > 0 ? body : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return allowMockFallback
+      ? null
+      : Response.json({ error: "gateway_unavailable" }, { status: 502 });
+  }
   if (
     (upstream.status === 404 || upstream.status === 501) &&
     allowMockFallback
