@@ -25,9 +25,10 @@
 <h1>SPEC-017 — Monorepo Bootstrap &amp; Local Dev Environment</h1>
 <blockquote>
 <p>優先級：<strong>P0（必須在第一行業務 code 之前完成）</strong>
-版本：v0.2.6 · 最後更新：2026-05-07
+版本：v0.2.7 · 最後更新：2026-05-18
 依賴：SPEC-014（架構定義）
 被依賴：所有 SPEC（實作載體）</p>
+<p><strong>v0.2.7 變更</strong>：§6.3 新增 §6.3.3「Nav 資訊架構（IA）」，明示左側 nav 群組僅影響導覽呈現、不新增/移除路由、不改變 §6.3.1 路由 RBAC：決策支援（<code>/dashboard</code>）與分析報表（<code>/analytics</code>）合併為可展開的「數據與報表」群組；帳戶點數例外（<code>/points</code>）改以 <code>OpsRoute.navHidden</code> 自 top-level 收起、列入「會員管理」子導覽。連帶 erratum：§6.3.1 矩陣 <code>/points</code> 標籤由「帳戶銅幣例外」更正為「帳戶點數例外」，與 admin app UI（<code>apps/admin/lib/ops-facade.ts</code>）一致。另：「代理管理區」群組更名為「代理管理」；nav 排序將 FAQ 管理移至各操作領域之後（§6.3.3）。</p>
 <p><strong>v0.2.6 變更</strong>：§11 新增 §11.3「PoC gating」，明示 PoC-A（EdDSA / LIFF）+ PoC-B（Cloudflare Edge runtime 5 場景）為 launch acceptance gate；v0.2.7 後校準為「不阻擋 PR #1 / internal alpha，但阻擋公開 Beta / 真實入金 / prod deployment mode finalization」。PoC 結果需回填至 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md</code></a>。</p>
 <p><strong>v0.2.5 變更</strong>：(1) <strong>T-7 mutation testing 門檻分階段</strong>：§3.3 R-4 由「caught rate ≥ 75% 否則發 alert」修正為「MVP 起步 ≥ 60%、每季度 +5%、6 個月內達 75%」分階段門檻；(2) <strong>T-8 CI runner</strong>：§11.2.10 規模預期表新增 GitHub Actions larger runner <code>ubuntu-latest-4-cores</code> 為已配置時的加速選項（&lt; 15 min cold cache）；未配置 larger runner 的 repo 使用標準 <code>ubuntu-latest</code> fallback，避免 workflow indefinite queued。</p>
 <p><strong>v0.2.4 erratum（2026-05-07）</strong>：修正 §2 file tree 註解與 §8 CI workflow 中遺留的 Rust 1.78 化石標註，與 §3 toolchain 表 / §4.2.1 <code>rust-toolchain.toml</code> 之 <code>1.85</code>（edition 2024）對齊。發現過程：跨檔審視 H-2 版本一致性議題（SPEC-000 v0.2.4 sweep round 3）。</p>
@@ -479,7 +480,7 @@
 <tr><td><code>/</code> 操作入口總覽</td><td>✅</td><td>✅</td><td>403</td></tr>
 <tr><td><code>/dashboard</code> 決策支援</td><td>✅ 全部</td><td>✅ 不含財務 hash</td><td>403</td></tr>
 <tr><td><code>/members</code> 會員管理</td><td>✅</td><td>✅ 唯讀</td><td>403</td></tr>
-<tr><td><code>/points</code> 帳戶銅幣例外</td><td>✅</td><td>✅ 提案</td><td>403</td></tr>
+<tr><td><code>/points</code> 帳戶點數例外</td><td>✅</td><td>✅ 提案</td><td>403</td></tr>
 <tr><td><code>/affiliate</code> 代理抽佣審查</td><td>✅</td><td>✅ 唯讀</td><td>403</td></tr>
 <tr><td><code>/kyc-risk</code></td><td>✅</td><td>✅</td><td>403</td></tr>
 <tr><td><code>/compensation</code> 補償審批</td><td>✅ 終審</td><td>✅ 提案</td><td>403</td></tr>
@@ -494,6 +495,17 @@
 <li>Phase 3 引入真 user-service 後，session JWT 必須含 <code>mfa_at</code> claim 以支援 MS-3 / MS-9 / MS-12 等 30 分鐘有效期 step-up；首版（Phase 2 mock）僅有 <code>iat</code> / <code>exp</code>，故僅供 read-only 操作測試。</li>
 <li>Phase 3 之 affiliate password hashing 採 Argon2id；session 簽章採 Ed25519，公鑰由 user-service 透過 JWKS endpoint 暴露給 admin app middleware 驗章。</li>
 </ul>
+<h4>6.3.3 Nav 資訊架構（IA）（amended 2026-05-18）</h4>
+<p>§6.3.1 矩陣定義<strong>路由層級</strong> RBAC。左側 nav 另以可展開群組呈現相關路由：群組僅影響導覽呈現，<strong>不</strong>新增/移除路由，亦不改變 §6.3.1 角色矩陣；群組父項本身不可導覽，只切換子項顯示。具子項之 nav 群組如下：</p>
+<table>
+<thead><tr><th>Nav 群組</th><th>子項（路由）</th></tr></thead>
+<tbody>
+<tr><td>數據與報表</td><td>決策支援（<code>/dashboard</code>）、分析報表（<code>/analytics</code>）</td></tr>
+<tr><td>會員管理</td><td>會員清單（<code>/members</code>）、KYC 審核（<code>/members/kyc-review</code>）、帳戶點數例外（<code>/points</code>）、工單審批（<code>/approvals</code>）</td></tr>
+<tr><td>代理管理</td><td>代理清單（<code>/affiliate</code>）、佣金管理（<code>/affiliate/commissions</code>）、撥款管理（<code>/affiliate/payouts</code>）</td></tr>
+</tbody>
+</table>
+<p>未列於上表的路由（<code>/</code>、<code>/kyc-risk</code>、<code>/compensation</code>、<code>/security/login-events</code>、<code>/faq</code> 等）為 top-level 單一 nav 項。<code>/approvals</code>（工單審批）與 <code>/points</code>（帳戶點數例外）以 <code>OpsRoute.navHidden</code> 自 top-level 收起，僅作為「會員管理」子項出現；兩者路由與 §6.3.1 RBAC 不變。Nav 由上而下排序為：操作入口總覽 → 數據與報表 → 登入事件 → 會員管理 → 代理管理 → KYC / 風險事件 → 補償審批 → FAQ 管理；FAQ 管理屬內容管理、非操作領域，故排於各操作領域之後。實作見 <code>apps/admin/app/layout.tsx</code> 之 <code>buildAdminNavLinks</code> 與 <code>apps/admin/lib/ops-facade.ts</code>。</p>
 <p>三個 Next.js app（web / admin / liff）共用 <code>packages/ts-sdk</code> 與 Kumo 元件，由 Turborepo <code>^build</code> 依賴拓撲連動。</p>
 <hr />
 <h2>7. 環境變數與配置</h2>
