@@ -142,7 +142,15 @@ export function AdminSidebar({
       return false;
     }
 
-    return Boolean(expandedSections[link.key]);
+    // An explicit click wins: once the user toggles a section, that
+    // choice is authoritative even while a child route is active.
+    const explicit = expandedSections[link.key];
+    if (explicit !== undefined) {
+      return explicit;
+    }
+
+    // Untouched: auto-expand when a child route is currently active.
+    return findActiveNavChildKey(pathname, link.children) !== undefined;
   }
 
   function toggleSection(link: AdminNavLink) {
@@ -177,8 +185,7 @@ export function AdminSidebar({
             const isActive =
               isNavPathActive(pathname, link.href) ||
               activeChildKey !== undefined;
-            const sectionOpen =
-              isSectionOpen(link) || activeChildKey !== undefined;
+            const sectionOpen = isSectionOpen(link);
             return (
               <li key={link.key}>
                 {link.children?.length ? (
