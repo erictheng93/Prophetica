@@ -102,6 +102,7 @@ export function MemberManagement({
   const [summary, setSummary] = useState<MemberManagementSummary | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [memberForm, setMemberForm] = useState<MemberFormState>({
     ...emptyMemberForm,
     affiliate_id: viewerRole === "affiliate" ? (viewerAffiliateId ?? "") : "",
@@ -156,6 +157,17 @@ export function MemberManagement({
     () => `admin-member:${actionType}:<uuid-v4>`,
     [actionType],
   );
+  const memberSuggestions = useMemo(() => {
+    const query = lookupUserId.trim().toLowerCase();
+    if (query.length < 2) return [];
+    return members
+      .filter(
+        (entry) =>
+          entry.member.user_id.toLowerCase().includes(query) ||
+          entry.member.display_name.toLowerCase().includes(query),
+      )
+      .slice(0, 8);
+  }, [lookupUserId, members]);
 
   useEffect(() => {
     if (!showMemberWorkspace) return;
@@ -228,6 +240,7 @@ export function MemberManagement({
 
   async function lookupMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSuggestionsOpen(false);
     const userId = lookupUserId.trim();
     if (!userId) {
       setLookupError("請輸入會員 ID。");
@@ -262,6 +275,12 @@ export function MemberManagement({
     } finally {
       setLookupLoading(false);
     }
+  }
+
+  function selectSuggestion(userId: string) {
+    setSuggestionsOpen(false);
+    setLookupUserId(userId);
+    void lookupMemberById(userId);
   }
 
   function updateMemberForm<K extends keyof MemberFormState>(
@@ -520,16 +539,51 @@ export function MemberManagement({
               className="mt-5 flex flex-col gap-3 sm:flex-row"
               onSubmit={lookupMember}
             >
-              <label className="min-w-0 flex-1">
+              <label className="relative min-w-0 flex-1">
                 <span className="text-[13px] font-semibold text-proph-ink-muted-80">
-                  會員 ID
+                  會員 ID 或姓名
                 </span>
                 <input
                   value={lookupUserId}
-                  onChange={(event) => setLookupUserId(event.target.value)}
+                  onChange={(event) => {
+                    setLookupUserId(event.target.value);
+                    setSuggestionsOpen(true);
+                  }}
+                  onFocus={() => setSuggestionsOpen(true)}
+                  onBlur={() => setSuggestionsOpen(false)}
+                  autoComplete="off"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded={
+                    suggestionsOpen && memberSuggestions.length > 0
+                  }
                   className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus"
-                  placeholder="MEM-001"
+                  placeholder="輸入 2 個字以上即顯示建議，例如 MEM-001"
                 />
+                {suggestionsOpen && memberSuggestions.length > 0 && (
+                  <ul
+                    role="listbox"
+                    className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-proph-sm border border-proph-hairline bg-proph-canvas py-1 shadow-lg"
+                  >
+                    {memberSuggestions.map((entry) => (
+                      <li key={entry.member.user_id} role="option" aria-selected={false}>
+                        <button
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => selectSuggestion(entry.member.user_id)}
+                          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-proph-surface-pearl"
+                        >
+                          <span className="truncate text-[14px] text-proph-ink">
+                            {entry.member.display_name}
+                          </span>
+                          <span className="shrink-0 font-mono text-[12px] text-proph-ink-muted-48">
+                            {entry.member.user_id}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </label>
               <button
                 type="submit"
