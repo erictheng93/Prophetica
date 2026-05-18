@@ -460,6 +460,7 @@
     <li><code>middleware.ts</code> 雙層：(1) Cloudflare Access 僅對 admin/manager 路徑強制 SSO；(2) 應用層解 session cookie，role 不符即 redirect 至 <code>/403</code>，未登入即 redirect 至 <code>/login</code>。免驗清單：<code>/login</code>、<code>/api/auth/*</code>、<code>/api/health</code>、<code>/_next</code>、<code>/favicon</code></li>
     <li><code>lib/rbac.ts</code> — 角色 × 路由矩陣（<code>canAccess</code> / <code>canApprove</code> / <code>filterRoutes</code>）；<strong>RBAC 是唯一真實來源</strong>，UI、middleware、API route 三層皆引用同一份矩陣</li>
     <li><code>lib/session.ts</code> — HttpOnly + Secure + SameSite=Strict cookie；payload 至少含 <code>{ sub, role, iat, exp }</code>。Phase 2 採 HMAC-SHA256 簽章；Phase 3 換 user-service 簽的 Ed25519 JWT</li>
+    <li>未接線的 api-gateway 功能（首版為 <code>/approvals</code> 工單審批）以 <code>OpsRoute.inDevelopment</code> 標記：nav 子項顯示「開發中」標籤、頁面顯示後端未連線橫幅；gateway 接線後移除該旗標即啟用，毋須改動 nav 結構</li>
     <li>不部署至公開 Cloudflare Pages（與原條文一致）</li>
   </ul>
 </td>
