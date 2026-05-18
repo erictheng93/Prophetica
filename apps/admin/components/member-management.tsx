@@ -1164,7 +1164,7 @@ function MemberEditor(props: {
           onClick={props.onReset}
           className="inline-flex h-11 items-center justify-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-4 text-[14px] font-semibold text-proph-ink"
         >
-          新增模式
+          重置
         </button>
       </div>
 
