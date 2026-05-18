@@ -59,6 +59,14 @@ test("admin queue surfaces do not render the mock operations snapshot", () => {
   assert.doesNotMatch(domainScopeSource, /snapshot\.queue\.slice/);
 });
 
+test("admin shell no longer owns persistent navigation chrome", () => {
+  const shellSource = readAdminFile("components/admin-shell.tsx");
+
+  assert.doesNotMatch(shellSource, /\bAdminSidebar\b/);
+  assert.doesNotMatch(shellSource, /\bAdminNavDrawer\b/);
+  assert.doesNotMatch(shellSource, /\bgetAdminOperationsRoutes\b/);
+});
+
 test("admin operations snapshot exposes confirmed cross-domain stream handoffs", async () => {
   const { getAdminOperationsSnapshot } =
     (await import("../lib/ops-facade.js")) as typeof import("../lib/ops-facade.js");

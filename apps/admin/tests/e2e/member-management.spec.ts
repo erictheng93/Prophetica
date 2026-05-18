@@ -153,6 +153,48 @@ test("admin can submit and approve a member restriction action", async ({
   }
 });
 
+test("member management sidebar section stays open when navigating to KYC review", async ({
+  context,
+  page,
+}) => {
+  const gateway = createMockGateway([], []);
+  await new Promise<void>((resolve) => gateway.listen(32123, resolve));
+
+  await context.addCookies([
+    {
+      name: SESSION_COOKIE_NAME,
+      value: await signSession(
+        {
+          sub: "U-ADMIN-001",
+          role: "admin",
+        },
+        DEV_SECRET,
+      ),
+      url: ADMIN_ORIGIN,
+      httpOnly: true,
+      sameSite: "Strict",
+    },
+  ]);
+
+  try {
+    await page.goto("/members");
+    await expect(page.getByRole("heading", { name: "會員管理" })).toBeVisible();
+
+    const nav = page.getByRole("navigation", { name: "管理後台導覽" });
+    const memberSection = nav.getByRole("button", { name: "會員管理" });
+    await memberSection.click();
+    await expect(memberSection).toHaveAttribute("aria-expanded", "true");
+
+    await nav.getByRole("link", { name: "KYC 審核" }).click();
+    await expect(page).toHaveURL(/\/members\/kyc-review$/);
+    await expect(page.getByRole("heading", { name: "KYC 審核" })).toBeVisible();
+    await expect(memberSection).toHaveAttribute("aria-expanded", "true");
+    await expect(nav.getByRole("link", { name: "KYC 審核" })).toBeVisible();
+  } finally {
+    await new Promise<void>((resolve) => gateway.close(() => resolve()));
+  }
+});
+
 function createMockGateway(actions: unknown[], gatewayRequests: string[]) {
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1:32123");
