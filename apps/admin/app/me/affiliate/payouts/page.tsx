@@ -1,4 +1,3 @@
-import { AffiliateShell } from "@/components/affiliate-shell";
 import { RoleGate } from "@/components/role-gate";
 import { adminCopy } from "@/lib/admin-copy";
 import { fetchAffiliateDashboard } from "@/lib/affiliate-management-bff";
@@ -10,54 +9,49 @@ export default function AffiliatePayoutsPage() {
       {async (viewer) => {
         const dashboard = await fetchAffiliateDashboard(viewer);
         return (
-          <AffiliateShell
-            affiliateId={viewer.affiliateId ?? dashboard?.referral_code ?? "—"}
-            active="payouts"
+          <section
+            aria-labelledby="payouts-title"
+            className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
           >
-            <section
-              aria-labelledby="payouts-title"
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+            <h2
+              id="payouts-title"
+              className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
             >
-              <h2
-                id="payouts-title"
-                className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
-              >
-                {adminCopy.affiliatePortal.payoutsHeading}
-              </h2>
-              <p className="mt-1 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-                {adminCopy.affiliatePortal.payoutsDescription}
+              {adminCopy.affiliatePortal.payoutsHeading}
+            </h2>
+            <p className="mt-1 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+              {adminCopy.affiliatePortal.payoutsDescription}
+            </p>
+            {dashboard ? (
+              <div className="mt-5 grid gap-4 md:grid-cols-3">
+                <Stat
+                  label="累計佣金"
+                  value={formatMinor(
+                    dashboard.summary.total_rewards_minor_units,
+                    "USDT",
+                  )}
+                />
+                <Stat
+                  label="註冊獎勵"
+                  value={formatMinor(
+                    dashboard.summary.signup_bonus_minor_units,
+                    "USDT",
+                  )}
+                />
+                <Stat
+                  label="交易佣金"
+                  value={formatMinor(
+                    dashboard.summary.trade_commission_minor_units,
+                    "USDT",
+                  )}
+                />
+              </div>
+            ) : (
+              <p className="mt-6 rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+                referral-service 尚未連線，無法讀取佣金資料。
               </p>
-              {dashboard ? (
-                <div className="mt-5 grid gap-4 md:grid-cols-3">
-                  <Stat
-                    label="累計佣金"
-                    value={formatMinor(
-                      dashboard.summary.total_rewards_minor_units,
-                      "USDT",
-                    )}
-                  />
-                  <Stat
-                    label="註冊獎勵"
-                    value={formatMinor(
-                      dashboard.summary.signup_bonus_minor_units,
-                      "USDT",
-                    )}
-                  />
-                  <Stat
-                    label="交易佣金"
-                    value={formatMinor(
-                      dashboard.summary.trade_commission_minor_units,
-                      "USDT",
-                    )}
-                  />
-                </div>
-              ) : (
-                <p className="mt-6 rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-                  referral-service 尚未連線，無法讀取佣金資料。
-                </p>
-              )}
-            </section>
-          </AffiliateShell>
+            )}
+          </section>
         );
       }}
     </RoleGate>

@@ -49,11 +49,11 @@ test("admin operations entry page reads live queue data from the server-side ops
 });
 
 test("admin queue surfaces do not render the mock operations snapshot", () => {
-  const shellSource = readAdminFile("components/admin-shell.tsx");
+  const layoutSource = readAdminFile("app/layout.tsx");
   const domainScopeSource = readAdminFile("components/domain-scope.tsx");
 
-  assert.match(shellSource, /\bgetAdminOperationsRoutes\b/);
-  assert.doesNotMatch(shellSource, /\bgetAdminOperationsSnapshot\b/);
+  assert.match(layoutSource, /\bgetAdminOperationsRoutes\b/);
+  assert.doesNotMatch(layoutSource, /\bgetAdminOperationsSnapshot\b/);
   assert.match(domainScopeSource, /\bgetAdminOperationsLiveSnapshot\b/);
   assert.doesNotMatch(domainScopeSource, /\bgetAdminOperationsSnapshot\b/);
   assert.doesNotMatch(domainScopeSource, /snapshot\.queue\.slice/);
@@ -243,7 +243,7 @@ test("members page exposes complete member management operations", () => {
 
 test("admin affiliate operations are grouped under the management area", () => {
   const facadeSource = readAdminFile("lib/ops-facade.ts");
-  const shellSource = readAdminFile("components/admin-shell.tsx");
+  const layoutSource = readAdminFile("app/layout.tsx");
   const sidebarSource = readAdminFile("components/admin-nav.tsx");
   const drawerSource = readAdminFile("components/admin-nav-drawer.tsx");
 
@@ -256,10 +256,10 @@ test("admin affiliate operations are grouped under the management area", () => {
   assert.match(facadeSource, /KYC 審核/);
   assert.match(facadeSource, /\/members\/kyc-review/);
   assert.match(
-    shellSource,
+    layoutSource,
     /const filteredChildren = route\.children\?\.filter/,
   );
-  assert.match(shellSource, /\.\.\.\(filteredChildren/);
+  assert.match(layoutSource, /\.\.\.\(filteredChildren/);
   assert.match(sidebarSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
   assert.match(drawerSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
 });
@@ -379,7 +379,7 @@ test("admin copy defaults to Traditional Chinese with an i18n-ready copy module"
   const copySource = readAdminFile("lib/admin-copy.ts");
   const overviewSource = readAdminFile("app/page.tsx");
   const dashboardSource = readAdminFile("app/dashboard/page.tsx");
-  const shellSource = readAdminFile("components/admin-shell.tsx");
+  const layoutSource = readAdminFile("app/layout.tsx");
 
   assert.match(copySource, /adminLocale\s*=\s*"zh-Hant"/);
   assert.match(copySource, /adminCopy/);
@@ -387,5 +387,5 @@ test("admin copy defaults to Traditional Chinese with an i18n-ready copy module"
   assert.match(copySource, /決策支援儀表板/);
   assert.match(overviewSource, /adminCopy\.overview/);
   assert.match(dashboardSource, /adminCopy\.dashboard/);
-  assert.match(shellSource, /adminCopy\.shell/);
+  assert.match(layoutSource, /adminCopy\.shell/);
 });

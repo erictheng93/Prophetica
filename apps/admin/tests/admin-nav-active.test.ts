@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { isStandaloneAdminChromePath } from "../lib/admin-chrome.js";
 import { findActiveNavChildKey } from "../lib/admin-nav-active.js";
 
 const affiliateChildren = [
@@ -48,4 +49,17 @@ test("member child navigation picks the most specific active route", () => {
     findActiveNavChildKey("/members/kyc-review/abc", memberChildren),
     "member-kyc-review",
   );
+});
+
+test("admin chrome stays mounted for member-management child routes", () => {
+  assert.equal(isStandaloneAdminChromePath("/members"), false);
+  assert.equal(isStandaloneAdminChromePath("/members/kyc-review"), false);
+});
+
+test("standalone admin routes keep their dedicated or nested-layout shells", () => {
+  assert.equal(isStandaloneAdminChromePath("/login"), true);
+  assert.equal(isStandaloneAdminChromePath("/offline"), true);
+  assert.equal(isStandaloneAdminChromePath("/403"), true);
+  assert.equal(isStandaloneAdminChromePath("/me/affiliate"), true);
+  assert.equal(isStandaloneAdminChromePath("/me/affiliate/payouts"), true);
 });

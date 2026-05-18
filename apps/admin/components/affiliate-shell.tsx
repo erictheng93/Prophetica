@@ -7,17 +7,16 @@ import { AdminNavDrawer } from "./admin-nav-drawer";
 interface AffiliateShellProps {
   children: ReactNode;
   affiliateId: string;
-  active: "home" | "points" | "payouts" | "sub-tree";
 }
 
-const subNav: { key: AffiliateShellProps["active"]; href: string; label: string }[] = [
+const subNav = [
   { key: "home", href: "/me/affiliate", label: "概覽" },
   { key: "points", href: "/me/affiliate/points", label: "會員點數" },
   { key: "payouts", href: "/me/affiliate/payouts", label: "撥款進度" },
   { key: "sub-tree", href: "/me/affiliate/sub-tree", label: "推薦鏈" },
-];
+] as const;
 
-export function AffiliateShell({ children, affiliateId, active }: AffiliateShellProps) {
+export function AffiliateShell({ children, affiliateId }: AffiliateShellProps) {
   return (
     <main className="min-h-screen bg-proph-canvas text-proph-ink">
       <header className="border-b border-proph-hairline bg-proph-surface-black text-proph-on-dark">
@@ -54,7 +53,6 @@ export function AffiliateShell({ children, affiliateId, active }: AffiliateShell
         </div>
       </header>
       <div className="mx-auto max-w-proph px-5 py-8 md:px-10 md:py-12">{children}</div>
-      <p hidden data-active-section={active} />
       <noscript>
         <Link href="/login">登入</Link>
       </noscript>
