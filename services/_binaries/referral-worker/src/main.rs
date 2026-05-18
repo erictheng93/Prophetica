@@ -8,7 +8,10 @@ use referral_service::{
     AntiAbuseFlags, DueQualificationReferral, HttpReferralLedgerPoster, PostgresAffiliateStore,
     QualificationEvent, QualificationInputProvider, ReferralDailyWorker, ReferralStoreError,
 };
-use sdk::observability;
+use sdk::{
+    observability,
+    postgres_migrations::{REFERRAL_SERVICE_MIGRATION_TABLE, run_postgres_migrations},
+};
 use sqlx::postgres::PgPoolOptions;
 
 const SERVICE_NAME: &str = "referral-worker";
@@ -39,9 +42,12 @@ async fn run_trade_accrual() -> anyhow::Result<()> {
         .max_connections(5)
         .connect(&referral_database_url)
         .await?;
-    sqlx::migrate!("../../referral-service/migrations")
-        .run(&referral_pool)
-        .await?;
+    run_postgres_migrations(
+        sqlx::migrate!("../../referral-service/migrations"),
+        &referral_pool,
+        REFERRAL_SERVICE_MIGRATION_TABLE,
+    )
+    .await?;
     let ledger_pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&ledger_database_url)
@@ -76,9 +82,12 @@ async fn run_daily_qualification() -> anyhow::Result<()> {
         .max_connections(5)
         .connect(&database_url)
         .await?;
-    sqlx::migrate!("../../referral-service/migrations")
-        .run(&pool)
-        .await?;
+    run_postgres_migrations(
+        sqlx::migrate!("../../referral-service/migrations"),
+        &pool,
+        REFERRAL_SERVICE_MIGRATION_TABLE,
+    )
+    .await?;
     let store = PostgresAffiliateStore::new(pool);
     let ledger = HttpReferralLedgerPoster::new(&ledger_url)
         .map_err(|error| anyhow::anyhow!("invalid WALLET_LEDGER_BASE_URL: {error}"))?;
@@ -223,9 +232,12 @@ async fn run_daily_payout() -> anyhow::Result<()> {
         .max_connections(5)
         .connect(&database_url)
         .await?;
-    sqlx::migrate!("../../referral-service/migrations")
-        .run(&pool)
-        .await?;
+    run_postgres_migrations(
+        sqlx::migrate!("../../referral-service/migrations"),
+        &pool,
+        REFERRAL_SERVICE_MIGRATION_TABLE,
+    )
+    .await?;
     let store = PostgresAffiliateStore::new(pool);
     let ledger = HttpReferralLedgerPoster::new(&ledger_url)
         .map_err(|error| anyhow::anyhow!("invalid WALLET_LEDGER_BASE_URL: {error}"))?;
