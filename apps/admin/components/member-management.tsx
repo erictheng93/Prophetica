@@ -95,7 +95,7 @@ export function MemberManagement({
   viewerAffiliateId,
   viewerRole,
 }: MemberManagementProps) {
-  const [lookupUserId, setLookupUserId] = useState(initialQuery ?? "MEM-001");
+  const [lookupUserId, setLookupUserId] = useState(initialQuery ?? "");
   const [members, setMembers] = useState<MemberManagementSummary[]>([]);
   const [memberListError, setMemberListError] = useState<string | null>(null);
   const [memberListLoading, setMemberListLoading] = useState(false);
