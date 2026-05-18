@@ -95,9 +95,11 @@ export function AdminNavDrawer({
       return;
     }
 
+    const activeChildKey = findActiveNavChildKey(pathname, link.children);
     setExpandedSections((previous) => ({
       ...previous,
-      [link.key]: !isSectionOpen(link),
+      [link.key]:
+        activeChildKey !== undefined ? true : !(previous[link.key] ?? false),
     }));
   }
 
