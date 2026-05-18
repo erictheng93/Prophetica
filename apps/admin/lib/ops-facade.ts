@@ -140,6 +140,11 @@ const routes: OpsRoute[] = [
         label: "KYC 審核",
       },
       {
+        key: "member-points-exceptions",
+        href: "/points",
+        label: "帳戶點數例外",
+      },
+      {
         key: "member-action-approvals",
         href: "/approvals",
         label: "工單審批",
@@ -156,10 +161,14 @@ const routes: OpsRoute[] = [
     owner: "Wallet Ops",
     openItems: 0,
     tone: "warning",
+    // Surfaced as a「會員管理」sub-nav child (see /members children),
+    // so it is hidden from the top-level nav. The /points route and its
+    // SPEC-017 §6.3.1 RBAC are unchanged. See SPEC-017 §6.3.3.
+    navHidden: true,
   },
   {
     href: "/affiliate",
-    label: "代理管理區",
+    label: "代理管理",
     domain: "affiliate-review",
     summary: "管理代理註冊、管控、佣金與撥款審查。",
     scope:

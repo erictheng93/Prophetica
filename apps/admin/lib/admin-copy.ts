@@ -7,6 +7,7 @@ export const adminCopy = {
     defaultEyebrow: "內部操作",
     navAria: "管理後台導覽",
     overview: "總覽",
+    dataAndReports: "數據與報表",
     dashboard: "決策支援",
     analytics: "分析報表",
     faq: "FAQ 管理",

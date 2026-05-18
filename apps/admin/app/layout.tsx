@@ -46,7 +46,13 @@ function buildAdminNavLinks(role: Role) {
   const visibleRoutes = filterRoutes(routes, role).filter(
     (route) => !route.navHidden,
   );
-  const baseLinks: { key: string; href: string; label: string }[] = [];
+  type NavChild = {
+    key: string;
+    href: string;
+    label: string;
+    badge?: string;
+  };
+  const baseLinks: (NavChild & { children?: NavChild[] })[] = [];
 
   if (canAccess("/", role)) {
     baseLinks.push({
@@ -55,18 +61,36 @@ function buildAdminNavLinks(role: Role) {
       label: adminCopy.shell.overview,
     });
   }
+  // Decision support and analytics share the analytics-reporting backend,
+  // so they collapse into one expandable「數據與報表」nav group rather than
+  // two flat entries. See SPEC-017 §6.3.3. Both children carry the
+  //「開發中」badge — same treatment as /approvals — until the feature is
+  // signed off; drop the `badge` field here to remove it.
+  const dataReportChildren: NavChild[] = [];
   if (canAccess("/dashboard", role)) {
-    baseLinks.push({
+    dataReportChildren.push({
       key: "dashboard",
       href: "/dashboard",
       label: adminCopy.shell.dashboard,
+      badge: adminCopy.shell.inDevelopmentBadge,
     });
   }
   if (canAccess("/analytics", role)) {
-    baseLinks.push({
+    dataReportChildren.push({
       key: "analytics",
       href: "/analytics",
       label: adminCopy.shell.analytics,
+      badge: adminCopy.shell.inDevelopmentBadge,
+    });
+  }
+  const [firstDataReportChild] = dataReportChildren;
+  if (firstDataReportChild) {
+    baseLinks.push({
+      key: "data-and-reports",
+      // Parent is a non-navigable toggle; href only anchors active state.
+      href: firstDataReportChild.href,
+      label: adminCopy.shell.dataAndReports,
+      children: dataReportChildren,
     });
   }
   if (canAccess("/security/login-events", role)) {
@@ -75,9 +99,6 @@ function buildAdminNavLinks(role: Role) {
       href: "/security/login-events",
       label: "登入事件",
     });
-  }
-  if (canAccess("/faq", role)) {
-    baseLinks.push({ key: "faq", href: "/faq", label: adminCopy.shell.faq });
   }
   if (canAccess("/me/affiliate", role)) {
     baseLinks.push({
@@ -90,6 +111,14 @@ function buildAdminNavLinks(role: Role) {
   const inDevelopmentHrefs = new Set(
     routes.filter((route) => route.inDevelopment).map((route) => route.href),
   );
+
+  // FAQ 管理 is content management, not an operational domain, so it sits
+  // below the operational sections (會員管理 / 代理管理 / …) in the nav.
+  // See SPEC-017 §6.3.3.
+  const tailLinks: typeof baseLinks = [];
+  if (canAccess("/faq", role)) {
+    tailLinks.push({ key: "faq", href: "/faq", label: adminCopy.shell.faq });
+  }
 
   return [
     ...baseLinks,
@@ -108,6 +137,7 @@ function buildAdminNavLinks(role: Role) {
         ...(filteredChildren?.length ? { children: filteredChildren } : {}),
       };
     }),
+    ...tailLinks,
   ];
 }
 

@@ -255,7 +255,7 @@ test("admin affiliate operations are grouped under the management area", () => {
   const sidebarSource = readAdminFile("components/admin-nav.tsx");
   const drawerSource = readAdminFile("components/admin-nav-drawer.tsx");
 
-  assert.match(facadeSource, /代理管理區/);
+  assert.match(facadeSource, /label: "代理管理"/);
   assert.match(facadeSource, /代理清單/);
   assert.match(facadeSource, /佣金管理/);
   assert.match(facadeSource, /撥款管理/);
