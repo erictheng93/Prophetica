@@ -4,7 +4,8 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 
-const readSportsFile = (path) => readFileSync(join(process.cwd(), path), "utf8");
+const readSportsFile = (path) =>
+  readFileSync(join(process.cwd(), path), "utf8");
 
 test("sports landing uses the Black Gold cinematic direction", () => {
   const source = readSportsFile("app/page.tsx");
@@ -80,7 +81,10 @@ test("sports landing has parseable message catalogs for every supported locale",
   for (const locale of uniqueLocales) {
     const messages = JSON.parse(readSportsFile(`messages/${locale}.json`));
     assert.ok(messages.common, `${locale} missing common namespace`);
-    assert.ok(messages.landingSports, `${locale} missing landingSports namespace`);
+    assert.ok(
+      messages.landingSports,
+      `${locale} missing landingSports namespace`,
+    );
     assert.ok(messages.landingSports.hero, `${locale} missing hero copy`);
     assert.ok(messages.common.theme, `${locale} missing theme labels`);
   }
@@ -89,33 +93,7 @@ test("sports landing has parseable message catalogs for every supported locale",
 test("sports landing locale catalogs fully translate the landing page", () => {
   const defaultMessages = JSON.parse(readSportsFile("messages/zh-Hant.json"));
   const defaultLandingPaths = leafPaths(defaultMessages.landingSports);
-  const requiredCommonPaths = [
-    "brand",
-    "metadata.title",
-    "metadata.description",
-    "nav.markets",
-    "nav.howItWorks",
-    "nav.responsibleGaming",
-    "auth.account.ariaLabel",
-    "auth.signIn",
-    "auth.signUp",
-    "localeSwitcher.label",
-    "theme.light",
-    "theme.dark",
-    "theme.switchToLight",
-    "theme.switchToDark",
-    "footer.play.heading",
-    "footer.play.markets",
-    "footer.play.howItWorks",
-    "footer.compliance.heading",
-    "footer.compliance.responsibleGaming",
-    "footer.compliance.terms",
-    "footer.compliance.privacy",
-    "footer.legal.body",
-    "noScript.headline",
-    "noScript.body",
-    "noScript.cta",
-  ];
+  const defaultCommonPaths = leafPaths(defaultMessages.common);
 
   for (const locale of ["zh-Hans", "en", "id", "vi", "tl"]) {
     const messages = JSON.parse(readSportsFile(`messages/${locale}.json`));
@@ -127,16 +105,69 @@ test("sports landing locale catalogs fully translate the landing page", () => {
       );
     }
 
-    for (const path of requiredCommonPaths) {
-      assert.ok(hasPath(messages.common, path), `${locale} missing common.${path}`);
+    for (const path of defaultCommonPaths) {
+      assert.ok(
+        hasPath(messages.common, path),
+        `${locale} missing common.${path}`,
+      );
     }
   }
+});
+
+test("sports landing locale catalogs preserve value shapes for every locale", () => {
+  const defaultMessages = JSON.parse(readSportsFile("messages/zh-Hant.json"));
+  const defaultShapePaths = leafPaths(defaultMessages);
+
+  for (const locale of ["zh-Hans", "en", "id", "vi", "tl"]) {
+    const messages = JSON.parse(readSportsFile(`messages/${locale}.json`));
+
+    for (const path of defaultShapePaths) {
+      const defaultValue = getPath(defaultMessages, path);
+      const localeValue = getPath(messages, path);
+
+      assert.equal(
+        Array.isArray(localeValue),
+        Array.isArray(defaultValue),
+        `${locale} ${path} must ${Array.isArray(defaultValue) ? "" : "not "}be an array`,
+      );
+
+      if (Array.isArray(defaultValue)) {
+        assert.equal(
+          localeValue.length,
+          defaultValue.length,
+          `${locale} ${path} must have ${defaultValue.length} entries`,
+        );
+      } else {
+        assert.equal(
+          typeof localeValue,
+          "string",
+          `${locale} ${path} must be text`,
+        );
+        assert.ok(localeValue.trim(), `${locale} ${path} must not be blank`);
+      }
+    }
+  }
+});
+
+test("sports landing locale aliases cover browser language variants", () => {
+  const localesSource = readSportsFile("i18n/locales.ts");
+
+  assert.match(localesSource, /"zh-tw":\s*"zh-Hant"/);
+  assert.match(localesSource, /"zh-cn":\s*"zh-Hans"/);
+  assert.match(localesSource, /"id-id":\s*"id"/);
+  assert.match(localesSource, /"vi-vn":\s*"vi"/);
+  assert.match(localesSource, /fil:\s*"tl"/);
+  assert.match(localesSource, /"fil-ph":\s*"tl"/);
 });
 
 test("sports landing catalogs do not contain mojibake replacement text", () => {
   for (const locale of ["zh-Hant", "zh-Hans", "en", "id", "vi", "tl"]) {
     const source = readSportsFile(`messages/${locale}.json`);
-    assert.doesNotMatch(source, /[�廕廙羸繭穫璽籀]/u, `${locale} has mojibake`);
+    assert.doesNotMatch(
+      source,
+      /[�廕廙羸繭穫璽籀]/u,
+      `${locale} has mojibake`,
+    );
   }
 });
 
@@ -159,4 +190,12 @@ function hasPath(value, path) {
     current = current[segment];
   }
   return true;
+}
+
+function getPath(value, path) {
+  let current = value;
+  for (const segment of path.split(".")) {
+    current = current[segment];
+  }
+  return current;
 }
