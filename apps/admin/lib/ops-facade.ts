@@ -37,6 +37,7 @@ export interface OpsRoute {
   openItems: number;
   tone: OpsTone;
   children?: OpsRouteChild[];
+  navHidden?: boolean;
 }
 
 export interface OpsRouteChild {
@@ -132,6 +133,11 @@ const routes: OpsRoute[] = [
         href: "/members/kyc-review",
         label: "KYC 審核",
       },
+      {
+        key: "member-action-approvals",
+        href: "/approvals",
+        label: "工單審批",
+      },
     ],
   },
   {
@@ -193,13 +199,15 @@ const routes: OpsRoute[] = [
   },
   {
     href: "/approvals",
-    label: "人工審批",
+    label: "工單審批",
     domain: "manual-approvals",
-    summary: "集中檢視需要人工核准的跨領域工作。",
-    scope: "管理例外流程、升級案件與待核准工作；實際處分由各系統端點執行。",
-    owner: "Ops Control",
+    summary: "審批待二次核准的會員操作工單。",
+    scope:
+      "Admin 與 Manager 可在此核准或駁回會員工單；實際會員處分仍由會員管理 BFF 與下游系統端點執行。",
+    owner: "Member Ops",
     openItems: 0,
     tone: "warning",
+    navHidden: true,
   },
 ];
 
@@ -234,10 +242,10 @@ const mockQueue: OpsQueueItem[] = [
   {
     id: "OPS-1018",
     domain: "manual-approvals",
-    title: "跨領域處分等待第二核准",
-    detail: "涉及帳戶限制與補償提案，需合規核准後才可進入處理。",
+    title: "會員升級工單等待第二核准",
+    detail: "涉及會員帳戶限制或升級處理，需二次核准後才可進入處理。",
     status: "blocked",
-    assignee: "Ops Control",
+    assignee: "Member Ops",
     age: "5h",
   },
 ];
@@ -249,7 +257,7 @@ const crossDomainStreamTemplates: Omit<
   {
     id: "stream-kyc-risk-member-review",
     correlationId: "corr-ops-1042",
-    title: "KYC 風險事件同步會員覆核與人工審批",
+    title: "KYC 風險事件同步會員覆核與工單審批",
     sourceDomain: "kyc-risk-events",
     targetDomains: ["member-management", "manual-approvals"],
     emittedAt: "2026-05-16T09:12:00+08:00",
@@ -279,7 +287,7 @@ const crossDomainStreamTemplates: Omit<
   {
     id: "stream-affiliate-review-payout-control",
     correlationId: "corr-ops-1029",
-    title: "代理審查同步人工審批與補償控制",
+    title: "代理審查同步工單審批與補償控制",
     sourceDomain: "affiliate-review",
     targetDomains: ["manual-approvals", "compensation-reviews"],
     emittedAt: "2026-05-16T09:16:00+08:00",

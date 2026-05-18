@@ -12,6 +12,7 @@ const affiliateChildren = [
 const memberChildren = [
   { key: "member-list", href: "/members" },
   { key: "member-kyc-review", href: "/members/kyc-review" },
+  { key: "member-action-approvals", href: "/approvals" },
 ] as const;
 
 test("affiliate child navigation picks the most specific active route", () => {
@@ -48,6 +49,10 @@ test("member child navigation picks the most specific active route", () => {
   assert.equal(
     findActiveNavChildKey("/members/kyc-review/abc", memberChildren),
     "member-kyc-review",
+  );
+  assert.equal(
+    findActiveNavChildKey("/approvals", memberChildren),
+    "member-action-approvals",
   );
 });
 

@@ -52,7 +52,7 @@ const actionLabels: Record<MemberActionType, string> = {
   add_note: "新增處理註記",
   request_kyc_review: "提交 KYC 覆核",
   restrict_withdrawals: "提交提款限制",
-  escalate_case: "升級人工審批",
+  escalate_case: "升級工單審批",
 };
 
 interface MemberFormState {
@@ -946,7 +946,7 @@ function ActionQueuePanel(props: {
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
-            會員工單審批
+            工單審批
           </h2>
           <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
             待二次審批的會員操作在此核准或駁回；核准後會記錄對應的執行效果。

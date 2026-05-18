@@ -124,7 +124,9 @@ export function AdminSidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [expandedSections, setExpandedSections] = useState<
+    Record<string, boolean>
+  >({});
 
   async function handleSignOut() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -167,12 +169,15 @@ export function AdminSidebar({
       <nav aria-label={ariaLabel} className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="flex flex-col gap-1">
           {links.map((link) => {
-            const isExactActive = pathname === link.href;
-            const isActive = isNavPathActive(pathname, link.href);
             const activeChildKey = link.children
               ? findActiveNavChildKey(pathname, link.children)
               : undefined;
-            const sectionOpen = isSectionOpen(link);
+            const isExactActive = pathname === link.href;
+            const isActive =
+              isNavPathActive(pathname, link.href) ||
+              activeChildKey !== undefined;
+            const sectionOpen =
+              isSectionOpen(link) || activeChildKey !== undefined;
             return (
               <li key={link.key}>
                 {link.children?.length ? (
@@ -197,7 +202,7 @@ export function AdminSidebar({
                           sectionOpen && "rotate-90",
                         )}
                       >
-                        {'>'}
+                        {">"}
                       </span>
                     </button>
                     {sectionOpen && (
@@ -213,7 +218,9 @@ export function AdminSidebar({
                             <li key={child.key}>
                               <Link
                                 href={child.href}
-                                aria-current={isChildActive ? "page" : undefined}
+                                aria-current={
+                                  isChildActive ? "page" : undefined
+                                }
                                 className={cn(
                                   "flex min-h-9 items-center rounded-proph-sm px-3 py-2 text-[13px] leading-[1.31] tracking-[-0.12px] transition-colors",
                                   isChildActive
@@ -233,7 +240,9 @@ export function AdminSidebar({
                   <Link
                     href={link.href}
                     aria-current={
-                      isExactActive && !link.children?.length ? "page" : undefined
+                      isExactActive && !link.children?.length
+                        ? "page"
+                        : undefined
                     }
                     className={cn(
                       "flex min-h-11 items-center rounded-proph-sm px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors",

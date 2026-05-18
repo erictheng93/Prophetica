@@ -50,7 +50,7 @@ function CrossDomainStream({ events, routes }: CrossDomainStreamProps) {
           跨域串流確認
         </h3>
         <p className="mt-1 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-          已串接會員、點數、代理、KYC、補償與人工審批事件，並保留回傳確認收據。
+          已串接會員、點數、代理、KYC、補償與工單審批事件，並保留回傳確認收據。
         </p>
       </div>
       <div className="overflow-hidden rounded-proph-lg border border-proph-hairline">
@@ -118,7 +118,7 @@ export function ImplementationProgress({
   const completedItems = [
     "完成 API 覆蓋：/api/members、/api/members/pending-cases、/api/members/actions 已串接。",
     "完成 KYC 流程拆分：會員清單 `/members` 與 KYC 待處理 `/members/kyc-review` 已獨立。",
-    "完成操作入口：會員總覽、KYC 審核、代理管理與人工審批已在總覽導覽中集中呈現。",
+    "完成操作入口：會員總覽、KYC 審核、代理管理與工單審批已在總覽導覽中集中呈現。",
     "完成權限閉環：RBAC + 稽核紀錄已接上 admin/manager 可執行動作、affiliate 受限於自身代理範圍。",
     "完成事件快照真實資料源：Ops Queue 已改為串接會員 pending cases/actions 與代理審批資料。",
     "完成通知鏈路：待處理與審批提醒已接上 notification-service API 與 Postgres outbox（Email + 站內訊息）。",

@@ -107,7 +107,7 @@ test("admin can submit and approve a member restriction action", async ({
       page.getByRole("heading", { name: "會員待處理 API" }),
     ).toBeHidden();
     await expect(
-      page.getByRole("heading", { name: "會員工單審批" }),
+      page.getByRole("heading", { name: "工單審批", exact: true }),
     ).toBeHidden();
     await expect(
       page.getByRole("heading", { name: "提交處理動作" }),
@@ -130,7 +130,7 @@ test("admin can submit and approve a member restriction action", async ({
 
     const approvalPanel = page
       .locator("section")
-      .filter({ has: page.getByRole("heading", { name: "會員工單審批" }) });
+      .filter({ has: page.getByRole("heading", { name: "工單審批", exact: true }) });
     await approvalPanel
       .getByPlaceholder("審批原因")
       .fill("Playwright second approval");

@@ -43,7 +43,9 @@ export function AdminNavDrawer({
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+  const [expandedSections, setExpandedSections] = useState<
+    Record<string, boolean>
+  >({});
   const panelId = useId();
 
   useEffect(() => {
@@ -163,12 +165,15 @@ export function AdminNavDrawer({
           >
             <ul className="flex flex-col gap-1">
               {links.map((link) => {
-                const isExactActive = pathname === link.href;
-                const isActive = isNavPathActive(pathname, link.href);
                 const activeChildKey = link.children
                   ? findActiveNavChildKey(pathname, link.children)
                   : undefined;
-                const sectionOpen = isSectionOpen(link);
+                const isExactActive = pathname === link.href;
+                const isActive =
+                  isNavPathActive(pathname, link.href) ||
+                  activeChildKey !== undefined;
+                const sectionOpen =
+                  isSectionOpen(link) || activeChildKey !== undefined;
                 return (
                   <li key={link.key}>
                     {link.children?.length ? (
@@ -193,7 +198,7 @@ export function AdminNavDrawer({
                               sectionOpen && "rotate-90",
                             )}
                           >
-                            {'>'}
+                            {">"}
                           </span>
                         </button>
                         {sectionOpen && (
@@ -203,7 +208,8 @@ export function AdminNavDrawer({
                             className="mt-1 flex flex-col gap-1 border-l border-proph-hairline pl-3"
                           >
                             {link.children.map((child) => {
-                              const isChildActive = activeChildKey === child.key;
+                              const isChildActive =
+                                activeChildKey === child.key;
 
                               return (
                                 <li key={child.key}>

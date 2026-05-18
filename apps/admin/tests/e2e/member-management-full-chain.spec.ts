@@ -86,7 +86,7 @@ test("admin UI completes a real member KYC action through gateway services and P
 
     const approvalPanel = page
       .locator("section")
-      .filter({ has: page.getByRole("heading", { name: "會員工單審批" }) });
+      .filter({ has: page.getByRole("heading", { name: "工單審批", exact: true }) });
     await approvalPanel
       .getByPlaceholder("審批原因")
       .fill("Full chain approval");

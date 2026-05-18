@@ -263,10 +263,14 @@ test("admin affiliate operations are grouped under the management area", () => {
   assert.match(facadeSource, /\/affiliate\/payouts/);
   assert.match(facadeSource, /KYC 審核/);
   assert.match(facadeSource, /\/members\/kyc-review/);
+  assert.match(facadeSource, /工單審批/);
+  assert.match(facadeSource, /\/approvals/);
+  assert.match(facadeSource, /navHidden: true/);
   assert.match(
     layoutSource,
     /const filteredChildren = route\.children\?\.filter/,
   );
+  assert.match(layoutSource, /route\.navHidden/);
   assert.match(layoutSource, /\.\.\.\(filteredChildren/);
   assert.match(sidebarSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
   assert.match(drawerSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);

@@ -43,7 +43,9 @@ const roleLabel: Record<Role, string> = {
 
 function buildAdminNavLinks(role: Role) {
   const routes = getAdminOperationsRoutes();
-  const visibleRoutes = filterRoutes(routes, role);
+  const visibleRoutes = filterRoutes(routes, role).filter(
+    (route) => !route.navHidden,
+  );
   const baseLinks: { key: string; href: string; label: string }[] = [];
 
   if (canAccess("/", role)) {
@@ -101,7 +103,11 @@ function buildAdminNavLinks(role: Role) {
   ];
 }
 
-export default async function AdminLayout({ children }: { children: ReactNode }) {
+export default async function AdminLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const viewer = await getViewer();
   const links = viewer ? buildAdminNavLinks(viewer.role) : [];
 
