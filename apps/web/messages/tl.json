@@ -594,19 +594,10 @@
   "auth": {
     "signIn": {
       "signin": {
-        "mfa": {
-          "legend": "Two-step verification kung kailangan",
-          "hint": "Kung kailangan ng account mo ng two-step verification, ilagay ang 6-digit code o gumamit ng one-time recovery code.",
-          "codeLabel": "Verification code",
-          "codePlaceholder": "123456",
-          "recoveryLabel": "Recovery code",
-          "recoveryPlaceholder": "Halimbawa recover-once-1"
-        },
         "status": {
           "missing": "Ilagay ang Email o mobile number at password.",
           "invalid": "Mali ang password. Ilagay ulit ito, at tiyaking tama ang Email o mobile number.",
-          "unavailable": "Pansamantalang hindi available ang sign-in. Subukan muli mamaya.",
-          "mfaRequired": "Kailangan ng account na ito ng two-step verification. Tapusin muna ang verification."
+          "unavailable": "Pansamantalang hindi available ang sign-in. Subukan muli mamaya."
         }
       },
       "signup": {

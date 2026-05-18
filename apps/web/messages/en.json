@@ -594,19 +594,10 @@
   "auth": {
     "signIn": {
       "signin": {
-        "mfa": {
-          "legend": "Two-step verification if required",
-          "hint": "If your account requires two-step verification, enter a 6-digit code or use a one-time recovery code.",
-          "codeLabel": "Verification code",
-          "codePlaceholder": "123456",
-          "recoveryLabel": "Recovery code",
-          "recoveryPlaceholder": "Example recover-once-1"
-        },
         "status": {
           "missing": "Enter your Email or mobile number and password.",
           "invalid": "The password is incorrect. Re-enter it, and confirm the Email or mobile number is correct.",
-          "unavailable": "Sign-in is temporarily unavailable. Try again later.",
-          "mfaRequired": "This account requires two-step verification. Complete verification first."
+          "unavailable": "Sign-in is temporarily unavailable. Try again later."
         }
       },
       "signup": {

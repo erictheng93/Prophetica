@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { ImplementationProgress } from "@/components/implementation-progress";
-import { PasskeySecurityPanel } from "@/components/passkey-security-panel";
 import { QueueSummary } from "@/components/queue-summary";
 import { RouteEntryCard } from "@/components/route-entry-card";
 import { WorkQueue } from "@/components/work-queue";
@@ -49,8 +48,6 @@ export default async function AdminOperationsPage() {
     >
       <div className="space-y-8">
         <QueueSummary summaries={snapshot.summaries} />
-
-        <PasskeySecurityPanel />
 
         <ImplementationProgress
           crossDomainStream={snapshot.crossDomainStream}

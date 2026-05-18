@@ -79,47 +79,6 @@ test("authenticateWithPassword posts canonical identifier to the auth service", 
   });
 });
 
-test("authenticateWithPassword forwards optional MFA step-up evidence", async () => {
-  const calls: Array<{ body: unknown }> = [];
-
-  const result = await authenticateWithPassword(
-    {
-      identifier: "member@example.com",
-      password: "correct horse battery staple",
-      remember: false,
-      mfaCode: " 123456 ",
-      mfaRecoveryCode: "",
-    },
-    {
-      baseUrl: "http://user-service.local",
-      fetcher: async (_input, init) => {
-        calls.push({
-          body: JSON.parse(String(init?.body)),
-        });
-
-        return Response.json({
-          user_id: "user_42",
-          session_token: "session-token-42",
-        });
-      },
-    },
-  );
-
-  assert.deepEqual(calls, [
-    {
-      body: {
-        identifier: "member@example.com",
-        identifier_kind: "email",
-        password: "correct horse battery staple",
-        remember: false,
-        login_surface: "user_web",
-        mfa_code: "123456",
-      },
-    },
-  ]);
-  assert.equal(result.status, "authenticated");
-});
-
 test("authenticateWithPassword maps invalid and unavailable responses", async () => {
   const invalid = await authenticateWithPassword(
     { identifier: "member@example.com", password: "wrong", remember: false },

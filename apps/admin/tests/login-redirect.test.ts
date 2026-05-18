@@ -40,16 +40,11 @@ test("login form marks affiliate portal attempts from intended route", () => {
   assert.match(source, /login_surface: loginSurface/);
 });
 
-test("login form omits temporary two-step verification fields", () => {
+test("login form sends only password login credentials", () => {
   const source = readAdminFile("components/login-form.tsx");
-  const route = readAdminFile("app/api/auth/login/route.ts");
 
-  assert.match(source, /JSON\.stringify\(\{ email, password, login_surface: loginSurface \}\)/);
-  assert.doesNotMatch(source, /mfaCode/);
-  assert.doesNotMatch(source, /mfaRecoveryCode/);
-  assert.doesNotMatch(source, /one-time-code/);
-  assert.doesNotMatch(route, /mfaCode/);
-  assert.doesNotMatch(route, /mfaRecoveryCode/);
-  assert.doesNotMatch(route, /mfa_code/);
-  assert.doesNotMatch(route, /mfa_recovery_code/);
+  assert.match(
+    source,
+    /JSON\.stringify\(\{ email, password, login_surface: loginSurface \}\)/,
+  );
 });

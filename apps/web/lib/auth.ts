@@ -15,8 +15,6 @@ export interface AuthenticateWithPasswordInput {
   identifier: string;
   password: string;
   remember: boolean;
-  mfaCode?: string;
-  mfaRecoveryCode?: string;
 }
 
 export type PasswordAuthResult =
@@ -25,11 +23,6 @@ export type PasswordAuthResult =
       userId: string;
       sessionToken: string;
       expiresAt?: string;
-    }
-  | {
-      status: "mfa_required";
-      userId: string;
-      challengeId: string;
     }
   | { status: "invalid_identifier" }
   | { status: "invalid_credentials" }
@@ -62,8 +55,6 @@ interface AuthServicePayload {
   session_token?: unknown;
   token?: unknown;
   expires_at?: unknown;
-  mfa_required?: unknown;
-  challenge_id?: unknown;
 }
 
 export function normalizeLoginIdentifier(
@@ -129,8 +120,6 @@ export async function authenticateWithPassword(
         password: input.password,
         remember: input.remember,
         login_surface: "user_web",
-        mfa_code: nonEmptyString(input.mfaCode),
-        mfa_recovery_code: nonEmptyString(input.mfaRecoveryCode),
       }),
     });
 
@@ -154,7 +143,10 @@ export async function createSessionToken(
   const encodedPayload = base64UrlEncode(
     new TextEncoder().encode(JSON.stringify(payload)),
   );
-  const signature = await signSessionPayload(encodedPayload, sessionSecret(options.secret));
+  const signature = await signSessionPayload(
+    encodedPayload,
+    sessionSecret(options.secret),
+  );
 
   return `${encodedPayload}.${signature}`;
 }
@@ -191,16 +183,10 @@ export async function verifySessionToken(
   return payload.expiresAtEpochSeconds >= now ? payload : null;
 }
 
-function mapAuthServicePayload(payload: AuthServicePayload): PasswordAuthResult {
+function mapAuthServicePayload(
+  payload: AuthServicePayload,
+): PasswordAuthResult {
   const userId = typeof payload.user_id === "string" ? payload.user_id : "";
-
-  if (payload.mfa_required === true && userId) {
-    const challengeId =
-      typeof payload.challenge_id === "string" ? payload.challenge_id : "";
-    return challengeId
-      ? { status: "mfa_required", userId, challengeId }
-      : { status: "unavailable" };
-  }
 
   const sessionToken =
     typeof payload.session_token === "string"
@@ -216,7 +202,10 @@ function mapAuthServicePayload(payload: AuthServicePayload): PasswordAuthResult 
     : { status: "unavailable" };
 }
 
-async function signSessionPayload(payload: string, secret: string): Promise<string> {
+async function signSessionPayload(
+  payload: string,
+  secret: string,
+): Promise<string> {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -290,7 +279,10 @@ function base64UrlEncode(value: Uint8Array): string {
 }
 
 function base64UrlDecode(value: string): Uint8Array {
-  const padded = value.padEnd(value.length + ((4 - (value.length % 4)) % 4), "=");
+  const padded = value.padEnd(
+    value.length + ((4 - (value.length % 4)) % 4),
+    "=",
+  );
   const base64 = padded.replaceAll("-", "+").replaceAll("_", "/");
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -317,9 +309,4 @@ function constantTimeEqual(left: string, right: string): boolean {
 
 function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
-}
-
-function nonEmptyString(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
 }

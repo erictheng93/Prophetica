@@ -15,8 +15,6 @@ export interface SessionPayload {
   iat: number;
   exp: number;
   affiliateId?: string;
-  mfaAt?: number;
-  amr?: string[];
 }
 
 interface JwsHeader {
@@ -42,7 +40,9 @@ export function resolveSessionSecret(
   return DEV_SECRET;
 }
 
-export function resolveSessionJwks(env: Record<string, string | undefined> = process.env): SessionJwk[] {
+export function resolveSessionJwks(
+  env: Record<string, string | undefined> = process.env,
+): SessionJwk[] {
   const jwks = env.ADMIN_SESSION_JWKS?.trim();
   if (jwks) {
     const parsed = JSON.parse(jwks) as { keys?: SessionJwk[] };
@@ -58,11 +58,17 @@ function base64UrlEncode(bytes: Uint8Array): string {
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 function base64UrlDecode(input: string): Uint8Array {
-  const padded = input.replace(/-/g, "+").replace(/_/g, "/").padEnd(input.length + ((4 - (input.length % 4)) % 4), "=");
+  const padded = input
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(input.length + ((4 - (input.length % 4)) % 4), "=");
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) {
@@ -90,7 +96,10 @@ function constantTimeEquals(a: string, b: string): boolean {
   return diff === 0;
 }
 
-function parseSessionPayload(payload: unknown, nowSeconds: number): SessionPayload | null {
+function parseSessionPayload(
+  payload: unknown,
+  nowSeconds: number,
+): SessionPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const candidate = payload as Record<string, unknown>;
   if (
@@ -112,13 +121,6 @@ function parseSessionPayload(payload: unknown, nowSeconds: number): SessionPaylo
   if (typeof candidate.affiliateId === "string") {
     result.affiliateId = candidate.affiliateId;
   }
-  const mfaAt = candidate.mfaAt ?? candidate.mfa_at ?? candidate.mfa_at_epoch_seconds;
-  if (typeof mfaAt === "number") {
-    result.mfaAt = mfaAt;
-  }
-  if (Array.isArray(candidate.amr)) {
-    result.amr = candidate.amr.filter((method): method is string => typeof method === "string");
-  }
   return result;
 }
 
@@ -127,10 +129,18 @@ export async function signSession(
   secret: string,
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): Promise<string> {
-  const full: SessionPayload = { ...payload, iat: nowSeconds, exp: nowSeconds + SESSION_TTL_SECONDS };
+  const full: SessionPayload = {
+    ...payload,
+    iat: nowSeconds,
+    exp: nowSeconds + SESSION_TTL_SECONDS,
+  };
   const body = base64UrlEncode(new TextEncoder().encode(JSON.stringify(full)));
   const key = await importKey(secret);
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(body),
+  );
   return `${body}.${base64UrlEncode(new Uint8Array(sig))}`;
 }
 
@@ -144,7 +154,11 @@ export async function verifySession(
   const [body, sig] = parts;
 
   const key = await importKey(secret);
-  const expected = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  const expected = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(body),
+  );
   const expectedB64 = base64UrlEncode(new Uint8Array(expected));
   if (!constantTimeEquals(expectedB64, sig)) return null;
 
@@ -169,7 +183,9 @@ export async function verifyEd25519JwsSession(
   let header: JwsHeader;
   let payload: unknown;
   try {
-    header = JSON.parse(new TextDecoder().decode(base64UrlDecode(headerB64))) as JwsHeader;
+    header = JSON.parse(
+      new TextDecoder().decode(base64UrlDecode(headerB64)),
+    ) as JwsHeader;
     payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(payloadB64)));
   } catch {
     return null;
@@ -186,9 +202,13 @@ export async function verifyEd25519JwsSession(
   const signature = base64UrlDecode(sigB64);
   for (const jwk of candidateKeys) {
     try {
-      const key = await crypto.subtle.importKey("jwk", jwk, { name: "Ed25519" } as AlgorithmIdentifier, false, [
-        "verify",
-      ]);
+      const key = await crypto.subtle.importKey(
+        "jwk",
+        jwk,
+        { name: "Ed25519" } as AlgorithmIdentifier,
+        false,
+        ["verify"],
+      );
       const valid = await crypto.subtle.verify(
         { name: "Ed25519" } as AlgorithmIdentifier,
         key,

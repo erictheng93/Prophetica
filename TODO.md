@@ -129,58 +129,11 @@ inside `apps/admin/`. None of the items below can ride to production as-is.
 - Migrate affiliate passwords to Argon2id PHC hashes. Runtime verification with
   minimum `m >= 19456, t >= 2, p >= 1` is implemented in `user-service`;
   remaining work is credential migration / secret management.
-- Add hardware MFA across all roles per SPEC-010 §9.3.3 (TOTP + WebAuthn).
-  `user-service` local auth can now fail closed for admin / manager /
-  affiliate accounts unless `USER_SERVICE_REQUIRE_HARDWARE_MFA=true` accounts
-  include hardware MFA evidence (`webauthn` / passkey / FIDO2 security-key
-  method plus `mfa_at_epoch_seconds`), and Ed25519 session JWTs carry `mfa_at`
-  plus `amr=["pwd","hwk"]`. Admin middleware now enforces 30-minute hardware
-  MFA step-up for mutating high-sensitivity paths using those claims.
-  `user-service` local auth now also supports TOTP step-up for accounts with
-  `totp_secret_base32`: login fails with `ERROR_CODE_MFA_REQUIRED` until a
-  valid TOTP code or configured recovery code is supplied, then signs a fresh
-  `mfa_at` claim with `amr=["pwd","otp"]` or recovery evidence. Recovery codes
-  are consumed once per `user-service` process so repeated use is rejected, and
-  can be persisted across process restarts through
-  `USER_SERVICE_RECOVERY_CODE_CONSUMED_PATH`.
-  Durable WebAuthn credential and challenge-state tables are defined in
-  `services/user-service/migrations/202605160003_create_webauthn_tables.sql`.
-  `services/user-service/src/webauthn_store.rs` defines the store trait and
-  in-memory lifecycle implementation for one-time challenge consumption and
-  credential revocation. `services/user-service/src/webauthn_runtime.rs`
-  integrates the official `webauthn-rs` verifier crate and can generate
-  passkey registration options plus serializable registration state from
-  relying-party configuration, then persist that state into `WebauthnStore`
-  with a short challenge TTL. `POST /v1/auth/webauthn/register/start` is
-  implemented for authenticated sessions and returns a challenge id plus browser
-  `publicKey` creation options. Runtime support for
-  `finish_passkey_registration` is wired through `webauthn-rs` payload/state
-  types. `POST /v1/auth/webauthn/register/finish` now consumes the stored
-  registration challenge, verifies submitted browser credential payloads through
-  `webauthn-rs`, and stores the resulting credential record; invalid browser
-  payloads fail closed through the verifier path.
-  `POST /v1/auth/webauthn/assert/start` and
-  `POST /v1/auth/webauthn/assert/finish` now persist assertion challenge state,
-  verify browser assertion payloads through `webauthn-rs`, update credential
-  metadata, and issue a fresh hardware-MFA session on successful assertion;
-  invalid browser payloads fail closed through the verifier path.
-  `AuthConfig::from_env()` now enables WebAuthn when
-  `USER_SERVICE_WEBAUTHN_RP_ID` and `USER_SERVICE_WEBAUTHN_RP_ORIGIN` are
-  configured, and core-api Postgres mode wires `PostgresWebauthnStore` into the
-  auth router so challenge / credential state is durable in production mode.
-  Admin browser enrollment / assertion UX now exists in
-  `apps/admin/components/passkey-security-panel.tsx`, with WebAuthn option /
-  credential conversion in `apps/admin/lib/passkey-client.ts` and a BFF proxy in
-  `apps/admin/app/api/auth/passkeys/[action]/route.ts` so the user-service
-  session token stays in httpOnly cookies. `user-service` also exposes
-  authenticated credential revocation at
-  `POST /v1/auth/webauthn/credentials/revoke`, and
-  `apps/admin/tests/e2e/passkey-webauthn.spec.ts` defines the Chromium virtual
-  authenticator evidence flow. Remaining work is running that browser evidence
-  flow, recording `docs/evidence/webauthn-passkey/latest.json`, plus
-  recovery-code rotation.
-  Browser ceremony evidence should be recorded with
-  `tools/scripts/record-webauthn-passkey-evidence.mjs`.
+- Reintroduce MFA later as a dedicated Phase 3 auth hardening effort. Current
+  admin and web app runtime intentionally has no MFA / passkey / step-up
+  enforcement or UI. Future work should re-spec the exact product scope, restore
+  the necessary user-service and app integration, add browser evidence, and then
+  enable enforcement only after the end-to-end operational flow is validated.
 - Configure Cloudflare Access with bypass policies for `/login` and
   `/me/affiliate/*` so external affiliates can reach the app surface, while
   `/`, `/dashboard`, and the six internal domain routes still require SSO.

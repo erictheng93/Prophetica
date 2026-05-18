@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requiresCloudflareAccess } from "@/lib/cloudflare-access-policy";
 import { canAccess, defaultLandingFor } from "@/lib/rbac";
 import { verifySession } from "@/lib/session-crypto";
-import { hasRecentHardwareMfa, requiresStepUpMfa } from "@/lib/step-up-mfa-policy";
 
 const SESSION_COOKIE_NAME = "proph_admin_session";
 const DEV_SECRET = "dev-only-admin-session-secret-do-not-use-in-prod";
@@ -94,13 +93,6 @@ export async function middleware(req: NextRequest) {
         : "/403";
     target.search = "";
     return NextResponse.redirect(target);
-  }
-
-  if (requiresStepUpMfa(pathname, req.method) && !hasRecentHardwareMfa(session)) {
-    return new NextResponse("MFA step-up required", {
-      status: 403,
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
   }
 
   return NextResponse.next();

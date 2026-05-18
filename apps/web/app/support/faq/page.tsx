@@ -59,7 +59,7 @@ const sections: Section[] = [
   },
   {
     id: "security",
-    items: [{ key: "stolen" }, { key: "mfa" }],
+    items: [{ key: "stolen" }, { key: "accountAccess" }],
   },
 ];
 

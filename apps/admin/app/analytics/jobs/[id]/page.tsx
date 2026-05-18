@@ -209,11 +209,6 @@ function RevealCard({ job, viewerRole }: { job: ReportJob; viewerRole: Role }) {
           ? adminCopy.analytics.detailRevealUnlocked
           : adminCopy.analytics.detailRevealLocked}
       </p>
-      {viewerRole === "admin" && !unlocked && (
-        <p className="mt-3 text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-          Phase 3 將在此處嵌入 MFA step-up 對話框（SPEC-010 §9.3.3）。
-        </p>
-      )}
     </section>
   );
 }

@@ -128,9 +128,9 @@ test("admin can submit and approve a member restriction action", async ({
       page.getByText(/提交提款限制 \/ MEM-1042 \/ OPS-PW-1042/),
     ).toBeVisible();
 
-    const approvalPanel = page
-      .locator("section")
-      .filter({ has: page.getByRole("heading", { name: "工單審批", exact: true }) });
+    const approvalPanel = page.locator("section").filter({
+      has: page.getByRole("heading", { name: "工單審批", exact: true }),
+    });
     await approvalPanel
       .getByPlaceholder("審批原因")
       .fill("Playwright second approval");
