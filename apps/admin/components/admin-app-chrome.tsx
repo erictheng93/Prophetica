@@ -11,6 +11,7 @@ interface AdminNavLink {
   label: string;
   key: string;
   children?: AdminNavLink[];
+  badge?: string;
 }
 
 interface AdminAppChromeProps {

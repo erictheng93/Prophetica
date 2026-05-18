@@ -268,10 +268,12 @@ test("admin affiliate operations are grouped under the management area", () => {
   assert.match(facadeSource, /navHidden: true/);
   assert.match(
     layoutSource,
-    /const filteredChildren = route\.children\?\.filter/,
+    /const filteredChildren = route\.children\s*\?\.filter/,
   );
   assert.match(layoutSource, /route\.navHidden/);
   assert.match(layoutSource, /\.\.\.\(filteredChildren/);
+  assert.match(layoutSource, /inDevelopmentHrefs/);
+  assert.match(facadeSource, /inDevelopment: true/);
   assert.match(sidebarSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
   assert.match(drawerSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
 });

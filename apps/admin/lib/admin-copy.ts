@@ -15,6 +15,12 @@ export const adminCopy = {
     roleAdmin: "管理員",
     roleManager: "主管",
     roleAffiliate: "代理",
+    inDevelopmentBadge: "開發中",
+  },
+  approvals: {
+    inDevelopmentTitle: "工單審批後端尚未連線",
+    inDevelopmentBody:
+      "此功能將於 api-gateway 接線後啟用。目前工單佇列為空，核准與駁回動作不會生效。",
   },
   login: {
     eyebrow: "管理後台登入",

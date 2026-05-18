@@ -87,12 +87,20 @@ function buildAdminNavLinks(role: Role) {
     });
   }
 
+  const inDevelopmentHrefs = new Set(
+    routes.filter((route) => route.inDevelopment).map((route) => route.href),
+  );
+
   return [
     ...baseLinks,
     ...visibleRoutes.map((route) => {
-      const filteredChildren = route.children?.filter((child) =>
-        canAccess(child.href, role),
-      );
+      const filteredChildren = route.children
+        ?.filter((child) => canAccess(child.href, role))
+        .map((child) =>
+          inDevelopmentHrefs.has(child.href)
+            ? { ...child, badge: adminCopy.shell.inDevelopmentBadge }
+            : child,
+        );
       return {
         key: route.domain,
         href: route.href,

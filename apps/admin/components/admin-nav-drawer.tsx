@@ -11,6 +11,7 @@ interface AdminNavLink {
   label: string;
   key: string;
   children?: AdminNavLink[];
+  badge?: string;
 }
 
 interface AdminNavDrawerProps {
@@ -226,7 +227,12 @@ export function AdminNavDrawer({
                                         : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
                                     )}
                                   >
-                                    {child.label}
+                                    <span>{child.label}</span>
+                                    {child.badge ? (
+                                      <span className="ml-2 inline-flex items-center rounded-proph-pill bg-proph-divider-soft px-1.5 py-0.5 text-[11px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80">
+                                        {child.badge}
+                                      </span>
+                                    ) : null}
                                   </Link>
                                 </li>
                               );

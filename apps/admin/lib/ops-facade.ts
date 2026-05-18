@@ -38,6 +38,12 @@ export interface OpsRoute {
   tone: OpsTone;
   children?: OpsRouteChild[];
   navHidden?: boolean;
+  /**
+   * Feature is wired in the UI but its api-gateway backend is not yet
+   * connected. Surfaced as a「開發中」nav badge + page banner; flip to
+   * false (or remove) once the gateway integration ships.
+   */
+  inDevelopment?: boolean;
 }
 
 export interface OpsRouteChild {
@@ -208,6 +214,7 @@ const routes: OpsRoute[] = [
     openItems: 0,
     tone: "warning",
     navHidden: true,
+    inDevelopment: true,
   },
 ];
 
