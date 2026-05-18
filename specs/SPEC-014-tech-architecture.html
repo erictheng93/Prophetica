@@ -25,7 +25,8 @@
 <h1>SPEC-014 — 整體技術架構（Tech Architecture）</h1>
 <blockquote>
 <p>優先級：跨章節（被多份 SPEC 依賴）
-版本：v0.2.7 · 最後更新：2026-05-09</p>
+版本：v0.2.8 · 最後更新：2026-05-18</p>
+<p><strong>v0.2.8 變更</strong>：§6.1 新增 §6.1.1「Gateway REST proxy 錯誤透傳」，明定 api-gateway 對 admin / internal REST proxy 經路必須透傳 upstream 服務的 HTTP 狀態碼與 error code，不得一律壓成 <code>500 ERROR_CODE_INTERNAL</code>；傳輸層失敗才回 <code>502</code>。對應後台 KYC 審核會員查詢（<code>/members/kyc-review</code>）對不存在會員誤回 <code>500</code> 之缺陷。</p>
 <p><strong>v0.2.7 變更</strong>：§4.1.1 由「目前採 12-binary」更新為「MVP 合併部署已落地」；記錄 <code>services/_binaries/*</code> deployable entrypoints、12 個 <code>services/*</code> crate 轉為 lib-only service 邊界，以及未來拆回 12-binary 之觸發條件。修正 §4.1 合併部署效益描述，避免把 wallet-ledger / matching-engine 等仍獨立的安全與 latency 邊界誤寫為 in-process。</p>
 <p><strong>v0.2.6 變更</strong>：§4.1 新增 §4.1.1「目前實作狀態」+ §4.1.1.1「轉 7-binary 之觸發條件」，紀錄 round 7 程式碼驗證結果（當前採 12-binary 拓撲）+ 後續轉換時機之 4 條觸發條件 + 簡述轉換流程；採 12-binary 之 acceptance 補強寫入。SDD 紀律：spec 反映現況。</p>
 <p><strong>v0.2.5 變更</strong>：(1) §3.1 v0.2.0 變更說明補 cross-ref 至 <a href="../docs/architecture/decisions/ADR-0005-backend-language-rust-over-go.md">ADR-0005</a>（後端 Go → Rust 之 retroactive ADR 落地）；(2) §3.2.1 補 cross-ref 至 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md §4</code></a>（Cloudflare Pages Edge runtime PoC 詳細 plan）。</p>
@@ -594,6 +595,16 @@
 - 客戶端容易整合</p>
 <p><strong>WebSocket</strong>：JSON for general，<strong>MessagePack for high-freq</strong>（訂單簿）</p>
 <p><strong>DMM API</strong>：binary protobuf over TLS（呼應 SPEC-009）</p>
+<h4>6.1.1 Gateway REST proxy 錯誤透傳</h4>
+<p>api-gateway 對 admin / internal REST proxy 經路（把後台請求轉發給內部 service 的 REST endpoint），收到 upstream service 的非 2xx 回應時：</p>
+<ul>
+<li><strong>必須</strong>透傳 upstream 的 HTTP 狀態碼。upstream 回 <code>404</code> → gateway 回 <code>404</code>；<code>409</code> → <code>409</code>，依此類推。</li>
+<li><strong>必須</strong>透傳 upstream 回應主體中的 error code（例：<code>ERROR_CODE_MEMBER_NOT_FOUND</code>），不得替換成 <code>ERROR_CODE_INTERNAL</code>。</li>
+<li><strong>禁止</strong>把可辨識的 upstream 4xx 一律壓成 <code>500 ERROR_CODE_INTERNAL</code>。<code>500</code> 僅保留給 gateway 自身的未預期失敗。</li>
+<li>僅當 gateway <strong>取不到</strong> upstream 回應時（連線拒絕、逾時、DNS 失敗等傳輸層失敗），才回 <code>502 Bad Gateway</code> 配合服務專屬的 unavailable error code（例：<code>ERROR_CODE_KYC_SERVICE_UNAVAILABLE</code>）。</li>
+<li>gateway 自身的前置處理失敗（請求格式錯誤、權限不足）仍由 gateway 直接回對應狀態碼，與本規則無關。</li>
+</ul>
+<p>理由：upstream service（如 user-service）已對 domain 錯誤回正確的狀態碼與 error code（會員不存在 → <code>404 ERROR_CODE_MEMBER_NOT_FOUND</code>）。gateway 作為 proxy 把這些壓成 <code>500</code> 會讓後台無法分辨「會員不存在」與「系統故障」，並汙染告警與監控訊號。</p>
 <h3>6.2 異步事件</h3>
 <p>所有業務事件走 Kafka：</p>
 <table>
