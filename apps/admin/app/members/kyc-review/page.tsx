@@ -21,7 +21,6 @@ export default async function MembersKycReviewPage({
           <div className="space-y-8">
             <MemberManagement
               initialQuery={params?.query}
-              initialPendingRestriction="manual_review_required"
               initialPendingStatus="all"
               showPendingCases
               viewerAffiliateId={viewer.affiliateId}
