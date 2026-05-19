@@ -4,6 +4,7 @@ pub const DEFAULT_PORT: u16 = 8085;
 pub mod api;
 pub mod internal_reports;
 pub mod kyc;
+pub mod sumsub_documents;
 
 #[derive(Debug, Clone)]
 pub struct SecretConfig {
