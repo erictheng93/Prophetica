@@ -792,7 +792,9 @@ where
                 request_id,
                 source_ip_hash: None,
             };
-            let _ = state.store.record_document_access(entry).await;
+            if let Err(err) = state.store.record_document_access(entry).await {
+                tracing::error!(?err, "failed to write kyc_document_access_log entry");
+            }
             return Ok(axum::response::IntoResponse::into_response(Json(
                 Vec::<crate::sumsub_documents::SumsubDocument>::new(),
             )));
@@ -839,7 +841,9 @@ where
         request_id,
         source_ip_hash: None,
     };
-    let _ = state.store.record_document_access(entry).await;
+    if let Err(err) = state.store.record_document_access(entry).await {
+        tracing::error!(?err, "failed to write kyc_document_access_log entry");
+    }
 
     Ok(axum::response::IntoResponse::into_response(Json(documents)))
 }
@@ -863,7 +867,9 @@ where
 
     let Some(applicant) = applicant_id else {
         let entry = denied_entry(&reviewer_id, &reviewer_role, &user_id, Some(&doc_id), "no_applicant", request_id.as_deref());
-        let _ = state.store.record_document_access(entry).await;
+        if let Err(err) = state.store.record_document_access(entry).await {
+            tracing::error!(?err, "failed to write kyc_document_access_log entry");
+        }
         return Ok(doc_not_found_response());
     };
 
@@ -876,7 +882,9 @@ where
 
     if !documents.iter().any(|doc| doc.doc_id == doc_id) {
         let entry = denied_entry(&reviewer_id, &reviewer_role, &user_id, Some(&doc_id), "doc_not_bound", request_id.as_deref());
-        let _ = state.store.record_document_access(entry).await;
+        if let Err(err) = state.store.record_document_access(entry).await {
+            tracing::error!(?err, "failed to write kyc_document_access_log entry");
+        }
         return Ok(doc_not_found_response());
     }
 
@@ -900,7 +908,9 @@ where
         request_id,
         source_ip_hash: None,
     };
-    let _ = state.store.record_document_access(entry).await;
+    if let Err(err) = state.store.record_document_access(entry).await {
+        tracing::error!(?err, "failed to write kyc_document_access_log entry");
+    }
 
     let body = Body::from_stream(image.response.bytes_stream());
     let response = Response::builder()

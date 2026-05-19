@@ -5,6 +5,8 @@ import type { SessionPayload } from "./session-crypto.js";
 interface ProxyInput {
   userId: string;
   adminPath: string;
+  /** When true, a successful response must carry a whitelisted image type. */
+  expectImage?: boolean;
 }
 interface ProxyDeps {
   gatewayUrl?: string;
@@ -45,15 +47,28 @@ export async function proxyKycDocumentRequest(
   }
 
   const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";
+  const baseContentType = (contentType.split(";")[0] ?? contentType)
+    .trim()
+    .toLowerCase();
+
+  // For image endpoints, a successful response must carry a whitelisted image
+  // type. Anything else (HTML, JS, octet-stream) is rejected rather than
+  // streamed to the browser. SPEC-005 §5.3.2. Non-2xx responses pass through
+  // so genuine upstream errors (e.g. 404) keep their status and body.
+  if (
+    input.expectImage &&
+    upstream.ok &&
+    !IMAGE_CONTENT_TYPES.has(baseContentType)
+  ) {
+    return Response.json({ error: "unsupported_media_type" }, { status: 502 });
+  }
+
   const responseHeaders = new Headers();
   responseHeaders.set("content-type", contentType);
   responseHeaders.set("cache-control", "private, no-store");
   responseHeaders.set("pragma", "no-cache");
   responseHeaders.set("x-content-type-options", "nosniff");
 
-  if (contentType.startsWith("image/") && !IMAGE_CONTENT_TYPES.has(contentType)) {
-    return Response.json({ error: "unsupported_media_type" }, { status: 502 });
-  }
   return new Response(upstream.body, {
     status: upstream.status,
     headers: responseHeaders,

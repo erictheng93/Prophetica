@@ -65,11 +65,11 @@ impl SumsubDocumentClient {
         &self,
         applicant_id: &str,
     ) -> Result<Vec<SumsubDocument>, SumsubDocumentError> {
-        let url = format!(
-            "{}/mock/sumsub/applicants/{applicant_id}/documents",
-            self.base_url
-        );
-        let request = self.http.get(&url).header("X-App-Token", &self.app_token);
+        let url = build_url(
+            &self.base_url,
+            &["mock", "sumsub", "applicants", applicant_id, "documents"],
+        )?;
+        let request = self.http.get(url).header("X-App-Token", &self.app_token);
         let request = sign_request(request, &self.secret_key);
         let response = request
             .send()
@@ -109,11 +109,19 @@ impl SumsubDocumentClient {
         applicant_id: &str,
         doc_id: &str,
     ) -> Result<SumsubImage, SumsubDocumentError> {
-        let url = format!(
-            "{}/mock/sumsub/applicants/{applicant_id}/documents/{doc_id}/image",
-            self.base_url
-        );
-        let request = self.http.get(&url).header("X-App-Token", &self.app_token);
+        let url = build_url(
+            &self.base_url,
+            &[
+                "mock",
+                "sumsub",
+                "applicants",
+                applicant_id,
+                "documents",
+                doc_id,
+                "image",
+            ],
+        )?;
+        let request = self.http.get(url).header("X-App-Token", &self.app_token);
         let request = sign_request(request, &self.secret_key);
         let response = request
             .send()
@@ -143,6 +151,19 @@ impl SumsubDocumentClient {
             response,
         })
     }
+}
+
+/// Builds a request URL by percent-encoding each `segments` entry onto `base`.
+///
+/// Encoding the segments prevents caller-influenced values (applicant or
+/// document ids) from altering the URL path structure.
+fn build_url(base: &str, segments: &[&str]) -> Result<reqwest::Url, SumsubDocumentError> {
+    let mut url =
+        reqwest::Url::parse(base).map_err(|e| SumsubDocumentError::Upstream(e.to_string()))?;
+    url.path_segments_mut()
+        .map_err(|()| SumsubDocumentError::Upstream("invalid base url".to_owned()))?
+        .extend(segments);
+    Ok(url)
 }
 
 /// Stub for per-request HMAC signing required by the real `SumSub` API.

@@ -15,5 +15,6 @@ export async function GET(_request: Request, context: RouteContext) {
   return proxyKycDocumentRequest(viewer, {
     userId,
     adminPath: `/api/internal/admin/members/${enc}`,
+    expectImage: true,
   });
 }
