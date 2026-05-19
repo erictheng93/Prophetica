@@ -11,9 +11,13 @@ const KIND_LABEL: Record<KycDocument["kind"], string> = {
 export function KycDocumentGallery({ userId }: { userId: string }) {
   const [docs, setDocs] = useState<KycDocument[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [failedDocIds, setFailedDocIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
 
   useEffect(() => {
     let active = true;
+    setFailedDocIds(new Set());
     fetch(`/api/members/${encodeURIComponent(userId)}/kyc-documents`, {
       cache: "no-store",
     })
@@ -43,19 +47,20 @@ export function KycDocumentGallery({ userId }: { userId: string }) {
     <div className="grid grid-cols-2 gap-3">
       {docs.map((doc) => (
         <figure key={doc.doc_id} className="space-y-1">
-          <img
-            src={`/api/members/${encodeURIComponent(userId)}/kyc-documents/${encodeURIComponent(doc.doc_id)}`}
-            alt={KIND_LABEL[doc.kind]}
-            className="w-full rounded-proph-sm border border-proph-hairline"
-            onError={(e) => {
-              e.currentTarget.replaceWith(
-                Object.assign(document.createElement("p"), {
-                  className: "text-[13px] text-proph-ink-muted-80",
-                  textContent: "文件暫時無法載入。",
-                }),
-              );
-            }}
-          />
+          {failedDocIds.has(doc.doc_id) ? (
+            <p className="text-[13px] text-proph-ink-muted-80">
+              文件暫時無法載入。
+            </p>
+          ) : (
+            <img
+              src={`/api/members/${encodeURIComponent(userId)}/kyc-documents/${encodeURIComponent(doc.doc_id)}`}
+              alt={KIND_LABEL[doc.kind]}
+              className="w-full rounded-proph-sm border border-proph-hairline"
+              onError={() => {
+                setFailedDocIds((prev) => new Set(prev).add(doc.doc_id));
+              }}
+            />
+          )}
           <figcaption className="text-[12px] text-proph-ink-muted-80">
             {KIND_LABEL[doc.kind]} · {doc.captured_at}
           </figcaption>
