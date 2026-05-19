@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
+import { KycDocumentGallery } from "@/components/kyc-document-gallery";
 import { StatusPill } from "@/components/status-pill";
 import {
   formatMinorUnitsAsMemberPoints,
@@ -1402,10 +1403,7 @@ function MemberOverview({ summary }: { summary: MemberManagementSummary }) {
           />
         </InfoCard>
         <InfoCard title="KYC 證件材料">
-          <Metric label="證件影像" value="KYC_DOCUMENTS_BUCKET" />
-          <Metric label="自拍 / Liveness" value="KYC_LIVENESS_BUCKET" />
-          <Metric label="保存策略" value="R2 EU / 7 年 Bucket Lock" />
-          <Metric label="審核存取" value="後端代理 + 短期 token" />
+          <KycDocumentGallery userId={summary.member.user_id} />
         </InfoCard>
         <InfoCard title="登入與裝置">
           <Metric
