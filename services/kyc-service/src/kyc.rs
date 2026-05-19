@@ -7,6 +7,22 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+/// Audit entry written to `kyc_document_access_log` for every document list or view.
+#[derive(Debug, Clone)]
+pub struct DocumentAccessEntry {
+    pub reviewer_id: String,
+    pub reviewer_role: String,
+    pub user_id: String,
+    pub doc_id: Option<String>,
+    /// "list" or "view"
+    pub action: String,
+    /// "success" or "denied"
+    pub result: String,
+    pub denial_reason: Option<String>,
+    pub request_id: Option<String>,
+    pub source_ip_hash: Option<String>,
+}
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -231,6 +247,18 @@ pub trait KycStore: Clone + Send + Sync + 'static {
         &self,
         draft: StartUpgradeDraft,
     ) -> Result<StartUpgradeOutcome, KycStoreError>;
+
+    /// Resolves the SumSub applicant id for the user's current KYC record.
+    async fn applicant_id_for_user(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<String>, KycStoreError>;
+
+    /// Appends one KYC document access audit entry.
+    async fn record_document_access(
+        &self,
+        entry: DocumentAccessEntry,
+    ) -> Result<(), KycStoreError>;
 }
 
 #[derive(Debug, Clone)]
@@ -242,6 +270,7 @@ pub struct InMemoryKycStore {
     sar_counts: Arc<Mutex<HashMap<String, i64>>>,
     next_id: Arc<AtomicI64>,
     document_hash_salt: Arc<str>,
+    pub document_access_log: Arc<Mutex<Vec<DocumentAccessEntry>>>,
 }
 
 impl InMemoryKycStore {
@@ -255,6 +284,7 @@ impl InMemoryKycStore {
             sar_counts: Arc::default(),
             next_id: Arc::default(),
             document_hash_salt: Arc::from(document_hash_salt.into()),
+            document_access_log: Arc::default(),
         }
     }
 }
@@ -781,6 +811,44 @@ impl KycStore for PostgresKycStore {
             replayed: false,
         })
     }
+
+    async fn applicant_id_for_user(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<String>, KycStoreError> {
+        Ok(self
+            .current_record(user_id)
+            .await?
+            .and_then(|record| record.provider_applicant_id))
+    }
+
+    async fn record_document_access(
+        &self,
+        entry: DocumentAccessEntry,
+    ) -> Result<(), KycStoreError> {
+        sqlx::query(
+            r"
+            INSERT INTO kyc_document_access_log (
+                reviewer_id, reviewer_role, user_id, doc_id, action, result,
+                denial_reason, request_id, source_ip_hash
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ",
+        )
+        .bind(&entry.reviewer_id)
+        .bind(&entry.reviewer_role)
+        .bind(&entry.user_id)
+        .bind(entry.doc_id.as_deref())
+        .bind(&entry.action)
+        .bind(&entry.result)
+        .bind(entry.denial_reason.as_deref())
+        .bind(entry.request_id.as_deref())
+        .bind(entry.source_ip_hash.as_deref())
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -1134,6 +1202,27 @@ impl KycStore for InMemoryKycStore {
             .insert(draft.idempotency_key, outcome.clone());
 
         Ok(outcome)
+    }
+
+    async fn applicant_id_for_user(
+        &self,
+        user_id: &str,
+    ) -> Result<Option<String>, KycStoreError> {
+        Ok(self
+            .current_record(user_id)
+            .await?
+            .and_then(|record| record.provider_applicant_id))
+    }
+
+    async fn record_document_access(
+        &self,
+        entry: DocumentAccessEntry,
+    ) -> Result<(), KycStoreError> {
+        self.document_access_log
+            .lock()
+            .map_err(|_| KycStoreError::Unavailable)?
+            .push(entry);
+        Ok(())
     }
 }
 
