@@ -29,6 +29,7 @@ pub const DEFAULT_PORT: u16 = 8080;
 pub mod admin_ops;
 pub mod analytics_reporting;
 pub mod drill_logs;
+pub mod internal_call_auth;
 pub mod kill_switch;
 pub mod responsible_gaming;
 
