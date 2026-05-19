@@ -193,6 +193,19 @@ export interface MemberActionListResponse {
 
 export const memberSearchHints = ["MEM-001", "MEM-1042", "user_123"] as const;
 
+export interface KycDocument {
+  doc_id: string;
+  kind: "id_doc" | "selfie" | "liveness";
+  country: string | null;
+  side: string | null;
+  content_type: string;
+  captured_at: string;
+}
+
+export interface KycDocumentList {
+  documents: KycDocument[];
+}
+
 export function isMemberActionType(value: unknown): value is MemberActionType {
   return (
     value === "add_note" ||
