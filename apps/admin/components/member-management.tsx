@@ -23,6 +23,7 @@ import {
   type MemberStatus,
   type RiskLevel,
 } from "@/lib/member-management-shared";
+import { memberLookupErrorMessage } from "@/lib/member-lookup-error";
 import type { Role } from "@/lib/rbac";
 
 interface MemberManagementProps {
@@ -263,10 +264,15 @@ export function MemberManagement({
       );
       if (!response.ok) {
         setSummary(null);
+        let errorCode: string | null = null;
+        try {
+          errorCode =
+            ((await response.json()) as { error?: string }).error ?? null;
+        } catch {
+          errorCode = null;
+        }
         setLookupError(
-          response.status === 404
-            ? "查無此會員，請確認輸入的會員 ID 是否正確。"
-            : "查詢服務暫時無法使用，請稍後再試。",
+          memberLookupErrorMessage(response.status, errorCode),
         );
         return;
       }

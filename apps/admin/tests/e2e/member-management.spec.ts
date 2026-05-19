@@ -195,6 +195,46 @@ test("member management sidebar section stays open when navigating to KYC review
   }
 });
 
+test("member lookup surfaces the not-found message when the gateway reports a missing member", async ({
+  context,
+  page,
+}) => {
+  const gateway = createMockGateway([], []);
+  await new Promise<void>((resolve) => gateway.listen(32123, resolve));
+
+  await context.addCookies([
+    {
+      name: SESSION_COOKIE_NAME,
+      value: await signSession(
+        {
+          sub: "U-ADMIN-001",
+          role: "admin",
+        },
+        DEV_SECRET,
+      ),
+      url: ADMIN_ORIGIN,
+      httpOnly: true,
+      sameSite: "Strict",
+    },
+  ]);
+
+  try {
+    const summaryResponsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/members/MEM-MISSING/summary"),
+    );
+    await page.goto("/members/kyc-review?query=MEM-MISSING");
+    expect((await summaryResponsePromise).status()).toBe(404);
+
+    // The wiring (SPEC-017 §6.3.4) must read the body error code and render
+    // the not-found message, not the generic "service unavailable" one.
+    await expect(
+      page.getByText("查無此會員，請確認輸入的會員 ID 是否正確。"),
+    ).toBeVisible();
+  } finally {
+    await new Promise<void>((resolve) => gateway.close(() => resolve()));
+  }
+});
+
 function createMockGateway(actions: unknown[], gatewayRequests: string[]) {
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1:32123");
@@ -316,6 +356,16 @@ function createMockGateway(actions: unknown[], gatewayRequests: string[]) {
       };
       actions[0] = action;
       sendJson(response, action);
+      return;
+    }
+
+    if (
+      method === "GET" &&
+      url.pathname === "/api/internal/admin/members/MEM-MISSING/summary"
+    ) {
+      // Faithfully reproduces the api-gateway's 404 for a missing member
+      // (案B / SPEC-014 §6.1.1): status 404 + error code in the body.
+      sendJson(response, { error: "ERROR_CODE_MEMBER_NOT_FOUND" }, 404);
       return;
     }
 
