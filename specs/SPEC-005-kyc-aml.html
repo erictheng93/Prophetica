@@ -34,10 +34,10 @@
 <h1>SPEC-005 — KYC / AML 整合</h1>
 <blockquote>
 <p>優先級：<strong>P1</strong>
-版本：v0.1.4 · 最後更新：2026-05-08
+版本：v0.1.5 · 最後更新：2026-05-19
 依賴：無
 被依賴：SPEC-010, SPEC-011
-實作狀態：🟡 <strong>Backend Postgres wiring baseline 已落地（2026-05-09）/ Secret hardening 完成 / Frontend 主路徑已落地（PR #2 merged 2026-05-09），real SumSub iframe + iProov 待 <a href="./SPEC-000-index.html#cross-cutting-q9">SPEC-000 §5 Q-9</a></strong>（v0.1.4；status source of truth 移至 <a href="../docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html">plan §0</a>）</p>
+實作狀態：🟡 <strong>Backend Postgres wiring baseline 已落地（2026-05-09）/ Secret hardening 完成 / Frontend 主路徑已落地（PR #2 merged 2026-05-09），real SumSub iframe + iProov 待 <a href="./SPEC-000-index.html#cross-cutting-q9">SPEC-000 §5 Q-9</a></strong>（v0.1.5；status source of truth 移至 <a href="../docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html">plan §0</a>）</p>
 </blockquote>
 <hr>
 <h2>0. Implementation Status</h2>
@@ -45,6 +45,10 @@
 <h3>變更紀錄</h3>
 <section class="changelog">
   <div class="changelog-list">
+    <article class="changelog-entry">
+      <h3>v0.1.5 變更</h3>
+      <p>§5 展開為取圖代理 + R2 歸檔可實作規格：新增 §5.3「即時取圖代理」（admin → api-gateway → kyc-service → SumSub 鏈路、端點定義、binding invariants、HMAC 內部簽名語意）及 §5.4「R2 歸檔」（日批次、Object Lock、SSE-AES256、既有 wrangler.toml 配置說明）。</p>
+    </article>
     <article class="changelog-entry">
       <h3>v0.1.4 變更</h3>
       <p>§0.2 B3 → ✅ resolved。<code>kyc-service</code> 與 <code>mock-sumsub</code> 啟動時集中讀取 secret；<code>PROPHETICA_ENV=production</code> 且缺少 <code>SUMSUB_WEBHOOK_SECRET</code> / <code>KYC_DOCUMENT_HASH_SALT</code> 時 fail-fast，不再於 runtime silently fallback 到 dev secret。</p>
@@ -417,6 +421,73 @@
 <li>比對時：對輸入 ID 計算同樣 hash 後比對 hash</li>
 <li>鹽值由 Vault 管理，每年輪換（換鹽後舊資料保留供稽核）</li>
 </ul>
+<h3>5.3 即時取圖代理</h3>
+<p>KYC 審核人員需於後台查看 SumSub 收集的會員證件影像（ID 正反面、自拍、Liveness 截圖）。影像<strong>不</strong>直接由前端向 SumSub 取用，而是透過以下代理鏈路，確保金鑰不洩漏至瀏覽器：</p>
+<pre><code>Admin 瀏覽器 → api-gateway → kyc-service → SumSub API</code></pre>
+<h4>5.3.1 端點定義</h4>
+<table>
+<thead>
+<tr>
+<th>端點</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /v1/internal/admin/kyc/members/{user_id}/documents</code></td>
+<td>列出該會員所有已上傳文件的元資料（doc_id、類型、上傳時間）；不含影像 bytes</td>
+</tr>
+<tr>
+<td><code>GET /v1/internal/admin/kyc/members/{user_id}/documents/{doc_id}</code></td>
+<td>代理回傳單張影像 bytes；Content-Type 依 SumSub 原始回應透傳</td>
+</tr>
+</tbody>
+</table>
+<h4>5.3.2 Binding Invariants</h4>
+<ul>
+<li><strong>user_id → applicant_id 解析僅在 kyc-service 內部完成。</strong>api-gateway 與 Admin 前端只知 <code>user_id</code>；<code>applicant_id</code> 永遠不出現在公開或內部 admin API 的 URL / 回應中。</li>
+<li><strong>doc_id 為 kyc-service 的 opaque 識別符。</strong>kyc-service 在資料庫中維護 <code>(user_id, doc_id)</code> 的綁定；任何 <code>doc_id</code> 若未綁定至請求中的 <code>user_id</code>，一律回傳統一 <code>404 Not Found</code>，回應體不得揭示「doc 存在但屬於其他 user」或「doc 根本不存在」的差異（防止存在性洩漏）。</li>
+<li><strong>影像 bytes 不得緩衝於任何中間節點。</strong>api-gateway 與 kyc-service 均以串流（streaming）方式轉發；不得將影像存於記憶體快取、磁碟或任何非 SumSub 的持久層（R2 歸檔由 §5.4 的日批次負責，非即時代理路徑）。</li>
+<li><strong>存取限制：</strong>呼叫此端點須持有 <code>kyc_review</code> 權限。MVP 階段此權限映射至 <code>admin</code> 與 <code>manager</code> 角色；<code>affiliate</code> 角色明確排除。</li>
+</ul>
+<h4>5.3.3 內部簽名機制（「短期 token」語意澄清）</h4>
+<p>§5.1 提及「後端代理 + 短期 token 取用」。此「短期 token」<strong>指的是 api-gateway 向 kyc-service 發起的伺服器對伺服器簽名呼叫，並非任何可送達瀏覽器的 token。</strong>具體機制如下：</p>
+<ul>
+<li>簽名演算法：<strong>HMAC-SHA256</strong>，涵蓋 <code>method</code>、<code>path</code>、<code>body-hash</code>（空 body 為空字串 hash）、<code>timestamp</code>（Unix 秒）、<code>actor</code>（操作人員 ID）、<code>role</code>（操作人員角色）。</li>
+<li>簽名金鑰由 Vault 管理，api-gateway 與 kyc-service 各持 shared secret，不寫入任何前端 bundle 或 Cookie。</li>
+<li>kyc-service 驗證簽名後才向 SumSub 發起實際請求；<code>timestamp</code> 偏差超過 ±60 秒即拒絕（防重放）。</li>
+<li>SumSub API key 僅存於 kyc-service 環境變數（由 Vault 注入），不向 api-gateway 或前端透出。</li>
+</ul>
+<h3>5.4 R2 歸檔</h3>
+<p>為滿足監管要求的長期留存，採日批次將 SumSub 影像下載至 Cloudflare R2：</p>
+<h4>5.4.1 存儲配置</h4>
+<table>
+<thead>
+<tr>
+<th>Bucket</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kyc-documents</code></td>
+<td>證件影像（ID 正反面、地址證明等）</td>
+</tr>
+<tr>
+<td><code>kyc-liveness</code></td>
+<td>自拍 / Liveness 影像與視訊截圖</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Object Lock 保留期：7 年</strong>（WORM 模式），初始狀態標記為「待合規簽核」；合規審計人員核簽後可更新 metadata 標記，但物件本體不可刪除。</li>
+<li><strong>加密：SSE-AES256</strong>（Cloudflare R2 服務端加密）；加密金鑰由 Cloudflare 管理，Vault 記錄存取審計軌跡。</li>
+<li>批次時間：每日 UTC 03:00（避開制裁篩查批次 UTC 02:00），由排程服務驅動（Worker Cron Trigger 或內部 cron job）。</li>
+<li>每筆物件的 key 格式：<code>{user_id}/{doc_type}/{sumsub_doc_id}/{timestamp}.{ext}</code>，確保按會員可查詢。</li>
+</ul>
+<h4>5.4.2 既有 wrangler.toml R2 binding 說明</h4>
+<p><code>apps/admin/wrangler.toml</code> 與 <code>apps/web/wrangler.toml</code> 目前存有 R2 bucket binding 配置，屬<strong>歷史配置 / 待拆遷項</strong>。前端 Next.js Worker 不應擁有 KYC 影像歸檔的 R2 binding——這會使 admin / web bundle 持有不必要的 R2 存取能力，違反最小權限原則。</p>
+<p>正確架構：R2 binding 應移至專屬的歸檔 Worker 或 kyc-service 部署配置。既有 <code>apps/admin/wrangler.toml</code> / <code>apps/web/wrangler.toml</code> 中的 KYC R2 binding 應在拆遷工作中移除，待 §5.3 取圖代理與 §5.4 歸檔批次均實作完成後統一清理。</p>
 <h2>6. 制裁名單與 PEP 篩查</h2>
 <h3>6.1 名單來源</h3>
 <ul>

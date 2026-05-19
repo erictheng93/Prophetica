@@ -109,6 +109,15 @@
   </section>
 
   <section>
+    <h2>5a. KYC 文件取圖鏈路</h2>
+    <p>本節對應 <a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005 §5.3</a>（即時取圖代理）與 <a href="../../specs/SPEC-005-kyc-aml.html">§5.4</a>（R2 歸檔）。詳細規格（鏈路設計、Binding Invariants、HMAC 簽名機制、R2 配置、wrangler.toml 拆遷說明）請以 SPEC-005 §5.3–5.4 為準；本節僅記錄實作排期。</p>
+    <ul>
+      <li><strong>（A）即時取圖代理（§5.3）</strong>：admin → api-gateway → kyc-service → SumSub 代理鏈路，含端點實作、HMAC 內部簽名、<code>kyc_review</code> 權限閘控。實作計畫見 <a href="./2026-05-19-kyc-document-review-chain-plan.md">2026-05-19-kyc-document-review-chain-plan.md</a>。</li>
+      <li><strong>（B）R2 歸檔批次（§5.4）</strong>：日批次下載、<code>kyc-documents</code> / <code>kyc-liveness</code> bucket 寫入、Object Lock 7 年、SSE-AES256。實作計畫同見 <a href="./2026-05-19-kyc-document-review-chain-plan.md">2026-05-19-kyc-document-review-chain-plan.md</a>。</li>
+    </ul>
+  </section>
+
+  <section>
     <h2>6. 前置規則（跨模組）</h2>
     <ul>
       <li>下游風控模組可讀取 <code>declared_monthly_income</code>：未申報時回傳 NULL。</li>
