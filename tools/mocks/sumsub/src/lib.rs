@@ -1,4 +1,4 @@
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{Json, Router, extract::{Path, State}, response::IntoResponse, routing::{get, post}};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -35,6 +35,14 @@ struct MockState {
 pub fn router(secret: String) -> Router {
     Router::new()
         .route("/mock/sumsub/applicant-reviewed", post(applicant_reviewed))
+        .route(
+            "/mock/sumsub/applicants/:applicant_id/documents",
+            get(mock_document_list),
+        )
+        .route(
+            "/mock/sumsub/applicants/:applicant_id/documents/:doc_id/image",
+            get(mock_document_image),
+        )
         .with_state(MockState {
             webhook_secret: secret,
         })
@@ -62,6 +70,32 @@ async fn applicant_reviewed(
         },
         body,
     })
+}
+
+async fn mock_document_list(Path(applicant_id): Path<String>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "applicant_id": applicant_id,
+        "documents": [
+            { "doc_id": "doc_1", "kind": "id_doc", "country": "TWN", "side": "front",
+              "content_type": "image/png", "captured_at": "2026-05-10T00:00:00Z" },
+            { "doc_id": "doc_2", "kind": "selfie", "country": null, "side": null,
+              "content_type": "image/png", "captured_at": "2026-05-10T00:01:00Z" }
+        ]
+    }))
+}
+
+const MOCK_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+    0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+    0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+    0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+    0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+];
+
+async fn mock_document_image(
+    Path((_applicant, _doc)): Path<(String, String)>,
+) -> impl IntoResponse {
+    ([(axum::http::header::CONTENT_TYPE, "image/png")], MOCK_PNG)
 }
 
 fn sign_payload(secret: &str, payload: &[u8]) -> String {
@@ -106,6 +140,35 @@ mod tests {
         assert_eq!(body["body"]["applicantId"], json!("applicant_42"));
         assert_eq!(body["body"]["externalUserId"], json!("user_42"));
         assert_eq!(body["body"]["reviewResult"]["reviewAnswer"], json!("GREEN"));
+    }
+
+    #[tokio::test]
+    async fn serves_document_list_and_image() {
+        let app = crate::router("test-secret".to_owned());
+        let list = app
+            .clone()
+            .oneshot(
+                axum::http::Request::get(
+                    "/mock/sumsub/applicants/applicant_1/documents",
+                )
+                .body(axum::body::Body::empty())
+                .expect("request should build"),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(list.status(), axum::http::StatusCode::OK);
+        let img = app
+            .oneshot(
+                axum::http::Request::get(
+                    "/mock/sumsub/applicants/applicant_1/documents/doc_1/image",
+                )
+                .body(axum::body::Body::empty())
+                .expect("request should build"),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(img.status(), axum::http::StatusCode::OK);
+        assert_eq!(img.headers().get("content-type").expect("content-type header must be present"), "image/png");
     }
 
     fn json_post(body: &Value) -> Request<Body> {
