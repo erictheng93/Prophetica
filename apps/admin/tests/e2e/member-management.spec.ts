@@ -319,6 +319,20 @@ function createMockGateway(actions: unknown[], gatewayRequests: string[]) {
       return;
     }
 
+    if (
+      method === "GET" &&
+      url.pathname.startsWith("/api/internal/admin/members/") &&
+      url.pathname.endsWith("/kyc-documents")
+    ) {
+      // KYC document chain (docs/implementation-plans/2026-05-19-kyc-document-
+      // review-chain-plan.md): KycDocumentGallery fetches this for every member
+      // summary. The restriction-action tests do not exercise documents, so an
+      // empty list lets the gallery render its "尚無文件。" state with no
+      // follow-up <img> requests — and no console 404s.
+      sendJson(response, []);
+      return;
+    }
+
     sendJson(response, { error: "not_found" }, 404);
   });
 }
