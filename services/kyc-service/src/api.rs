@@ -1,8 +1,9 @@
 use axum::{
     Json, Router,
-    body::Bytes,
+    body::{Body, Bytes},
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
+    response::Response,
     routing::{get, post},
 };
 use hmac::{Hmac, Mac};
@@ -12,11 +13,12 @@ use sha2::{Digest, Sha256};
 
 use crate::SecretConfig;
 use crate::kyc::{
-    AmlEventDraft, KycRecord, KycStatus, KycStore, KycStoreError, KycTier, PendingMemberCasesQuery,
-    PendingMemberCasesResponse, ReviewAnswer, ScreeningMatchDraft, ScreeningMatchType,
-    StartUpgradeDraft, SumsubWebhookDraft, TierOneVerificationDraft,
+    AmlEventDraft, DocumentAccessEntry, KycRecord, KycStatus, KycStore, KycStoreError, KycTier,
+    PendingMemberCasesQuery, PendingMemberCasesResponse, ReviewAnswer, ScreeningMatchDraft,
+    ScreeningMatchType, StartUpgradeDraft, SumsubWebhookDraft, TierOneVerificationDraft,
     is_supported_tier_one_document,
 };
+use crate::sumsub_documents::{SumsubDocumentClient, SumsubDocumentError};
 
 #[derive(Debug, Deserialize)]
 pub struct TierOneVerificationRequest {
@@ -165,17 +167,53 @@ pub struct ApiErrorResponse {
 struct ApiState<S> {
     store: S,
     webhook_secret: String,
+    sumsub_documents: SumsubDocumentClient,
 }
 
 pub fn router<S>(store: S, secrets: SecretConfig) -> Router
 where
     S: KycStore,
 {
+    let sumsub_base_url = std::env::var("SUMSUB_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:8086".to_owned());
+    let sumsub_app_token = std::env::var("SUMSUB_APP_TOKEN")
+        .unwrap_or_else(|_| "dev-sumsub-app-token".to_owned());
+    let sumsub_secret_key = std::env::var("SUMSUB_SECRET_KEY")
+        .unwrap_or_else(|_| "dev-sumsub-secret-key".to_owned());
+    let sumsub_documents =
+        SumsubDocumentClient::new(sumsub_base_url, sumsub_app_token, sumsub_secret_key);
+
     let state = ApiState {
         store,
         webhook_secret: secrets.webhook_secret,
+        sumsub_documents,
     };
 
+    build_router(state)
+}
+
+/// Like [`router`] but accepts an explicit [`SumsubDocumentClient`] instead of
+/// reading env vars. Intended for integration tests that spin up a mock server.
+pub fn router_with_sumsub_client<S>(
+    store: S,
+    secrets: SecretConfig,
+    sumsub_documents: SumsubDocumentClient,
+) -> Router
+where
+    S: KycStore,
+{
+    let state = ApiState {
+        store,
+        webhook_secret: secrets.webhook_secret,
+        sumsub_documents,
+    };
+    build_router(state)
+}
+
+fn build_router<S>(state: ApiState<S>) -> Router
+where
+    S: KycStore,
+{
     Router::new()
         .route("/api/v1/kyc/users/:user_id/status", get(get_status::<S>))
         .route(
@@ -193,6 +231,14 @@ where
         .route(
             "/v1/internal/admin/members/pending-cases",
             get(pending_member_cases::<S>),
+        )
+        .route(
+            "/v1/internal/admin/kyc/members/:user_id/documents",
+            get(list_member_documents::<S>),
+        )
+        .route(
+            "/v1/internal/admin/kyc/members/:user_id/documents/:doc_id",
+            get(get_member_document::<S>),
         )
         .with_state(state)
 }
@@ -692,4 +738,246 @@ fn api_error(
             message: message.into(),
         }),
     )
+}
+
+/// Fixed 404 body used for both "no applicant" and "doc not bound" to prevent
+/// leaking whether a document exists in `SumSub`.
+static DOC_NOT_FOUND_BODY: &[u8] =
+    br#"{"error":"document_not_found","message":"document not found"}"#;
+
+fn extract_actor_headers(headers: &HeaderMap) -> (String, String, Option<String>) {
+    let reviewer_id = headers
+        .get("x-actor-id")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_owned();
+    let reviewer_role = headers
+        .get("x-operator-role")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_owned();
+    let request_id = headers
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    (reviewer_id, reviewer_role, request_id)
+}
+
+async fn list_member_documents<S>(
+    State(state): State<ApiState<S>>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: KycStore,
+{
+    let (reviewer_id, reviewer_role, request_id) = extract_actor_headers(&headers);
+
+    let applicant_id = state
+        .store
+        .applicant_id_for_user(&user_id)
+        .await
+        .map_err(store_error)?;
+
+    let documents = match applicant_id {
+        None => {
+            let entry = DocumentAccessEntry {
+                reviewer_id,
+                reviewer_role,
+                user_id,
+                doc_id: None,
+                action: "list".to_owned(),
+                result: "success".to_owned(),
+                denial_reason: None,
+                request_id,
+                source_ip_hash: None,
+            };
+            let _ = state.store.record_document_access(entry).await;
+            return Ok(axum::response::IntoResponse::into_response(Json(
+                Vec::<crate::sumsub_documents::SumsubDocument>::new(),
+            )));
+        }
+        Some(applicant) => {
+            state
+                .sumsub_documents
+                .list_documents(&applicant)
+                .await
+                .map_err(|e| match e {
+                    SumsubDocumentError::ProviderAuth => {
+                        tracing::error!("sumsub provider auth failure listing documents");
+                        api_error(
+                            StatusCode::BAD_GATEWAY,
+                            "provider_error",
+                            "upstream provider error",
+                        )
+                    }
+                    SumsubDocumentError::NotFound => api_error(
+                        StatusCode::NOT_FOUND,
+                        "document_not_found",
+                        "applicant not found",
+                    ),
+                    SumsubDocumentError::Upstream(msg) => {
+                        tracing::error!(%msg, "sumsub upstream error listing documents");
+                        api_error(
+                            StatusCode::BAD_GATEWAY,
+                            "provider_error",
+                            "upstream provider error",
+                        )
+                    }
+                })?
+        }
+    };
+
+    let entry = DocumentAccessEntry {
+        reviewer_id,
+        reviewer_role,
+        user_id,
+        doc_id: None,
+        action: "list".to_owned(),
+        result: "success".to_owned(),
+        denial_reason: None,
+        request_id,
+        source_ip_hash: None,
+    };
+    let _ = state.store.record_document_access(entry).await;
+
+    Ok(axum::response::IntoResponse::into_response(Json(documents)))
+}
+
+async fn get_member_document<S>(
+    State(state): State<ApiState<S>>,
+    headers: HeaderMap,
+    Path((user_id, doc_id)): Path<(String, String)>,
+) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: KycStore,
+{
+    let (reviewer_id, reviewer_role, request_id) = extract_actor_headers(&headers);
+
+    // Step 1: resolve applicant_id — None → 404
+    let applicant_id = state
+        .store
+        .applicant_id_for_user(&user_id)
+        .await
+        .map_err(store_error)?;
+
+    let Some(applicant) = applicant_id else {
+        let entry = denied_entry(&reviewer_id, &reviewer_role, &user_id, Some(&doc_id), "no_applicant", request_id.as_deref());
+        let _ = state.store.record_document_access(entry).await;
+        return Ok(doc_not_found_response());
+    };
+
+    // Step 2: verify doc_id belongs to this applicant
+    let documents = state
+        .sumsub_documents
+        .list_documents(&applicant)
+        .await
+        .map_err(sumsub_list_error)?;
+
+    if !documents.iter().any(|doc| doc.doc_id == doc_id) {
+        let entry = denied_entry(&reviewer_id, &reviewer_role, &user_id, Some(&doc_id), "doc_not_bound", request_id.as_deref());
+        let _ = state.store.record_document_access(entry).await;
+        return Ok(doc_not_found_response());
+    }
+
+    // Step 3: stream the image
+    let image = state
+        .sumsub_documents
+        .fetch_image(&applicant, &doc_id)
+        .await
+        .map_err(sumsub_image_error)?;
+
+    let safe_content_type = safe_image_content_type(&image.content_type);
+
+    let entry = DocumentAccessEntry {
+        reviewer_id,
+        reviewer_role,
+        user_id,
+        doc_id: Some(doc_id),
+        action: "view".to_owned(),
+        result: "success".to_owned(),
+        denial_reason: None,
+        request_id,
+        source_ip_hash: None,
+    };
+    let _ = state.store.record_document_access(entry).await;
+
+    let body = Body::from_stream(image.response.bytes_stream());
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, safe_content_type)
+        .header(header::CACHE_CONTROL, "private, no-store")
+        .body(body)
+        .unwrap_or_else(|_| Response::new(Body::empty()));
+    Ok(response)
+}
+
+fn denied_entry(
+    reviewer_id: &str,
+    reviewer_role: &str,
+    user_id: &str,
+    doc_id: Option<&str>,
+    denial_reason: &str,
+    request_id: Option<&str>,
+) -> DocumentAccessEntry {
+    DocumentAccessEntry {
+        reviewer_id: reviewer_id.to_owned(),
+        reviewer_role: reviewer_role.to_owned(),
+        user_id: user_id.to_owned(),
+        doc_id: doc_id.map(str::to_owned),
+        action: "view".to_owned(),
+        result: "denied".to_owned(),
+        denial_reason: Some(denial_reason.to_owned()),
+        request_id: request_id.map(str::to_owned),
+        source_ip_hash: None,
+    }
+}
+
+fn sumsub_list_error(e: SumsubDocumentError) -> (StatusCode, Json<ApiErrorResponse>) {
+    match e {
+        SumsubDocumentError::ProviderAuth => {
+            tracing::error!("sumsub provider auth failure fetching document list for binding check");
+            api_error(StatusCode::BAD_GATEWAY, "provider_error", "upstream provider error")
+        }
+        SumsubDocumentError::NotFound => {
+            api_error(StatusCode::NOT_FOUND, "document_not_found", "applicant not found")
+        }
+        SumsubDocumentError::Upstream(msg) => {
+            tracing::error!(%msg, "sumsub upstream error fetching document list for binding check");
+            api_error(StatusCode::BAD_GATEWAY, "provider_error", "upstream provider error")
+        }
+    }
+}
+
+fn sumsub_image_error(e: SumsubDocumentError) -> (StatusCode, Json<ApiErrorResponse>) {
+    match e {
+        SumsubDocumentError::ProviderAuth => {
+            tracing::error!("sumsub provider auth failure fetching image");
+            api_error(StatusCode::BAD_GATEWAY, "provider_error", "upstream provider error")
+        }
+        SumsubDocumentError::NotFound => {
+            api_error(StatusCode::NOT_FOUND, "document_not_found", "image not found")
+        }
+        SumsubDocumentError::Upstream(msg) => {
+            tracing::error!(%msg, "sumsub upstream error fetching image");
+            api_error(StatusCode::BAD_GATEWAY, "provider_error", "upstream provider error")
+        }
+    }
+}
+
+fn doc_not_found_response() -> Response {
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(DOC_NOT_FOUND_BODY))
+        .unwrap_or_else(|_| Response::new(Body::empty()))
+}
+
+fn safe_image_content_type(content_type: &str) -> &'static str {
+    match content_type {
+        ct if ct.starts_with("image/jpeg") => "image/jpeg",
+        ct if ct.starts_with("image/png") => "image/png",
+        ct if ct.starts_with("image/webp") => "image/webp",
+        _ => "application/octet-stream",
+    }
 }
