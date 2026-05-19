@@ -25,9 +25,10 @@
 <h1>SPEC-017 — Monorepo Bootstrap &amp; Local Dev Environment</h1>
 <blockquote>
 <p>優先級：<strong>P0（必須在第一行業務 code 之前完成）</strong>
-版本：v0.2.7 · 最後更新：2026-05-18
+版本：v0.2.8 · 最後更新：2026-05-18
 依賴：SPEC-014（架構定義）
 被依賴：所有 SPEC（實作載體）</p>
+<p><strong>v0.2.8 變更</strong>：§6.3 新增 §6.3.4「Admin app 後端錯誤呈現」，明定 admin app 必須依 gateway 回應的 HTTP 狀態碼與 error code（SPEC-014 §6.1.1）呈現可辨識的使用者訊息，不得一律顯示籠統錯誤；BFF 層須透傳狀態碼與 error code、不得重新對映。首個落地對象為 KYC 審核會員查詢（<code>/members/kyc-review</code>）對不存在會員顯示「查無此會員」而非一般錯誤。</p>
 <p><strong>v0.2.7 變更</strong>：§6.3 新增 §6.3.3「Nav 資訊架構（IA）」，明示左側 nav 群組僅影響導覽呈現、不新增/移除路由、不改變 §6.3.1 路由 RBAC：決策支援（<code>/dashboard</code>）與分析報表（<code>/analytics</code>）合併為可展開的「數據與報表」群組；帳戶點數例外（<code>/points</code>）改以 <code>OpsRoute.navHidden</code> 自 top-level 收起、列入「會員管理」子導覽。連帶 erratum：§6.3.1 矩陣 <code>/points</code> 標籤由「帳戶銅幣例外」更正為「帳戶點數例外」，與 admin app UI（<code>apps/admin/lib/ops-facade.ts</code>）一致。另：「代理管理區」群組更名為「代理管理」；nav 排序將 FAQ 管理移至各操作領域之後（§6.3.3）。</p>
 <p><strong>v0.2.6 變更</strong>：§11 新增 §11.3「PoC gating」，明示 PoC-A（EdDSA / LIFF）+ PoC-B（Cloudflare Edge runtime 5 場景）為 launch acceptance gate；v0.2.7 後校準為「不阻擋 PR #1 / internal alpha，但阻擋公開 Beta / 真實入金 / prod deployment mode finalization」。PoC 結果需回填至 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md</code></a>。</p>
 <p><strong>v0.2.5 變更</strong>：(1) <strong>T-7 mutation testing 門檻分階段</strong>：§3.3 R-4 由「caught rate ≥ 75% 否則發 alert」修正為「MVP 起步 ≥ 60%、每季度 +5%、6 個月內達 75%」分階段門檻；(2) <strong>T-8 CI runner</strong>：§11.2.10 規模預期表新增 GitHub Actions larger runner <code>ubuntu-latest-4-cores</code> 為已配置時的加速選項（&lt; 15 min cold cache）；未配置 larger runner 的 repo 使用標準 <code>ubuntu-latest</code> fallback，避免 workflow indefinite queued。</p>
@@ -506,6 +507,15 @@
 </tbody>
 </table>
 <p>未列於上表的路由（<code>/</code>、<code>/kyc-risk</code>、<code>/compensation</code>、<code>/security/login-events</code>、<code>/faq</code> 等）為 top-level 單一 nav 項。<code>/approvals</code>（工單審批）與 <code>/points</code>（帳戶點數例外）以 <code>OpsRoute.navHidden</code> 自 top-level 收起，僅作為「會員管理」子項出現；兩者路由與 §6.3.1 RBAC 不變。Nav 由上而下排序為：操作入口總覽 → 數據與報表 → 登入事件 → 會員管理 → 代理管理 → KYC / 風險事件 → 補償審批 → FAQ 管理；FAQ 管理屬內容管理、非操作領域，故排於各操作領域之後。實作見 <code>apps/admin/app/layout.tsx</code> 之 <code>buildAdminNavLinks</code> 與 <code>apps/admin/lib/ops-facade.ts</code>。</p>
+<h4>6.3.4 Admin app 後端錯誤呈現（新增 2026-05-18）</h4>
+<p>Admin app 對後端（經 api-gateway，錯誤契約見 <a href="./SPEC-014-tech-architecture.html">SPEC-014</a> §6.1.1）的非 2xx 回應，必須依 HTTP 狀態碼與回應主體的 error code 呈現可辨識的使用者訊息，不得一律顯示籠統錯誤。最低要求：</p>
+<ul>
+<li><strong><code>404</code></strong>：呈現「查無資料」語意的狀態（如會員查詢的「查無此會員」），而非錯誤橫幅或 toast。</li>
+<li><strong><code>502</code> / <code>503</code></strong>：呈現「服務暫時無法使用，請稍後再試」，並允許重試。</li>
+<li><strong><code>5xx</code>（gateway 自身未預期失敗）</strong>：呈現籠統錯誤訊息；此為最後手段，不得作為 4xx 的預設呈現。</li>
+<li>BFF 層（<code>apps/admin/lib/*-bff.ts</code>）必須透傳 gateway 的 HTTP 狀態碼與 error code，不得重新對映或壓平——否則前端無從辨識。</li>
+</ul>
+<p>首個落地對象：KYC 審核會員查詢（<code>/members/kyc-review</code>）。gateway 對不存在會員回 <code>404 ERROR_CODE_MEMBER_NOT_FOUND</code>（SPEC-014 §6.1.1），admin app 必須顯示「查無此會員」而非一般錯誤。實作見 <code>apps/admin/app/members/kyc-review/</code> 與 <code>apps/admin/lib/member-management-bff.ts</code>。</p>
 <p>三個 Next.js app（web / admin / liff）共用 <code>packages/ts-sdk</code> 與 Kumo 元件，由 Turborepo <code>^build</code> 依賴拓撲連動。</p>
 <hr />
 <h2>7. 環境變數與配置</h2>
