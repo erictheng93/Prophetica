@@ -451,11 +451,11 @@
 <li><strong>存取限制：</strong>呼叫此端點須持有 <code>kyc_review</code> 權限。MVP 階段此權限映射至 <code>admin</code> 與 <code>manager</code> 角色；<code>affiliate</code> 角色明確排除。</li>
 </ul>
 <h4>5.3.3 內部簽名機制（「短期 token」語意澄清）</h4>
-<p>§5.1 提及「後端代理 + 短期 token 取用」。此「短期 token」<strong>指的是 api-gateway 向 kyc-service 發起的伺服器對伺服器簽名呼叫，並非任何可送達瀏覽器的 token。</strong>具體機制如下：</p>
+<p>§5.1 提及「後端代理 + 短期 token 取用」。此「短期 token」<strong>指的是 admin server route 向 api-gateway 發起的伺服器對伺服器簽名呼叫，並非任何可送達瀏覽器的 token。</strong>瀏覽器端僅使用 admin session cookie。具體機制如下：</p>
 <ul>
 <li>簽名演算法：<strong>HMAC-SHA256</strong>，涵蓋 <code>method</code>、<code>path</code>、<code>body-hash</code>（空 body 為空字串 hash）、<code>timestamp</code>（Unix 秒）、<code>actor</code>（操作人員 ID）、<code>role</code>（操作人員角色）。</li>
-<li>簽名金鑰由 Vault 管理，api-gateway 與 kyc-service 各持 shared secret，不寫入任何前端 bundle 或 Cookie。</li>
-<li>kyc-service 驗證簽名後才向 SumSub 發起實際請求；<code>timestamp</code> 偏差超過 ±60 秒即拒絕（防重放）。</li>
+<li>簽名金鑰（<code>ADMIN_INTERNAL_CALL_SECRET</code>）由 Vault 管理，admin server route 與 api-gateway 各持 shared secret，不寫入任何前端 bundle 或 Cookie。</li>
+<li><strong>api-gateway 驗證簽名</strong>後才轉發至 kyc-service；<code>timestamp</code> 偏差超過 300 秒即拒絕（防重放）。api-gateway → kyc-service 為獨立內部跳，轉發 <code>actor</code> / <code>role</code> / <code>request-id</code> header 供 kyc-service 稽核。</li>
 <li>SumSub API key 僅存於 kyc-service 環境變數（由 Vault 注入），不向 api-gateway 或前端透出。</li>
 </ul>
 <h3>5.4 R2 歸檔</h3>
