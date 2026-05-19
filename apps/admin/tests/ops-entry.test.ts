@@ -240,8 +240,7 @@ test("members page exposes complete member management operations", () => {
   assert.match(componentSource, /帳戶摘要/);
   assert.match(componentSource, /狀態與風控/);
   assert.match(componentSource, /KYC 證件材料/);
-  assert.match(componentSource, /KYC_DOCUMENTS_BUCKET/);
-  assert.match(componentSource, /KYC_LIVENESS_BUCKET/);
+  assert.match(componentSource, /KycDocumentGallery/);
   assert.match(componentSource, /提交處理動作/);
   assert.match(componentSource, /\/api\/members/);
   assert.match(bffSource, /proxyMemberSummaryRequest/);

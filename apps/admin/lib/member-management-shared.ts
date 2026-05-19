@@ -191,15 +191,6 @@ export interface MemberActionListResponse {
   source: "api-gateway";
 }
 
-export interface KycDocument {
-  doc_id: string;
-  kind: "id_doc" | "selfie" | "liveness";
-  country: string;
-  side: string | null;
-  content_type: string;
-  captured_at: string;
-}
-
 export const memberSearchHints = ["MEM-001", "MEM-1042", "user_123"] as const;
 
 export interface KycDocument {
