@@ -28,10 +28,12 @@ matching-engine = { path = "../matching-engine" }
 notification-service = { path = "../notification-service" }
 proto = { path = "../../crates/proto" }
 risk-antifraud-service = { path = "../risk-antifraud-service" }
+serde_json.workspace = true
 settlement-worker = { path = "../settlement-worker" }
 tonic.workspace = true
 user-service = { path = "../user-service" }
 wallet-ledger-service = { path = "../wallet-ledger-service" }
+wiremock = "0.5"
 ws-gateway = { path = "../ws-gateway" }
 
 [lints]

@@ -2,13 +2,16 @@ use std::{
     collections::HashSet,
     env,
     sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use async_trait::async_trait;
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    body::Body,
+    extract::{OriginalUri, Path, Query, State},
+    http::{HeaderMap, StatusCode, header},
+    response::Response,
     routing::{delete, get, patch, post},
 };
 use reqwest::Url;
@@ -77,6 +80,20 @@ pub trait AdminOpsStore {
         request: CompensationProposalRequest,
         _context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError>;
+
+    /// Returns the HMAC secret used to verify admin internal-call signatures for
+    /// the KYC document proxy. Reads `ADMIN_INTERNAL_CALL_SECRET` from the process
+    /// environment by default; implementors may override this for testing.
+    fn kyc_proxy_secret(&self) -> Option<String> {
+        env::var("ADMIN_INTERNAL_CALL_SECRET").ok()
+    }
+
+    /// Returns the base URL of the KYC service for the document proxy.
+    /// Reads `KYC_SERVICE_URL` from the process environment by default.
+    fn kyc_service_base_url(&self) -> String {
+        env::var("KYC_SERVICE_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -413,6 +430,14 @@ where
             "/api/internal/admin/members/:user_id/compensation-proposals",
             post(create_compensation_proposal::<S>),
         )
+        .route(
+            "/api/internal/admin/members/:user_id/kyc-documents",
+            get(proxy_kyc_document_list::<S>),
+        )
+        .route(
+            "/api/internal/admin/members/:user_id/kyc-documents/:doc_id",
+            get(proxy_kyc_document_image::<S>),
+        )
         .with_state(store)
 }
 
@@ -566,6 +591,184 @@ where
         .await
         .map(Json)
         .map_err(|_| internal_error())
+}
+
+/// Proxies a KYC document list request to kyc-service, after verifying the
+/// signed internal-call headers. SPEC-005 §5.3.
+async fn proxy_kyc_document_list<S>(
+    State(store): State<S>,
+    headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
+    Path(user_id): Path<String>,
+) -> Response
+where
+    S: AdminOpsStore,
+{
+    let Some(secret) = store.kyc_proxy_secret() else {
+        tracing::error!("ADMIN_INTERNAL_CALL_SECRET is not set; rejecting KYC proxy request");
+        return kyc_proxy_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "kyc_proxy_secret_unconfigured",
+        );
+    };
+    let request_path = uri.path();
+    if let Err(auth_err) =
+        verify_kyc_proxy_auth_with_secret(&headers, "GET", request_path, &secret)
+    {
+        return auth_err;
+    }
+
+    let kyc_base = store.kyc_service_base_url();
+    let Ok((kyc_url, client)) = kyc_proxy_upstream_from(&kyc_base) else {
+        return kyc_proxy_error(StatusCode::INTERNAL_SERVER_ERROR, "kyc_proxy_bad_url");
+    };
+
+    let upstream_path = format!(
+        "/v1/internal/admin/kyc/members/{}/documents",
+        url_encode_path_segment(&user_id)
+    );
+    let Ok(upstream_url) = kyc_url.join(&upstream_path) else {
+        return kyc_proxy_error(StatusCode::INTERNAL_SERVER_ERROR, "kyc_proxy_bad_url");
+    };
+
+    let mut fwd_request = client.get(upstream_url);
+    fwd_request = forward_proxy_headers(fwd_request, &headers);
+
+    kyc_proxy_stream(fwd_request, false).await
+}
+
+/// Proxies a KYC document image request to kyc-service, streaming the response
+/// bytes back to the caller. SPEC-005 §5.3.
+async fn proxy_kyc_document_image<S>(
+    State(store): State<S>,
+    headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
+    Path((user_id, doc_id)): Path<(String, String)>,
+) -> Response
+where
+    S: AdminOpsStore,
+{
+    let Some(secret) = store.kyc_proxy_secret() else {
+        tracing::error!("ADMIN_INTERNAL_CALL_SECRET is not set; rejecting KYC proxy request");
+        return kyc_proxy_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "kyc_proxy_secret_unconfigured",
+        );
+    };
+    let request_path = uri.path();
+    if let Err(auth_err) =
+        verify_kyc_proxy_auth_with_secret(&headers, "GET", request_path, &secret)
+    {
+        return auth_err;
+    }
+
+    let kyc_base = store.kyc_service_base_url();
+    let Ok((kyc_url, client)) = kyc_proxy_upstream_from(&kyc_base) else {
+        return kyc_proxy_error(StatusCode::INTERNAL_SERVER_ERROR, "kyc_proxy_bad_url");
+    };
+
+    let upstream_path = format!(
+        "/v1/internal/admin/kyc/members/{}/documents/{}",
+        url_encode_path_segment(&user_id),
+        url_encode_path_segment(&doc_id),
+    );
+    let Ok(upstream_url) = kyc_url.join(&upstream_path) else {
+        return kyc_proxy_error(StatusCode::INTERNAL_SERVER_ERROR, "kyc_proxy_bad_url");
+    };
+
+    let mut fwd_request = client.get(upstream_url);
+    fwd_request = forward_proxy_headers(fwd_request, &headers);
+
+    kyc_proxy_stream(fwd_request, true).await
+}
+
+/// Verifies the internal-call HMAC signature for a KYC proxy request.
+///
+/// Returns `Err(Response)` with 401 when verification fails.
+fn verify_kyc_proxy_auth_with_secret(
+    headers: &HeaderMap,
+    method: &str,
+    path: &str,
+    secret: &str,
+) -> Result<(), Response> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
+    crate::internal_call_auth::verify_internal_call(headers, method, path, b"", secret, now)
+        .map(|_actor| ())
+        .map_err(|_| kyc_proxy_error(StatusCode::UNAUTHORIZED, "kyc_proxy_unauthorized"))
+}
+
+/// Resolves the KYC-service base URL and a reqwest client for the proxy.
+///
+/// Returns `Err(Response)` with 500 when the URL cannot be parsed.
+fn kyc_proxy_upstream_from(raw_url: &str) -> Result<(Url, reqwest::Client), Response> {
+    let url = Url::parse(raw_url)
+        .map_err(|_| kyc_proxy_error(StatusCode::INTERNAL_SERVER_ERROR, "kyc_proxy_bad_url"))?;
+    Ok((url, reqwest::Client::new()))
+}
+
+/// Forwards actor / operator / request-id headers to the upstream reqwest request.
+fn forward_proxy_headers(
+    mut request: reqwest::RequestBuilder,
+    headers: &HeaderMap,
+) -> reqwest::RequestBuilder {
+    for name in &["x-actor-id", "x-operator-role", "x-request-id"] {
+        if let Some(value) = headers.get(*name) {
+            request = request.header(*name, value.clone());
+        }
+    }
+    request
+}
+
+/// Sends the upstream reqwest request and streams its response body back as an
+/// axum [`Response`], passing through the upstream status and `Content-Type`.
+/// When `add_cache_control` is `true` a `Cache-Control: private, no-store`
+/// header is also appended (used for image responses).
+async fn kyc_proxy_stream(request: reqwest::RequestBuilder, add_cache_control: bool) -> Response {
+    let upstream_response = match request.send().await {
+        Ok(r) => r,
+        Err(err) => {
+            tracing::warn!(%err, "KYC document proxy upstream request failed");
+            return kyc_proxy_error(StatusCode::BAD_GATEWAY, "kyc_proxy_upstream_failed");
+        }
+    };
+
+    let status = upstream_response.status();
+    let axum_status = StatusCode::from_u16(status.as_u16())
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let content_type = upstream_response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .cloned();
+
+    let stream = upstream_response.bytes_stream();
+    let body = Body::from_stream(stream);
+    let mut response = Response::new(body);
+    *response.status_mut() = axum_status;
+    if let Some(ct) = content_type {
+        response.headers_mut().insert(header::CONTENT_TYPE, ct);
+    }
+    if add_cache_control {
+        if let Ok(value) = "private, no-store".parse() {
+            response
+                .headers_mut()
+                .insert(header::CACHE_CONTROL, value);
+        }
+    }
+    response
+}
+
+fn kyc_proxy_error(status: StatusCode, code: &'static str) -> Response {
+    let body = format!("{{\"error\":\"{code}\"}}");
+    let mut response = Response::new(Body::from(body));
+    *response.status_mut() = status;
+    if let Ok(value) = "application/json".parse() {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, value);
+    }
+    response
 }
 
 fn validate_member_action_review(
@@ -2230,11 +2433,19 @@ impl AdminOpsStore for HttpAdminOpsStore {
             "member action production source is not connected",
         ))
     }
+
+    fn kyc_service_base_url(&self) -> String {
+        self.kyc_service_url.as_str().to_owned()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryAdminOpsStore {
     state: Arc<Mutex<AdminOpsState>>,
+    /// Test-only: override for `ADMIN_INTERNAL_CALL_SECRET`.
+    kyc_secret_override: Option<String>,
+    /// Test-only: override for `KYC_SERVICE_URL`.
+    kyc_url_override: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -2252,6 +2463,19 @@ impl InMemoryAdminOpsStore {
             |poisoned| poisoned.into_inner().audit_records.clone(),
             |state| state.audit_records.clone(),
         )
+    }
+
+    /// Configures test-only KYC proxy overrides so tests can inject the secret
+    /// and service URL without touching environment variables.
+    #[must_use]
+    pub fn with_kyc_proxy_config(
+        mut self,
+        secret: impl Into<String>,
+        kyc_service_url: impl Into<String>,
+    ) -> Self {
+        self.kyc_secret_override = Some(secret.into());
+        self.kyc_url_override = Some(kyc_service_url.into());
+        self
     }
 }
 
@@ -2558,5 +2782,18 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
             reviewed_at: "now".to_owned(),
         });
         Ok(action.clone())
+    }
+
+    fn kyc_proxy_secret(&self) -> Option<String> {
+        self.kyc_secret_override
+            .clone()
+            .or_else(|| env::var("ADMIN_INTERNAL_CALL_SECRET").ok())
+    }
+
+    fn kyc_service_base_url(&self) -> String {
+        self.kyc_url_override.clone().unwrap_or_else(|| {
+            env::var("KYC_SERVICE_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned())
+        })
     }
 }
