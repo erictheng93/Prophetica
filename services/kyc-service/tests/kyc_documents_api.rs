@@ -46,15 +46,19 @@ async fn seed_tier2_user(store: &InMemoryKycStore, user_id: &str) -> String {
         .expect("Tier-2 record should have applicant_id")
 }
 
-fn admin_get(uri: &str) -> Request<Body> {
+fn request_as_role(uri: &str, role: &str) -> Request<Body> {
     Request::builder()
         .method("GET")
         .uri(uri)
         .header("x-actor-id", "reviewer_1")
-        .header("x-operator-role", "kyc_reviewer")
+        .header("x-operator-role", role)
         .header("x-request-id", "req-test-001")
         .body(Body::empty())
         .unwrap()
+}
+
+fn admin_get(uri: &str) -> Request<Body> {
+    request_as_role(uri, "admin")
 }
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -387,4 +391,36 @@ async fn unbound_doc_writes_denied_audit_row_with_denial_reason() {
         Some("doc_not_bound"),
         "denial_reason should be doc_not_bound"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 7: a non-reviewer role is rejected with 403 and writes a denied
+//             audit row (SPEC-005 §5.3.2 / §8 — backend role enforcement).
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn non_reviewer_role_is_forbidden_and_writes_denied_audit_row() {
+    let server = MockServer::start().await;
+    let store = test_store();
+
+    let resp = test_router_with_server(store.clone(), &server.uri())
+        .oneshot(request_as_role(
+            "/v1/internal/admin/kyc/members/user_role_7/documents",
+            "support",
+        ))
+        .await
+        .expect("request should be handled");
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let _ = collect_bytes(resp).await;
+
+    let log = store
+        .document_access_log
+        .lock()
+        .expect("audit log lock should succeed");
+    let denied = log
+        .iter()
+        .find(|e| e.result == "denied")
+        .expect("should have a denied row");
+    assert_eq!(denied.denial_reason.as_deref(), Some("role_not_permitted"));
+    assert_eq!(denied.action, "list");
 }

@@ -763,6 +763,12 @@ fn extract_actor_headers(headers: &HeaderMap) -> (String, String, Option<String>
     (reviewer_id, reviewer_role, request_id)
 }
 
+/// KYC document access requires the KYC review permission. SPEC-005 §5.3.2 / §8
+/// maps that permission to the `admin` and `manager` roles in the MVP.
+fn is_kyc_reviewer_role(role: &str) -> bool {
+    role == "admin" || role == "manager"
+}
+
 async fn list_member_documents<S>(
     State(state): State<ApiState<S>>,
     headers: HeaderMap,
@@ -772,6 +778,28 @@ where
     S: KycStore,
 {
     let (reviewer_id, reviewer_role, request_id) = extract_actor_headers(&headers);
+
+    if !is_kyc_reviewer_role(&reviewer_role) {
+        let entry = DocumentAccessEntry {
+            reviewer_id,
+            reviewer_role,
+            user_id,
+            doc_id: None,
+            action: "list".to_owned(),
+            result: "denied".to_owned(),
+            denial_reason: Some("role_not_permitted".to_owned()),
+            request_id,
+            source_ip_hash: None,
+        };
+        if let Err(err) = state.store.record_document_access(entry).await {
+            tracing::error!(?err, "failed to write kyc_document_access_log entry");
+        }
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "kyc review permission required",
+        ));
+    }
 
     let applicant_id = state
         .store
@@ -857,6 +885,25 @@ where
     S: KycStore,
 {
     let (reviewer_id, reviewer_role, request_id) = extract_actor_headers(&headers);
+
+    if !is_kyc_reviewer_role(&reviewer_role) {
+        let entry = denied_entry(
+            &reviewer_id,
+            &reviewer_role,
+            &user_id,
+            Some(&doc_id),
+            "role_not_permitted",
+            request_id.as_deref(),
+        );
+        if let Err(err) = state.store.record_document_access(entry).await {
+            tracing::error!(?err, "failed to write kyc_document_access_log entry");
+        }
+        return Err(api_error(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "kyc review permission required",
+        ));
+    }
 
     // Step 1: resolve applicant_id — None → 404
     let applicant_id = state

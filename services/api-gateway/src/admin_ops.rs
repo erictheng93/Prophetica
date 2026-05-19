@@ -694,22 +694,15 @@ fn verify_kyc_proxy_auth_with_secret(
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
-    let actor =
-        crate::internal_call_auth::verify_internal_call(headers, method, path, b"", secret, now)
-            .map_err(|_| kyc_proxy_error(StatusCode::UNAUTHORIZED, "kyc_proxy_unauthorized"))?;
-    // SPEC-005 §5.3.2 / §8: KYC document access is restricted to the KYC review
-    // permission, mapped to the admin/manager roles in the MVP. The signed call
-    // carries the operator role; enforce it here as a backend invariant rather
-    // than relying solely on the admin UI's role gate.
-    if actor.role != "admin" && actor.role != "manager" {
-        tracing::warn!(
-            actor_id = %actor.actor_id,
-            role = %actor.role,
-            "rejected KYC document proxy request for non-reviewer role"
-        );
-        return Err(kyc_proxy_error(StatusCode::FORBIDDEN, "kyc_proxy_forbidden"));
-    }
-    Ok(())
+    // The signed canonical string covers the operator role, so a valid
+    // signature authenticates the `x-operator-role` header that the gateway
+    // forwards. KYC review permission enforcement and denied-access auditing
+    // live in kyc-service (SPEC-005 §5.3.2 / §8), which owns the
+    // kyc_document_access_log table — so a role-rejected request must reach
+    // kyc-service rather than being short-circuited here.
+    crate::internal_call_auth::verify_internal_call(headers, method, path, b"", secret, now)
+        .map(|_actor| ())
+        .map_err(|_| kyc_proxy_error(StatusCode::UNAUTHORIZED, "kyc_proxy_unauthorized"))
 }
 
 /// Resolves the KYC-service base URL and a reqwest client for the proxy.
