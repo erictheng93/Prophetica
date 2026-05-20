@@ -651,13 +651,17 @@ impl ApiError {
         )
     }
 
-    fn kyc_tier_insufficient(current_tier: &str) -> Self {
+    fn kyc_tier_insufficient(current_tier: KycTier) -> Self {
+        let tier_str = match serde_json::to_value(current_tier) {
+            Ok(value) => value,
+            Err(_) => serde_json::Value::Null,
+        };
         Self::new(
             StatusCode::FORBIDDEN,
             "ERROR_CODE_KYC_TIER_INSUFFICIENT",
             "KYC tier is below the minimum required for trading",
         )
-        .with_detail("current_tier", serde_json::json!(current_tier))
+        .with_detail("current_tier", tier_str)
         .with_detail("required_tier", serde_json::json!("TIER_1"))
         .with_detail("redirect_to", serde_json::json!("/kyc/tier-1"))
     }
@@ -761,9 +765,33 @@ pub struct PaymentsRealMoneyStatusResponse {
     pub real_money_enabled: bool,
 }
 
+/// KYC tier as exchanged with kyc-service. Wire format mirrors
+/// `kyc_service::kyc::KycTier`; using an enum here keeps the gateway from
+/// silently failing closed on a kyc-service rename and prevents subtle bugs
+/// from string-typo drift (SPEC-023 plan v0.1.3 follow-up S-4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KycTier {
+    #[serde(rename = "TIER_0")]
+    Tier0,
+    #[serde(rename = "TIER_1")]
+    Tier1,
+    #[serde(rename = "TIER_2")]
+    Tier2,
+    #[serde(rename = "TIER_3")]
+    Tier3,
+}
+
+impl KycTier {
+    /// Returns true when the tier satisfies the SPEC-005 §2.1 trading gate.
+    #[must_use]
+    pub const fn allows_trading(self) -> bool {
+        matches!(self, Self::Tier1 | Self::Tier2 | Self::Tier3)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KycTierResponse {
-    pub tier: String,
+    pub tier: KycTier,
 }
 
 #[derive(Debug, Clone)]
@@ -972,7 +1000,7 @@ impl MarketFeeReader for DefaultMarketFeeReader {
 
 #[async_trait]
 pub trait KycTierClient {
-    async fn get_kyc_tier(&self, user_id: &str) -> Result<String, ApiError>;
+    async fn get_kyc_tier(&self, user_id: &str) -> Result<KycTier, ApiError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1662,7 +1690,7 @@ where
 
 #[async_trait]
 impl KycTierClient for HttpKycServiceClient {
-    async fn get_kyc_tier(&self, user_id: &str) -> Result<String, ApiError> {
+    async fn get_kyc_tier(&self, user_id: &str) -> Result<KycTier, ApiError> {
         let path = format!("/internal/kyc/users/{user_id}/tier");
         let url = self
             .base_url
@@ -1696,8 +1724,8 @@ impl KycTierClient for HttpKycServiceClient {
 #[cfg(test)]
 #[async_trait]
 impl KycTierClient for AllowAllKycTierClient {
-    async fn get_kyc_tier(&self, _user_id: &str) -> Result<String, ApiError> {
-        Ok("TIER_1".to_owned())
+    async fn get_kyc_tier(&self, _user_id: &str) -> Result<KycTier, ApiError> {
+        Ok(KycTier::Tier1)
     }
 }
 
@@ -2122,9 +2150,9 @@ where
     let tier = kyc.get_kyc_tier(user_id).await.inspect_err(|_| {
         record_order_precheck_rejected("kyc_lookup_unavailable");
     })?;
-    if !kyc_tier_allows_trading(&tier) {
+    if !tier.allows_trading() {
         record_order_precheck_rejected("kyc_tier_insufficient");
-        return Err(ApiError::kyc_tier_insufficient(&tier));
+        return Err(ApiError::kyc_tier_insufficient(tier));
     }
 
     let order_kind = parse_order_kind(&request.order_type).inspect_err(|_| {
@@ -2159,10 +2187,6 @@ where
     }
 
     Ok(())
-}
-
-fn kyc_tier_allows_trading(tier: &str) -> bool {
-    matches!(tier, "TIER_1" | "TIER_2" | "TIER_3")
 }
 
 fn parse_order_kind(value: &str) -> Result<OrderKind, ApiError> {
@@ -2913,10 +2937,10 @@ mod tests {
     use super::{
         AdminProxyContext, AffiliateCommissionSummary, AffiliateDashboardResponse,
         AffiliateReferralListItem, ApiError, AuthVerifier, BookLevel, BookSnapshotResponse,
-        CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore, KycTierClient,
-        LedgerEntry, Market, MarketListResponse, MarketServiceClient, MatchingEngineClient,
-        OrderActionResponse, PlaceOrderRequest, ReferralClient, SERVICE_NAME, WalletBalance,
-        WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
+        CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore, KycTier,
+        KycTierClient, LedgerEntry, Market, MarketListResponse, MarketServiceClient,
+        MatchingEngineClient, OrderActionResponse, PlaceOrderRequest, ReferralClient,
+        SERVICE_NAME, WalletBalance, WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
         X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
         market_router, observability, router, router_with_engine, router_with_engine_and_kyc,
         router_with_engine_and_kyc_and_market_fees, router_with_payment_flags,
@@ -3138,7 +3162,7 @@ mod tests {
     #[tokio::test]
     async fn place_order_rejects_tier_zero_before_matching_engine() {
         let engine = InMemoryMatchingEngineClient::default();
-        let kyc = InMemoryKycTierClient::with_tier("TIER_0");
+        let kyc = InMemoryKycTierClient::with_tier(KycTier::Tier0);
         let app =
             router_with_engine_and_kyc(InMemoryWalletLedgerClient::default(), engine.clone(), kyc);
 
@@ -3150,6 +3174,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
         let body = response_json(response).await;
         assert_eq!(body["error"], json!("ERROR_CODE_KYC_TIER_INSUFFICIENT"));
+        assert_eq!(body["current_tier"], json!("TIER_0"));
         assert_eq!(body["required_tier"], json!("TIER_1"));
         assert_eq!(body["redirect_to"], json!("/kyc/tier-1"));
         assert_eq!(engine.place_requests(), Vec::new());
@@ -3180,7 +3205,7 @@ mod tests {
         let app = router_with_engine_and_kyc(
             wallet,
             engine.clone(),
-            InMemoryKycTierClient::with_tier("TIER_1"),
+            InMemoryKycTierClient::with_tier(KycTier::Tier1),
         );
 
         let response = app
@@ -3218,7 +3243,7 @@ mod tests {
         let app = router_with_engine_and_kyc_and_market_fees(
             wallet,
             engine.clone(),
-            InMemoryKycTierClient::with_tier("TIER_1"),
+            InMemoryKycTierClient::with_tier(KycTier::Tier1),
             market_service.clone(),
         );
 
@@ -4114,22 +4139,20 @@ mod tests {
 
     #[derive(Clone)]
     struct InMemoryKycTierClient {
-        tier: Option<String>,
+        tier: Option<KycTier>,
     }
 
     impl Default for InMemoryKycTierClient {
         fn default() -> Self {
             Self {
-                tier: Some("TIER_1".to_owned()),
+                tier: Some(KycTier::Tier1),
             }
         }
     }
 
     impl InMemoryKycTierClient {
-        fn with_tier(tier: &str) -> Self {
-            Self {
-                tier: Some(tier.to_owned()),
-            }
+        fn with_tier(tier: KycTier) -> Self {
+            Self { tier: Some(tier) }
         }
 
         fn unavailable() -> Self {
@@ -4344,9 +4367,8 @@ mod tests {
 
     #[async_trait::async_trait]
     impl KycTierClient for InMemoryKycTierClient {
-        async fn get_kyc_tier(&self, _user_id: &str) -> Result<String, ApiError> {
+        async fn get_kyc_tier(&self, _user_id: &str) -> Result<KycTier, ApiError> {
             self.tier
-                .clone()
                 .ok_or_else(|| ApiError::kyc_lookup_unavailable("KYC service unavailable"))
         }
     }
