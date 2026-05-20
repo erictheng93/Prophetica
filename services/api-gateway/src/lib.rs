@@ -1005,6 +1005,11 @@ pub struct HttpKycServiceClient {
     internal_call_secret: String,
 }
 
+/// Test-only KYC tier client that approves every user. Production code MUST
+/// use [`HttpKycServiceClient`]; gating with `#[cfg(test)]` keeps this out of
+/// the release artifact so a mis-wired binary cannot accidentally bypass the
+/// SPEC-005 §2.1 Tier 1 gate.
+#[cfg(test)]
 #[derive(Debug, Clone, Default)]
 pub struct AllowAllKycTierClient;
 
@@ -1680,6 +1685,7 @@ impl KycTierClient for HttpKycServiceClient {
     }
 }
 
+#[cfg(test)]
 #[async_trait]
 impl KycTierClient for AllowAllKycTierClient {
     async fn get_kyc_tier(&self, _user_id: &str) -> Result<String, ApiError> {
@@ -1829,6 +1835,10 @@ where
         .merge(payments_real_money_router(flags))
 }
 
+/// Test-only convenience: wires the router with [`AllowAllKycTierClient`].
+/// Production must call [`router_with_engine_and_kyc`] (or one of the
+/// `_and_kyc_*` variants) with [`HttpKycServiceClient`].
+#[cfg(test)]
 pub fn router_with_engine<W, E>(wallet_ledger: W, engine: E) -> Router
 where
     W: WalletLedgerClient + Clone + Send + Sync + 'static,
@@ -1887,6 +1897,10 @@ where
         ))
 }
 
+/// Test-only convenience: wires the router with [`AllowAllKycTierClient`].
+/// Production must call [`router_with_services_and_kyc`] (or one of the
+/// `_and_kyc_*` variants) with [`HttpKycServiceClient`].
+#[cfg(test)]
 pub fn router_with_services<W, E, R>(wallet_ledger: W, engine: E, referral: R) -> Router
 where
     W: WalletLedgerClient + Clone + Send + Sync + 'static,
