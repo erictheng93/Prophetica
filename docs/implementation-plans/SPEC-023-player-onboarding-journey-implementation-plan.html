@@ -29,7 +29,7 @@
 <body>
   <h1>SPEC-023 — 玩家入門與首次下單旅程實作計畫</h1>
   <div class="meta">
-    <strong>版本</strong>: v0.1.1<br>
+    <strong>版本</strong>: v0.1.2<br>
     <strong>更新日</strong>: 2026-05-20<br>
     <strong>對應規格</strong>: <a href="../../specs/SPEC-023-player-onboarding-journey.html">SPEC-023-player-onboarding-journey.html</a> v0.1.2<br>
     <strong>主要依賴規格</strong>: <a href="../../specs/SPEC-014-tech-architecture.html">SPEC-014 §4 / §6.1.2</a>, <a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005 §2</a>, <a href="../../specs/SPEC-003-matching-engine.html">SPEC-003</a>, <a href="../../specs/SPEC-022-login-event-intelligence.html">SPEC-022</a>, <a href="../../specs/SPEC-021-landing-variants.html">SPEC-021</a><br>
@@ -39,6 +39,7 @@
   <section>
     <h2>0. 變更紀錄</h2>
     <ul>
+      <li><strong>v0.1.2（2026-05-20）</strong>：收斂 §11 全部 7 個待決策（D-1 ~ D-7）為已決策結論，並對齊既有實作資產（user-service <code>SessionSigner</code> 已簽 EdDSA JWT、<code>/.well-known/jwks.json</code> 已暴露、<code>crates/sdk/src/feature_flags.rs</code> 已有 DB-backed flag infra、<code>@playwright/test</code> 已裝且有 mock pattern）。重點：D-1 採 <code>Authorization: Bearer &lt;user-service EdDSA JWT&gt;</code> 為唯一 caller credential；D-2 統一對外 prefix 為 <code>/v1/auth/*</code>、<code>/api/auth/*</code> 維持 alias 至 2026-08-31；D-3 注入 6 個 header（<code>x-user-id</code>, <code>x-principal-type</code>, <code>x-principal-id</code>, <code>x-affiliate-id</code>, <code>x-mfa-at</code>, <code>x-operator-role</code>）並對應 strip；D-4 由 kyc-service 為 tier 單一權威，新增 <code>GET /internal/kyc/users/:user_id/tier</code>；D-5 採 SPEC-003 §14.2 公式之保守上界，僅對 BUY 前置；D-6 採 <code>payments.real_money_enabled</code> feature flag；D-7 沿用 Playwright 加新 config <code>playwright.journey.config.ts</code> 與 npm script <code>test:e2e:journey</code>。Task 0.0 / 0.6 改為「實作 §11 已決策結論」之執行任務；§11 改為 Resolved 區。</li>
       <li><strong>v0.1.1（2026-05-20）</strong>：採用 <strong>Option B（api-gateway 邊緣 JWT 驗章）</strong>為目標架構，acknowledge 現況為 BFF-trust transitional state。主要修訂：
         <ul>
           <li>明確拆分 <code>proph_session</code>（web UI session）與 <code>proph_user_service_session</code>（gateway caller credential）之契約；將公開唯讀 <code>/v1/*</code> 端點納入 allowlist 例外（INV-JOURNEY-2 更新）；補 landing / LIFF handoff 驗證（Task 3.3、4.9）；把 KYC tier 權威端點、訂單成本公式、LG-2 開關與 E2E runner 定義前置為 Task 0.6 blocker。</li>
@@ -147,16 +148,15 @@
     <p>整條旅程的前置不變式。完成後其他 phase 才能依賴「gateway 已驗過 principal」。Phase 0 也必須先收斂 KYC tier 查詢、訂單成本公式、LG-2 開關與 E2E runner，避免後續 phase 以未定契約實作。</p>
 
     <div class="task">
-      <h4>Task 0.0 — 登入路徑與 session / caller credential 契約收斂（spike）</h4>
-      <p>現況 <code>apps/web</code> 同時持有 <code>proph_session</code>（web 自簽 HMAC UI session）與 <code>proph_user_service_session</code>（user-service 回傳 session token）。SPEC-023 / SPEC-014 要求 gateway 驗證 user-service 簽發的 caller credential，因此本任務必須明確決定 gateway 讀取哪個 cookie / header、web 呼叫 gateway 時如何轉送該 credential、以及 <code>proph_session</code> 是否只保留為 web UI session。user-service 目前同時提供 <code>/api/auth/login</code> 與 <code>/v1/auth/login</code>，本任務只需決定正式對外契約與遷移方向。</p>
+      <h4>Task 0.0 — 對齊既定契約（contract alignment）</h4>
+      <p>§11 已決策結論 D-1 / D-2 / D-3 已收斂；本任務把結論落地到 code 與測試 fixture。<strong>不再是 spike</strong>，而是一連串小修改：<code>apps/web/lib/auth.ts</code> 之 <code>LOGIN_PATH</code> 由 <code>/api/auth/login</code> 改為 <code>/v1/auth/login</code>；驗證 <code>/api/auth/*</code> alias 在 user-service 仍可用（services/user-service/src/auth.rs 已雙掛，本任務 verify only）；確認 user-service 既有 <code>SessionSigner</code>（EdDSA JWT，<code>auth.rs:2594</code>）為 gateway 即將驗證的 token 來源；確認 JWKS 端點 <code>/.well-known/jwks.json</code> 已暴露（<code>auth.rs:448</code>）。</p>
       <p><strong>驗收</strong></p>
       <ul>
-        <li>決定正式登入 URL prefix：保留 <code>/api/auth/login</code> alias、改以 <code>/v1/auth/login</code> 為唯一外部契約，或以 gateway / reverse proxy 統一；決策需寫入 PR 描述或本計畫後續版本。</li>
-        <li>決定 gateway caller credential 來源：優先使用 user-service JWT（現況 <code>proph_user_service_session</code>）或明確定義替代 introspection flow；不得把 web 自簽 <code>proph_session</code> 當成 gateway principal 權威。</li>
-        <li>決定 apps/web server action / API client 對 gateway 的 credential forwarding 規則（Cookie 或 <code>Authorization: Bearer</code>），並列出受影響 helper。</li>
-        <li>產出一份對齊備註（commit / PR 描述即可），不需新增 SPEC。</li>
+        <li><code>apps/web/lib/auth.ts</code> 之 <code>LOGIN_PATH</code> 已切換為 <code>/v1/auth/login</code>；既有 unit test (<code>apps/web/tests/auth.test.ts</code>) 仍通過。</li>
+        <li><code>/api/auth/login</code> alias 於 user-service 仍 200 回應並回傳 <code>Deprecation: true</code> + <code>Sunset: Mon, 31 Aug 2026 00:00:00 GMT</code> header（user-service 側修改，&lt; 10 LOC）。</li>
+        <li>產出 commit 訊息或 PR 描述明確標明：「D-1 = Bearer user-service EdDSA JWT；D-2 = /v1/auth/* 為唯一外部契約，/api/auth/* alias sunset 2026-08-31；D-3 = 注入 header 清單見 §11」。</li>
       </ul>
-      <p class="props"><strong>依賴</strong>: 無　/　<strong>規模</strong>: XS（單一 spike）　/　<strong>檔案</strong>: <code>apps/web/lib/auth.ts</code>, <code>apps/web/lib/session.ts</code>, <code>services/user-service/src/auth.rs</code></p>
+      <p class="props"><strong>依賴</strong>: 無　/　<strong>規模</strong>: XS　/　<strong>檔案</strong>: <code>apps/web/lib/auth.ts</code>, <code>services/user-service/src/auth.rs</code>（alias header only）</p>
     </div>
 
     <div class="task">
@@ -255,16 +255,16 @@
     </div>
 
     <div class="task">
-      <h4>Task 0.6 — Phase 2 / 3 blocker 決策收斂</h4>
-      <p>在開始下單門檻與 topup UI 前，先把會影響 contract 的待決策收斂為可實作輸入。</p>
+      <h4>Task 0.6 — 落地既定 blocker 結論到 infra</h4>
+      <p>§11 已決策 D-4 / D-5 / D-6 / D-7。本任務不再做決策，而是把對應 infra 落地，讓 Phase 2 / 3 直接寫業務邏輯。</p>
       <p><strong>驗收</strong></p>
       <ul>
-        <li>決定 KYC tier 權威端點（user-service 或 kyc-service）與 response shape；Task 2.1 不得同時讀兩個不一致來源。</li>
-        <li>決定 gateway 前置檢查用的訂單成本保守公式；撮合 / ledger 仍是最終鎖定權威，但 gateway 回應需能穩定提供 <code>required_minor_units</code>。</li>
-        <li>決定 LG-2 開關機制（環境變數、feature flag 或 release gate），Task 3.1 必須引用同一來源。</li>
-        <li>決定 web journey E2E runner 與 npm script 名稱；若使用 Playwright，新增或指定實際可執行 script。</li>
+        <li><strong>D-4 KYC tier endpoint</strong>：kyc-service 新增 <code>GET /internal/kyc/users/:user_id/tier</code>，回應 <code>{ "tier": "TIER_0" | "TIER_1" | "TIER_2" | "TIER_3" }</code>；既有 <code>/api/v1/kyc/users/:user_id/status</code>（<code>services/kyc-service/src/api.rs:218</code>）不動。新 endpoint 之 <code>cargo nextest run -p kyc-service</code> 通過。</li>
+        <li><strong>D-5 訂單成本公式</strong>：把 §11 D-5 之公式抽到 <code>services/api-gateway/src/order_precheck.rs</code>（新檔），含 <code>required_minor_units(order_kind, side, price_pts, qty, fee_bps_cap) -&gt; i64</code> 純函式 + 單元測試（涵蓋 LIMIT BUY、MARKET BUY、SELL skip 三種）。<code>fee_bps_cap</code> 從 market-service 取 <code>max(default_fee_bps_200, market.fee_bps)</code>。</li>
+        <li><strong>D-6 LG-2 flag</strong>：在 <code>feature_flags</code> table（<code>crates/sdk/src/feature_flags.rs</code>）新增常數 <code>PAYMENTS_REAL_MONEY_ENABLED_FLAG = "payments.real_money_enabled"</code>；新增 migration 插入該 row 預設 <code>enabled = FALSE</code>；新增 <code>PaymentsRealMoneyFlagReader</code> trait + Pg / InMemory 兩個 impl，mirror 既有 <code>EngineHaltFlagReader</code> 模式。gateway 新增 <code>GET /v1/payments/real-money-status</code>（公開唯讀 allowlist）。</li>
+        <li><strong>D-7 E2E runner</strong>：新增 <code>apps/web/playwright.journey.config.ts</code>（mirror 既有 <code>playwright.signup-referral.config.ts</code>）；<code>apps/web/package.json</code> 之 <code>scripts</code> 新增 <code>"test:e2e:journey": "playwright test --config playwright.journey.config.ts tests/e2e/journey-*.spec.ts"</code>；新增空殼 <code>apps/web/tests/e2e/journey-happy-path.spec.ts</code> 以驗證 config bootstraps（Phase 4 再補真實場景）。</li>
       </ul>
-      <p class="props"><strong>依賴</strong>: Task 0.0　/　<strong>規模</strong>: XS（contract decision）　/　<strong>檔案</strong>: PR 描述、本計畫後續版本，必要時 <code>apps/web/package.json</code></p>
+      <p class="props"><strong>依賴</strong>: Task 0.0　/　<strong>規模</strong>: M　/　<strong>檔案</strong>: <code>services/kyc-service/src/api.rs</code>, <code>services/api-gateway/src/order_precheck.rs</code>（新檔）, <code>crates/sdk/src/feature_flags.rs</code>, migrations, <code>apps/web/playwright.journey.config.ts</code>, <code>apps/web/package.json</code></p>
     </div>
 
     <p><strong>Checkpoint Phase 0</strong>：執行順序為 0.0 → 0.1 → 0.2 → 0.4 → <strong>0.7</strong>（apps/web BFF 改送 Bearer） → <strong>0.8</strong>（內部 caller transition hardening） → 0.3（cutover strip + inject） → 0.5（attack-surface tests + 移除 transition flag）；Task 0.6 的 blocker 決策可於 Phase 0 任何時點平行收斂。手動以 curl 帶任意 <code>x-user-id</code> 試圖打 <code>POST /v1/markets/:id/orders</code> 不帶 Authorization → 收到 401；帶合法 token + 任意 <code>x-user-id</code> → 以 token user 為準。`cargo clippy -p api-gateway --all-targets --locked -- -D warnings` 與 nextest 全綠。</p>
@@ -273,7 +273,7 @@
 
     <div class="task">
       <h4>Task 1.1 — apps/web middleware：session 讀取與旅程狀態</h4>
-      <p>在 <code>apps/web/middleware.ts</code> 實作 web session cookie 讀取（依 Task 0.0 結論決定是否需要透過 gateway / user-service <code>/v1/auth/me</code> 取得 principal + KYC tier 摘要）；產出一個可在 server component 與 server action 共用的 <code>getJourneyState()</code> helper。middleware 可用 <code>proph_session</code> 改善 UI 導向，但任何下單與 gateway 呼叫仍須使用 Task 0.0 決定的 user-service caller credential。</p>
+      <p>在 <code>apps/web/middleware.ts</code> 讀 <code>proph_session</code> cookie 做受保護路徑之 UI session 判定；<code>getJourneyState()</code> helper 走 server component / server action 共用，必要時呼叫 user-service <code>/v1/auth/me</code>（送 Bearer = <code>proph_user_service_session</code> 內容）取 principal。middleware 不查 KYC tier 與餘額；那些只在 trade panel server action（Task 2.4）或下單路徑（Task 2.1 / 2.2 之 gateway 前置）才需要。</p>
       <p><strong>驗收</strong></p>
       <ul>
         <li>middleware 對受保護路徑（<code>/portfolio</code>, <code>/topup</code>, <code>/kyc/*</code>, <code>/account/*</code>）在無 session 時導向 <code>/auth/sign-in?return_to=&lt;原路徑+query&gt;</code>。</li>
@@ -560,16 +560,100 @@ rtk pnpm --filter @prophetica/web test:e2e:journey</code></pre>
   </section>
 
   <section>
-    <h2>11. 待決策</h2>
-    <ul>
-      <li><strong>D-1</strong>：gateway caller credential 來源。現況 <code>proph_session</code> 是 web 自簽 UI session，<code>proph_user_service_session</code> 是 user-service session token；Task 0.0 必須決定 gateway 驗哪個 cookie / header，且不得信任 web 自簽 session 作為 principal 權威。</li>
-      <li><strong>D-2</strong>：登入 URL prefix 統一決策。user-service 現況同時支援 <code>/api/auth/login</code> 與 <code>/v1/auth/login</code>；需決定正式對外契約、alias 保留期限與前端 client 是否遷移。</li>
-      <li><strong>D-3</strong>：gateway 對下游注入哪些 principal header？建議至少 <code>x-user-id</code>、<code>x-principal-type</code>、<code>x-principal-id</code>；affiliate 是否額外注入 <code>x-affiliate-id</code> 需與 SPEC-011 對齊。</li>
-      <li><strong>D-4</strong>：KYC tier 查詢的權威端點（user-service vs kyc-service）。<strong>Task 0.6 blocker</strong>；Task 2.1 起草前必須收斂為單一 client。</li>
-      <li><strong>D-5</strong>：訂單成本估算公式（gateway 前置檢查用）。<strong>Task 0.6 blocker</strong>；撮合引擎內部仍以實際撮合鎖定為準，但 gateway 前置需有保守上界。手續費上限以 SPEC-003 為準。</li>
-      <li><strong>D-6</strong>：LG-2 開關機制——是環境變數、feature flag service，還是 SPEC-013 的 release gate？<strong>Task 0.6 blocker</strong>；影響 Task 3.1 的條件渲染實作。</li>
-      <li><strong>D-7</strong>：E2E 工具鏈（Playwright vs 既有 admin app 的 gateway mock pattern）。<strong>Task 0.6 blocker</strong>；決策後需新增或指定實際 npm script（例如 <code>test:e2e:journey</code>）。</li>
-    </ul>
+    <h2>11. 已決策（Resolved 2026-05-20）</h2>
+    <p>所有 D-1 ~ D-7 已收斂為可實作輸入；以下為決策結論、理由、取捨與落地點。後續若任一項需變更，必須以新版實作計畫覆蓋本節並走 spec PR 流程，不可在 code 中私自偏離。</p>
+
+    <h3>D-1 Gateway caller credential 來源</h3>
+    <p><strong>結論</strong>：gateway 驗證 <code>Authorization: Bearer &lt;user-service EdDSA JWT&gt;</code> 為唯一 caller credential。不接受 cookie-based credential，不接受 fallback <code>local-user-service:</code> 格式（後者只供本地開發；正式環境一律使用 JWT signer）。</p>
+    <p><strong>理由</strong>：user-service 既有 <code>SessionSigner</code>（<code>services/user-service/src/auth.rs:2594</code>）已簽發 EdDSA JWT、JWKS 端點 <code>/.well-known/jwks.json</code> 與 <code>/v1/auth/jwks</code> 已暴露；BFF (<code>apps/web/lib/login-events.ts:40</code>、<code>apps/admin/lib/login-events-bff.ts:56</code>) 已有送 Bearer 之 pattern。Bearer header 為 client-agnostic，未來 mobile / native client 不會被 cookie 綁死。</p>
+    <p><strong>取捨</strong>：失 native client 透過 cookie 自動登入的便利性（非 MVP 範圍）；得 client-agnostic、JWKS rotation 內建、與既有 pattern 對齊。</p>
+    <p><strong>落地</strong>：Task 0.2（gateway auth middleware）、Task 0.7（BFF clients 改送 Bearer）。Gateway 不接受非 EdDSA token；JWKS 內建 30s in-process cache 與 60s rotation grace window（Task 0.1）。</p>
+
+    <h3>D-2 登入 URL prefix 對外契約</h3>
+    <p><strong>結論</strong>：<code>/v1/auth/*</code> 為唯一外部契約；<code>/api/auth/*</code> 保留為 alias 至 <strong>2026-08-31</strong>，期間 alias 回應加 <code>Deprecation: true</code> + <code>Sunset: Mon, 31 Aug 2026 00:00:00 GMT</code> header；之後拆除。</p>
+    <p><strong>理由</strong>：SPEC-014 整體採 <code>/v1/...</code> versioning；<code>/api/auth/*</code> 為早期遺留命名。JWKS 已雙掛（<code>/v1/auth/jwks</code> + <code>/.well-known/jwks.json</code>），後者保留為 RFC 8615 標準路徑。</p>
+    <p><strong>取捨</strong>：失 — 需改 <code>apps/web/lib/auth.ts:3</code> 之 <code>LOGIN_PATH</code> 與測試。得 — 對外 API surface 一致；alias 期內有明確 sunset。</p>
+    <p><strong>落地</strong>：Task 0.0（BFF 切 <code>/v1/auth/login</code> + user-service alias 加 deprecation header）。SPEC-014 v0.2.11 或同等版本之 changelog 記載 sunset。</p>
+
+    <h3>D-3 Principal header 注入與 strip 清單</h3>
+    <p><strong>結論</strong>：gateway 驗章後從 verified JWT claims 注入下游下列 header，並在入口剝除外部送入的同名 header：</p>
+    <table>
+      <thead>
+        <tr><th>Header</th><th>來源 claim</th><th>注入時機</th><th>不注入時機</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>x-user-id</code></td><td>JWT <code>sub</code></td><td>認證成功</td><td>公開唯讀 allowlist</td></tr>
+        <tr><td><code>x-principal-type</code></td><td>由 <code>role</code> 衍生（<code>player</code>/<code>admin</code>/<code>manager</code>/<code>affiliate</code>，用 user-service 既有 <code>principal_type_from_role()</code>）</td><td>認證成功</td><td>公開唯讀 allowlist</td></tr>
+        <tr><td><code>x-principal-id</code></td><td>同 <code>x-user-id</code>（單一 caller 場景下相同；保留欄位語義為「執行操作的 principal id」）</td><td>認證成功</td><td>公開唯讀 allowlist</td></tr>
+        <tr><td><code>x-affiliate-id</code></td><td>JWT <code>affiliateId</code> claim（如有）</td><td>role=affiliate 或 affiliate 連動操作</td><td>一般 player / admin 路徑</td></tr>
+        <tr><td><code>x-mfa-at</code></td><td>JWT <code>mfa_at</code> claim（如有）</td><td>KYC / topup / withdrawal 等高敏感路徑</td><td>一般讀取</td></tr>
+        <tr><td><code>x-operator-role</code></td><td>JWT <code>role</code> claim（admin / manager）</td><td>admin context</td><td>player context</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Strip 名單</strong>（gateway 在驗章前無條件剝除外部送入）：上表全部 6 個 header。</p>
+    <p><strong>理由</strong>：與 SPEC-014 §6.1.2 v0.2.10 之 principal injection 規範一致；<code>affiliateId</code> 已在 user-service JWT payload 內（<code>auth.rs:2636</code>），不需 gateway 二次查詢。<code>x-mfa-at</code> 為 SPEC-022 step-up auth 預留欄位，現階段 downstream 可忽略；先定 schema 避免後續破壞性變更。</p>
+    <p><strong>取捨</strong>：失 — JWT payload 變大（已含 <code>affiliateId</code>、<code>mfa_at</code>，無實際膨脹）。得 — downstream service 不需呼叫 user-service / kyc-service 拿基本身份。</p>
+    <p><strong>落地</strong>：Task 0.3（注入 + strip）、Task 0.5 攻擊面測試。</p>
+
+    <h3>D-4 KYC tier 權威端點</h3>
+    <p><strong>結論</strong>：kyc-service 為 KYC tier 的單一權威。gateway 對下單 pre-trade gate 呼叫新端點 <code>GET /internal/kyc/users/:user_id/tier</code>，回應 <code>{ "tier": "TIER_0" | "TIER_1" | "TIER_2" | "TIER_3" }</code>。user-service <code>/v1/auth/me</code> <strong>不</strong>新增 tier 欄位。</p>
+    <p><strong>理由</strong>：tier 由 KYC 流程更新（SumSub webhook、tier 升級、EDD）；若 user-service 重複持有，兩階段一致性陷阱會把「user-service tier=1 但實際 kyc-service tier=0」之 race window 變成攻擊面。kyc-service 既有 <code>/api/v1/kyc/users/:user_id/status</code>（<code>services/kyc-service/src/api.rs:218</code>）已回 <code>current_tier</code>，新 <code>/internal/...</code> 端點是輕量精簡版，與 public API 解耦。</p>
+    <p><strong>取捨</strong>：失 — 每次下單前置多一次內部 HTTP call。得 — 避免 dual-write 一致性。</p>
+    <p><strong>性能緩解</strong>：gateway 端 per-user tier in-process LRU cache，TTL 10s；tier 升級延遲 ≤ 10s 即下單 unblock；對攻擊面無影響（cache 不會把低 tier 變高）。</p>
+    <p><strong>失敗模式</strong>：tier 查詢失敗（kyc-service 5xx / 超時）→ gateway 回 503 + <code>ERROR_CODE_KYC_LOOKUP_UNAVAILABLE</code>；<strong>絕不 fail-open</strong>。</p>
+    <p><strong>落地</strong>：Task 0.6 新增 kyc-service endpoint；Task 2.1 串接。</p>
+
+    <h3>D-5 訂單成本前置公式</h3>
+    <p><strong>結論</strong>：採 SPEC-003 §14.2 之公式，gateway 前置只對 <strong>BUY-side</strong>（Bid）做檢查；SELL-side 委由撮合引擎 + ledger lock 處理。BUY 之保守上界：</p>
+    <pre><code>// SPEC-003 §14.2 已定：trade_value = price_pts × qty；fee = trade_value × fee_bps / 10_000
+// 單位皆為 internal copper minor units（100 = 1 銅幣）
+let max_trade_value = match (order.kind, order.side) {
+    (Limit,  Bid)  =&gt; order.price_pts * order.qty,    // BUY LIMIT: 出價即上界
+    (Market, Bid)  =&gt; 100_i64 * order.qty,            // BUY MARKET: 最壞全成於 100
+    (_,      Ask)  =&gt; 0,                              // SELL: 不在 gateway 前置
+};
+let fee_bps_cap: u32 = market.fee_bps.max(200);       // SPEC-003 default = 200；取較高者保守
+let max_fee = max_trade_value.saturating_mul(fee_bps_cap as i64) / 10_000;
+let required_minor_units = max_trade_value.saturating_add(max_fee);</code></pre>
+    <p><strong>拒絕回應 body</strong>：</p>
+    <pre><code>{
+  "error": "ERROR_CODE_INSUFFICIENT_FUNDS",
+  "available_minor_units": 12000,
+  "required_minor_units": 13260
+}</code></pre>
+    <p><strong>理由</strong>：SPEC-003 §14.2 是既有公式，不另發明。SELL 涉及 position lock（SPEC-002 ledger），gateway 沒有 position 資料；強行檢查反而引入 dual-source。SELL 走撮合 + ledger lock 失敗時的 4xx 路徑。</p>
+    <p><strong>取捨</strong>：失 — BUY MARKET 之 worst-case（價格 100）會比實際成交價（可能 65）更保守，少量「餘額剛好夠」的 BUY MARKET 在 gateway 被拒；緩解：UI 以 mid-price 顯示「預估上限」。得 — 永遠不 fail-open，避免撮合中途餘額不足 race。</p>
+    <p><strong>落地</strong>：Task 0.6 抽出 <code>services/api-gateway/src/order_precheck.rs</code> 純函式 + 三個 case 單元測試；Task 2.2 串接 wallet-ledger 餘額查詢。</p>
+
+    <h3>D-6 LG-2 開關機制</h3>
+    <p><strong>結論</strong>：新增 feature flag key <code>payments.real_money_enabled</code>，預設 <code>FALSE</code>，由既有 <code>feature_flags</code> table（<code>crates/sdk/src/feature_flags.rs</code>）承載。apps/web <code>/topup</code> 透過 gateway 公開端點 <code>GET /v1/payments/real-money-status</code> 取狀態決定渲染；gateway 對真實儲值寫入端點 enforce flag 為 ON 才放行。</p>
+    <p><strong>理由</strong>：既有 infra 已支援（<code>EngineHaltFlagReader</code> / <code>PgFeatureFlagStore</code> / 30s poller）；DB-backed flag 比環境變數好（admin UI 可切換、有 audit trail <code>updated_by</code> / <code>reason</code>、無需 redeploy），直接滿足 SPEC-013 §2.1 launch gate 證據要求。</p>
+    <p><strong>取捨</strong>：失 — /topup 每次渲染多一次 fetch（30s in-memory cache + Server Component cache 緩解）。得 — 切換不重啟、rollback 是 SQL UPDATE、admin 操作有審計足跡。</p>
+    <p><strong>落地</strong>：Task 0.6（在 <code>crates/sdk/src/feature_flags.rs</code> 加常數 + reader trait + Pg/InMemory 兩 impl + migration 插預設 row + gateway 新端點 + admin halt/release 端點）；Task 3.1（/topup 渲染分支）。</p>
+    <p><strong>Spec 對齊</strong>：SPEC-016 後續版本應引用 <code>payments.real_money_enabled</code> 為 kill switch key；SPEC-023 §4.4 之 LG-2 開關語義即此 flag。</p>
+
+    <h3>D-7 E2E runner 與 npm script</h3>
+    <p><strong>結論</strong>：沿用 Playwright（<code>@playwright/test ^1.60.0</code> 已裝），新增獨立 config <code>apps/web/playwright.journey.config.ts</code> + npm script：</p>
+    <pre><code>"test:e2e:journey": "playwright test --config playwright.journey.config.ts tests/e2e/journey-*.spec.ts"</code></pre>
+    <p><strong>理由</strong>：既有 <code>playwright.signup-referral.config.ts</code> + <code>apps/web/tests/e2e/signup-referral.spec.ts</code> 已驗證可行；mock user-service / api-gateway pattern 可直接複用。獨立 config 與 admin app 之 <code>playwright.full-e2e.config.ts</code> 命名一致，方便維運。</p>
+    <p><strong>取捨</strong>：失 — E2E 需 boot Next dev server（120s timeout），CI 時間負擔。得 — 工具鏈零學習；mock pattern 既有；測試 spec 命名 <code>journey-*.spec.ts</code> 與 Phase 4 任務一對一映射。</p>
+    <p><strong>Phase 4 spec 命名規約</strong>：</p>
+    <table>
+      <thead>
+        <tr><th>Task</th><th>檔名</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>4.1</td><td><code>journey-happy-path.spec.ts</code></td></tr>
+        <tr><td>4.2</td><td><code>journey-unauth-intercept.spec.ts</code></td></tr>
+        <tr><td>4.3</td><td><code>journey-kyc-intercept.spec.ts</code></td></tr>
+        <tr><td>4.4</td><td><code>journey-funds-intercept.spec.ts</code></td></tr>
+        <tr><td>4.5</td><td><code>journey-multi-gate.spec.ts</code></td></tr>
+        <tr><td>4.6</td><td><code>journey-visitor-readonly.spec.ts</code></td></tr>
+        <tr><td>4.7</td><td>單元 + <code>journey-open-redirect.spec.ts</code></td></tr>
+        <tr><td>4.9</td><td><code>journey-landing-handoff.spec.ts</code></td></tr>
+      </tbody>
+    </table>
+    <p><strong>落地</strong>：Task 0.6（新 config + npm script + 空殼 spec 確認 config bootstraps）；Phase 4 任務逐一補實際場景。</p>
   </section>
 </body>
 </html>
