@@ -34,12 +34,16 @@
 <h1>SPEC-023 — 玩家入門與首次下單旅程（Player Onboarding &amp; First-Trade Journey）</h1>
 <blockquote>
   <p>優先級：<strong>P1</strong><br>
-  版本：v0.1.1 · 最後更新：2026-05-19<br>
+  版本：v0.1.2 · 最後更新：2026-05-19<br>
   依賴：SPEC-003, SPEC-005, SPEC-005a, SPEC-014, SPEC-015, SPEC-016, SPEC-021, SPEC-022<br>
   被依賴：前端 onboarding 實作、轉換漏斗與 SPEC-020 分析、未來 native app / LIFF 內嵌產品面</p>
 </blockquote>
 <section class="changelog">
   <div class="changelog-list">
+    <article class="changelog-entry">
+      <h3>v0.1.2 變更</h3>
+      <p>補上工程實作計畫連結，對應 <a href="../docs/implementation-plans/SPEC-023-player-onboarding-journey-implementation-plan.html">SPEC-023-player-onboarding-journey-implementation-plan.html</a>（v0.1.0）。計畫分四個 phase：Phase 0 gateway 認證接縫（SPEC-014 §6.1.2 落地）、Phase 1 web 旅程 middleware 與 <code>return_to</code> 契約、Phase 2 下單前置門檻（KYC tier ≥ 1、可動用餘額足夠）+ <code>/v1/markets</code> 透過 gateway 暴露、Phase 3 MVP topup UI 與訪客瀏覽、Phase 4 E2E 驗證。</p>
+    </article>
     <article class="changelog-entry">
       <h3>v0.1.1 變更</h3>
       <p>收斂 v0.1.0 §13 的 5 個 open questions（OQ-1 至 OQ-5）：對齊 SPEC-005 §2.1 與 <code>apps/web/messages/zh-Hant.json</code> 確認下單最低 KYC tier 為 <strong>Tier 1</strong>（Tier 2 / Tier 3 為儲值上限升級與 EDD，不是入場閘門）；明確 MVP 階段 <code>/topup</code> 之服務協助 UI 行為；確認訪客可唯讀瀏覽公開市場列表與市場詳情；確認 <code>return_to</code> same-origin 強制由 <code>apps/web</code> 中介層執行；確認 email 驗證屬 Tier 1 流程內項目而非 S1 → S2 之閘門。OQ-6（旅程事件與 SPEC-020 漏斗整合）保留為 Open，但收斂方向為「至少保證階段轉換可由 server 端記錄觀測，事件分類學由 SPEC-020 定義」。</p>
@@ -56,6 +60,7 @@
 <p>在 SPEC-023 之前，玩家從 landing page 進入、登入、通過 KYC 與儲值、進場下注的完整旅程，沒有任何單一 SPEC 負責。每個零件都有規格——landing 變體在 SPEC-021、登入事件在 SPEC-022、KYC 在 SPEC-005 / SPEC-005a、支付在 SPEC-016、市場生命週期在 SPEC-015、撮合在 SPEC-003——但「這些零件如何串成一條使用者旅程、誰是這條旅程的 owner、各階段之間如何銜接與重導向」沒有規範來源。實務上旅程真正斷掉的地方，正是這些零件之間的銜接縫。</p>
 <p>本 SPEC 是這條旅程的<strong>編排層（orchestration spec）</strong>與唯一 owner。它定義旅程的階段與狀態機、階段之間的跨頁重導向契約、各下單前置門檻的攔截與導向規則，以及進場入口的交接邊界。本 SPEC <strong>不</strong>重寫各零件 SPEC 的內部機制——KYC 分層機制以 SPEC-005 為權威、支付機制以 SPEC-016 為權威、撮合與訂單機制以 SPEC-003 為權威——只規範它們在旅程中如何被觸發、如何銜接、未滿足時把使用者導去哪裡。</p>
 <p>旅程的「完成」定義為：一名新訪客在 <code>apps/web</code> 成功送出第一筆被撮合引擎接受的訂單（SPEC-003 訂單下單成功回應）。</p>
+<p><strong>工程實作計畫：</strong><a href="../docs/implementation-plans/SPEC-023-player-onboarding-journey-implementation-plan.html">SPEC-023-player-onboarding-journey-implementation-plan.html</a></p>
 
 <h2>2. Scope</h2>
 <h3>2.1 In Scope</h3>

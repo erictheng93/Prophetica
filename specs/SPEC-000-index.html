@@ -34,7 +34,7 @@
 <h1>Master Index — 規格總索引</h1>
 <blockquote>
 <p><strong>prophetica</strong> — 趣味預測娛樂遊戲平台
-文件版本：v0.3.8 · 最後更新：2026-05-19 · 維護人：Tech Lead</p>
+文件版本：v0.4.0 · 最後更新：2026-05-20 · 維護人：Tech Lead</p>
 <p>Legacy file path：<code>specs/SPEC-000-index.html</code>；本文件不作為單一功能 SPEC 實作輸入。</p>
 </blockquote>
 <hr>
@@ -210,8 +210,8 @@
 <tr>
   <td><a href="./SPEC-023-player-onboarding-journey.html">SPEC-023</a></td>
   <td>玩家入門與首次下單旅程</td>
-  <td>landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單之旅程編排層：階段狀態機、跨頁重導向契約（<code>return_to</code> / open redirect 防護）、門檻攔截規則、進場入口交接；範圍涵蓋完整旅程（含 KYC / 儲值門檻），僅 <code>apps/web</code>；下單最低 tier = Tier 1（與 SPEC-005 §2.1 對齊）</td>
-  <td>🟢 v0.1.1</td>
+  <td>landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單之旅程編排層：階段狀態機、跨頁重導向契約（<code>return_to</code> / open redirect 防護）、門檻攔截規則、進場入口交接；範圍涵蓋完整旅程（含 KYC / 儲值門檻），僅 <code>apps/web</code>；下單最低 tier = Tier 1（與 SPEC-005 §2.1 對齊）；<a href="../docs/implementation-plans/SPEC-023-player-onboarding-journey-implementation-plan.html">實作計畫</a> v0.1.1（Option B 邊緣 JWT 驗章為目標 + transitional state 收斂，含 Phase 0 Task 0.7 / 0.8 補強）</td>
+  <td>🟢 v0.1.2</td>
 </tr>
 </tbody></table>
 <h3>P2 — 公開 Beta 後 90 天內完成</h3>
@@ -250,8 +250,8 @@
 <tbody><tr>
 <td><a href="./SPEC-014-tech-architecture.html">SPEC-014</a></td>
 <td>整體技術架構</td>
-<td>服務拓撲、技術棧（Rust 1.85 / edition 2024，<strong>ADR-0005 governance</strong>）、Repo 結構、§3.2.1 Cloudflare Pages Edge runtime PoC（T-10，PoC plan 落地）、§4.1 MVP 合併部署、§4.1.1 目前採 <code>services/_binaries/*</code> deployable entrypoints，保留 12 service crate lib 邊界並定義未來拆回 12-binary 條件、§6.1.2 Gateway 認證與 principal 傳遞契約</td>
-<td>🟢 v0.2.9</td>
+<td>服務拓撲、技術棧（Rust 1.85 / edition 2024，<strong>ADR-0005 governance</strong>）、Repo 結構、§3.2.1 Cloudflare Pages Edge runtime PoC（T-10，PoC plan 落地）、§4.1 MVP 合併部署、§4.1.1 目前採 <code>services/_binaries/*</code> deployable entrypoints，保留 12 service crate lib 邊界並定義未來拆回 12-binary 條件、§6.1.2 Gateway 認證與 principal 傳遞契約（§6.1.2.1 transitional state + 三階段遷移路徑）</td>
+<td>🟢 v0.2.10</td>
 </tr>
 </tbody></table>
 <h3>Public Beta Launch Gate（真實入金 / 公開 Beta 前必須全部通過）</h3>
@@ -392,6 +392,28 @@
 <h2>4. 變更紀錄</h2>
 <section class="changelog">
 <div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>2026-05-20 · v0.4.0 · Tech Lead</h3>
+    <p><strong>Option B 邊緣 JWT 驗章為目標架構 + transitional state 收斂</strong>：spike 發現現況為 BFF-trust transitional state（<code>apps/web</code> 自簽 HMAC cookie <code>proph_session</code> + 另存 <code>proph_user_service_session</code>，呼叫 gateway 時送裸 <code>x-user-id</code>，gateway 不驗章）。決議 Option B 為目標架構（gateway 邊緣 JWT 驗章），明確寫成 target + transitional plan、不假裝現況已是 B。理由：(i) 旅程入口規格不應把未來 client 鎖死在 BFF-only（SPEC-023 已含未來 native / LIFF 內嵌）；(ii) gateway 是外部 API principal 權威邊界，長期信任裸 <code>x-user-id</code> 是錯誤安全邊界；(iii) 「gateway 永遠私網」前提脆弱，infra 演進易破；(iv) user-service JWT + JWKS 基礎已存在，Option B 是「轉送既有 token」而非導入新身份系統。本輪閉環：</p>
+    <ul>
+      <li><strong>SPEC-023 plan v0.1.0 → v0.1.1</strong>：採用 Option B 為目標架構；§3 新增 §3.1「現況拓撲（spike 收斂）」；§4 拓撲圖加 transitional 註記；§5.0 Phase 0 補上原本缺漏的 <strong>Task 0.7</strong>（apps/web BFF clients 改送 <code>Authorization: Bearer</code>）與 <strong>Task 0.8</strong>（未遷移內部 caller transition hardening），並更新 Task 0.3 / 0.5 dependency 與 Checkpoint Phase 0 為明確 cutover 順序（0.0 → 0.1 → 0.2 → 0.4 → 0.7 → 0.8 → 0.3 cutover → 0.5 attack-surface）。同步補入 INV-JOURNEY-2 公開唯讀 allowlist、Task 0.6 Phase 2/3 blocker 收斂、Task 3.3 + 4.9 landing/LIFF handoff 驗證。</li>
+      <li><strong>SPEC-014 v0.2.9 → v0.2.10</strong>：§6.1.2 末段新增 §6.1.2.1「現況與遷移路徑（Transitional state, 2026-05-19）」。明確 §6.1.2 描述為<strong>目標態</strong>；現況為 BFF-trust transitional state；遷移分三階段（caller credential migration → gateway JWT validation online → cutover + 攻擊面驗證）；關鍵順序不變式：階段 3 的 <code>x-user-id</code> strip 必須在所有 caller 完成階段 1 之後啟用，否則仍以裸 <code>x-user-id</code> 呼叫之 caller 將立即 401。Cutover 完成後 §6.1.2 全面生效，§6.1.2.1 可標記為 historical。</li>
+      <li><strong>SPEC-023 spec v0.1.2</strong>：補上實作計畫 v0.1.1 連結（spec 本體內容不變）。</li>
+    </ul>
+    <p>同步更新 P1 表 SPEC-023 列摘要、跨章節表 SPEC-014 列版本與摘要。本輪所有變更為 spec / plan 對齊；未動程式碼。</p>
+  </article>
+  <article class="changelog-entry">
+    <h3>2026-05-19 · v0.3.9 · Tech Lead</h3>
+    <p><strong>SPEC-023 v0.1.2 — 工程實作計畫落地</strong>：新增 <code>docs/implementation-plans/SPEC-023-player-onboarding-journey-implementation-plan.html</code> v0.1.0；SPEC-023 §1 補上計畫連結並 bump 版本。實作計畫分四個 phase：</p>
+    <ul>
+      <li><strong>Phase 0</strong> — Gateway 認證接縫（SPEC-014 §6.1.2 落地）：JWKS 驗章、principal header 注入 + 外部同名 header 剝除、結構化 401 / 403。</li>
+      <li><strong>Phase 1</strong> — Web 旅程 middleware：session 讀取、受保護路徑導向、<code>return_to</code> same-origin 強制。</li>
+      <li><strong>Phase 2</strong> — 下單前置門檻：gateway 對 KYC tier ≥ TIER_1 與可動用餘額 ≥ 訂單成本做強制；<code>GET /v1/markets</code> 透過 gateway 暴露；trade panel soft check + 多重門檻順序攔截。</li>
+      <li><strong>Phase 3</strong> — MVP topup 服務協助 UI；訪客唯讀瀏覽公開市場頁的驗收。</li>
+      <li><strong>Phase 4</strong> — E2E：happy path、三種攔截、多重門檻、訪客瀏覽、open redirect 拒絕、後端強制（繞過前端）。</li>
+    </ul>
+    <p>同步更新 P1 表 SPEC-023 列版本與摘要（加入實作計畫連結）。</p>
+  </article>
   <article class="changelog-entry">
     <h3>2026-05-19 · v0.3.8 · Tech Lead</h3>
     <p><strong>SPEC-023 v0.1.1 — Open Questions 收斂</strong>：v0.1.0 §13 的 5 個 open questions（OQ-1 至 OQ-5）對齊 SPEC-005 §2.1 與 <code>apps/web/messages/zh-Hant.json</code> 後全數收斂：</p>

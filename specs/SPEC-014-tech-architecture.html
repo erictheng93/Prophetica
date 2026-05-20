@@ -25,7 +25,8 @@
 <h1>SPEC-014 — 整體技術架構（Tech Architecture）</h1>
 <blockquote>
 <p>優先級：跨章節（被多份 SPEC 依賴）
-版本：v0.2.9 · 最後更新：2026-05-19</p>
+版本：v0.2.10 · 最後更新：2026-05-19</p>
+<p><strong>v0.2.10 變更</strong>：§6.1.2 末段新增 §6.1.2.1「現況與遷移路徑（Transitional state）」。明確 §6.1.2 描述為<strong>目標態</strong>，而現況為 BFF-trust transitional state——<code>apps/web</code> BFF 自驗 HMAC cookie 後直接送裸 <code>x-user-id</code> 至 api-gateway，gateway 目前對該 header 不做驗章。遷移路徑由 SPEC-023 玩家旅程實作計畫 §5.0 Phase 0 規範（六步遷移：token forwarding contract → BFF clients 改送 Bearer → gateway JWT middleware → AuthContext 改讀 verified principal → 未遷移 caller 走明確 internal auth 或時限 allowlist → 攻擊面測試後 cutover）。Cutover 完成後本節 §6.1.2 全面生效，§6.1.2.1 可標記為 historical。本變更回應 SPEC-014 §6.1.2 v0.2.9 在實作 spike 中發現的 spec 與現況落差。</p>
 <p><strong>v0.2.9 變更</strong>：§6.1 新增 §6.1.2「Gateway 認證與 principal 傳遞契約」，把 §4 服務表中 api-gateway 的「認證」職責具體化為可實作契約：gateway 必須自行驗證 caller 的 session token（user-service JWKS）再衍生 authenticated principal，對下游注入 <code>x-user-id</code> 等 principal header，並在入口剝除任何由外部 client 傳入的同名 header。對應現行 <code>AuthContext</code> 直接讀取未驗證 <code>x-user-id</code> header 之缺陷；亦為新增 SPEC-023 玩家入門旅程的認證接縫權威來源。</p>
 <p><strong>v0.2.8 變更</strong>：§6.1 新增 §6.1.1「Gateway REST proxy 錯誤透傳」，明定 api-gateway 對 admin / internal REST proxy 經路必須透傳 upstream 服務的 HTTP 狀態碼與 error code，不得一律壓成 <code>500 ERROR_CODE_INTERNAL</code>；傳輸層失敗才回 <code>502</code>。對應後台 KYC 審核會員查詢（<code>/members/kyc-review</code>）對不存在會員誤回 <code>500</code> 之缺陷。</p>
 <p><strong>v0.2.7 變更</strong>：§4.1.1 由「目前採 12-binary」更新為「MVP 合併部署已落地」；記錄 <code>services/_binaries/*</code> deployable entrypoints、12 個 <code>services/*</code> crate 轉為 lib-only service 邊界，以及未來拆回 12-binary 之觸發條件。修正 §4.1 合併部署效益描述，避免把 wallet-ledger / matching-engine 等仍獨立的安全與 latency 邊界誤寫為 in-process。</p>
@@ -617,6 +618,16 @@
 <li><strong>下游信任模型</strong>：內部 service 信任 gateway 注入的 principal header，其前提是這些 service 僅在私網、不可由外部直接路由；internal / service-to-service endpoint 不得對公網開放。</li>
 </ul>
 <p>理由：現行 api-gateway 的 <code>AuthContext</code> extractor 直接讀取 <code>x-user-id</code> header 而未驗證任何 token，隱含假設「上游有一個會驗 JWT 再注入 header 的 proxy」。該假設未被任何 SPEC 定版，且該 proxy 不存在於現行合併部署拓撲（§4.1.1）。本節把 §4「api-gateway 負責認證」具體化為可實作契約：驗證發生在 gateway、principal header 為 gateway 內部產物、外部同名 header 一律剝除。SPEC-022 §15 對「登入由哪個 service 作為唯一寫入點」「<code>principal_id</code> 來源」之 open question，其認證側由本節收斂。SPEC-023 §4.2 / §7 的旅程認證接縫亦以本節為權威。</p>
+
+<h4>6.1.2.1 現況與遷移路徑（Transitional state, 2026-05-19）</h4>
+<p>本節 §6.1.2 描述的是<strong>目標態</strong>。截至 2026-05-19 spike 結果，現行 <code>apps/web</code> BFF 並未送 <code>Authorization: Bearer</code> 至 api-gateway，而是在 BFF 側自驗 HMAC cookie（<code>proph_session</code>，由 <code>apps/web</code> 自己用 SHA-256 HMAC 簽）後，直接以 <code>x-user-id</code> header 送至 gateway；gateway 目前對該 header <strong>不做驗章</strong>。upstream 的 user-service session token 則被 <code>apps/web</code> 額外存於 <code>proph_user_service_session</code> cookie（SameSite=Strict），但目前並未在呼叫 gateway 時被轉送出去。即現況為 <strong>BFF-trust transitional state</strong>，§6.1.2 之 caller token 驗章機制尚未上線。</p>
+<p>遷移路徑由 <a href="../docs/implementation-plans/SPEC-023-player-onboarding-journey-implementation-plan.html">SPEC-023 玩家旅程實作計畫</a> §5.0 Phase 0 規範。粗略分為三個階段（任務級分解見計畫）：</p>
+<ol>
+  <li><strong>Caller credential migration</strong>：所有 caller（<code>apps/web</code> BFF 與其他內部呼叫者）從送裸 <code>x-user-id</code> 改為送 <code>Authorization: Bearer &lt;user-service token&gt;</code>；無法或不該走玩家 token 的 caller 改走明確 internal-service auth 或時限 allowlist。<code>apps/web</code> 的 <code>proph_session</code> 自此退守為單純 UI session 識別，<code>proph_user_service_session</code> 為 gateway caller credential 來源。</li>
+  <li><strong>Gateway JWT validation online</strong>：gateway 啟用 §6.1.2 規範之 JWT 驗章 middleware（user-service JWKS），驗過的 principal 注入 request extensions。過渡期間可暫時並存 Bearer 與 <code>x-user-id</code> 兩條路徑作為遷移橋接，但 <code>x-user-id</code> 路徑只供向後相容、不得擴張至新 caller，並以 metric 追蹤使用比例直至歸零。</li>
+  <li><strong>Cutover + 攻擊面驗證</strong>：所有 caller 完成階段 1 後，<code>AuthContext</code> 切換為僅讀 verified principal，gateway 開始 strip 外部 <code>x-user-id</code> / <code>x-principal-*</code> header。執行直接攻擊面測試（偽造 <code>x-user-id</code> 無 Bearer → 401；合法 Bearer + 偽造 <code>x-user-id</code> → 以 token user 為準）。通過後 transition flag 移除，<strong>§6.1.2 全面生效</strong>，本 §6.1.2.1 可標記為 historical 或刪除。</li>
+</ol>
+<p>關鍵順序不變式：階段 3 的 <code>x-user-id</code> strip 必須在所有 caller 完成階段 1 之後啟用，否則仍以裸 <code>x-user-id</code> 呼叫 gateway 的 caller 將立即 401。實作計畫以 feature flag 或明確 task dependency 保證此順序。</p>
 <h3>6.2 異步事件</h3>
 <p>所有業務事件走 Kafka：</p>
 <table>
