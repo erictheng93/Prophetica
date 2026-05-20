@@ -2147,6 +2147,22 @@ where
     W: WalletLedgerClient + Send + Sync,
     K: KycTierClient + Send + Sync,
 {
+    // Parse + bounds-check the request shape BEFORE issuing any downstream
+    // RPC. SPEC-023 plan v0.1.3 follow-up I-5: rejecting obvious garbage
+    // here prevents an attacker from amplifying load on kyc-service and
+    // wallet-ledger-service by spraying invalid orders.
+    let order_kind = parse_order_kind(&request.order_type).inspect_err(|_| {
+        record_order_precheck_rejected("invalid_order_type");
+    })?;
+    let side = parse_order_side(&request.side).inspect_err(|_| {
+        record_order_precheck_rejected("invalid_order_side");
+    })?;
+    validate_order_bounds(request, order_kind).inspect_err(|_| {
+        // Metric label is set inside validate_order_bounds via an
+        // unsuccessful path; surface a stable counter label here.
+        record_order_precheck_rejected("invalid_order_shape");
+    })?;
+
     let tier = kyc.get_kyc_tier(user_id).await.inspect_err(|_| {
         record_order_precheck_rejected("kyc_lookup_unavailable");
     })?;
@@ -2155,12 +2171,6 @@ where
         return Err(ApiError::kyc_tier_insufficient(tier));
     }
 
-    let order_kind = parse_order_kind(&request.order_type).inspect_err(|_| {
-        record_order_precheck_rejected("invalid_order_type");
-    })?;
-    let side = parse_order_side(&request.side).inspect_err(|_| {
-        record_order_precheck_rejected("invalid_order_side");
-    })?;
     let fee_bps_cap = if matches!(side, OrderSide::Bid) {
         market_fees.fee_bps_cap(market_id).await?
     } else {
@@ -2186,6 +2196,38 @@ where
         ));
     }
 
+    Ok(())
+}
+
+/// SPEC-023 plan v0.1.3 follow-up I-5: outer-edge bounds on order shape.
+/// Width is intentionally looser than the trade-panel client validation
+/// (100_000 qty / [1,99] price) so legitimate non-UI clients aren't
+/// blocked — but tight enough to catch garbage before kyc + wallet RPC.
+const MAX_ORDER_QUANTITY: i64 = 1_000_000;
+
+fn validate_order_bounds(request: &PlaceOrderRequest, kind: OrderKind) -> Result<(), ApiError> {
+    if request.quantity <= 0 || request.quantity > MAX_ORDER_QUANTITY {
+        return Err(ApiError::bad_request(
+            "invalid_order_quantity",
+            format!(
+                "Order quantity must be in (0, {MAX_ORDER_QUANTITY}]; got {got}",
+                got = request.quantity,
+            ),
+        ));
+    }
+    let (min_price, max_price) = match kind {
+        OrderKind::Limit => (1_i32, 99_i32),
+        OrderKind::Market => (0_i32, 100_i32),
+    };
+    if request.price_pts < min_price || request.price_pts > max_price {
+        return Err(ApiError::bad_request(
+            "invalid_order_price",
+            format!(
+                "Order price_pts must be in [{min_price}, {max_price}] for {kind:?}; got {got}",
+                got = request.price_pts,
+            ),
+        ));
+    }
     Ok(())
 }
 
@@ -3195,6 +3237,94 @@ mod tests {
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let body = response_json(response).await;
         assert_eq!(body["error"], json!("ERROR_CODE_KYC_LOOKUP_UNAVAILABLE"));
+        assert_eq!(engine.place_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn place_order_rejects_invalid_quantity_before_kyc_lookup() {
+        // SPEC-023 plan v0.1.3 follow-up I-5: quantity validation runs before
+        // any downstream RPC, so an "unavailable" KYC client must never be
+        // touched. If we ever reach the KYC client, the response would be
+        // 503 instead of 400.
+        let engine = InMemoryMatchingEngineClient::default();
+        let kyc = InMemoryKycTierClient::unavailable();
+        let app =
+            router_with_engine_and_kyc(InMemoryWalletLedgerClient::default(), engine.clone(), kyc);
+
+        let body = json!({
+            "side": "buy",
+            "outcome": "YES",
+            "type": "LIMIT",
+            "price_pts": 55,
+            "quantity": 0,
+            "time_in_force": "GTC"
+        });
+        let response = app
+            .oneshot(order_post("idem-qty-zero", &body))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("invalid_order_quantity"));
+        assert_eq!(engine.place_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn place_order_rejects_quantity_above_gateway_cap_before_kyc_lookup() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let kyc = InMemoryKycTierClient::unavailable();
+        let app =
+            router_with_engine_and_kyc(InMemoryWalletLedgerClient::default(), engine.clone(), kyc);
+
+        let body = json!({
+            "side": "buy",
+            "outcome": "YES",
+            "type": "LIMIT",
+            "price_pts": 55,
+            "quantity": 1_000_001_i64,
+            "time_in_force": "GTC"
+        });
+        let response = app
+            .oneshot(order_post("idem-qty-over-cap", &body))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("invalid_order_quantity"));
+        assert_eq!(engine.place_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn place_order_rejects_out_of_range_limit_price_before_kyc_lookup() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let kyc = InMemoryKycTierClient::unavailable();
+        let app =
+            router_with_engine_and_kyc(InMemoryWalletLedgerClient::default(), engine.clone(), kyc);
+
+        for price_pts in [0_i32, 100_i32] {
+            let body = json!({
+                "side": "buy",
+                "outcome": "YES",
+                "type": "LIMIT",
+                "price_pts": price_pts,
+                "quantity": 10,
+                "time_in_force": "GTC"
+            });
+            let response = app
+                .clone()
+                .oneshot(order_post(
+                    &format!("idem-price-{price_pts}"),
+                    &body,
+                ))
+                .await
+                .expect("request should be handled");
+
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            let body = response_json(response).await;
+            assert_eq!(body["error"], json!("invalid_order_price"));
+        }
         assert_eq!(engine.place_requests(), Vec::new());
     }
 
