@@ -47,6 +47,8 @@ Follow `.editorconfig`: UTF-8, LF endings, final newline, two-space indentation 
 
 Use kebab-case for package and service directories (`wallet-ledger-service`, `design-tokens`). Prefer Rust `snake_case`, TypeScript `camelCase`, and `PascalCase` components/types.
 
+CI enforces `cargo fmt --all -- --check` (in `ci.yml` and `release.yml`). To catch Rust fmt drift locally before push, opt in to the lightweight pre-push hook checked in under `.githooks/` via `git config core.hooksPath .githooks` (bypass once with `git push --no-verify`). The hook's scope is intentionally narrow and mirrors the CI fmt check — if it expands later, mirror what CI enforces rather than adding local-only gates.
+
 ## Testing Guidelines
 
 Place Rust unit tests near code under `#[cfg(test)]` and integration tests in crate or service `tests/` directories. Frontend/package tests should live beside the feature or follow local app conventions. Run both `rtk pnpm test` and `rtk cargo nextest run --workspace --locked` before PRs that touch shared behavior.

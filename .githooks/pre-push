@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Optional pre-push hook: catch Rust format drift before CI does.
+#
+# Enable locally:
+#     git config core.hooksPath .githooks
+# Bypass once:
+#     git push --no-verify
+#
+# Scope is intentionally narrow — mirrors what ci.yml and release.yml enforce
+# (cargo fmt --all -- --check). If this expands later, mirror the CI checks
+# rather than adding novel local-only gates, so local and CI stay aligned.
+
+set -euo pipefail
+
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "pre-push: cargo not in PATH, skipping fmt check" >&2
+    exit 0
+fi
+
+echo "pre-push: cargo fmt --all -- --check"
+cargo fmt --all -- --check
