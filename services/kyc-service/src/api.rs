@@ -12,6 +12,7 @@ use sha1::Sha1;
 use sha2::{Digest, Sha256};
 
 use crate::SecretConfig;
+use crate::internal_auth::{InternalCallRejection, verify_internal_call};
 use crate::kyc::{
     AmlEventDraft, DocumentAccessEntry, KycRecord, KycStatus, KycStore, KycStoreError, KycTier,
     PendingMemberCasesQuery, PendingMemberCasesResponse, ReviewAnswer, ScreeningMatchDraft,
@@ -172,6 +173,7 @@ pub struct ApiErrorResponse {
 struct ApiState<S> {
     store: S,
     webhook_secret: String,
+    internal_call_secret: String,
     sumsub_documents: SumsubDocumentClient,
 }
 
@@ -191,6 +193,7 @@ where
     let state = ApiState {
         store,
         webhook_secret: secrets.webhook_secret,
+        internal_call_secret: secrets.internal_call_secret,
         sumsub_documents,
     };
 
@@ -210,6 +213,7 @@ where
     let state = ApiState {
         store,
         webhook_secret: secrets.webhook_secret,
+        internal_call_secret: secrets.internal_call_secret,
         sumsub_documents,
     };
     build_router(state)
@@ -279,14 +283,33 @@ where
     )))
 }
 
-#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state))]
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state, headers))]
 async fn get_internal_tier<S>(
     State(state): State<ApiState<S>>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
 ) -> Result<Json<KycTierResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
+    let path = format!("/internal/kyc/users/{user_id}/tier");
+    verify_internal_call(
+        &headers,
+        "GET",
+        &path,
+        b"",
+        &state.internal_call_secret,
+        current_unix_timestamp(),
+    )
+    .map_err(|InternalCallRejection::Unauthorized| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiErrorResponse {
+                error: "unauthorized",
+                message: "Internal call signature missing or invalid".to_owned(),
+            }),
+        )
+    })?;
     let record = state
         .store
         .current_record(&user_id)
@@ -751,6 +774,14 @@ fn validation_error(message: impl Into<String>) -> (StatusCode, Json<ApiErrorRes
         "validation_failed",
         message,
     )
+}
+
+fn current_unix_timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| {
+            i64::try_from(duration.as_secs()).unwrap_or(i64::MAX)
+        })
 }
 
 fn api_error(

@@ -14,6 +14,9 @@ use axum::{
     routing::{delete, get, post},
 };
 use ed25519_dalek::{Verifier, VerifyingKey};
+use internal_kyc_auth::{
+    INTERNAL_CALL_SIGNATURE_HEADER, INTERNAL_CALL_TIMESTAMP_HEADER, sign_internal_call_for_kyc,
+};
 use order_precheck::{OrderKind, OrderSide, required_minor_units};
 use prometheus::{IntCounter, IntCounterVec, Opts};
 use reqwest::Url;
@@ -34,6 +37,7 @@ pub mod admin_ops;
 pub mod analytics_reporting;
 pub mod drill_logs;
 pub mod internal_call_auth;
+pub mod internal_kyc_auth;
 pub mod kill_switch;
 pub mod order_precheck;
 pub mod responsible_gaming;
@@ -998,6 +1002,7 @@ pub struct HttpMarketServiceClient {
 pub struct HttpKycServiceClient {
     base_url: Url,
     client: reqwest::Client,
+    internal_call_secret: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1109,22 +1114,37 @@ impl HttpKycServiceClient {
     /// # Errors
     ///
     /// Returns an error when `base_url` is not a valid URL.
-    pub fn new(base_url: &str) -> anyhow::Result<Self> {
+    pub fn new(base_url: &str, internal_call_secret: impl Into<String>) -> anyhow::Result<Self> {
         Ok(Self {
             base_url: Url::parse(base_url)?,
             client: reqwest::Client::new(),
+            internal_call_secret: internal_call_secret.into(),
         })
     }
 
-    /// Creates a client from `KYC_SERVICE_BASE_URL`, defaulting to localhost.
+    /// Creates a client from `KYC_SERVICE_BASE_URL` + `INTERNAL_CALL_HMAC_SECRET`,
+    /// defaulting to localhost.
     ///
     /// # Errors
     ///
-    /// Returns an error when the configured URL is invalid.
+    /// Returns an error when the configured URL is invalid, or when the HMAC
+    /// secret is missing in production.
     pub fn from_env() -> anyhow::Result<Self> {
         let base_url =
             env::var("KYC_SERVICE_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:8090".to_owned());
-        Self::new(&base_url)
+        let secret = match env::var("INTERNAL_CALL_HMAC_SECRET")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+        {
+            Some(value) => value,
+            None if is_production_env() => {
+                anyhow::bail!(
+                    "INTERNAL_CALL_HMAC_SECRET is required for HttpKycServiceClient in production"
+                );
+            }
+            None => "dev-analytics-internal-call-secret".to_owned(),
+        };
+        Self::new(&base_url, secret)
     }
 }
 
@@ -1630,14 +1650,21 @@ where
 #[async_trait]
 impl KycTierClient for HttpKycServiceClient {
     async fn get_kyc_tier(&self, user_id: &str) -> Result<String, ApiError> {
+        let path = format!("/internal/kyc/users/{user_id}/tier");
         let url = self
             .base_url
-            .join(&format!("/internal/kyc/users/{user_id}/tier"))
+            .join(&path)
             .map_err(|error| ApiError::kyc_lookup_unavailable(error.to_string()))?;
+
+        let timestamp = i64::try_from(unix_now_seconds()).unwrap_or(i64::MAX);
+        let signature =
+            sign_internal_call_for_kyc("GET", &path, b"", timestamp, &self.internal_call_secret);
 
         let response = self
             .client
             .get(url)
+            .header(INTERNAL_CALL_TIMESTAMP_HEADER, timestamp.to_string())
+            .header(INTERNAL_CALL_SIGNATURE_HEADER, signature)
             .send()
             .await
             .map_err(|error| ApiError::kyc_lookup_unavailable(error.to_string()))?;

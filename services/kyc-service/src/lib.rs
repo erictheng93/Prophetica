@@ -2,6 +2,7 @@ pub const SERVICE_NAME: &str = "kyc-service";
 pub const DEFAULT_PORT: u16 = 8085;
 
 pub mod api;
+pub mod internal_auth;
 pub mod internal_reports;
 pub mod kyc;
 pub mod sumsub_documents;
@@ -10,6 +11,7 @@ pub mod sumsub_documents;
 pub struct SecretConfig {
     pub webhook_secret: String,
     pub document_hash_salt: String,
+    pub internal_call_secret: String,
 }
 
 impl SecretConfig {
@@ -23,9 +25,15 @@ impl SecretConfig {
             read_secret_var(env, "SUMSUB_WEBHOOK_SECRET", "dev-sumsub-webhook-secret")?;
         let document_hash_salt =
             read_secret_var(env, "KYC_DOCUMENT_HASH_SALT", "dev-only-kyc-document-salt")?;
+        let internal_call_secret = read_secret_var(
+            env,
+            "INTERNAL_CALL_HMAC_SECRET",
+            "dev-analytics-internal-call-secret",
+        )?;
         Ok(Self {
             webhook_secret,
             document_hash_salt,
+            internal_call_secret,
         })
     }
 
@@ -34,6 +42,7 @@ impl SecretConfig {
         Self {
             webhook_secret: "dev-sumsub-webhook-secret".to_owned(),
             document_hash_salt: "dev-only-kyc-document-salt".to_owned(),
+            internal_call_secret: "dev-analytics-internal-call-secret".to_owned(),
         }
     }
 }
@@ -86,13 +95,38 @@ mod api_contract_tests {
         let app = test_router(test_store());
 
         let response = app
-            .oneshot(empty_get("/internal/kyc/users/user_01/tier"))
+            .oneshot(signed_internal_tier_get("user_01"))
             .await
             .expect("request should be handled");
 
         assert_eq!(response.status(), StatusCode::OK);
         let body = response_json(response).await;
         assert_eq!(body["tier"], json!("TIER_0"));
+    }
+
+    #[tokio::test]
+    async fn internal_tier_rejects_unsigned_call() {
+        let response = test_router(test_store())
+            .oneshot(empty_get("/internal/kyc/users/user_01/tier"))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("unauthorized"));
+    }
+
+    #[tokio::test]
+    async fn internal_tier_rejects_wrong_secret() {
+        let response = test_router(test_store())
+            .oneshot(signed_internal_tier_get_with_secret(
+                "user_01",
+                "wrong-secret",
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
@@ -113,7 +147,7 @@ mod api_contract_tests {
         assert_eq!(upgrade.status(), StatusCode::CREATED);
 
         let response = test_router(store)
-            .oneshot(empty_get("/internal/kyc/users/user_01/tier"))
+            .oneshot(signed_internal_tier_get("user_01"))
             .await
             .expect("request should be handled");
 
@@ -765,5 +799,36 @@ mod api_contract_tests {
         };
         mac.update(body.to_string().as_bytes());
         hex::encode(mac.finalize().into_bytes())
+    }
+
+    fn signed_internal_tier_get(user_id: &str) -> Request<Body> {
+        signed_internal_tier_get_with_secret(
+            user_id,
+            &crate::SecretConfig::dev_default().internal_call_secret,
+        )
+    }
+
+    fn signed_internal_tier_get_with_secret(user_id: &str, secret: &str) -> Request<Body> {
+        let path = format!("/internal/kyc/users/{user_id}/tier");
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0_i64, |d| {
+                i64::try_from(d.as_secs()).unwrap_or(i64::MAX)
+            });
+        let signature =
+            crate::internal_auth::sign_internal_call("GET", &path, b"", timestamp, secret);
+        match Request::builder()
+            .method("GET")
+            .uri(&path)
+            .header(
+                crate::internal_auth::INTERNAL_CALL_TIMESTAMP_HEADER,
+                timestamp.to_string(),
+            )
+            .header(crate::internal_auth::INTERNAL_CALL_SIGNATURE_HEADER, signature)
+            .body(Body::empty())
+        {
+            Ok(request) => request,
+            Err(error) => panic!("signed internal tier request should build: {error}"),
+        }
     }
 }
