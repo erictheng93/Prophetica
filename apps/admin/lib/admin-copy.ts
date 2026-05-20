@@ -23,6 +23,11 @@ export const adminCopy = {
     inDevelopmentBody:
       "此功能將於 api-gateway 接線後啟用。目前工單佇列為空，核准與駁回動作不會生效。",
   },
+  compensation: {
+    inDevelopmentTitle: "補償審批尚在建置中",
+    inDevelopmentBody:
+      "補償提案與雙人核准介面尚未完成。功能上線前，補償提案請循既有客服流程處理，此頁不會寫入帳本。",
+  },
   login: {
     eyebrow: "管理後台登入",
     title: "Prophetica 管理後台",
