@@ -12,7 +12,12 @@ test("order proxy forwards browser trades to api-gateway with server bearer toke
   assert.match(routeSource, /API_GATEWAY_BASE_URL/);
   assert.match(routeSource, /getUpstreamSessionToken/);
   assert.match(routeSource, /authorization", `Bearer \$\{bearerToken\}`/);
-  assert.match(routeSource, /process\.env\.NODE_ENV !== "production"/);
+  assert.match(routeSource, /devBffFallbackEnabled\(\)/);
+  assert.doesNotMatch(
+    routeSource,
+    /process\.env\.NODE_ENV !== "production"/,
+    "SPEC-023 H-1: dev BFF fallback must use positive opt-in flag, not negative NODE_ENV gate",
+  );
   assert.match(
     routeSource,
     /headers\.set\(TRANSITION_CALLER_HEADER, APPS_WEB_DEV_BFF_TRANSITION_CALLER\)/,

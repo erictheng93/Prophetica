@@ -36,8 +36,10 @@ test("getJourneyState derives authenticated state from server viewer session", (
     source,
     /balanceMinor: pointsToMinorUnits\(walletOverview\.balance\.availablePoints\)/,
   );
-  assert.match(
+  assert.match(source, /allowUserIdFallback: devBffFallbackEnabled\(\)/);
+  assert.doesNotMatch(
     source,
-    /allowUserIdFallback: process\.env\.NODE_ENV !== "production"/,
+    /process\.env\.NODE_ENV !== "production"/,
+    "SPEC-023 H-1: dev BFF fallback must use positive opt-in flag, not negative NODE_ENV gate",
   );
 });
