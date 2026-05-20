@@ -344,6 +344,14 @@ impl AuthVerifier {
             return Err(());
         }
         let kid = header_json.get("kid").and_then(serde_json::Value::as_str);
+        // SPEC-023 plan §11 D-1 / Phase 0 review I-3: when the JWKS holds more
+        // than one key (e.g. during rotation), a token without `kid` would
+        // otherwise be tried against every key, letting a single leaked key
+        // forge tokens that other keys would reject. Require an explicit kid
+        // whenever the keyset is non-singleton.
+        if kid.is_none() && self.keys.len() > 1 {
+            return Err(());
+        }
         let signing_input = format!("{header}.{payload}");
         let signature_bytes: [u8; 64] = base64_url_decode(signature)
             .ok_or(())?
@@ -3916,6 +3924,103 @@ mod tests {
 
     fn test_signing_key() -> SigningKey {
         SigningKey::from_bytes(&[7; 32])
+    }
+
+    fn multi_kid_jwks_json() -> String {
+        let primary = test_signing_key();
+        let secondary = SigningKey::from_bytes(&[9; 32]);
+        json!({
+            "keys": [
+                {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "kid": "test-key",
+                    "alg": "EdDSA",
+                    "use": "sig",
+                    "x": base64_url_encode(&primary.verifying_key().to_bytes())
+                },
+                {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "kid": "test-key-rotated",
+                    "alg": "EdDSA",
+                    "use": "sig",
+                    "x": base64_url_encode(&secondary.verifying_key().to_bytes())
+                }
+            ]
+        })
+        .to_string()
+    }
+
+    fn jwt_with_optional_kid(subject: &str, seed: [u8; 32], exp: u64, kid: Option<&str>) -> String {
+        let key = SigningKey::from_bytes(&seed);
+        let mut header = json!({
+            "alg": "EdDSA",
+            "typ": "JWT"
+        });
+        if let Some(kid) = kid {
+            header["kid"] = json!(kid);
+        }
+        let header_b64 = base64_url_encode(header.to_string().as_bytes());
+        let payload_b64 = base64_url_encode(
+            json!({
+                "sub": subject,
+                "iat": 1_800_000_000_u64,
+                "exp": exp
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        let signing_input = format!("{header_b64}.{payload_b64}");
+        let signature = key.sign(signing_input.as_bytes());
+        format!(
+            "{signing_input}.{}",
+            base64_url_encode(&signature.to_bytes())
+        )
+    }
+
+    #[test]
+    fn verify_bearer_accepts_kidless_token_when_jwks_has_single_key() {
+        let verifier = AuthVerifier::from_jwks_json(&test_jwks_json(), true)
+            .unwrap_or_else(|error| panic!("test JWKS should parse: {error}"));
+        let token = jwt_with_optional_kid("user-1", [7; 32], 1_900_000_000, None);
+        let auth = verifier
+            .verify_bearer(&token, 1_800_000_000)
+            .expect("single-key JWKS should accept kid-less token");
+        assert_eq!(auth.user_id, "user-1");
+    }
+
+    #[test]
+    fn verify_bearer_rejects_kidless_token_when_jwks_has_multiple_keys() {
+        // SPEC-023 plan §11 D-1 / Phase 0 I-3: prevent kid-downgrade against
+        // multi-key JWKS — a leaked retired key must not be allowed to forge
+        // tokens that omit `kid` and slip past the key match.
+        let verifier = AuthVerifier::from_jwks_json(&multi_kid_jwks_json(), true)
+            .unwrap_or_else(|error| panic!("multi-key JWKS should parse: {error}"));
+        let token = jwt_with_optional_kid("user-1", [7; 32], 1_900_000_000, None);
+        assert!(verifier.verify_bearer(&token, 1_800_000_000).is_err());
+    }
+
+    #[test]
+    fn verify_bearer_accepts_kid_specific_token_against_multi_key_jwks() {
+        let verifier = AuthVerifier::from_jwks_json(&multi_kid_jwks_json(), true)
+            .unwrap_or_else(|error| panic!("multi-key JWKS should parse: {error}"));
+        let token = jwt_with_optional_kid("user-1", [7; 32], 1_900_000_000, Some("test-key"));
+        let auth = verifier
+            .verify_bearer(&token, 1_800_000_000)
+            .expect("kid-tagged token should verify against matching JWKS entry");
+        assert_eq!(auth.user_id, "user-1");
+    }
+
+    #[test]
+    fn verify_bearer_rejects_token_signed_by_a_key_under_a_different_kid() {
+        // Token claims kid "test-key" but is signed with the secondary key's
+        // material — the kid filter should pin verification to the primary
+        // key only, which will reject the signature.
+        let verifier = AuthVerifier::from_jwks_json(&multi_kid_jwks_json(), true)
+            .unwrap_or_else(|error| panic!("multi-key JWKS should parse: {error}"));
+        let token = jwt_with_optional_kid("user-1", [9; 32], 1_900_000_000, Some("test-key"));
+        assert!(verifier.verify_bearer(&token, 1_800_000_000).is_err());
     }
 
     fn base64_url_encode(bytes: &[u8]) -> String {
