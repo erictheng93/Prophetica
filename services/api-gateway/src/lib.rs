@@ -7,7 +7,7 @@ use std::{
 
 use async_trait::async_trait;
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{FromRequestParts, Path, Query, State},
     http::{HeaderMap, StatusCode, header::HeaderName, request::Parts},
     response::{IntoResponse, Response},
@@ -2793,6 +2793,11 @@ pub async fn run_http() -> anyhow::Result<()> {
         );
     }
     let market_service = HttpMarketServiceClient::from_env()?;
+    // SPEC-023 plan v0.1.3 follow-up I-4: build AuthVerifier once at boot
+    // and attach via Extension. Previously the `AuthContext` extractor fell
+    // back to `AuthVerifier::from_env()` per request, re-parsing the JWKS
+    // JSON on every authenticated call.
+    let auth_verifier = AuthVerifier::from_env();
     let app = service_stub::router(&config)
         .merge(
             router_with_services_and_kyc_and_payment_flags_and_market_fees(
@@ -2815,7 +2820,8 @@ pub async fn run_http() -> anyhow::Result<()> {
                 analytics_reporting::proxy_router,
             ),
         )
-        .merge(admin_ops_router().await?);
+        .merge(admin_ops_router().await?)
+        .layer(Extension(auth_verifier));
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "api gateway listening");
 
