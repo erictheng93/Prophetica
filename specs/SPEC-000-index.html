@@ -34,7 +34,7 @@
 <h1>Master Index — 規格總索引</h1>
 <blockquote>
 <p><strong>prophetica</strong> — 趣味預測娛樂遊戲平台
-文件版本：v0.3.7 · 最後更新：2026-05-19 · 維護人：Tech Lead</p>
+文件版本：v0.3.8 · 最後更新：2026-05-19 · 維護人：Tech Lead</p>
 <p>Legacy file path：<code>specs/SPEC-000-index.html</code>；本文件不作為單一功能 SPEC 實作輸入。</p>
 </blockquote>
 <hr>
@@ -210,8 +210,8 @@
 <tr>
   <td><a href="./SPEC-023-player-onboarding-journey.html">SPEC-023</a></td>
   <td>玩家入門與首次下單旅程</td>
-  <td>landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單之旅程編排層：階段狀態機、跨頁重導向契約（<code>return_to</code> / open redirect 防護）、門檻攔截規則、進場入口交接；範圍涵蓋完整旅程（含 KYC / 儲值門檻），僅 <code>apps/web</code></td>
-  <td>🟢 v0.1.0 draft</td>
+  <td>landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單之旅程編排層：階段狀態機、跨頁重導向契約（<code>return_to</code> / open redirect 防護）、門檻攔截規則、進場入口交接；範圍涵蓋完整旅程（含 KYC / 儲值門檻），僅 <code>apps/web</code>；下單最低 tier = Tier 1（與 SPEC-005 §2.1 對齊）</td>
+  <td>🟢 v0.1.1</td>
 </tr>
 </tbody></table>
 <h3>P2 — 公開 Beta 後 90 天內完成</h3>
@@ -392,6 +392,18 @@
 <h2>4. 變更紀錄</h2>
 <section class="changelog">
 <div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>2026-05-19 · v0.3.8 · Tech Lead</h3>
+    <p><strong>SPEC-023 v0.1.1 — Open Questions 收斂</strong>：v0.1.0 §13 的 5 個 open questions（OQ-1 至 OQ-5）對齊 SPEC-005 §2.1 與 <code>apps/web/messages/zh-Hant.json</code> 後全數收斂：</p>
+    <ul>
+      <li><strong>OQ-1</strong>：下單所需最低 KYC tier 為 <strong>Tier 1</strong>（非 Tier 2）；Tier 2 / Tier 3 為儲值上限升級與 EDD，不是下單入場閘門。既有 <code>apps/web</code> KYC 文案與此結論一致，無需修改。</li>
+      <li><strong>OQ-2</strong>：MVP 階段 <code>/topup</code> 必須呈現服務協助訊息、不得渲染真實支付 CTA，LG-2 通過後再切換為 SPEC-016 通路選擇 UI。</li>
+      <li><strong>OQ-3</strong>：訪客可唯讀瀏覽公開市場列表、市場詳情、訂單簿與近期成交（SPEC-005 §2.1 Tier 0）。</li>
+      <li><strong>OQ-4</strong>：<code>return_to</code> same-origin 強制由 <code>apps/web</code> 中介層執行，api-gateway 不負責語意驗證。</li>
+      <li><strong>OQ-5</strong>：Email 驗證屬 Tier 1 流程內項目（SPEC-005 §2.1），不是 S1 → S2 之閘門。</li>
+    </ul>
+    <p><strong>OQ-6</strong>（旅程事件與 SPEC-020 漏斗整合）保留為 Open，但收斂方向確定為「事件來源為 server 端紀錄、分類學由 SPEC-020 定義」。同步更新 P1 表 SPEC-023 列版本與摘要。本輪未變更 SPEC-014。</p>
+  </article>
   <article class="changelog-entry">
     <h3>2026-05-19 · v0.3.7 · Tech Lead</h3>
     <p><strong>新增 SPEC-023 玩家入門旅程 + SPEC-014 §6.1.2 gateway 認證契約</strong>：landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單之端到端旅程原先分散於 SPEC-021 / 022 / 005 / 016 / 015 / 003，無單一 owner。本輪閉環如下：</p>

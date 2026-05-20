@@ -34,12 +34,16 @@
 <h1>SPEC-023 — 玩家入門與首次下單旅程（Player Onboarding &amp; First-Trade Journey）</h1>
 <blockquote>
   <p>優先級：<strong>P1</strong><br>
-  版本：v0.1.0 · 最後更新：2026-05-19<br>
+  版本：v0.1.1 · 最後更新：2026-05-19<br>
   依賴：SPEC-003, SPEC-005, SPEC-005a, SPEC-014, SPEC-015, SPEC-016, SPEC-021, SPEC-022<br>
   被依賴：前端 onboarding 實作、轉換漏斗與 SPEC-020 分析、未來 native app / LIFF 內嵌產品面</p>
 </blockquote>
 <section class="changelog">
   <div class="changelog-list">
+    <article class="changelog-entry">
+      <h3>v0.1.1 變更</h3>
+      <p>收斂 v0.1.0 §13 的 5 個 open questions（OQ-1 至 OQ-5）：對齊 SPEC-005 §2.1 與 <code>apps/web/messages/zh-Hant.json</code> 確認下單最低 KYC tier 為 <strong>Tier 1</strong>（Tier 2 / Tier 3 為儲值上限升級與 EDD，不是入場閘門）；明確 MVP 階段 <code>/topup</code> 之服務協助 UI 行為；確認訪客可唯讀瀏覽公開市場列表與市場詳情；確認 <code>return_to</code> same-origin 強制由 <code>apps/web</code> 中介層執行；確認 email 驗證屬 Tier 1 流程內項目而非 S1 → S2 之閘門。OQ-6（旅程事件與 SPEC-020 漏斗整合）保留為 Open，但收斂方向為「至少保證階段轉換可由 server 端記錄觀測，事件分類學由 SPEC-020 定義」。</p>
+    </article>
     <article class="changelog-entry">
       <h3>v0.1.0 變更</h3>
       <p>新增玩家入門與首次下單旅程規格。將原本分散於 SPEC-021（landing）、SPEC-022（登入）、SPEC-005 / SPEC-005a（KYC）、SPEC-016（支付）、SPEC-015（市場）、SPEC-003（撮合）的零件，編排為單一條「落地頁 → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單」旅程：定義旅程階段與狀態機、跨頁重導向契約、門檻攔截規則與進場入口交接。本 SPEC 為編排層，不重寫各零件 SPEC 的內部機制。</p>
@@ -124,15 +128,17 @@
   <li>session token 由 user-service 簽發、由 api-gateway 驗證——機制以 SPEC-014 §6.1.2 與 SPEC-022 為權威。本 SPEC 不規範 token 格式。</li>
   <li>每次登入成功 / 失敗都必須產生 login event（SPEC-022）；本 SPEC 不重述其欄位。</li>
   <li>登入完成後的導向遵循 §5 重導向契約：有 <code>return_to</code> 則導回，否則導向 <code>/portfolio</code>。</li>
+  <li><strong>Email 驗證不是 S1 → S2 的閘門</strong>。Email 與手機 OTP 為 Tier 1 流程內項目（SPEC-005 §2.1），於 S3 完成；S1 → S2 僅要求憑證有效，不要求 email 已驗證。</li>
   <li>離開條件：session 建立完成。</li>
 </ul>
 
 <h3>4.3 S3 — KYC 門檻（KYC Gating）</h3>
 <ul>
-  <li>下單所需的最低 KYC tier 由 SPEC-005 §2 定義（見 §13 OQ-1，需與 SPEC-005 對齊確認）。</li>
-  <li>觸發方式有二：(a) 使用者嘗試一個需要該 tier 的動作（如下單）而 tier 不足，被 §7 攔截導向 <code>/kyc/*</code>；(b) 使用者主動發起 KYC 升級。</li>
-  <li>KYC 流程本身（Tier 1 OTP、Tier 2 SumSub iframe 等）以 SPEC-005 / SPEC-005a 為權威。本 SPEC 僅要求：因下單被攔截而進入 KYC 時，完成後必須依 §5 導回原本的下單意圖頁。</li>
-  <li>離開條件：KYC tier 達到下單所需最低值（<code>kyc_cleared</code>）。</li>
+  <li><strong>下單所需的最低 KYC tier 為 Tier 1</strong>（SPEC-005 §2.1）：Tier 0 訪客僅能瀏覽公開市場與歷史結算；Tier 1 由「完成註冊 + 首次儲值」觸發，並完成 Email + 手機 OTP + 生日 ≥ 18 + 首發 5 國對應證件號的隱式驗證。Tier 2 與 Tier 3 為儲值上限升級與 EDD，<strong>不是下單入場閘門</strong>。</li>
+  <li><strong>MVP 階段（真實入金開放前，LG-2 未通過）</strong>：因真實儲值通道未啟用，Tier 1 觸發條件中的「首次儲值」由 SPEC-002 <code>manual_points_adjustment</code> 之授權調點承擔；Email + 手機 OTP + ID-hash 等隱式驗證項目仍須完成。亦即 MVP 旅程的 S3 / S4 在實務上由「客服協助調點 + 玩家完成 Tier 1 隱式驗證」合併達成。</li>
+  <li>觸發方式有二：(a) 使用者嘗試一個需要 Tier 1 的動作（如下單）而 tier 不足，被 §7 攔截導向 <code>/kyc/tier-1</code>；(b) 使用者主動發起 KYC 升級。</li>
+  <li>KYC 流程本身（Tier 1 隱式驗證、Tier 2 SumSub iframe、Tier 3 EDD 等）以 SPEC-005 / SPEC-005a 為權威。本 SPEC 僅要求：因下單被攔截而進入 KYC 時，完成後必須依 §5 導回原本的下單意圖頁。</li>
+  <li>離開條件：KYC tier ≥ Tier 1（<code>kyc_cleared</code>）。</li>
 </ul>
 
 <h3>4.4 S4 — 錢包儲值（Wallet Funding）</h3>
@@ -141,8 +147,8 @@
   <li>觸發方式有二：(a) 使用者嘗試下單但餘額不足，被 §7 攔截導向 <code>/topup</code>；(b) 使用者主動儲值。</li>
   <li>資金來源依階段不同：
     <ul>
-      <li><strong>MVP（真實入金前，SPEC-000 Launch Gate LG-2 未通過）</strong>：銅幣由 SPEC-002 <code>manual_points_adjustment</code> 之授權調點路徑提供。此階段 <code>/topup</code> 不得呈現會誤導為真實金流已開通的 UI。</li>
-      <li><strong>真實入金開放後（LG-2 通過）</strong>：依 SPEC-016 支付通路儲值。</li>
+      <li><strong>MVP（真實入金前，SPEC-000 Launch Gate LG-2 未通過）</strong>：銅幣由 SPEC-002 <code>manual_points_adjustment</code> 之授權調點路徑提供。此階段 <code>/topup</code> 必須呈現「目前儲值由營運後台協助處理」或等價之服務協助訊息與聯繫指引；不得渲染可點擊的真實支付通路 CTA、不得顯示金額輸入後送出至真實金流的表單。</li>
+      <li><strong>真實入金開放後（LG-2 通過）</strong>：<code>/topup</code> 依 SPEC-016 切換為支付通路選擇 UI；MVP 服務協助訊息退場。</li>
     </ul>
   </li>
   <li>儲值機制以 SPEC-016 / SPEC-002 為權威。本 SPEC 僅要求：因下單被攔截而進入儲值時，完成後必須依 §5 導回原本的下單意圖頁。</li>
@@ -151,7 +157,7 @@
 
 <h3>4.5 S5 — 市場探索（Market Discovery）</h3>
 <ul>
-  <li>市場列表 <code>/markets</code> 與市場詳情 <code>/markets/:id</code> 顯示 SPEC-015 定義的市場。公開市場列表預設允許 <code>visitor</code> 唯讀瀏覽（見 §13 OQ-3）。</li>
+  <li>市場列表 <code>/markets</code> 與市場詳情 <code>/markets/:id</code> 顯示 SPEC-015 定義的市場。依 SPEC-005 §2.1（Tier 0 訪客「僅瀏覽公開市場、看歷史結算」），<code>visitor</code> 可唯讀瀏覽公開市場列表、市場詳情、訂單簿與近期成交；只有下單等需要狀態的動作觸發 §7 攔截。</li>
   <li>市場資料、訂單簿、近期成交以 SPEC-015 / SPEC-003 為權威。</li>
   <li>離開條件：使用者於市場詳情頁發起下單。</li>
 </ul>
@@ -169,7 +175,7 @@
 <ul>
   <li><strong>landing 不持有 session</strong>：landing 變體不得設定或讀取 session cookie；認證態僅存在於 <code>apps/web</code>（呼應 SPEC-021 §5.3）。</li>
   <li><strong><code>return_to</code> 參數</strong>：當使用者因門檻被攔截導向認證 / KYC / 儲值頁時，系統必須以 <code>return_to</code> query 參數保留原始意圖頁的完整路徑（含 query string）。例如未登入使用者深連結到 <code>/markets/abc?side=yes</code> 嘗試下單，被導向 <code>/auth/sign-in?return_to=%2Fmarkets%2Fabc%3Fside%3Dyes</code>。</li>
-  <li><strong>open redirect 防護</strong>：<code>return_to</code> 必須只接受 same-origin 的相對路徑。絕對 URL、協定相對 URL（<code>//host</code>）、跨網域目標一律拒絕並 fallback 至預設導向。此規則由 <code>apps/web</code> 中介層強制（見 §13 OQ-4）。</li>
+  <li><strong>open redirect 防護</strong>：<code>return_to</code> 必須只接受 same-origin 的相對路徑。絕對 URL、協定相對 URL（<code>//host</code>）、跨網域目標一律拒絕並 fallback 至預設導向。此規則由 <code>apps/web</code> 中介層強制：任何消費 <code>return_to</code> 進行 server-side 或 client-side 導向的程式碼（中介層、server action、client navigation）都必須在執行前驗證為 same-origin 相對路徑。api-gateway 一般不接觸 <code>return_to</code>，因該參數屬前端 routing 語義；若未來 server action 需經 gateway 攜帶 <code>return_to</code>，gateway 不負責語意驗證，仍由前端在落地頁強制。</li>
   <li><strong>門檻完成後導回</strong>：使用者完成被攔截的門檻（登入 / KYC / 儲值）後，若 <code>return_to</code> 存在且合法，必須導回該頁；否則導向預設頁 <code>/portfolio</code>。</li>
   <li><strong>導向單跳</strong>：每次攔截導向必須在單次 request 完成，不得讓使用者經過多層中介跳轉。</li>
   <li><strong>多重門檻</strong>：使用者下單同時缺 KYC 與餘額時，系統一次只導向一個門檻；該門檻完成後導回原市場頁，由 §7 規則重新評估、必要時再導向下一個門檻。每一步的 <code>return_to</code> 都必須指回最初的下單意圖頁。</li>
@@ -209,8 +215,8 @@
       <td>導向 <code>/auth/sign-in?return_to=&lt;市場頁&gt;</code>；登入後導回市場頁，重新評估。</td>
     </tr>
     <tr>
-      <td><code>kyc_cleared</code>（達下單最低 tier）</td>
-      <td>導向 <code>/kyc/*</code> 對應 tier；完成後導回市場頁，重新評估。</td>
+      <td><code>kyc_cleared</code>（≥ Tier 1，SPEC-005 §2.1）</td>
+      <td>導向 <code>/kyc/tier-1</code>（或更高 tier 對應頁，依使用者既有狀態）；完成後導回市場頁，重新評估。</td>
     </tr>
     <tr>
       <td><code>funded</code>（餘額 ≥ 訂單成本）</td>
@@ -304,12 +310,12 @@ rtk cargo clippy -p &lt;crate&gt; --all-targets --locked -- -D warnings</code></
 
 <h2>13. Open Questions</h2>
 <ul>
-  <li><strong>OQ-1</strong>：下單所需的最低 KYC tier 為 Tier 1 還是 Tier 2？SPEC-005 §2 為權威；目前 <code>apps/web</code> KYC 頁訊息顯示「Tier 2 required to trade」，需與 SPEC-005 對齊確認，並回填本 SPEC §4.3。</li>
-  <li><strong>OQ-2</strong>：MVP 真實入金前（LG-2 未通過），<code>/topup</code> 階段的 UI 應如何呈現？是顯示 SPEC-002 manual points 調點說明、還是隱藏儲值入口僅由營運後台調點？</li>
-  <li><strong>OQ-3</strong>：<code>visitor</code> 可唯讀瀏覽哪些市場頁？公開市場列表與市場詳情是否全面對未登入訪客開放，或部分需登入？</li>
-  <li><strong>OQ-4</strong>：<code>return_to</code> 白名單與 same-origin 強制由 <code>apps/web</code> 前端中介層執行，還是同時於 api-gateway 強制？</li>
-  <li><strong>OQ-5</strong>：註冊後的 email 驗證是否為 <code>authenticated</code> 的前置條件（即 S1 → S2 之間是否插入強制驗證），還是可先登入、後補驗證？</li>
-  <li><strong>OQ-6</strong>：旅程轉換漏斗的階段切點（S0–S6）由 SPEC-020 分析定義；本 SPEC 是否需在每階段發出標準化的旅程事件供漏斗計算？</li>
+  <li><strong>OQ-1</strong> ✅ <strong>Resolved v0.1.1</strong>：下單所需的最低 KYC tier 為 <strong>Tier 1</strong>（SPEC-005 §2.1）。Tier 2 / Tier 3 為儲值上限升級與 EDD，不是下單入場閘門。<code>apps/web</code> 既有 KYC 文案（<code>messages/zh-Hant.json</code> 之 <code>kyc.tiers.cards.*</code>）與本結論一致：tier card 之「unlocks」描述為儲值上限而非交易解鎖，無需修改。已寫入 §4.3 與 §7。</li>
+  <li><strong>OQ-2</strong> ✅ <strong>Resolved v0.1.1</strong>：MVP 階段 <code>/topup</code> 必須呈現「目前儲值由營運後台協助處理」之服務協助訊息與聯繫指引；不得渲染真實支付通路 CTA 或可送出至真實金流的金額表單。LG-2 通過後切換為 SPEC-016 通路選擇 UI。已寫入 §4.4。</li>
+  <li><strong>OQ-3</strong> ✅ <strong>Resolved v0.1.1</strong>：<code>visitor</code> 可唯讀瀏覽公開市場列表、市場詳情、訂單簿與近期成交（SPEC-005 §2.1 Tier 0）；只有下單等需要狀態的動作觸發 §7 攔截。已寫入 §4.5 與 §7。</li>
+  <li><strong>OQ-4</strong> ✅ <strong>Resolved v0.1.1</strong>：<code>return_to</code> 之 same-origin 強制由 <code>apps/web</code> 中介層執行；任何消費 <code>return_to</code> 的程式碼都必須在導向前驗證。api-gateway 不負責語意驗證。已寫入 §5。</li>
+  <li><strong>OQ-5</strong> ✅ <strong>Resolved v0.1.1</strong>：Email 驗證屬 Tier 1 流程內項目（SPEC-005 §2.1 「Email、手機 OTP」），不是 S1 → S2 之閘門。使用者可註冊並登入（authenticated），email 驗證在 S3 KYC Tier 1 完成。已寫入 §4.2。</li>
+  <li><strong>OQ-6</strong> 🟡 <strong>Open（deferred to SPEC-020）</strong>：旅程轉換漏斗的階段切點（S0–S6）事件分類學由 SPEC-020 分析報表規格定義；本 SPEC 不規範事件名稱、欄位或 sink。<strong>但收斂方向確定</strong>：本 SPEC 要求每一階段轉換在 server 端可觀測（透過 user-service / api-gateway / wallet-ledger 既有的狀態變更與 log），不得僅依賴 client 端發送事件，以免漏報或被竄改。SPEC-020 補上漏斗事件規格時，應以這些 server 端紀錄為事件來源。</li>
 </ul>
 </body>
 </html>
