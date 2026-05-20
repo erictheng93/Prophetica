@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use api_gateway::internal_call_auth::{
-    sign_internal_call, verify_internal_call, InternalCallRejection,
+    InternalCallRejection, sign_internal_call, verify_internal_call,
 };
 use axum::http::HeaderMap;
 

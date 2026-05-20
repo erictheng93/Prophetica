@@ -91,13 +91,12 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn hex_lower(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
-    bytes.iter().fold(
-        String::with_capacity(bytes.len() * 2),
-        |mut acc, byte| {
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut acc, byte| {
             let _ = write!(acc, "{byte:02x}");
             acc
-        },
-    )
+        })
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {

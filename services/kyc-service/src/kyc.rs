@@ -249,16 +249,11 @@ pub trait KycStore: Clone + Send + Sync + 'static {
     ) -> Result<StartUpgradeOutcome, KycStoreError>;
 
     /// Resolves the SumSub applicant id for the user's current KYC record.
-    async fn applicant_id_for_user(
-        &self,
-        user_id: &str,
-    ) -> Result<Option<String>, KycStoreError>;
+    async fn applicant_id_for_user(&self, user_id: &str) -> Result<Option<String>, KycStoreError>;
 
     /// Appends one KYC document access audit entry.
-    async fn record_document_access(
-        &self,
-        entry: DocumentAccessEntry,
-    ) -> Result<(), KycStoreError>;
+    async fn record_document_access(&self, entry: DocumentAccessEntry)
+    -> Result<(), KycStoreError>;
 }
 
 #[derive(Debug, Clone)]
@@ -812,10 +807,7 @@ impl KycStore for PostgresKycStore {
         })
     }
 
-    async fn applicant_id_for_user(
-        &self,
-        user_id: &str,
-    ) -> Result<Option<String>, KycStoreError> {
+    async fn applicant_id_for_user(&self, user_id: &str) -> Result<Option<String>, KycStoreError> {
         Ok(self
             .current_record(user_id)
             .await?
@@ -1204,10 +1196,7 @@ impl KycStore for InMemoryKycStore {
         Ok(outcome)
     }
 
-    async fn applicant_id_for_user(
-        &self,
-        user_id: &str,
-    ) -> Result<Option<String>, KycStoreError> {
+    async fn applicant_id_for_user(&self, user_id: &str) -> Result<Option<String>, KycStoreError> {
         Ok(self
             .current_record(user_id)
             .await?

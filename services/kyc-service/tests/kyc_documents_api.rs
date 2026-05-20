@@ -9,12 +9,15 @@ use http_body_util::BodyExt;
 use kyc_service::{
     SecretConfig,
     api::router_with_sumsub_client,
-    kyc::{InMemoryKycStore, KycStore, StartUpgradeDraft, KycTier},
+    kyc::{InMemoryKycStore, KycStore, KycTier, StartUpgradeDraft},
     sumsub_documents::{SumsubDocument, SumsubDocumentClient},
 };
 use serde_json::Value;
 use tower::ServiceExt;
-use wiremock::{MockServer, Mock, ResponseTemplate, matchers::{method, path}};
+use wiremock::{
+    Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
+};
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -25,8 +28,11 @@ fn test_store() -> InMemoryKycStore {
 }
 
 fn test_router_with_server<S: KycStore>(store: S, sumsub_base_url: &str) -> Router {
-    let client =
-        SumsubDocumentClient::new(sumsub_base_url.to_owned(), "app-token".to_owned(), "secret".to_owned());
+    let client = SumsubDocumentClient::new(
+        sumsub_base_url.to_owned(),
+        "app-token".to_owned(),
+        "secret".to_owned(),
+    );
     router_with_sumsub_client(store, SecretConfig::dev_default(), client)
 }
 
@@ -173,10 +179,7 @@ async fn get_document_image_returns_png_bytes_for_valid_doc() {
         .expect("request should be handled");
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get("content-type").unwrap(),
-        "image/png"
-    );
+    assert_eq!(response.headers().get("content-type").unwrap(), "image/png");
     assert_eq!(
         response.headers().get("cache-control").unwrap(),
         "private, no-store"

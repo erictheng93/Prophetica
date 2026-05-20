@@ -170,10 +170,7 @@ fn build_url(base: &str, segments: &[&str]) -> Result<reqwest::Url, SumsubDocume
 ///
 /// For the mock server this is a no-op; wire real signing logic here when
 /// targeting the live `SumSub` API.
-fn sign_request(
-    builder: reqwest::RequestBuilder,
-    _secret_key: &str,
-) -> reqwest::RequestBuilder {
+fn sign_request(builder: reqwest::RequestBuilder, _secret_key: &str) -> reqwest::RequestBuilder {
     // TODO: compute `X-App-Access-Sig` and `X-App-Access-Ts` headers when
     // targeting the production SumSub API.
     builder

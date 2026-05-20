@@ -223,7 +223,9 @@ async fn kyc_service_404_is_passed_through_by_list_handler() {
     let ts = now_ts();
 
     Mock::given(method("GET"))
-        .and(path("/v1/internal/admin/kyc/members/no-such-user/documents"))
+        .and(path(
+            "/v1/internal/admin/kyc/members/no-such-user/documents",
+        ))
         .respond_with(ResponseTemplate::new(404))
         .mount(&server)
         .await;

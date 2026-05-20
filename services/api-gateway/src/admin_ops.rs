@@ -91,8 +91,7 @@ pub trait AdminOpsStore {
     /// Returns the base URL of the KYC service for the document proxy.
     /// Reads `KYC_SERVICE_URL` from the process environment by default.
     fn kyc_service_base_url(&self) -> String {
-        env::var("KYC_SERVICE_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned())
+        env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned())
     }
 }
 
@@ -612,8 +611,7 @@ where
         );
     };
     let request_path = uri.path();
-    if let Err(auth_err) =
-        verify_kyc_proxy_auth_with_secret(&headers, "GET", request_path, &secret)
+    if let Err(auth_err) = verify_kyc_proxy_auth_with_secret(&headers, "GET", request_path, &secret)
     {
         return auth_err;
     }
@@ -656,8 +654,7 @@ where
         );
     };
     let request_path = uri.path();
-    if let Err(auth_err) =
-        verify_kyc_proxy_auth_with_secret(&headers, "GET", request_path, &secret)
+    if let Err(auth_err) = verify_kyc_proxy_auth_with_secret(&headers, "GET", request_path, &secret)
     {
         return auth_err;
     }
@@ -741,8 +738,8 @@ async fn kyc_proxy_stream(request: reqwest::RequestBuilder, add_cache_control: b
     };
 
     let status = upstream_response.status();
-    let axum_status = StatusCode::from_u16(status.as_u16())
-        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let axum_status =
+        StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let content_type = upstream_response
         .headers()
         .get(header::CONTENT_TYPE)
@@ -757,9 +754,7 @@ async fn kyc_proxy_stream(request: reqwest::RequestBuilder, add_cache_control: b
     }
     if add_cache_control {
         if let Ok(value) = "private, no-store".parse() {
-            response
-                .headers_mut()
-                .insert(header::CACHE_CONTROL, value);
+            response.headers_mut().insert(header::CACHE_CONTROL, value);
         }
     }
     response
@@ -770,9 +765,7 @@ fn kyc_proxy_error(status: StatusCode, code: &'static str) -> Response {
     let mut response = Response::new(Body::from(body));
     *response.status_mut() = status;
     if let Ok(value) = "application/json".parse() {
-        response
-            .headers_mut()
-            .insert(header::CONTENT_TYPE, value);
+        response.headers_mut().insert(header::CONTENT_TYPE, value);
     }
     response
 }
@@ -2798,8 +2791,7 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
 
     fn kyc_service_base_url(&self) -> String {
         self.kyc_url_override.clone().unwrap_or_else(|| {
-            env::var("KYC_SERVICE_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned())
+            env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned())
         })
     }
 }

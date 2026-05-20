@@ -17,8 +17,7 @@ async fn lists_documents_for_applicant() {
         .mount(&server)
         .await;
 
-    let client =
-        SumsubDocumentClient::new(server.uri(), "app-token".into(), "secret-key".into());
+    let client = SumsubDocumentClient::new(server.uri(), "app-token".into(), "secret-key".into());
     let docs: Vec<SumsubDocument> = client.list_documents("applicant_1").await.unwrap();
     assert_eq!(docs.len(), 1);
     assert_eq!(docs[0].doc_id, "doc_1");
@@ -40,8 +39,7 @@ async fn fetches_image_streaming() {
         .mount(&server)
         .await;
 
-    let client =
-        SumsubDocumentClient::new(server.uri(), "app-token".into(), "secret-key".into());
+    let client = SumsubDocumentClient::new(server.uri(), "app-token".into(), "secret-key".into());
     let image = client
         .fetch_image("applicant_1", "doc_1")
         .await

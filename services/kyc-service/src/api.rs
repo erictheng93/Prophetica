@@ -174,12 +174,12 @@ pub fn router<S>(store: S, secrets: SecretConfig) -> Router
 where
     S: KycStore,
 {
-    let sumsub_base_url = std::env::var("SUMSUB_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:8086".to_owned());
-    let sumsub_app_token = std::env::var("SUMSUB_APP_TOKEN")
-        .unwrap_or_else(|_| "dev-sumsub-app-token".to_owned());
-    let sumsub_secret_key = std::env::var("SUMSUB_SECRET_KEY")
-        .unwrap_or_else(|_| "dev-sumsub-secret-key".to_owned());
+    let sumsub_base_url =
+        std::env::var("SUMSUB_BASE_URL").unwrap_or_else(|_| "http://localhost:8086".to_owned());
+    let sumsub_app_token =
+        std::env::var("SUMSUB_APP_TOKEN").unwrap_or_else(|_| "dev-sumsub-app-token".to_owned());
+    let sumsub_secret_key =
+        std::env::var("SUMSUB_SECRET_KEY").unwrap_or_else(|_| "dev-sumsub-secret-key".to_owned());
     let sumsub_documents =
         SumsubDocumentClient::new(sumsub_base_url, sumsub_app_token, sumsub_secret_key);
 
@@ -823,39 +823,38 @@ where
             if let Err(err) = state.store.record_document_access(entry).await {
                 tracing::error!(?err, "failed to write kyc_document_access_log entry");
             }
-            return Ok(axum::response::IntoResponse::into_response(Json(
-                Vec::<crate::sumsub_documents::SumsubDocument>::new(),
-            )));
+            return Ok(axum::response::IntoResponse::into_response(Json(Vec::<
+                crate::sumsub_documents::SumsubDocument,
+            >::new(
+            ))));
         }
-        Some(applicant) => {
-            state
-                .sumsub_documents
-                .list_documents(&applicant)
-                .await
-                .map_err(|e| match e {
-                    SumsubDocumentError::ProviderAuth => {
-                        tracing::error!("sumsub provider auth failure listing documents");
-                        api_error(
-                            StatusCode::BAD_GATEWAY,
-                            "provider_error",
-                            "upstream provider error",
-                        )
-                    }
-                    SumsubDocumentError::NotFound => api_error(
-                        StatusCode::NOT_FOUND,
-                        "document_not_found",
-                        "applicant not found",
-                    ),
-                    SumsubDocumentError::Upstream(msg) => {
-                        tracing::error!(%msg, "sumsub upstream error listing documents");
-                        api_error(
-                            StatusCode::BAD_GATEWAY,
-                            "provider_error",
-                            "upstream provider error",
-                        )
-                    }
-                })?
-        }
+        Some(applicant) => state
+            .sumsub_documents
+            .list_documents(&applicant)
+            .await
+            .map_err(|e| match e {
+                SumsubDocumentError::ProviderAuth => {
+                    tracing::error!("sumsub provider auth failure listing documents");
+                    api_error(
+                        StatusCode::BAD_GATEWAY,
+                        "provider_error",
+                        "upstream provider error",
+                    )
+                }
+                SumsubDocumentError::NotFound => api_error(
+                    StatusCode::NOT_FOUND,
+                    "document_not_found",
+                    "applicant not found",
+                ),
+                SumsubDocumentError::Upstream(msg) => {
+                    tracing::error!(%msg, "sumsub upstream error listing documents");
+                    api_error(
+                        StatusCode::BAD_GATEWAY,
+                        "provider_error",
+                        "upstream provider error",
+                    )
+                }
+            })?,
     };
 
     let entry = DocumentAccessEntry {
@@ -913,7 +912,14 @@ where
         .map_err(store_error)?;
 
     let Some(applicant) = applicant_id else {
-        let entry = denied_entry(&reviewer_id, &reviewer_role, &user_id, Some(&doc_id), "no_applicant", request_id.as_deref());
+        let entry = denied_entry(
+            &reviewer_id,
+            &reviewer_role,
+            &user_id,
+            Some(&doc_id),
+            "no_applicant",
+            request_id.as_deref(),
+        );
         if let Err(err) = state.store.record_document_access(entry).await {
             tracing::error!(?err, "failed to write kyc_document_access_log entry");
         }
@@ -928,7 +934,14 @@ where
         .map_err(sumsub_list_error)?;
 
     if !documents.iter().any(|doc| doc.doc_id == doc_id) {
-        let entry = denied_entry(&reviewer_id, &reviewer_role, &user_id, Some(&doc_id), "doc_not_bound", request_id.as_deref());
+        let entry = denied_entry(
+            &reviewer_id,
+            &reviewer_role,
+            &user_id,
+            Some(&doc_id),
+            "doc_not_bound",
+            request_id.as_deref(),
+        );
         if let Err(err) = state.store.record_document_access(entry).await {
             tracing::error!(?err, "failed to write kyc_document_access_log entry");
         }
@@ -993,15 +1006,27 @@ fn denied_entry(
 fn sumsub_list_error(e: SumsubDocumentError) -> (StatusCode, Json<ApiErrorResponse>) {
     match e {
         SumsubDocumentError::ProviderAuth => {
-            tracing::error!("sumsub provider auth failure fetching document list for binding check");
-            api_error(StatusCode::BAD_GATEWAY, "provider_error", "upstream provider error")
+            tracing::error!(
+                "sumsub provider auth failure fetching document list for binding check"
+            );
+            api_error(
+                StatusCode::BAD_GATEWAY,
+                "provider_error",
+                "upstream provider error",
+            )
         }
-        SumsubDocumentError::NotFound => {
-            api_error(StatusCode::NOT_FOUND, "document_not_found", "applicant not found")
-        }
+        SumsubDocumentError::NotFound => api_error(
+            StatusCode::NOT_FOUND,
+            "document_not_found",
+            "applicant not found",
+        ),
         SumsubDocumentError::Upstream(msg) => {
             tracing::error!(%msg, "sumsub upstream error fetching document list for binding check");
-            api_error(StatusCode::BAD_GATEWAY, "provider_error", "upstream provider error")
+            api_error(
+                StatusCode::BAD_GATEWAY,
+                "provider_error",
+                "upstream provider error",
+            )
         }
     }
 }
@@ -1010,14 +1035,24 @@ fn sumsub_image_error(e: SumsubDocumentError) -> (StatusCode, Json<ApiErrorRespo
     match e {
         SumsubDocumentError::ProviderAuth => {
             tracing::error!("sumsub provider auth failure fetching image");
-            api_error(StatusCode::BAD_GATEWAY, "provider_error", "upstream provider error")
+            api_error(
+                StatusCode::BAD_GATEWAY,
+                "provider_error",
+                "upstream provider error",
+            )
         }
-        SumsubDocumentError::NotFound => {
-            api_error(StatusCode::NOT_FOUND, "document_not_found", "image not found")
-        }
+        SumsubDocumentError::NotFound => api_error(
+            StatusCode::NOT_FOUND,
+            "document_not_found",
+            "image not found",
+        ),
         SumsubDocumentError::Upstream(msg) => {
             tracing::error!(%msg, "sumsub upstream error fetching image");
-            api_error(StatusCode::BAD_GATEWAY, "provider_error", "upstream provider error")
+            api_error(
+                StatusCode::BAD_GATEWAY,
+                "provider_error",
+                "upstream provider error",
+            )
         }
     }
 }
