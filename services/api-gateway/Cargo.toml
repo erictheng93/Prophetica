@@ -10,6 +10,7 @@ publish.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true
+ed25519-dalek.workspace = true
 hmac = "0.12"
 http-body-util = "0.1"
 reqwest.workspace = true

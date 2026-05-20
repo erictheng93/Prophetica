@@ -21,6 +21,7 @@ import {
 } from "@/lib/mock-portfolio";
 import { fetchWalletOverview, type WalletOverview } from "@/lib/api-gateway";
 import { fetchPortfolioPositions } from "@/lib/position-api";
+import { getUpstreamSessionToken } from "@/lib/session";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("portfolio.metadata");
@@ -53,10 +54,11 @@ function toneClass(tone: Tone): string {
 type PortfolioCopy = Awaited<ReturnType<typeof getTranslations<"portfolio">>>;
 
 export default async function PortfolioPage() {
+  const upstreamSessionToken = await getUpstreamSessionToken();
   const [t, sectionFooterColumns, walletOverview, portfolio] = await Promise.all([
     getTranslations("portfolio"),
     getFooterColumns(["markets", "legal", "support"]),
-    fetchWalletOverview(),
+    fetchWalletOverview({ bearerToken: upstreamSessionToken ?? undefined }),
     fetchPortfolioPositions(),
   ]);
   const { active, settled, summary } = portfolio;

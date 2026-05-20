@@ -34,6 +34,7 @@ export interface PlaceMarketOrderOptions {
   orderProxyBaseUrl?: string;
   marketId: string;
   userId?: string;
+  bearerToken?: string;
   side: MarketOrderSide;
   outcome: MarketOrderOutcome;
   type: MarketOrderType;
@@ -110,6 +111,7 @@ export async function placeMarketOrder({
   orderProxyBaseUrl = DEFAULT_ORDER_PROXY_BASE_URL,
   marketId,
   userId,
+  bearerToken,
   side,
   outcome,
   type,
@@ -123,7 +125,9 @@ export async function placeMarketOrder({
     accept: "application/json",
     "content-type": "application/json",
   });
-  if (userId) {
+  if (bearerToken) {
+    headers.set("authorization", `Bearer ${bearerToken}`);
+  } else if (userId) {
     headers.set("x-user-id", userId);
   }
   if (clientOrderId) {

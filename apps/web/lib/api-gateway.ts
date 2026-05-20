@@ -39,6 +39,8 @@ export type WalletClientFactory = (options: ClientOptions) => WalletClient;
 export interface FetchWalletOverviewOptions {
   baseUrl?: string;
   userId?: string;
+  bearerToken?: string;
+  allowUserIdFallback?: boolean;
   fetcher?: Fetcher;
   ledgerLimit?: number;
   walletClientFactory?: WalletClientFactory;
@@ -52,17 +54,29 @@ export async function fetchWalletOverview(
   options: FetchWalletOverviewOptions = {},
 ): Promise<WalletOverview> {
   const baseUrl = trimTrailingSlash(
-    options.baseUrl ?? process.env.API_GATEWAY_BASE_URL ?? DEFAULT_API_GATEWAY_BASE_URL,
+    options.baseUrl ??
+      process.env.API_GATEWAY_BASE_URL ??
+      DEFAULT_API_GATEWAY_BASE_URL,
   );
-  const userId = options.userId ?? process.env.PROPHETICA_DEV_USER_ID ?? API_GATEWAY_FALLBACK_USER_ID;
+  const userId =
+    options.userId ??
+    process.env.PROPHETICA_DEV_USER_ID ??
+    API_GATEWAY_FALLBACK_USER_ID;
   // Default fetcher injects W3C traceparent (SPEC-007 §5.1). Tests pass an
   // explicit fetcher and bypass propagation by design.
-  const fetcher = options.fetcher ?? ((input, init) => tracedFetch(input, init));
+  const fetcher =
+    options.fetcher ?? ((input, init) => tracedFetch(input, init));
   const ledgerLimit = options.ledgerLimit ?? DEFAULT_LEDGER_LIMIT;
-  const walletClientFactory = options.walletClientFactory ?? (await loadWalletClientFactory());
+  if (!options.bearerToken && !options.allowUserIdFallback) {
+    return fallbackWalletOverview(userId);
+  }
+  const walletClientFactory =
+    options.walletClientFactory ?? (await loadWalletClientFactory());
   const walletClient = walletClientFactory({
     baseUrl,
-    auth: { userId },
+    auth: options.bearerToken
+      ? { bearerToken: options.bearerToken }
+      : { userId },
     fetcher,
   });
 
@@ -102,7 +116,9 @@ function mapLedgerEntry(entry: SdkLedgerEntry): LedgerEntry {
     accountCode: entry.accountCode,
     direction: entry.direction,
     amountPoints: minorUnitsToPoints(
-      entry.direction === "credit" ? -entry.amountMinorUnits : entry.amountMinorUnits,
+      entry.direction === "credit"
+        ? -entry.amountMinorUnits
+        : entry.amountMinorUnits,
     ),
     balanceAfterPoints: minorUnitsToPoints(entry.balanceAfterMinorUnits),
   };

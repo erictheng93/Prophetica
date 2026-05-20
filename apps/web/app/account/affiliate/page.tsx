@@ -15,6 +15,7 @@ import {
   type AffiliateReferralListItem,
   type AffiliateReferralStatus,
 } from "@/lib/affiliate-api";
+import { getUpstreamSessionToken } from "@/lib/session";
 import { CopyButton } from "./copy-button";
 
 // SPEC-011 v0.2.1 §5.1 — 玩家自助介面（推薦清單，flat list，**不是樹**）
@@ -33,10 +34,11 @@ export async function generateMetadata(): Promise<Metadata> {
 type Copy = Awaited<ReturnType<typeof getTranslations<"accountAffiliate">>>;
 
 export default async function AccountAffiliatePage() {
+  const upstreamSessionToken = await getUpstreamSessionToken();
   const [t, sectionFooterColumns, dashboard] = await Promise.all([
     getTranslations("accountAffiliate"),
     getFooterColumns(["player", "legal", "support"]),
-    fetchAffiliateDashboard(),
+    fetchAffiliateDashboard({ bearerToken: upstreamSessionToken ?? undefined }),
   ]);
 
   return (

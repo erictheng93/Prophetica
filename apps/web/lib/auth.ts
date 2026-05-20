@@ -1,7 +1,7 @@
 export const SESSION_COOKIE_NAME = "proph_session";
 
 const DEFAULT_AUTH_BASE_URL = "http://127.0.0.1:8084";
-const LOGIN_PATH = "/api/auth/login";
+const LOGIN_PATH = "/v1/auth/login";
 const SESSION_HMAC_ALGORITHM = { name: "HMAC", hash: "SHA-256" } as const;
 
 export type LoginIdentifierKind = "email" | "phone";

@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -401,7 +401,7 @@ pub fn auth_router() -> Router {
 
 pub fn auth_router_with_config(config: AuthConfig) -> Router {
     Router::new()
-        .route("/api/auth/login", post(login))
+        .route("/api/auth/login", post(deprecated_login_alias))
         .route("/api/auth/liff/session", post(liff_session))
         .route("/api/auth/me", get(me))
         .route("/api/auth/logout", post(logout))
@@ -447,6 +447,23 @@ pub fn auth_router_with_config(config: AuthConfig) -> Router {
         )
         .route("/.well-known/jwks.json", get(jwks))
         .with_state(config)
+}
+
+async fn deprecated_login_alias(
+    state: State<AuthConfig>,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
+    request: Json<LoginRequest>,
+) -> Response {
+    let mut response = login(state, connect_info, headers, request).await;
+    response
+        .headers_mut()
+        .insert("deprecation", HeaderValue::from_static("true"));
+    response.headers_mut().insert(
+        "sunset",
+        HeaderValue::from_static("Mon, 31 Aug 2026 00:00:00 GMT"),
+    );
+    response
 }
 
 impl AuthConfig {

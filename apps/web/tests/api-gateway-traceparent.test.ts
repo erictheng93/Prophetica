@@ -12,11 +12,18 @@ import { parseTraceparent } from "../lib/observability/trace.js";
 
 test("default fetcher attaches traceparent header on outgoing requests", async () => {
   const captured: Array<Headers> = [];
-  const intercepting: WalletClientFactory = ({ baseUrl, auth, fetcher = fetch }) => ({
+  const intercepting: WalletClientFactory = ({
+    baseUrl,
+    auth,
+    fetcher = fetch,
+  }) => ({
     async getBalance() {
       const res = await fetcher(`${baseUrl}/v1/me/wallet/balance`, {
         cache: "no-store",
-        headers: { accept: "application/json", "x-user-id": auth?.userId ?? "" },
+        headers: {
+          accept: "application/json",
+          "x-user-id": auth?.userId ?? "",
+        },
       });
       const balance = (await res.json()) as {
         user_id: string;
@@ -40,7 +47,10 @@ test("default fetcher attaches traceparent header on outgoing requests", async (
   });
 
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (async (input: string | URL, init?: RequestInit): Promise<Response> => {
+  globalThis.fetch = (async (
+    input: string | URL,
+    init?: RequestInit,
+  ): Promise<Response> => {
     captured.push(new Headers(init?.headers));
     if (String(input).includes("/v1/me/wallet/balance")) {
       return Response.json({
@@ -57,6 +67,7 @@ test("default fetcher attaches traceparent header on outgoing requests", async (
     await fetchWalletOverview({
       baseUrl: "http://api.local",
       userId: "user_99",
+      allowUserIdFallback: true,
       walletClientFactory: intercepting,
     });
   } finally {

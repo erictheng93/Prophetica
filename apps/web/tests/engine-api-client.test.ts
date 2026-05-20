@@ -102,6 +102,38 @@ test("placeMarketOrder posts to the same-origin engine proxy and maps response",
   });
 });
 
+test("placeMarketOrder forwards user-service bearer token when available", async () => {
+  const calls: Array<{ headers: Record<string, string> }> = [];
+  await placeMarketOrder({
+    marketId: "mkt-election",
+    userId: "42",
+    bearerToken: "jwt-user-service",
+    side: "buy",
+    outcome: "YES",
+    type: "LIMIT",
+    pricePts: 55,
+    quantity: 3,
+    timeInForce: "GTC",
+    fetcher: async (_input, init) => {
+      calls.push({
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+      });
+
+      return Response.json({
+        order_id: "ord_01HZ0000000000000000000000",
+        status: "ACTIVE",
+        filled_qty: 0,
+        avg_price_pts: 0,
+        remaining_qty: 3,
+        fee_pts: 0,
+      });
+    },
+  });
+
+  assert.equal(calls[0]?.headers.authorization, "Bearer jwt-user-service");
+  assert.equal(calls[0]?.headers["x-user-id"], undefined);
+});
+
 test("placeMarketOrder exposes backend rejection messages", async () => {
   await assert.rejects(
     () =>

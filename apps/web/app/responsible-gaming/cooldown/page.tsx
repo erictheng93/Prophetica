@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
 import { ProphTile } from "@prophetica/ui";
 import { fetchCooldownStatus } from "@/lib/responsible-gaming-api";
+import { getUpstreamSessionToken } from "@/lib/session";
 import { CooldownActivationForm } from "./cooldown-form";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +22,10 @@ type CooldownCopy = Awaited<
 >;
 
 export default async function CooldownPage() {
+  const upstreamSessionToken = await getUpstreamSessionToken();
   const [t, initialStatus] = await Promise.all([
     getTranslations("responsibleGaming.cooldown"),
-    fetchCooldownStatus(),
+    fetchCooldownStatus({ bearerToken: upstreamSessionToken ?? undefined }),
   ]);
   return (
     <>

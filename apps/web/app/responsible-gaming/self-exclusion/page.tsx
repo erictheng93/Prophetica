@@ -11,6 +11,7 @@ import {
   requestSelfExclusion,
   type SelfExclusionStatusView,
 } from "@/lib/responsible-gaming-api";
+import { getUpstreamSessionToken } from "@/lib/session";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("responsibleGaming.selfExclusion.metadata");
@@ -58,11 +59,13 @@ async function submitSelfExclusionAction(formData: FormData) {
     redirect("/responsible-gaming/self-exclusion?selfExclusion=invalid");
   }
 
+  const bearerToken = (await getUpstreamSessionToken()) ?? undefined;
   const result = await requestSelfExclusion({
     mode,
     period: mode === "timeout" ? timeoutPeriod : undefined,
     pointsDisposition: mode === "permanent" ? permanentDisposition : undefined,
     consent,
+    bearerToken,
   });
 
   redirect(
@@ -77,9 +80,12 @@ export default async function SelfExclusionPage({
 }: {
   searchParams?: Promise<SearchParams>;
 }) {
+  const upstreamSessionToken = await getUpstreamSessionToken();
   const [t, status, resolvedSearchParams] = await Promise.all([
     getTranslations("responsibleGaming.selfExclusion"),
-    fetchSelfExclusionStatus(),
+    fetchSelfExclusionStatus({
+      bearerToken: upstreamSessionToken ?? undefined,
+    }),
     searchParams,
   ]);
   const banner = firstParam(resolvedSearchParams?.selfExclusion);

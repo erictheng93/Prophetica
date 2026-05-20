@@ -13,6 +13,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{delete, get, post},
 };
+use ed25519_dalek::{Verifier, VerifyingKey};
 use reqwest::Url;
 use sdk::{
     config::ServiceConfig,
@@ -110,6 +111,134 @@ pub struct AuthContext {
     pub user_id: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct AuthVerifier {
+    keys: Arc<[AuthJwk]>,
+    require_verified_principal: bool,
+}
+
+#[derive(Debug, Clone)]
+struct AuthJwk {
+    kid: Option<String>,
+    key: VerifyingKey,
+}
+
+impl AuthVerifier {
+    #[must_use]
+    pub fn from_env() -> Self {
+        let require_verified_principal = env_flag("API_GATEWAY_REQUIRE_BEARER")
+            || env_flag("API_GATEWAY_REQUIRE_VERIFIED_PRINCIPAL")
+            || env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production");
+        let keys = env::var("API_GATEWAY_AUTH_JWKS_JSON")
+            .ok()
+            .and_then(|raw| Self::keys_from_jwks_json(&raw).ok())
+            .unwrap_or_default();
+
+        Self {
+            keys: Arc::from(keys.into_boxed_slice()),
+            require_verified_principal,
+        }
+    }
+
+    /// Builds a verifier from a JWKS JSON document.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the document is not valid JWKS JSON or contains
+    /// unsupported / malformed keys.
+    pub fn from_jwks_json(raw: &str, require_verified_principal: bool) -> Result<Self, String> {
+        Ok(Self {
+            keys: Arc::from(Self::keys_from_jwks_json(raw)?.into_boxed_slice()),
+            require_verified_principal,
+        })
+    }
+
+    fn verify_bearer(&self, token: &str, now_epoch_seconds: u64) -> Result<AuthContext, ()> {
+        let mut parts = token.split('.');
+        let header = parts.next().ok_or(())?;
+        let payload = parts.next().ok_or(())?;
+        let signature = parts.next().ok_or(())?;
+        if parts.next().is_some() {
+            return Err(());
+        }
+
+        let header_json: serde_json::Value =
+            serde_json::from_slice(&base64_url_decode(header).ok_or(())?).map_err(|_| ())?;
+        if header_json.get("alg").and_then(serde_json::Value::as_str) != Some("EdDSA") {
+            return Err(());
+        }
+        let kid = header_json.get("kid").and_then(serde_json::Value::as_str);
+        let signing_input = format!("{header}.{payload}");
+        let signature_bytes: [u8; 64] = base64_url_decode(signature)
+            .ok_or(())?
+            .try_into()
+            .map_err(|_| ())?;
+        let signature = ed25519_dalek::Signature::from_bytes(&signature_bytes);
+        let signature_valid = self
+            .keys
+            .iter()
+            .filter(|key| kid.is_none_or(|kid| key.kid.as_deref() == Some(kid)))
+            .any(|key| key.key.verify(signing_input.as_bytes(), &signature).is_ok());
+        if !signature_valid {
+            return Err(());
+        }
+
+        let payload_json: serde_json::Value =
+            serde_json::from_slice(&base64_url_decode(payload).ok_or(())?).map_err(|_| ())?;
+        let exp = payload_json
+            .get("exp")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or(())?;
+        if exp.saturating_add(60) < now_epoch_seconds {
+            return Err(());
+        }
+        let user_id = payload_json
+            .get("sub")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or(())?;
+
+        Ok(AuthContext {
+            user_id: user_id.to_owned(),
+        })
+    }
+
+    fn keys_from_jwks_json(raw: &str) -> Result<Vec<AuthJwk>, String> {
+        let jwks: serde_json::Value =
+            serde_json::from_str(raw).map_err(|error| format!("invalid JWKS JSON: {error}"))?;
+        let keys = jwks
+            .get("keys")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "JWKS must contain a keys array".to_owned())?;
+        keys.iter()
+            .map(|key| {
+                if key.get("kty").and_then(serde_json::Value::as_str) != Some("OKP")
+                    || key.get("crv").and_then(serde_json::Value::as_str) != Some("Ed25519")
+                {
+                    return Err("only OKP Ed25519 JWKS keys are supported".to_owned());
+                }
+                let x = key
+                    .get("x")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| "JWKS key is missing x coordinate".to_owned())?;
+                let bytes: [u8; 32] = base64_url_decode(x)
+                    .ok_or_else(|| "JWKS x coordinate is not base64url".to_owned())?
+                    .try_into()
+                    .map_err(|_| "JWKS x coordinate must be 32 bytes".to_owned())?;
+                let verifying_key = VerifyingKey::from_bytes(&bytes)
+                    .map_err(|error| format!("invalid Ed25519 public key: {error}"))?;
+                Ok(AuthJwk {
+                    kid: key
+                        .get("kid")
+                        .and_then(serde_json::Value::as_str)
+                        .map(ToOwned::to_owned),
+                    key: verifying_key,
+                })
+            })
+            .collect()
+    }
+}
+
 #[async_trait]
 impl<S> FromRequestParts<S> for AuthContext
 where
@@ -118,6 +247,20 @@ where
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let verifier = parts
+            .extensions
+            .get::<AuthVerifier>()
+            .cloned()
+            .unwrap_or_else(AuthVerifier::from_env);
+        if let Some(token) = bearer_token(&parts.headers) {
+            return verifier
+                .verify_bearer(token, unix_now_seconds())
+                .map_err(|()| ApiError::unauthorized("invalid bearer token"));
+        }
+        if verifier.require_verified_principal {
+            return Err(ApiError::unauthorized("missing bearer token"));
+        }
+
         let Some(value) = parts.headers.get(&USER_ID_HEADER) else {
             return Err(ApiError::unauthorized("missing x-user-id auth context"));
         };
@@ -133,6 +276,49 @@ where
             user_id: user_id.to_owned(),
         })
     }
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?
+        .strip_prefix("Bearer ")
+        .filter(|value| !value.is_empty())
+}
+
+fn unix_now_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
+fn env_flag(name: &str) -> bool {
+    env::var(name).is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes"))
+}
+
+fn base64_url_decode(value: &str) -> Option<Vec<u8>> {
+    let mut bits = 0_u32;
+    let mut bit_count = 0_u8;
+    let mut out = Vec::new();
+    for byte in value.bytes() {
+        let six_bits = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'-' => 62,
+            b'_' => 63,
+            b'=' => continue,
+            _ => return None,
+        };
+        bits = (bits << 6) | u32::from(six_bits);
+        bit_count += 6;
+        if bit_count >= 8 {
+            bit_count -= 8;
+            out.push(((bits >> bit_count) & 0xff) as u8);
+        }
+    }
+    Some(out)
 }
 
 #[derive(Debug, Serialize)]
@@ -1739,16 +1925,18 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use axum::{
+        Extension,
         body::Body,
         http::{Request, StatusCode},
     };
+    use ed25519_dalek::{Signer, SigningKey};
     use http_body_util::BodyExt;
     use serde_json::{Value, json};
     use tower::ServiceExt;
 
     use super::{
         AdminProxyContext, AffiliateCommissionSummary, AffiliateDashboardResponse,
-        AffiliateReferralListItem, ApiError, BookLevel, BookSnapshotResponse,
+        AffiliateReferralListItem, ApiError, AuthVerifier, BookLevel, BookSnapshotResponse,
         CaptureReferralRequest, LedgerEntry, MatchingEngineClient, OrderActionResponse,
         PlaceOrderRequest, ReferralClient, WalletBalance, WalletLedgerClient, router,
         router_with_engine, router_with_services,
@@ -1979,6 +2167,129 @@ mod tests {
                 },
             )]
         );
+    }
+
+    #[tokio::test]
+    async fn strict_auth_rejects_forged_user_id_without_bearer() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone())
+            .layer(test_auth_extension());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/markets/mkt-election/orders")
+                    .header("x-user-id", "forged_user")
+                    .header("idempotency-key", "idem-forged-no-bearer")
+                    .header("content-type", "application/json")
+                    .body(Body::from(order_request_body(3).to_string()))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(engine.place_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn strict_auth_uses_verified_bearer_subject_not_forged_header() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone())
+            .layer(test_auth_extension());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/markets/mkt-election/orders")
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", test_jwt("token_user")),
+                    )
+                    .header("x-user-id", "forged_user")
+                    .header("idempotency-key", "idem-bearer-over-header")
+                    .header("content-type", "application/json")
+                    .body(Body::from(order_request_body(3).to_string()))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            engine.place_requests(),
+            vec![(
+                "token_user".to_owned(),
+                "mkt-election".to_owned(),
+                PlaceOrderRequest {
+                    side: "sell".to_owned(),
+                    outcome: "YES".to_owned(),
+                    order_type: "LIMIT".to_owned(),
+                    price_pts: 55,
+                    quantity: 3,
+                    time_in_force: "GTC".to_owned(),
+                },
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn strict_auth_rejects_expired_bearer() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone())
+            .layer(test_auth_extension());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/markets/mkt-election/orders")
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", expired_test_jwt("token_user")),
+                    )
+                    .header("idempotency-key", "idem-expired-bearer")
+                    .header("content-type", "application/json")
+                    .body(Body::from(order_request_body(3).to_string()))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(engine.place_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn strict_auth_rejects_bearer_signed_by_unknown_key() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone())
+            .layer(test_auth_extension());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/markets/mkt-election/orders")
+                    .header(
+                        "authorization",
+                        format!(
+                            "Bearer {}",
+                            test_jwt_with_seed("token_user", [8; 32], 1_900_000_000)
+                        ),
+                    )
+                    .header("idempotency-key", "idem-unknown-key")
+                    .header("content-type", "application/json")
+                    .body(Body::from(order_request_body(3).to_string()))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(engine.place_requests(), Vec::new());
     }
 
     #[tokio::test]
@@ -2266,6 +2577,96 @@ mod tests {
             "quantity": quantity,
             "time_in_force": "GTC"
         })
+    }
+
+    fn test_jwks_json() -> String {
+        let key = test_signing_key();
+        json!({
+            "keys": [{
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "kid": "test-key",
+                "alg": "EdDSA",
+                "use": "sig",
+                "x": base64_url_encode(&key.verifying_key().to_bytes())
+            }]
+        })
+        .to_string()
+    }
+
+    fn test_auth_extension() -> Extension<AuthVerifier> {
+        Extension(
+            AuthVerifier::from_jwks_json(&test_jwks_json(), true)
+                .unwrap_or_else(|error| panic!("test JWKS should parse: {error}")),
+        )
+    }
+
+    fn test_jwt(subject: &str) -> String {
+        test_jwt_with_seed(subject, [7; 32], 1_900_000_000)
+    }
+
+    fn expired_test_jwt(subject: &str) -> String {
+        test_jwt_with_seed(subject, [7; 32], 1)
+    }
+
+    fn test_jwt_with_seed(subject: &str, seed: [u8; 32], exp: u64) -> String {
+        let key = SigningKey::from_bytes(&seed);
+        let header = base64_url_encode(
+            json!({
+                "alg": "EdDSA",
+                "kid": "test-key",
+                "typ": "JWT"
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        let payload = base64_url_encode(
+            json!({
+                "sub": subject,
+                "role": "user",
+                "iat": 1_800_000_000_u64,
+                "exp": exp
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        let signing_input = format!("{header}.{payload}");
+        let signature = key.sign(signing_input.as_bytes());
+        format!(
+            "{signing_input}.{}",
+            base64_url_encode(&signature.to_bytes())
+        )
+    }
+
+    fn test_signing_key() -> SigningKey {
+        SigningKey::from_bytes(&[7; 32])
+    }
+
+    fn base64_url_encode(bytes: &[u8]) -> String {
+        const TABLE: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let mut out = String::with_capacity((bytes.len() * 4).div_ceil(3));
+        let mut index = 0;
+        while index < bytes.len() {
+            let b0 = bytes[index];
+            let b1 = bytes.get(index + 1).copied();
+            let b2 = bytes.get(index + 2).copied();
+            out.push(TABLE[(b0 >> 2) as usize] as char);
+            out.push(
+                TABLE[(((b0 & 0b0000_0011) << 4) | (b1.unwrap_or_default() >> 4)) as usize] as char,
+            );
+            if let Some(b1) = b1 {
+                out.push(
+                    TABLE[(((b1 & 0b0000_1111) << 2) | (b2.unwrap_or_default() >> 6)) as usize]
+                        as char,
+                );
+            }
+            if let Some(b2) = b2 {
+                out.push(TABLE[(b2 & 0b0011_1111) as usize] as char);
+            }
+            index += 3;
+        }
+        out
     }
 
     fn order_post(idempotency_key: &str, body: &Value) -> Request<Body> {

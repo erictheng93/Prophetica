@@ -16,16 +16,21 @@ test("minorUnitsToPoints converts backend minor units into display points", () =
 });
 
 test("web declares ts-sdk as the wallet client dependency", async () => {
-  const packageJson = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")) as {
+  const packageJson = JSON.parse(
+    await readFile(join(process.cwd(), "package.json"), "utf8"),
+  ) as {
     dependencies?: Record<string, string>;
   };
 
   assert.equal(packageJson.dependencies?.["@prophetica/ts-sdk"], "workspace:*");
 });
 
-test("fetchWalletOverview calls api-gateway wallet and ledger endpoints with auth context", async () => {
+test("fetchWalletOverview calls api-gateway wallet and ledger endpoints with transition x-user-id fallback", async () => {
   const calls: Array<{ url: string; headers: Record<string, string> }> = [];
-  const fetcher = async (input: string | URL, init?: RequestInit): Promise<Response> => {
+  const fetcher = async (
+    input: string | URL,
+    init?: RequestInit,
+  ): Promise<Response> => {
     calls.push({
       url: String(input),
       headers: Object.fromEntries(new Headers(init?.headers).entries()),
@@ -56,6 +61,7 @@ test("fetchWalletOverview calls api-gateway wallet and ledger endpoints with aut
   const overview = await fetchWalletOverview({
     baseUrl: "http://api.local",
     userId: "user_42",
+    allowUserIdFallback: true,
     fetcher,
     walletClientFactory: createFetchBackedWalletClient,
   });
@@ -70,6 +76,52 @@ test("fetchWalletOverview calls api-gateway wallet and ledger endpoints with aut
   );
   assert.equal(calls[0]?.headers["x-user-id"], "user_42");
   assert.equal(calls[1]?.headers["x-user-id"], "user_42");
+});
+
+test("fetchWalletOverview does not call api-gateway without bearer token by default", async () => {
+  let called = false;
+  const overview = await fetchWalletOverview({
+    baseUrl: "http://api.local",
+    userId: "user_42",
+    fetcher: async (): Promise<Response> => {
+      called = true;
+      return Response.json({});
+    },
+    walletClientFactory: createFetchBackedWalletClient,
+  });
+
+  assert.equal(called, false);
+  assert.equal(overview.source, "fallback:api-gateway-unavailable");
+  assert.equal(overview.balance.userId, "user_42");
+});
+
+test("fetchWalletOverview forwards user-service bearer token when available", async () => {
+  const calls: Array<{ headers: Record<string, string> }> = [];
+  await fetchWalletOverview({
+    baseUrl: "http://api.local",
+    userId: "user_42",
+    bearerToken: "jwt-user-service",
+    fetcher: async (_input, init): Promise<Response> => {
+      calls.push({
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+      });
+      if (calls.length === 1) {
+        return Response.json({
+          user_id: "user_42",
+          available_minor_units: 0,
+          locked_minor_units: 0,
+          frozen_minor_units: 0,
+        });
+      }
+      return Response.json({ entries: [] });
+    },
+    walletClientFactory: createFetchBackedWalletClient,
+  });
+
+  assert.equal(calls[0]?.headers.authorization, "Bearer jwt-user-service");
+  assert.equal(calls[0]?.headers["x-user-id"], undefined);
+  assert.equal(calls[1]?.headers.authorization, "Bearer jwt-user-service");
+  assert.equal(calls[1]?.headers["x-user-id"], undefined);
 });
 
 test("fetchWalletOverview returns a safe fallback when api-gateway is unavailable", async () => {
@@ -88,13 +140,19 @@ test("fetchWalletOverview returns a safe fallback when api-gateway is unavailabl
   assert.match(overview.source, /fallback/);
 });
 
-const createFetchBackedWalletClient: WalletClientFactory = ({ baseUrl, auth, fetcher = fetch }) => ({
+const createFetchBackedWalletClient: WalletClientFactory = ({
+  baseUrl,
+  auth,
+  fetcher = fetch,
+}) => ({
   async getBalance() {
     const response = await fetcher(`${baseUrl}/v1/me/wallet/balance`, {
       cache: "no-store",
       headers: {
         accept: "application/json",
-        "x-user-id": auth?.userId ?? "",
+        ...(auth?.bearerToken
+          ? { authorization: `Bearer ${auth.bearerToken}` }
+          : { "x-user-id": auth?.userId ?? "" }),
       },
     });
     const balance = (await response.json()) as {
@@ -121,7 +179,9 @@ const createFetchBackedWalletClient: WalletClientFactory = ({ baseUrl, auth, fet
         cache: "no-store",
         headers: {
           accept: "application/json",
-          "x-user-id": auth?.userId ?? "",
+          ...(auth?.bearerToken
+            ? { authorization: `Bearer ${auth.bearerToken}` }
+            : { "x-user-id": auth?.userId ?? "" }),
         },
       },
     );

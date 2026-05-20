@@ -5,11 +5,13 @@ import {
   startCooldown,
   type CooldownDuration,
 } from "@/lib/responsible-gaming-api";
+import { getUpstreamSessionToken } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return Response.json(await fetchCooldownStatus());
+  const bearerToken = (await getUpstreamSessionToken()) ?? undefined;
+  return Response.json(await fetchCooldownStatus({ bearerToken }));
 }
 
 export async function POST(request: Request) {
@@ -34,7 +36,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    return Response.json(await startCooldown(body));
+    const bearerToken = (await getUpstreamSessionToken()) ?? undefined;
+    return Response.json(await startCooldown(body, { bearerToken }));
   } catch (error) {
     if (error instanceof ResponsibleGamingApiError) {
       return Response.json(

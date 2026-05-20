@@ -63,6 +63,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum 0.7.9",
+ "ed25519-dalek",
  "hmac",
  "http-body-util",
  "kyc-service",

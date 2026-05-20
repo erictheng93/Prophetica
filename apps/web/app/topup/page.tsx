@@ -9,6 +9,7 @@ import {
   MainNavLinks,
 } from "@/lib/site-nav";
 import { fetchWalletOverview } from "@/lib/api-gateway";
+import { getUpstreamSessionToken } from "@/lib/session";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("topup.metadata");
@@ -47,11 +48,12 @@ const formatTwd = (n: number): string => `TWD ${n.toLocaleString("zh-Hant")}`;
 type TopupCopy = Awaited<ReturnType<typeof getTranslations<"topup">>>;
 
 export default async function TopUpPage() {
+  const upstreamSessionToken = await getUpstreamSessionToken();
   const [t, tFmt, sectionFooterColumns, walletOverview] = await Promise.all([
     getTranslations("topup"),
     getTranslations("common.format"),
     getFooterColumns(["responsibleGaming", "legal", "support"]),
-    fetchWalletOverview(),
+    fetchWalletOverview({ bearerToken: upstreamSessionToken ?? undefined }),
   ]);
   const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
   const { monthlyDeposited, monthlyLimit, kycTier } = mockState;

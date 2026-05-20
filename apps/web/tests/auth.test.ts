@@ -61,7 +61,7 @@ test("authenticateWithPassword posts canonical identifier to the auth service", 
 
   assert.deepEqual(calls, [
     {
-      url: "http://user-service.local/api/auth/login",
+      url: "http://user-service.local/v1/auth/login",
       body: {
         identifier: "+886912345698",
         identifier_kind: "phone",

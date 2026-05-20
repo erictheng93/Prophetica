@@ -4,6 +4,7 @@ import {
   type PlaceEngineOrderRequest,
 } from "@prophetica/ts-sdk";
 import { NextResponse } from "next/server";
+import { getViewer } from "@/lib/session";
 
 const DEFAULT_MATCHING_ENGINE_BASE_URL = "http://127.0.0.1:8088";
 const DEFAULT_ENGINE_USER_ID = "10";
@@ -37,10 +38,15 @@ export async function POST(
     );
   }
 
+  const viewer = await getViewer();
   const userId =
-    request.headers.get("x-user-id") ??
-    process.env.PROPHETICA_ENGINE_DEV_USER_ID ??
-    DEFAULT_ENGINE_USER_ID;
+    viewer?.userId ??
+    (process.env.NODE_ENV === "production"
+      ? null
+      : (process.env.PROPHETICA_ENGINE_DEV_USER_ID ?? DEFAULT_ENGINE_USER_ID));
+  if (!userId) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
   const client = createEngineClient({
     baseUrl:
       process.env.MATCHING_ENGINE_BASE_URL ?? DEFAULT_MATCHING_ENGINE_BASE_URL,

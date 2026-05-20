@@ -6,12 +6,13 @@ import {
   requestSelfExclusion,
 } from "../lib/responsible-gaming-api.js";
 
-test("fetchSelfExclusionStatus maps live api-gateway response", async () => {
+test("fetchSelfExclusionStatus maps live api-gateway response with transition x-user-id fallback", async () => {
   const calls: Array<{ url: string; userIdHeader: string | null }> = [];
 
   const status = await fetchSelfExclusionStatus({
     baseUrl: "http://gateway.local",
     userId: "user_42",
+    allowUserIdFallback: true,
     fetcher: async (
       input: string | URL,
       init?: RequestInit,
@@ -50,6 +51,44 @@ test("fetchSelfExclusionStatus maps live api-gateway response", async () => {
   assert.equal(status.record?.frozenPoints, 125);
 });
 
+test("fetchSelfExclusionStatus does not call api-gateway without bearer token by default", async () => {
+  let called = false;
+  const status = await fetchSelfExclusionStatus({
+    baseUrl: "http://gateway.local",
+    userId: "user_42",
+    fetcher: async (): Promise<Response> => {
+      called = true;
+      return Response.json({});
+    },
+  });
+
+  assert.equal(called, false);
+  assert.equal(status.source, "fallback:api-gateway-unavailable");
+  assert.equal(status.userId, "user_42");
+});
+
+test("fetchSelfExclusionStatus forwards user-service bearer token when available", async () => {
+  const calls: Array<{ headers: Record<string, string> }> = [];
+  await fetchSelfExclusionStatus({
+    baseUrl: "http://gateway.local",
+    userId: "user_42",
+    bearerToken: "jwt-user-service",
+    fetcher: async (_input, init): Promise<Response> => {
+      calls.push({
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+      });
+      return Response.json({
+        user_id: "user_42",
+        active: false,
+        record: null,
+      });
+    },
+  });
+
+  assert.equal(calls[0]?.headers.authorization, "Bearer jwt-user-service");
+  assert.equal(calls[0]?.headers["x-user-id"], undefined);
+});
+
 test("requestSelfExclusion posts through the SDK client and returns fallback when unavailable", async () => {
   const calls: unknown[] = [];
   const response = await requestSelfExclusion({
@@ -58,6 +97,7 @@ test("requestSelfExclusion posts through the SDK client and returns fallback whe
     mode: "timeout",
     period: "six_months",
     consent: true,
+    allowUserIdFallback: true,
     responsibleGamingClientFactory: ({ auth }) => ({
       async getSelfExclusionStatus() {
         throw new Error("not used");
@@ -102,6 +142,7 @@ test("requestSelfExclusion posts through the SDK client and returns fallback whe
     mode: "timeout",
     period: "six_months",
     consent: true,
+    allowUserIdFallback: true,
     responsibleGamingClientFactory: () => ({
       async getSelfExclusionStatus() {
         throw new Error("not used");

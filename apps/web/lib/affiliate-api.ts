@@ -2,8 +2,8 @@
 //
 // Hits the api-gateway public route added in services/api-gateway/src/lib.rs:
 //   GET /v1/account/affiliate?limit=N
-// Auth context is supplied via the x-user-id header (matches the SDK's
-// runtime/fetch.ts convention and the gateway's AuthContext extractor).
+// Prefer the user-service bearer session for gateway auth. x-user-id remains
+// only as a transitional fallback for local callers that have not migrated.
 //
 // Falls back to an empty dashboard when the gateway is unavailable so the
 // page can still render its disclaimers and CTAs.
@@ -81,6 +81,8 @@ type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
 export interface FetchAffiliateDashboardOptions {
   baseUrl?: string;
   userId?: string;
+  bearerToken?: string;
+  allowUserIdFallback?: boolean;
   fetcher?: Fetcher;
   limit?: number;
 }
@@ -131,6 +133,8 @@ function emptyDashboard(
 export async function fetchAffiliateDashboard({
   baseUrl = process.env.API_GATEWAY_BASE_URL ?? DEFAULT_API_GATEWAY_BASE_URL,
   userId = process.env.PROPHETICA_DEV_USER_ID ?? DEFAULT_DEV_USER_ID,
+  bearerToken,
+  allowUserIdFallback,
   fetcher = fetch,
   limit = DEFAULT_REFERRAL_LIMIT,
 }: FetchAffiliateDashboardOptions = {}): Promise<AffiliateDashboard> {
@@ -138,14 +142,20 @@ export async function fetchAffiliateDashboard({
     `/v1/account/affiliate?limit=${limit}`,
     trimTrailingSlash(baseUrl) + "/",
   );
+  if (!bearerToken && !allowUserIdFallback) {
+    return emptyDashboard(userId, "fallback:api-gateway-unavailable");
+  }
 
   try {
+    const headers = new Headers({ accept: "application/json" });
+    if (bearerToken) {
+      headers.set("authorization", `Bearer ${bearerToken}`);
+    } else {
+      headers.set("x-user-id", userId);
+    }
     const response = await fetcher(url, {
       cache: "no-store",
-      headers: {
-        accept: "application/json",
-        "x-user-id": userId,
-      },
+      headers,
     });
 
     if (response.status === 404) {
@@ -173,14 +183,22 @@ function mapSummary(summary: ApiAffiliateSummary): AffiliateCommissionSummary {
   return {
     successfulReferralsCount: summary.successful_referrals_count,
     signupBonusPoints: minorUnitsToPoints(summary.signup_bonus_minor_units),
-    tradeCommissionPoints: minorUnitsToPoints(summary.trade_commission_minor_units),
+    tradeCommissionPoints: minorUnitsToPoints(
+      summary.trade_commission_minor_units,
+    ),
     totalRewardsPoints: minorUnitsToPoints(summary.total_rewards_minor_units),
-    last30dCommissionPoints: minorUnitsToPoints(summary.last_30d_commission_minor_units),
-    last12mCommissionPoints: minorUnitsToPoints(summary.last_12m_commission_minor_units),
+    last30dCommissionPoints: minorUnitsToPoints(
+      summary.last_30d_commission_minor_units,
+    ),
+    last12mCommissionPoints: minorUnitsToPoints(
+      summary.last_12m_commission_minor_units,
+    ),
   };
 }
 
-function mapReferral(referral: ApiAffiliateReferral): AffiliateReferralListItem {
+function mapReferral(
+  referral: ApiAffiliateReferral,
+): AffiliateReferralListItem {
   return {
     referredId: referral.referred_id,
     maskedUsername: referral.masked_username,

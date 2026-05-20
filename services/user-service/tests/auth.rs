@@ -10,7 +10,7 @@ use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version, password_hash::
 use async_trait::async_trait;
 use axum::{
     body::Body,
-    http::{Request, StatusCode},
+    http::{HeaderMap, Request, StatusCode},
 };
 use hmac::{Hmac, Mac};
 use http_body_util::BodyExt;
@@ -64,6 +64,38 @@ async fn login_accepts_email_or_canonical_taiwan_mobile() {
     assert_eq!(phone_response.status, StatusCode::OK);
     assert_eq!(phone_response.body["user_id"], json!("user_42"));
     assert!(phone_response.body["session_token"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn legacy_login_alias_returns_deprecation_headers() {
+    let app = auth_router_with_config(config_with_fixture());
+
+    let response = post_login(
+        app,
+        json!({
+            "identifier": "member@example.com",
+            "identifier_kind": "email",
+            "password": "member",
+            "remember": false
+        }),
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(
+        response
+            .headers
+            .get("deprecation")
+            .and_then(|value| value.to_str().ok()),
+        Some("true"),
+    );
+    assert_eq!(
+        response
+            .headers
+            .get("sunset")
+            .and_then(|value| value.to_str().ok()),
+        Some("Mon, 31 Aug 2026 00:00:00 GMT"),
+    );
 }
 
 #[tokio::test]
@@ -1475,6 +1507,7 @@ async fn me_rejects_missing_or_invalid_bearer_token() {
 #[derive(Debug)]
 struct LoginTestResponse {
     status: StatusCode,
+    headers: HeaderMap,
     body: Value,
 }
 
@@ -1698,6 +1731,7 @@ async fn post_login_with_headers(
         .await
         .expect("request handled");
     let status = response.status();
+    let headers = response.headers().clone();
     let bytes = response
         .into_body()
         .collect()
@@ -1706,7 +1740,11 @@ async fn post_login_with_headers(
         .to_bytes();
     let body = serde_json::from_slice(&bytes).expect("json response body");
 
-    LoginTestResponse { status, body }
+    LoginTestResponse {
+        status,
+        headers,
+        body,
+    }
 }
 
 async fn post_liff_session(app: axum::Router, body: Value) -> LoginTestResponse {
@@ -1734,6 +1772,7 @@ async fn post_liff_session_with_headers(
         .await
         .expect("request handled");
     let status = response.status();
+    let headers = response.headers().clone();
     let bytes = response
         .into_body()
         .collect()
@@ -1742,7 +1781,11 @@ async fn post_liff_session_with_headers(
         .to_bytes();
     let body = serde_json::from_slice(&bytes).expect("json response body");
 
-    LoginTestResponse { status, body }
+    LoginTestResponse {
+        status,
+        headers,
+        body,
+    }
 }
 
 async fn request_with_optional_bearer(
@@ -1760,6 +1803,7 @@ async fn request_with_optional_bearer(
         .await
         .expect("request handled");
     let status = response.status();
+    let headers = response.headers().clone();
     let bytes = response
         .into_body()
         .collect()
@@ -1772,7 +1816,11 @@ async fn request_with_optional_bearer(
         serde_json::from_slice(&bytes).expect("json response body")
     };
 
-    LoginTestResponse { status, body }
+    LoginTestResponse {
+        status,
+        headers,
+        body,
+    }
 }
 
 async fn request_with_optional_bearer_json(
@@ -1798,6 +1846,7 @@ async fn request_with_optional_bearer_json(
         .await
         .expect("request handled");
     let status = response.status();
+    let headers = response.headers().clone();
     let bytes = response
         .into_body()
         .collect()
@@ -1810,5 +1859,9 @@ async fn request_with_optional_bearer_json(
         serde_json::from_slice(&bytes).expect("json response body")
     };
 
-    LoginTestResponse { status, body }
+    LoginTestResponse {
+        status,
+        headers,
+        body,
+    }
 }
