@@ -2709,7 +2709,15 @@ where
 pub async fn run_http() -> anyhow::Result<()> {
     observability::init_json_tracing(SERVICE_NAME);
     let config = ServiceConfig::from_env(SERVICE_NAME, DEFAULT_PORT)?;
-    let payment_flags = payments_real_money_flags_from_env().await?;
+    let payments_setup = payments_real_money_flag_setup_from_env().await?;
+    let payment_flags = payments_setup.flags.clone();
+    if let Some(pg_store) = payments_setup.pg_store {
+        let _poller_handle = spawn_payments_real_money_flag_poller(
+            pg_store,
+            payments_setup.flags,
+            sdk::feature_flags::DEFAULT_PAYMENTS_REAL_MONEY_POLL_INTERVAL,
+        );
+    }
     let market_service = HttpMarketServiceClient::from_env()?;
     let app = service_stub::router(&config)
         .merge(
@@ -2744,38 +2752,85 @@ pub async fn run_http() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn payments_real_money_flags_from_env() -> anyhow::Result<InMemoryFeatureFlagStore> {
+/// Boot-time flag wiring: loads the current `payments.real_money_enabled`
+/// row into an [`InMemoryFeatureFlagStore`] and optionally returns a
+/// [`PgFeatureFlagStore`] handle for a background poller.
+///
+/// When `FEATURE_FLAGS_DATABASE_URL` (or `DATABASE_URL`) is unset:
+/// - In production, returns Err — boot must fail closed.
+/// - In dev/test, returns the in-memory store with flag = false and no
+///   pg_store (caller skips poller spawn).
+struct PaymentsRealMoneyFlagSetup {
+    flags: InMemoryFeatureFlagStore,
+    pg_store: Option<PgFeatureFlagStore>,
+}
+
+async fn payments_real_money_flag_setup_from_env()
+-> anyhow::Result<PaymentsRealMoneyFlagSetup> {
     let flags = InMemoryFeatureFlagStore::default();
     let Some(database_url) = feature_flags_database_url() else {
         if is_production_env() {
             anyhow::bail!("FEATURE_FLAGS_DATABASE_URL or DATABASE_URL is required in production")
         }
-        return Ok(flags);
+        return Ok(PaymentsRealMoneyFlagSetup {
+            flags,
+            pg_store: None,
+        });
     };
 
-    match load_payments_real_money_enabled_from_pg(&database_url).await {
-        Ok(enabled) => {
-            flags.set_payments_real_money_enabled(enabled);
-            Ok(flags)
-        }
-        Err(error) if is_production_env() => Err(error),
-        Err(error) => {
-            tracing::warn!(%error, "failed to load payments real money feature flag; defaulting disabled");
-            Ok(flags)
-        }
-    }
-}
-
-async fn load_payments_real_money_enabled_from_pg(database_url: &str) -> anyhow::Result<bool> {
-    let pool = sqlx::PgPool::connect(database_url)
+    let pool = sqlx::PgPool::connect(&database_url)
         .await
         .map_err(|error| anyhow::anyhow!("failed to connect feature flag database: {error}"))?;
-    PgFeatureFlagStore::new(pool)
-        .load_payments_real_money_enabled()
-        .await
-        .map_err(|error| {
-            anyhow::anyhow!("failed to load payments real money feature flag: {error}")
-        })
+    let pg_store = PgFeatureFlagStore::new(pool);
+
+    match pg_store.load_payments_real_money_enabled().await {
+        Ok(enabled) => {
+            flags.set_payments_real_money_enabled(enabled);
+        }
+        Err(error) if is_production_env() => {
+            return Err(anyhow::anyhow!(
+                "failed to load payments real money feature flag: {error}"
+            ));
+        }
+        Err(error) => {
+            tracing::warn!(%error, "failed to load payments real money feature flag; defaulting disabled");
+        }
+    }
+
+    Ok(PaymentsRealMoneyFlagSetup {
+        flags,
+        pg_store: Some(pg_store),
+    })
+}
+
+/// Spawns a background task that polls the `payments.real_money_enabled`
+/// row from Postgres at a fixed interval and propagates the value into
+/// `flags`. Implements SPEC-023 plan §11 D-6: flag flips take effect
+/// without restarting api-gateway. On query failure the task logs at WARN
+/// and keeps the previous value (fail-safe; never flips on errored read).
+fn spawn_payments_real_money_flag_poller(
+    pg_store: PgFeatureFlagStore,
+    flags: InMemoryFeatureFlagStore,
+    interval: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(interval);
+        // First tick fires immediately by default; skip it because the boot
+        // path already performed the initial load.
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            match pg_store.load_payments_real_money_enabled().await {
+                Ok(enabled) => flags.set_payments_real_money_enabled(enabled),
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        "payments.real_money_enabled poll failed; keeping previous value"
+                    );
+                }
+            }
+        }
+    })
 }
 
 fn feature_flags_database_url() -> Option<String> {

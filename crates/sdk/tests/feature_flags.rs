@@ -1,4 +1,5 @@
 use sdk::feature_flags::{
+    DEFAULT_ENGINE_HALT_POLL_INTERVAL, DEFAULT_PAYMENTS_REAL_MONEY_POLL_INTERVAL,
     ENGINE_HALTED_FLAG, EngineHaltFlagPoller, EngineHaltFlagReader, EngineHaltFlagWriter,
     InMemoryFeatureFlagStore, PAYMENTS_REAL_MONEY_ENABLED_FLAG, PaymentsRealMoneyFlagReader,
 };
@@ -50,6 +51,17 @@ fn payments_real_money_flag_defaults_to_disabled_and_can_be_enabled() {
 
     store.set_payments_real_money_enabled(true);
     assert!(store.payments_real_money_enabled());
+}
+
+#[test]
+fn payments_real_money_poll_interval_matches_engine_halt_cadence() {
+    // SPEC-023 plan §11 D-6: flag flips must take effect on the same cadence
+    // as engine halt for consistent operator expectations.
+    assert_eq!(
+        DEFAULT_PAYMENTS_REAL_MONEY_POLL_INTERVAL,
+        DEFAULT_ENGINE_HALT_POLL_INTERVAL
+    );
+    assert!(DEFAULT_PAYMENTS_REAL_MONEY_POLL_INTERVAL.as_secs() <= 60);
 }
 
 #[test]

@@ -6,6 +6,7 @@ use std::{
 pub const ENGINE_HALTED_FLAG: &str = "engine.halted";
 pub const PAYMENTS_REAL_MONEY_ENABLED_FLAG: &str = "payments.real_money_enabled";
 pub const DEFAULT_ENGINE_HALT_POLL_INTERVAL: Duration = Duration::from_secs(30);
+pub const DEFAULT_PAYMENTS_REAL_MONEY_POLL_INTERVAL: Duration = Duration::from_secs(30);
 pub const PG_SELECT_ENGINE_HALTED_SQL: &str = "\
 SELECT enabled, subject_id, reason, updated_by \
 FROM feature_flags \
