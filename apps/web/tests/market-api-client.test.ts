@@ -25,7 +25,7 @@ const apiMarket = {
   resolved_at: null,
 };
 
-test("fetchOpenMarkets calls market-service list facade and maps fields", async () => {
+test("fetchOpenMarkets calls api-gateway public list facade and maps fields", async () => {
   const calls: string[] = [];
   const fetcher = async (input: string | URL): Promise<Response> => {
     calls.push(String(input));
@@ -37,8 +37,8 @@ test("fetchOpenMarkets calls market-service list facade and maps fields", async 
     fetcher,
   });
 
-  assert.equal(calls[0], "http://market.local/internal/markets?status=open");
-  assert.equal(markets.source, "market-service");
+  assert.equal(calls[0], "http://market.local/v1/markets?status=open");
+  assert.equal(markets.source, "api-gateway");
   assert.deepEqual(markets.markets, [
     {
       id: "mkt-election",
@@ -58,7 +58,7 @@ test("fetchOpenMarkets calls market-service list facade and maps fields", async 
   ]);
 });
 
-test("fetchMarketById calls market-service get facade", async () => {
+test("fetchMarketById calls api-gateway public detail facade", async () => {
   const calls: string[] = [];
   const fetcher = async (input: string | URL): Promise<Response> => {
     calls.push(String(input));
@@ -70,13 +70,13 @@ test("fetchMarketById calls market-service get facade", async () => {
     fetcher,
   });
 
-  assert.equal(calls[0], "http://market.local/internal/markets/mkt-election");
-  assert.equal(market?.source, "market-service");
+  assert.equal(calls[0], "http://market.local/v1/markets/mkt-election");
+  assert.equal(market?.source, "api-gateway");
   assert.equal(market?.market?.id, "mkt-election");
   assert.equal(market?.market?.yesPriceCents, 54);
 });
 
-test("fetchSettledMarkets falls back to mock data when market-service is unavailable", async () => {
+test("fetchSettledMarkets falls back to mock data when api-gateway is unavailable", async () => {
   const markets = await fetchSettledMarkets({
     baseUrl: "http://market.local",
     fetcher: async () => {
@@ -84,6 +84,6 @@ test("fetchSettledMarkets falls back to mock data when market-service is unavail
     },
   });
 
-  assert.equal(markets.source, "fallback:market-service-unavailable");
+  assert.equal(markets.source, "fallback:api-gateway-unavailable");
   assert.ok(markets.markets.some((market) => market.status === "settled"));
 });

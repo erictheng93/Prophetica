@@ -82,6 +82,47 @@ mod api_contract_tests {
     }
 
     #[tokio::test]
+    async fn internal_tier_returns_tier_zero_for_unknown_user() {
+        let app = test_router(test_store());
+
+        let response = app
+            .oneshot(empty_get("/internal/kyc/users/user_01/tier"))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["tier"], json!("TIER_0"));
+    }
+
+    #[tokio::test]
+    async fn internal_tier_returns_current_record_tier() {
+        let store = test_store();
+        let app = test_router(store.clone());
+
+        let upgrade = app
+            .oneshot(json_post(
+                "/api/v1/kyc/users/user_01/upgrades",
+                &json!({
+                    "target_tier": "TIER_2",
+                    "idempotency_key": "kyc:user_01:tier2:001"
+                }),
+            ))
+            .await
+            .expect("upgrade request should be handled");
+        assert_eq!(upgrade.status(), StatusCode::CREATED);
+
+        let response = test_router(store)
+            .oneshot(empty_get("/internal/kyc/users/user_01/tier"))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["tier"], json!("TIER_2"));
+    }
+
+    #[tokio::test]
     async fn start_upgrade_creates_pending_record_and_returns_sdk_token() {
         let store = test_store();
         let app = test_router(store.clone());

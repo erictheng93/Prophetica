@@ -18,6 +18,7 @@
     "lib/offline-mutation-queue.ts",
     "lib/market-api.ts",
     "lib/position-api.ts",
+    "lib/payments-api.ts",
     "lib/responsible-gaming-api.ts",
     "lib/support-faq.ts",
     "lib/ws-client.ts",

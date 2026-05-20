@@ -622,6 +622,16 @@
       }
     }
   },
+  "topup": {
+    "mvpAssistance": {
+      "label": "Top-up berbantuan",
+      "heading": "Top-up saat ini ditangani oleh tim operasional.",
+      "body": "Jalur pembayaran nyata akan dibuka setelah LG-2 lulus. Sampai saat itu, poin disesuaikan melalui proses operasional resmi; hubungi dukungan dengan detail akun dan tujuan penggunaan.",
+      "flagUnavailable": "Status payment flag belum dapat dibaca. Untuk mencegah pembayaran nyata aktif tanpa sengaja, halaman ini tetap berada dalam mode bantuan.",
+      "ctaSupport": "Hubungi dukungan",
+      "ctaFaq": "Baca FAQ top-up"
+    }
+  },
   "kyc": {
     "privacyNotice": {
       "metadata": {

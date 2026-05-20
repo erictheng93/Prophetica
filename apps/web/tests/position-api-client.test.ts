@@ -53,8 +53,11 @@ test("fetchPortfolioPositions calls position-service and resolves market values"
     },
   });
 
-  assert.equal(positionCalls[0], "http://position.local/internal/users/user_01/positions");
-  assert.equal(marketCalls[0], "http://market.local/internal/markets/mkt-election");
+  assert.equal(
+    positionCalls[0],
+    "http://position.local/internal/users/user_01/positions",
+  );
+  assert.equal(marketCalls[0], "http://market.local/v1/markets/mkt-election");
   assert.equal(portfolio.source, "position-service");
   assert.equal(portfolio.active[0]?.market.id, "mkt-election");
   assert.equal(portfolio.active[0]?.currentValuePoints, 54);

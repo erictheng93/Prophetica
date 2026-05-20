@@ -1,6 +1,6 @@
 use sdk::feature_flags::{
     ENGINE_HALTED_FLAG, EngineHaltFlagPoller, EngineHaltFlagReader, EngineHaltFlagWriter,
-    InMemoryFeatureFlagStore,
+    InMemoryFeatureFlagStore, PAYMENTS_REAL_MONEY_ENABLED_FLAG, PaymentsRealMoneyFlagReader,
 };
 
 #[test]
@@ -39,10 +39,28 @@ fn poller_applies_latest_snapshot_to_data_plane() {
 }
 
 #[test]
+fn payments_real_money_flag_defaults_to_disabled_and_can_be_enabled() {
+    let store = InMemoryFeatureFlagStore::default();
+
+    assert_eq!(
+        PAYMENTS_REAL_MONEY_ENABLED_FLAG,
+        "payments.real_money_enabled"
+    );
+    assert!(!store.payments_real_money_enabled());
+
+    store.set_payments_real_money_enabled(true);
+    assert!(store.payments_real_money_enabled());
+}
+
+#[test]
 fn pg_feature_flag_queries_target_engine_halted_row() {
     assert!(
         sdk::feature_flags::PG_SELECT_ENGINE_HALTED_SQL.contains("WHERE key = 'engine.halted'")
     );
     assert!(sdk::feature_flags::PG_HALT_ENGINE_SQL.contains("ON CONFLICT (key) DO UPDATE"));
     assert!(sdk::feature_flags::PG_RELEASE_ENGINE_HALT_SQL.contains("WHERE key = 'engine.halted'"));
+    assert!(
+        sdk::feature_flags::PG_SELECT_PAYMENTS_REAL_MONEY_ENABLED_SQL
+            .contains("WHERE key = 'payments.real_money_enabled'")
+    );
 }

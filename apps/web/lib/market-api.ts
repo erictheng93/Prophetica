@@ -9,11 +9,11 @@ import {
   type MarketStatus,
 } from "./mock-markets.js";
 
-const DEFAULT_MARKET_SERVICE_BASE_URL = "http://127.0.0.1:8087";
+const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
 
 export type MarketApiSource =
-  | "market-service"
-  | "fallback:market-service-unavailable";
+  | "api-gateway"
+  | "fallback:api-gateway-unavailable";
 
 export interface MarketListResult {
   markets: Market[];
@@ -54,44 +54,75 @@ interface MarketApiOptions {
   fetcher?: Fetcher;
 }
 
-export async function fetchOpenMarkets(options: MarketApiOptions = {}): Promise<MarketListResult> {
-  return fetchMarketList({ ...options, status: "open", fallback: listOpenMarkets });
+export async function fetchOpenMarkets(
+  options: MarketApiOptions = {},
+): Promise<MarketListResult> {
+  return fetchMarketList({
+    ...options,
+    status: "open",
+    fallback: listOpenMarkets,
+  });
 }
 
-export async function fetchTrendingMarkets(options: MarketApiOptions = {}): Promise<MarketListResult> {
-  const result = await fetchMarketList({ ...options, status: "open", fallback: listTrending });
+export async function fetchTrendingMarkets(
+  options: MarketApiOptions = {},
+): Promise<MarketListResult> {
+  const result = await fetchMarketList({
+    ...options,
+    status: "open",
+    fallback: listTrending,
+  });
   return {
     ...result,
     markets:
-      result.source === "market-service"
-        ? [...result.markets].sort((a, b) => b.volume24hPoints - a.volume24hPoints).slice(0, 6)
+      result.source === "api-gateway"
+        ? [...result.markets]
+            .sort((a, b) => b.volume24hPoints - a.volume24hPoints)
+            .slice(0, 6)
         : result.markets,
   };
 }
 
-export async function fetchNewestMarkets(options: MarketApiOptions = {}): Promise<MarketListResult> {
-  const result = await fetchMarketList({ ...options, status: "open", fallback: listNewest });
+export async function fetchNewestMarkets(
+  options: MarketApiOptions = {},
+): Promise<MarketListResult> {
+  const result = await fetchMarketList({
+    ...options,
+    status: "open",
+    fallback: listNewest,
+  });
   return {
     ...result,
     markets:
-      result.source === "market-service"
-        ? [...result.markets].sort((a, b) => b.openedAt.localeCompare(a.openedAt)).slice(0, 6)
+      result.source === "api-gateway"
+        ? [...result.markets]
+            .sort((a, b) => b.openedAt.localeCompare(a.openedAt))
+            .slice(0, 6)
         : result.markets,
   };
 }
 
-export async function fetchSettledMarkets(options: MarketApiOptions = {}): Promise<MarketListResult> {
-  return fetchMarketList({ ...options, status: "settled", fallback: listSettled });
+export async function fetchSettledMarkets(
+  options: MarketApiOptions = {},
+): Promise<MarketListResult> {
+  return fetchMarketList({
+    ...options,
+    status: "settled",
+    fallback: listSettled,
+  });
 }
 
 export async function fetchMarketById(
   id: string,
   {
-    baseUrl = process.env.MARKET_SERVICE_BASE_URL ?? DEFAULT_MARKET_SERVICE_BASE_URL,
+    baseUrl = process.env.API_GATEWAY_BASE_URL ?? DEFAULT_API_GATEWAY_BASE_URL,
     fetcher = fetch,
   }: MarketApiOptions = {},
 ): Promise<MarketResult> {
-  const url = new URL(`/internal/markets/${encodeURIComponent(id)}`, trimTrailingSlash(baseUrl) + "/");
+  const url = new URL(
+    `/v1/markets/${encodeURIComponent(id)}`,
+    trimTrailingSlash(baseUrl) + "/",
+  );
 
   try {
     const response = await fetcher(url, {
@@ -99,17 +130,17 @@ export async function fetchMarketById(
       headers: { accept: "application/json" },
     });
     if (!response.ok) {
-      throw new Error(`market-service request failed: ${response.status}`);
+      throw new Error(`api-gateway request failed: ${response.status}`);
     }
 
     return {
       market: mapMarket((await response.json()) as ApiMarket),
-      source: "market-service",
+      source: "api-gateway",
     };
   } catch {
     return {
       market: getMarketById(id),
-      source: "fallback:market-service-unavailable",
+      source: "fallback:api-gateway-unavailable",
     };
   }
 }
@@ -120,12 +151,12 @@ interface FetchMarketListOptions extends MarketApiOptions {
 }
 
 async function fetchMarketList({
-  baseUrl = process.env.MARKET_SERVICE_BASE_URL ?? DEFAULT_MARKET_SERVICE_BASE_URL,
+  baseUrl = process.env.API_GATEWAY_BASE_URL ?? DEFAULT_API_GATEWAY_BASE_URL,
   fetcher = fetch,
   status,
   fallback,
 }: FetchMarketListOptions): Promise<MarketListResult> {
-  const url = new URL("/internal/markets", trimTrailingSlash(baseUrl) + "/");
+  const url = new URL("/v1/markets", trimTrailingSlash(baseUrl) + "/");
   if (status) {
     url.searchParams.set("status", status);
   }
@@ -136,18 +167,18 @@ async function fetchMarketList({
       headers: { accept: "application/json" },
     });
     if (!response.ok) {
-      throw new Error(`market-service request failed: ${response.status}`);
+      throw new Error(`api-gateway request failed: ${response.status}`);
     }
 
     const payload = (await response.json()) as ApiMarketList;
     return {
       markets: payload.markets.map(mapMarket),
-      source: "market-service",
+      source: "api-gateway",
     };
   } catch {
     return {
       markets: fallback(),
-      source: "fallback:market-service-unavailable",
+      source: "fallback:api-gateway-unavailable",
     };
   }
 }

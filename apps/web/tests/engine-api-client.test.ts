@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { fetchOrderBookSnapshot, placeMarketOrder } from "../lib/engine-api.js";
+import {
+  MarketOrderApiError,
+  fetchOrderBookSnapshot,
+  orderRejectionRedirectPath,
+  placeMarketOrder,
+} from "../lib/engine-api.js";
 
 test("fetchOrderBookSnapshot calls matching-engine book facade and maps levels", async () => {
   const calls: string[] = [];
@@ -44,7 +49,7 @@ test("fetchOrderBookSnapshot returns an empty fallback when matching-engine is u
   assert.equal(book.source, "fallback:matching-engine-unavailable");
 });
 
-test("placeMarketOrder posts to the same-origin engine proxy and maps response", async () => {
+test("placeMarketOrder posts with idempotency to the same-origin order proxy and maps response", async () => {
   const calls: Array<{
     url: string;
     method?: string;
@@ -84,6 +89,10 @@ test("placeMarketOrder posts to the same-origin engine proxy and maps response",
   assert.equal(calls[0]?.method, "POST");
   assert.equal(calls[0]?.headers["x-user-id"], "42");
   assert.equal(calls[0]?.headers["x-client-order-id"], "client-01");
+  assert.match(
+    calls[0]?.headers["idempotency-key"] ?? "",
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
   assert.deepEqual(calls[0]?.body, {
     side: "buy",
     outcome: "YES",
@@ -150,5 +159,76 @@ test("placeMarketOrder exposes backend rejection messages", async () => {
           Response.json({ error: "self trade prevented" }, { status: 412 }),
       }),
     /self trade prevented/,
+  );
+});
+
+test("placeMarketOrder exposes structured gateway rejection metadata", async () => {
+  await assert.rejects(
+    () =>
+      placeMarketOrder({
+        marketId: "mkt-election",
+        userId: "42",
+        side: "buy",
+        outcome: "YES",
+        type: "LIMIT",
+        pricePts: 55,
+        quantity: 3,
+        timeInForce: "GTC",
+        fetcher: async () =>
+          Response.json(
+            {
+              error: "ERROR_CODE_KYC_TIER_INSUFFICIENT",
+              message: "KYC tier is below the minimum required for trading",
+              redirect_to: "/kyc/tier-1",
+            },
+            { status: 403 },
+          ),
+      }),
+    (error: unknown) =>
+      error instanceof MarketOrderApiError &&
+      error.status === 403 &&
+      error.code === "ERROR_CODE_KYC_TIER_INSUFFICIENT" &&
+      error.redirectTo === "/kyc/tier-1",
+  );
+});
+
+test("orderRejectionRedirectPath maps SPEC-023 order gates to return_to redirects", () => {
+  assert.equal(
+    orderRejectionRedirectPath(
+      new MarketOrderApiError(401, "unauthorized", "unauthorized"),
+      "/markets/mkt-election?tab=order",
+    ),
+    "/auth/sign-in?return_to=%2Fmarkets%2Fmkt-election%3Ftab%3Dorder",
+  );
+  assert.equal(
+    orderRejectionRedirectPath(
+      new MarketOrderApiError(
+        403,
+        "ERROR_CODE_KYC_TIER_INSUFFICIENT",
+        "kyc required",
+        "/kyc/tier-1",
+      ),
+      "/markets/mkt-election",
+    ),
+    "/kyc/tier-1?return_to=%2Fmarkets%2Fmkt-election",
+  );
+  assert.equal(
+    orderRejectionRedirectPath(
+      new MarketOrderApiError(
+        402,
+        "ERROR_CODE_INSUFFICIENT_FUNDS",
+        "topup required",
+        "/topup",
+      ),
+      "/markets/mkt-election",
+    ),
+    "/topup?return_to=%2Fmarkets%2Fmkt-election",
+  );
+  assert.equal(
+    orderRejectionRedirectPath(
+      new Error("self trade prevented"),
+      "/markets/mkt-election",
+    ),
+    null,
   );
 });

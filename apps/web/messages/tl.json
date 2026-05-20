@@ -622,6 +622,16 @@
       }
     }
   },
+  "topup": {
+    "mvpAssistance": {
+      "label": "Assisted top-up",
+      "heading": "Kasalukuyang inaasikaso ng operations team ang top-ups.",
+      "body": "Magbubukas ang real payment rails pagkatapos pumasa ang LG-2. Hanggang doon, ina-adjust ang points sa pamamagitan ng awtorisadong operations process; makipag-ugnayan sa support kasama ang account details at intended use.",
+      "flagUnavailable": "Hindi mabasa ngayon ang payment flag. Para maiwasan ang aksidenteng pag-enable ng real-money payments, mananatili ang page na ito sa assisted mode.",
+      "ctaSupport": "Makipag-ugnayan sa support",
+      "ctaFaq": "Basahin ang top-up FAQ"
+    }
+  },
   "kyc": {
     "privacyNotice": {
       "metadata": {

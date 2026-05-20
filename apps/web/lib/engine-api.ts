@@ -1,4 +1,5 @@
 import type { OrderBookSnapshot } from "./mock-markets.js";
+import { withIdempotencyKey } from "./idempotency.js";
 
 const DEFAULT_MATCHING_ENGINE_BASE_URL = "http://127.0.0.1:8088";
 const DEFAULT_ORDER_PROXY_BASE_URL = "/api/engine";
@@ -54,6 +55,25 @@ export interface PlacedMarketOrder {
   feePts: number;
 }
 
+export class MarketOrderApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly redirectTo?: string;
+
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    redirectTo?: string,
+  ) {
+    super(message);
+    this.name = "MarketOrderApiError";
+    this.status = status;
+    this.code = code;
+    this.redirectTo = redirectTo;
+  }
+}
+
 interface ApiOrderActionResponse {
   order_id: string;
   status: string;
@@ -61,6 +81,12 @@ interface ApiOrderActionResponse {
   avg_price_pts: number;
   remaining_qty: number;
   fee_pts: number;
+}
+
+interface ApiErrorResponse {
+  error?: string;
+  message?: string;
+  redirect_to?: string;
 }
 
 export interface FetchOrderBookSnapshotOptions {
@@ -134,33 +160,85 @@ export async function placeMarketOrder({
     headers.set("x-client-order-id", clientOrderId);
   }
 
+  const init = withIdempotencyKey({
+    method: "POST",
+    cache: "no-store",
+    headers,
+    body: JSON.stringify({
+      side,
+      outcome,
+      type,
+      price_pts: pricePts,
+      quantity,
+      time_in_force: timeInForce,
+    }),
+  });
+
   const response = await fetcher(
     `${trimTrailingSlash(orderProxyBaseUrl)}/markets/${encodeURIComponent(marketId)}/orders`,
-    {
-      method: "POST",
-      cache: "no-store",
-      headers,
-      body: JSON.stringify({
-        side,
-        outcome,
-        type,
-        price_pts: pricePts,
-        quantity,
-        time_in_force: timeInForce,
-      }),
-    },
+    init,
   );
   const payload = await readJson(response);
 
   if (!response.ok) {
-    const error =
-      isRecord(payload) && typeof payload.error === "string"
-        ? payload.error
-        : `order request failed: ${response.status}`;
-    throw new Error(error);
+    throw marketOrderApiError(response.status, payload);
   }
 
   return mapPlacedOrder(payload as ApiOrderActionResponse);
+}
+
+export function orderRejectionRedirectPath(
+  error: unknown,
+  returnTo: string,
+): string | null {
+  if (!(error instanceof MarketOrderApiError)) {
+    return null;
+  }
+
+  if (error.status === 401 || error.code === "unauthorized") {
+    return withReturnTo("/auth/sign-in", returnTo);
+  }
+  if (error.code === "ERROR_CODE_KYC_TIER_INSUFFICIENT") {
+    return withReturnTo(error.redirectTo ?? "/kyc/tier-1", returnTo);
+  }
+  if (error.code === "ERROR_CODE_INSUFFICIENT_FUNDS") {
+    return withReturnTo(error.redirectTo ?? "/topup", returnTo);
+  }
+
+  return null;
+}
+
+function marketOrderApiError(
+  status: number,
+  payload: unknown,
+): MarketOrderApiError {
+  if (isRecord(payload)) {
+    const body = payload as ApiErrorResponse;
+    const code = typeof body.error === "string" ? body.error : `http_${status}`;
+    const message =
+      typeof body.message === "string"
+        ? body.message
+        : typeof body.error === "string"
+          ? body.error
+          : `order request failed: ${status}`;
+    return new MarketOrderApiError(
+      status,
+      code,
+      message,
+      typeof body.redirect_to === "string" ? body.redirect_to : undefined,
+    );
+  }
+
+  return new MarketOrderApiError(
+    status,
+    `http_${status}`,
+    `order request failed: ${status}`,
+  );
+}
+
+function withReturnTo(path: string, returnTo: string): string {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}return_to=${encodeURIComponent(returnTo)}`;
 }
 
 function mapLevel(level: ApiBookLevel) {

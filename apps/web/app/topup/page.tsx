@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import {
+  ProphFooter,
+  ProphLinkButton,
+  ProphSubNav,
+  ProphTile,
+} from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
@@ -9,6 +14,8 @@ import {
   MainNavLinks,
 } from "@/lib/site-nav";
 import { fetchWalletOverview } from "@/lib/api-gateway";
+import { fetchPaymentsRealMoneyStatus } from "@/lib/payments-api";
+import { safeReturnTo } from "@/lib/safe-return-to";
 import { getUpstreamSessionToken } from "@/lib/session";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -47,15 +54,29 @@ const formatTwd = (n: number): string => `TWD ${n.toLocaleString("zh-Hant")}`;
 
 type TopupCopy = Awaited<ReturnType<typeof getTranslations<"topup">>>;
 
-export default async function TopUpPage() {
+interface TopUpPageProps {
+  searchParams?: Promise<{
+    return_to?: string | string[];
+  }>;
+}
+
+export default async function TopUpPage({ searchParams }: TopUpPageProps) {
+  const params = await searchParams;
+  const rawReturnTo = Array.isArray(params?.return_to)
+    ? params?.return_to[0]
+    : params?.return_to;
+  const returnTo = safeReturnTo(rawReturnTo);
   const upstreamSessionToken = await getUpstreamSessionToken();
-  const [t, tFmt, sectionFooterColumns, walletOverview] = await Promise.all([
-    getTranslations("topup"),
-    getTranslations("common.format"),
-    getFooterColumns(["responsibleGaming", "legal", "support"]),
-    fetchWalletOverview({ bearerToken: upstreamSessionToken ?? undefined }),
-  ]);
-  const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
+  const [t, tFmt, sectionFooterColumns, walletOverview, paymentsStatus] =
+    await Promise.all([
+      getTranslations("topup"),
+      getTranslations("common.format"),
+      getFooterColumns(["responsibleGaming", "legal", "support"]),
+      fetchWalletOverview({ bearerToken: upstreamSessionToken ?? undefined }),
+      fetchPaymentsRealMoneyStatus(),
+    ]);
+  const formatPoints = (n: number) =>
+    tFmt("points", { n: n.toLocaleString("zh-Hant") });
   const { monthlyDeposited, monthlyLimit, kycTier } = mockState;
   const currentBalance = walletOverview.balance.availablePoints;
   const usagePct = Math.min(100, (monthlyDeposited / monthlyLimit) * 100);
@@ -65,7 +86,11 @@ export default async function TopUpPage() {
 
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
       <ProphTile
         surface="light"
@@ -76,7 +101,9 @@ export default async function TopUpPage() {
       <section className="bg-proph-canvas-parchment">
         <div className="mx-auto max-w-proph px-6 py-6 md:px-10">
           <p className="rounded-proph-md border border-proph-primary/30 bg-proph-canvas px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-            <strong className="font-semibold text-proph-ink">{t("demoBanner.label")}</strong>{" "}
+            <strong className="font-semibold text-proph-ink">
+              {t("demoBanner.label")}
+            </strong>{" "}
             {t("demoBanner.body")}
           </p>
         </div>
@@ -96,18 +123,77 @@ export default async function TopUpPage() {
         formatPoints={formatPoints}
       />
 
-      <AmountSection
-        t={t}
-        atLimit={atLimit}
-        remainingPoints={remainingPoints}
-        formatPoints={formatPoints}
-      />
-      <ChannelSection t={t} />
-      <ConfirmSection t={t} atLimit={atLimit} />
+      {paymentsStatus.realMoneyEnabled ? (
+        <>
+          <AmountSection
+            t={t}
+            atLimit={atLimit}
+            remainingPoints={remainingPoints}
+            formatPoints={formatPoints}
+          />
+          <ChannelSection t={t} />
+          <ConfirmSection t={t} atLimit={atLimit} />
+        </>
+      ) : (
+        <ServiceAssistedTopup
+          t={t}
+          statusSource={paymentsStatus.source}
+          returnTo={returnTo}
+        />
+      )}
       <RGReminder t={t} />
 
       <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
     </main>
+  );
+}
+
+function ServiceAssistedTopup({
+  t,
+  statusSource,
+  returnTo,
+}: {
+  t: TopupCopy;
+  statusSource: string;
+  returnTo: string;
+}) {
+  const supportHref = `/support/contact?topic=topup&return_to=${encodeURIComponent(returnTo)}`;
+
+  return (
+    <section
+      className="bg-proph-canvas"
+      aria-labelledby="topup-assistance-heading"
+    >
+      <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
+        <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-8">
+          <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
+            {t("mvpAssistance.label")}
+          </div>
+          <h2
+            id="topup-assistance-heading"
+            className="mt-3 font-display text-[28px] font-semibold leading-[1.1] tracking-[0.196px] sm:text-[34px] md:text-[40px]"
+          >
+            {t("mvpAssistance.heading")}
+          </h2>
+          <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
+            {t("mvpAssistance.body")}
+          </p>
+          {statusSource !== "api-gateway" ? (
+            <p className="mt-5 rounded-proph-md border border-proph-feedback-warning bg-proph-canvas-parchment px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-feedback-warning">
+              {t("mvpAssistance.flagUnavailable")}
+            </p>
+          ) : null}
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <ProphLinkButton variant="primary" href={supportHref}>
+              {t("mvpAssistance.ctaSupport")}
+            </ProphLinkButton>
+            <ProphLinkButton variant="secondary-pill" href="/support/faq#topup">
+              {t("mvpAssistance.ctaFaq")}
+            </ProphLinkButton>
+          </div>
+        </article>
+      </div>
+    </section>
   );
 }
 
@@ -144,8 +230,8 @@ function BalanceBlock(props: BalanceBlockProps) {
     kycTier === 1
       ? t("balance.kycCapTier1")
       : kycTier === 2
-      ? t("balance.kycCapTier2")
-      : t("balance.kycCapTier3");
+        ? t("balance.kycCapTier2")
+        : t("balance.kycCapTier3");
 
   return (
     <section className="bg-proph-canvas-parchment">
@@ -189,21 +275,26 @@ function BalanceBlock(props: BalanceBlockProps) {
                   (atLimit
                     ? "bg-proph-feedback-error"
                     : nearLimit
-                    ? "bg-proph-feedback-warning"
-                    : "bg-proph-primary")
+                      ? "bg-proph-feedback-warning"
+                      : "bg-proph-primary")
                 }
                 style={{ width: `${usagePct}%` }}
               />
             </div>
             <div className="mt-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
-              {t("balance.remaining", { amount: formatPoints(remainingPoints) })}
+              {t("balance.remaining", {
+                amount: formatPoints(remainingPoints),
+              })}
             </div>
 
             {atLimit ? (
               <p className="mt-4 rounded-proph-md border border-proph-feedback-error bg-proph-canvas-parchment px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-feedback-error">
                 {t.rich("balance.atLimit", {
                   limitsLink: (chunks) => (
-                    <a href="/responsible-gaming/limits" className="ml-1 underline">
+                    <a
+                      href="/responsible-gaming/limits"
+                      className="ml-1 underline"
+                    >
                       {chunks}
                     </a>
                   ),
@@ -245,7 +336,11 @@ function AmountSection({
         </header>
 
         <form action="#" className="space-y-6">
-          <fieldset className={"space-y-3 " + (atLimit ? "opacity-50 pointer-events-none" : "")}>
+          <fieldset
+            className={
+              "space-y-3 " + (atLimit ? "opacity-50 pointer-events-none" : "")
+            }
+          >
             <legend className="sr-only">{t("amount.heading")}</legend>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
               {presetAmounts.map((amt) => (
@@ -273,7 +368,12 @@ function AmountSection({
 
             <label className="flex flex-col gap-2 rounded-proph-md border border-proph-hairline bg-proph-canvas p-4 has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment">
               <span className="flex items-center gap-3">
-                <input type="radio" name="amount" value="custom" className="h-4 w-4 accent-proph-primary" />
+                <input
+                  type="radio"
+                  name="amount"
+                  value="custom"
+                  className="h-4 w-4 accent-proph-primary"
+                />
                 <span className="font-display text-[21px] font-semibold tracking-[0.231px]">
                   {t("amount.customLabel")}
                 </span>
@@ -283,7 +383,9 @@ function AmountSection({
                 inputMode="numeric"
                 min={1}
                 max={remainingPoints || undefined}
-                placeholder={t("amount.customPlaceholder", { max: remainingPoints.toLocaleString() })}
+                placeholder={t("amount.customPlaceholder", {
+                  max: remainingPoints.toLocaleString(),
+                })}
                 className="ml-7 w-full min-h-11 max-w-xs rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-mono text-[17px] tabular-nums tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
                 aria-label={t("amount.customAriaLabel")}
               />
@@ -361,7 +463,13 @@ function ChannelSection({ t }: { t: TopupCopy }) {
   );
 }
 
-function ChannelStatusPill({ t, status }: { t: TopupCopy; status: ChannelStatus }) {
+function ChannelStatusPill({
+  t,
+  status,
+}: {
+  t: TopupCopy;
+  status: ChannelStatus;
+}) {
   const tierKey = STATUS_TIER_KEY[status];
   const classMap: Record<ChannelStatus, string> = {
     active: "border-proph-primary text-proph-primary",
@@ -390,18 +498,38 @@ function ConfirmSection({ t, atLimit }: { t: TopupCopy; atLimit: boolean }) {
           </p>
 
           <dl className="mt-6 space-y-3 border-t border-proph-divider-soft pt-4">
-            <Row label={t("confirm.rows.amount.label")} value={t("confirm.rows.amount.value")} />
-            <Row label={t("confirm.rows.channel.label")} value={t("confirm.rows.channel.value")} />
-            <Row label={t("confirm.rows.fee.label")} value={t("confirm.rows.fee.value")} hint />
-            <Row label={t("confirm.rows.eta.label")} value={t("confirm.rows.eta.value")} />
+            <Row
+              label={t("confirm.rows.amount.label")}
+              value={t("confirm.rows.amount.value")}
+            />
+            <Row
+              label={t("confirm.rows.channel.label")}
+              value={t("confirm.rows.channel.value")}
+            />
+            <Row
+              label={t("confirm.rows.fee.label")}
+              value={t("confirm.rows.fee.value")}
+              hint
+            />
+            <Row
+              label={t("confirm.rows.eta.label")}
+              value={t("confirm.rows.eta.value")}
+            />
           </dl>
 
           <label className="mt-6 flex items-start gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-            <input type="checkbox" required className="mt-1 h-4 w-4 accent-proph-primary" />
+            <input
+              type="checkbox"
+              required
+              className="mt-1 h-4 w-4 accent-proph-primary"
+            />
             <span>
               {t.rich("confirm.consent", {
                 strong: (chunks) => (
-                  <strong className="font-semibold text-proph-ink"> {chunks} </strong>
+                  <strong className="font-semibold text-proph-ink">
+                    {" "}
+                    {chunks}{" "}
+                  </strong>
                 ),
               })}
             </span>
@@ -425,10 +553,20 @@ function ConfirmSection({ t, atLimit }: { t: TopupCopy; atLimit: boolean }) {
   );
 }
 
-function Row({ label, value, hint }: { label: string; value: string; hint?: boolean }) {
+function Row({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: boolean;
+}) {
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <dt className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">{label}</dt>
+      <dt className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
+        {label}
+      </dt>
       <dd
         className={
           "font-mono text-[17px] tabular-nums tracking-[-0.374px] " +
@@ -449,7 +587,10 @@ function RGReminder({ t }: { t: TopupCopy }) {
           {t("rgReminder.headline")}
         </h2>
         <div className="mt-6 flex flex-wrap items-center gap-4">
-          <ProphLinkButton variant="primary" href="/responsible-gaming/cooldown">
+          <ProphLinkButton
+            variant="primary"
+            href="/responsible-gaming/cooldown"
+          >
             {t("rgReminder.ctaCooldown")}
           </ProphLinkButton>
         </div>

@@ -13,3 +13,7 @@ CREATE TABLE IF NOT EXISTS feature_flags (
 INSERT INTO feature_flags (key, enabled, updated_by)
 VALUES ('engine.halted', FALSE, 'system:migration')
 ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO feature_flags (key, enabled, updated_by)
+VALUES ('payments.real_money_enabled', FALSE, 'system:migration')
+ON CONFLICT (key) DO NOTHING;

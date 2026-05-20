@@ -52,6 +52,9 @@ pub fn prometheus_bootstrap_metrics(service_name: &str) -> String {
     if encoder.encode(&registry.gather(), &mut buffer).is_err() {
         return fallback_metrics(service_name);
     }
+    if encoder.encode(&prometheus::gather(), &mut buffer).is_err() {
+        return fallback_metrics(service_name);
+    }
 
     String::from_utf8(buffer).unwrap_or_else(|_| fallback_metrics(service_name))
 }

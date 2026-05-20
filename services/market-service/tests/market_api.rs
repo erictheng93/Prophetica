@@ -364,6 +364,7 @@ fn sample_market(id: &str, title: &str, status: &str) -> Market {
         yes_price_cents: 55,
         yes_bid_cents: 54,
         yes_ask_cents: 56,
+        fee_bps: 200,
         volume_24h_points: 1_000,
         volume_total_points: 10_000,
         opened_at: "2026-05-01T00:00:00+08:00".to_owned(),

@@ -1,12 +1,7 @@
-import {
-  ApiError,
-  createEngineClient,
-  type PlaceEngineOrderRequest,
-} from "@prophetica/ts-sdk";
 import { NextResponse } from "next/server";
-import { getViewer } from "@/lib/session";
+import { getUpstreamSessionToken, getViewer } from "@/lib/session";
 
-const DEFAULT_MATCHING_ENGINE_BASE_URL = "http://127.0.0.1:8088";
+const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
 const DEFAULT_ENGINE_USER_ID = "10";
 
 export const runtime = "nodejs";
@@ -17,12 +12,12 @@ interface RouteContext {
 }
 
 interface PlaceOrderPayload {
-  side: PlaceEngineOrderRequest["side"];
-  outcome: PlaceEngineOrderRequest["outcome"];
-  type: PlaceEngineOrderRequest["type"];
+  side: string;
+  outcome: string;
+  type: string;
   price_pts: number;
   quantity: number;
-  time_in_force: PlaceEngineOrderRequest["timeInForce"];
+  time_in_force: string;
 }
 
 export async function POST(
@@ -47,44 +42,70 @@ export async function POST(
   if (!userId) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const client = createEngineClient({
-    baseUrl:
-      process.env.MATCHING_ENGINE_BASE_URL ?? DEFAULT_MATCHING_ENGINE_BASE_URL,
-    auth: { userId },
-    fetcher: fetch,
+  const bearerToken = await getUpstreamSessionToken();
+  const idempotencyKey = request.headers.get("idempotency-key")?.trim();
+  if (!idempotencyKey) {
+    return NextResponse.json(
+      {
+        error: "idempotency_key_required",
+        message: "Idempotency-Key header must not be empty",
+      },
+      { status: 400 },
+    );
+  }
+
+  const headers = new Headers({
+    accept: "application/json",
+    "content-type": "application/json",
   });
+  headers.set("idempotency-key", idempotencyKey);
+  if (bearerToken) {
+    headers.set("authorization", `Bearer ${bearerToken}`);
+  } else if (process.env.NODE_ENV !== "production") {
+    headers.set("x-user-id", userId);
+  } else {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
 
   try {
-    const order = await client.placeOrder({
-      marketId,
-      side: payload.side,
-      outcome: payload.outcome,
-      type: payload.type,
-      pricePts: payload.price_pts,
-      quantity: payload.quantity,
-      timeInForce: payload.time_in_force,
-      clientOrderId: request.headers.get("x-client-order-id") ?? undefined,
+    const response = await fetch(apiGatewayOrderUrl(marketId), {
+      method: "POST",
+      cache: "no-store",
+      headers,
+      body: JSON.stringify(payload),
     });
+    const responsePayload = await readResponsePayload(response);
 
-    return NextResponse.json({
-      order_id: order.orderId,
-      status: order.status,
-      filled_qty: order.filledQty,
-      avg_price_pts: order.avgPricePts,
-      remaining_qty: order.remainingQty,
-      fee_pts: order.feePts,
-    });
+    return NextResponse.json(responsePayload, { status: response.status });
   } catch (error) {
-    if (error instanceof ApiError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.status },
-      );
-    }
     return NextResponse.json(
-      { error: "matching-engine unavailable" },
+      {
+        error: "api_gateway_unavailable",
+        message:
+          error instanceof Error ? error.message : "api-gateway unavailable",
+      },
       { status: 503 },
     );
+  }
+}
+
+function apiGatewayOrderUrl(marketId: string): string {
+  const baseUrl = trimTrailingSlash(
+    process.env.API_GATEWAY_BASE_URL ?? DEFAULT_API_GATEWAY_BASE_URL,
+  );
+  return `${baseUrl}/v1/markets/${encodeURIComponent(marketId)}/orders`;
+}
+
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return { error: text, message: text };
   }
 }
 
@@ -96,4 +117,8 @@ async function readPayload(
   } catch {
     return null;
   }
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
 }

@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     env,
     hash::{Hash, Hasher},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use async_trait::async_trait;
@@ -14,9 +14,12 @@ use axum::{
     routing::{delete, get, post},
 };
 use ed25519_dalek::{Verifier, VerifyingKey};
+use order_precheck::{OrderKind, OrderSide, required_minor_units};
+use prometheus::{IntCounter, IntCounterVec, Opts};
 use reqwest::Url;
 use sdk::{
     config::ServiceConfig,
+    feature_flags::{InMemoryFeatureFlagStore, PaymentsRealMoneyFlagReader, PgFeatureFlagStore},
     observability,
     postgres_migrations::{API_GATEWAY_MIGRATION_TABLE, run_postgres_migrations},
     service_stub,
@@ -32,10 +35,73 @@ pub mod analytics_reporting;
 pub mod drill_logs;
 pub mod internal_call_auth;
 pub mod kill_switch;
+pub mod order_precheck;
 pub mod responsible_gaming;
 
 const USER_ID_HEADER: HeaderName = HeaderName::from_static("x-user-id");
 const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-key");
+const DEFAULT_ORDER_FEE_BPS: u32 = 200;
+
+fn gateway_auth_validation_failed_total() -> &'static IntCounterVec {
+    static COUNTER: OnceLock<IntCounterVec> = OnceLock::new();
+    COUNTER.get_or_init(|| {
+        let counter = IntCounterVec::new(
+            Opts::new(
+                "gateway_auth_validation_failed_total",
+                "Authentication validation failures rejected by the API gateway.",
+            ),
+            &["reason"],
+        )
+        .unwrap_or_else(|error| panic!("invalid auth validation metric definition: {error}"));
+        let _ = prometheus::default_registry().register(Box::new(counter.clone()));
+        counter
+    })
+}
+
+fn gateway_principal_header_stripped_total() -> &'static IntCounter {
+    static COUNTER: OnceLock<IntCounter> = OnceLock::new();
+    COUNTER.get_or_init(|| {
+        let counter = IntCounter::with_opts(Opts::new(
+            "gateway_principal_header_stripped_total",
+            "Inbound x-user-id principal headers ignored because a verified bearer principal was present.",
+        ))
+        .unwrap_or_else(|error| panic!("invalid principal header metric definition: {error}"));
+        let _ = prometheus::default_registry().register(Box::new(counter.clone()));
+        counter
+    })
+}
+
+fn order_precheck_rejected_total() -> &'static IntCounterVec {
+    static COUNTER: OnceLock<IntCounterVec> = OnceLock::new();
+    COUNTER.get_or_init(|| {
+        let counter = IntCounterVec::new(
+            Opts::new(
+                "order_precheck_rejected_total",
+                "Order submissions rejected before reaching the matching engine.",
+            ),
+            &["reason"],
+        )
+        .unwrap_or_else(|error| panic!("invalid order precheck metric definition: {error}"));
+        let _ = prometheus::default_registry().register(Box::new(counter.clone()));
+        counter
+    })
+}
+
+fn record_gateway_auth_validation_failed(reason: &'static str) {
+    gateway_auth_validation_failed_total()
+        .with_label_values(&[reason])
+        .inc();
+}
+
+fn record_gateway_principal_header_stripped() {
+    gateway_principal_header_stripped_total().inc();
+}
+
+fn record_order_precheck_rejected(reason: &'static str) {
+    order_precheck_rejected_total()
+        .with_label_values(&[reason])
+        .inc();
+}
 
 #[derive(Clone)]
 pub struct AppState<C> {
@@ -50,38 +116,68 @@ impl<C> AppState<C> {
 }
 
 #[derive(Clone)]
-pub struct AppStateWithEngine<W, E> {
+pub struct AppStateWithEngine<W, E, K> {
     wallet_ledger: W,
     engine: E,
+    kyc: K,
+    market_fees: Arc<dyn MarketFeeReader + Send + Sync>,
     idempotency: IdempotencyStore,
 }
 
-impl<W, E> AppStateWithEngine<W, E> {
+impl<W, E, K> AppStateWithEngine<W, E, K> {
     #[must_use]
-    pub fn new(wallet_ledger: W, engine: E) -> Self {
+    pub fn new(wallet_ledger: W, engine: E, kyc: K) -> Self {
+        Self::new_with_market_fees(wallet_ledger, engine, kyc, DefaultMarketFeeReader)
+    }
+
+    #[must_use]
+    pub fn new_with_market_fees<M>(wallet_ledger: W, engine: E, kyc: K, market_fees: M) -> Self
+    where
+        M: MarketFeeReader + Send + Sync + 'static,
+    {
         Self {
             wallet_ledger,
             engine,
+            kyc,
+            market_fees: Arc::new(market_fees),
             idempotency: IdempotencyStore::default(),
         }
     }
 }
 
 #[derive(Clone)]
-pub struct AppStateWithServices<W, E, R> {
+pub struct AppStateWithServices<W, E, R, K> {
     wallet_ledger: W,
     engine: E,
     referral: R,
+    kyc: K,
+    market_fees: Arc<dyn MarketFeeReader + Send + Sync>,
     idempotency: IdempotencyStore,
 }
 
-impl<W, E, R> AppStateWithServices<W, E, R> {
+impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
     #[must_use]
-    pub fn new(wallet_ledger: W, engine: E, referral: R) -> Self {
+    pub fn new(wallet_ledger: W, engine: E, referral: R, kyc: K) -> Self {
+        Self::new_with_market_fees(wallet_ledger, engine, referral, kyc, DefaultMarketFeeReader)
+    }
+
+    #[must_use]
+    pub fn new_with_market_fees<M>(
+        wallet_ledger: W,
+        engine: E,
+        referral: R,
+        kyc: K,
+        market_fees: M,
+    ) -> Self
+    where
+        M: MarketFeeReader + Send + Sync + 'static,
+    {
         Self {
             wallet_ledger,
             engine,
             referral,
+            kyc,
+            market_fees: Arc::new(market_fees),
             idempotency: IdempotencyStore::default(),
         }
     }
@@ -253,22 +349,33 @@ where
             .cloned()
             .unwrap_or_else(AuthVerifier::from_env);
         if let Some(token) = bearer_token(&parts.headers) {
-            return verifier
+            let auth = verifier
                 .verify_bearer(token, unix_now_seconds())
-                .map_err(|()| ApiError::unauthorized("invalid bearer token"));
+                .map_err(|()| {
+                    record_gateway_auth_validation_failed("invalid_bearer");
+                    ApiError::unauthorized("invalid bearer token")
+                })?;
+            if parts.headers.contains_key(&USER_ID_HEADER) {
+                record_gateway_principal_header_stripped();
+            }
+            return Ok(auth);
         }
         if verifier.require_verified_principal {
+            record_gateway_auth_validation_failed("missing_bearer");
             return Err(ApiError::unauthorized("missing bearer token"));
         }
 
         let Some(value) = parts.headers.get(&USER_ID_HEADER) else {
+            record_gateway_auth_validation_failed("missing_x_user_id");
             return Err(ApiError::unauthorized("missing x-user-id auth context"));
         };
-        let user_id = value
-            .to_str()
-            .map_err(|_| ApiError::unauthorized("invalid x-user-id auth context"))?;
+        let user_id = value.to_str().map_err(|_| {
+            record_gateway_auth_validation_failed("invalid_x_user_id");
+            ApiError::unauthorized("invalid x-user-id auth context")
+        })?;
 
         if user_id.is_empty() {
+            record_gateway_auth_validation_failed("empty_x_user_id");
             return Err(ApiError::unauthorized("empty x-user-id auth context"));
         }
 
@@ -325,6 +432,8 @@ fn base64_url_decode(value: &str) -> Option<Vec<u8>> {
 pub struct ApiErrorBody {
     pub error: &'static str,
     pub message: String,
+    #[serde(flatten)]
+    pub details: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug)]
@@ -332,63 +441,102 @@ pub struct ApiError {
     status: StatusCode,
     error: &'static str,
     message: String,
+    details: serde_json::Map<String, serde_json::Value>,
 }
 
 impl ApiError {
-    fn unauthorized(message: impl Into<String>) -> Self {
+    fn new(status: StatusCode, error: &'static str, message: impl Into<String>) -> Self {
         Self {
-            status: StatusCode::UNAUTHORIZED,
-            error: "unauthorized",
+            status,
+            error,
             message: message.into(),
+            details: serde_json::Map::new(),
         }
+    }
+
+    fn with_detail(mut self, key: &'static str, value: serde_json::Value) -> Self {
+        self.details.insert(key.to_owned(), value);
+        self
+    }
+
+    fn unauthorized(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
     }
 
     fn upstream(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::BAD_GATEWAY,
-            error: "wallet_ledger_unavailable",
-            message: message.into(),
-        }
+        Self::new(
+            StatusCode::BAD_GATEWAY,
+            "wallet_ledger_unavailable",
+            message,
+        )
     }
 
     fn bad_request(error: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::BAD_REQUEST,
-            error,
-            message: message.into(),
-        }
+        Self::new(StatusCode::BAD_REQUEST, error, message)
     }
 
     fn conflict(error: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::CONFLICT,
-            error,
-            message: message.into(),
-        }
+        Self::new(StatusCode::CONFLICT, error, message)
     }
 
     fn internal(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            error: "internal_error",
-            message: message.into(),
-        }
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", message)
     }
 
     fn matching_engine(status: StatusCode, message: impl Into<String>) -> Self {
-        Self {
-            status,
-            error: "matching_engine_error",
-            message: message.into(),
-        }
+        Self::new(status, "matching_engine_error", message)
     }
 
     fn referral_service(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::BAD_GATEWAY,
-            error: "referral_service_unavailable",
-            message: message.into(),
-        }
+        Self::new(
+            StatusCode::BAD_GATEWAY,
+            "referral_service_unavailable",
+            message,
+        )
+    }
+
+    fn market_service(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::BAD_GATEWAY,
+            "market_service_unavailable",
+            message,
+        )
+    }
+
+    fn kyc_lookup_unavailable(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "ERROR_CODE_KYC_LOOKUP_UNAVAILABLE",
+            message,
+        )
+    }
+
+    fn kyc_tier_insufficient(current_tier: &str) -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            "ERROR_CODE_KYC_TIER_INSUFFICIENT",
+            "KYC tier is below the minimum required for trading",
+        )
+        .with_detail("current_tier", serde_json::json!(current_tier))
+        .with_detail("required_tier", serde_json::json!("TIER_1"))
+        .with_detail("redirect_to", serde_json::json!("/kyc/tier-1"))
+    }
+
+    fn insufficient_funds(required_minor_units: i64, available_minor_units: i64) -> Self {
+        Self::new(
+            StatusCode::PAYMENT_REQUIRED,
+            "ERROR_CODE_INSUFFICIENT_FUNDS",
+            "Available wallet balance is below the required order cost",
+        )
+        .with_detail(
+            "required_minor_units",
+            serde_json::json!(required_minor_units),
+        )
+        .with_detail(
+            "available_minor_units",
+            serde_json::json!(available_minor_units),
+        )
+        .with_detail("redirect_to", serde_json::json!("/topup"))
     }
 }
 
@@ -399,6 +547,7 @@ impl IntoResponse for ApiError {
             Json(ApiErrorBody {
                 error: self.error,
                 message: self.message,
+                details: self.details,
             }),
         )
             .into_response()
@@ -467,6 +616,21 @@ pub struct BookSnapshotResponse {
     pub asks: Vec<BookLevel>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaymentsRealMoneyStatusResponse {
+    pub real_money_enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KycTierResponse {
+    pub tier: String,
+}
+
+#[derive(Debug, Clone)]
+struct PaymentsRealMoneyState<R> {
+    flags: R,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct BookSnapshotQuery {
     pub depth: Option<usize>,
@@ -505,6 +669,38 @@ pub struct CaptureReferralRequest {
     pub referral_code: String,
     pub referred_user_id: String,
     pub referred_at_day: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Market {
+    pub id: String,
+    pub title: String,
+    pub brief: String,
+    pub category: String,
+    pub status: String,
+    pub yes_price_cents: i32,
+    pub yes_bid_cents: i32,
+    pub yes_ask_cents: i32,
+    #[serde(default)]
+    pub fee_bps: Option<u32>,
+    pub volume_24h_points: i64,
+    pub volume_total_points: i64,
+    pub opened_at: String,
+    pub close_at: String,
+    pub oracle_source: String,
+    pub resolved_outcome: Option<String>,
+    pub resolved_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarketListResponse {
+    pub markets: Vec<Market>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct MarketListQuery {
+    pub status: Option<String>,
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -608,6 +804,37 @@ pub trait ReferralClient {
     async fn list_affiliate_payout_reviews(&self) -> Result<serde_json::Value, ApiError>;
 }
 
+#[async_trait]
+pub trait MarketServiceClient {
+    async fn list_markets(
+        &self,
+        status: Option<&str>,
+        category: Option<&str>,
+    ) -> Result<MarketListResponse, ApiError>;
+
+    async fn get_market(&self, market_id: &str) -> Result<Market, ApiError>;
+}
+
+#[async_trait]
+pub trait MarketFeeReader {
+    async fn fee_bps_cap(&self, market_id: &str) -> Result<u32, ApiError>;
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DefaultMarketFeeReader;
+
+#[async_trait]
+impl MarketFeeReader for DefaultMarketFeeReader {
+    async fn fee_bps_cap(&self, _market_id: &str) -> Result<u32, ApiError> {
+        Ok(DEFAULT_ORDER_FEE_BPS)
+    }
+}
+
+#[async_trait]
+pub trait KycTierClient {
+    async fn get_kyc_tier(&self, user_id: &str) -> Result<String, ApiError>;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdminProxyContext {
     pub actor_id: String,
@@ -632,6 +859,21 @@ pub struct HttpReferralClient {
     base_url: Url,
     client: reqwest::Client,
 }
+
+#[derive(Debug, Clone)]
+pub struct HttpMarketServiceClient {
+    base_url: Url,
+    client: reqwest::Client,
+}
+
+#[derive(Debug, Clone)]
+pub struct HttpKycServiceClient {
+    base_url: Url,
+    client: reqwest::Client,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AllowAllKycTierClient;
 
 impl HttpMatchingEngineClient {
     /// Creates an HTTP client for the internal matching-engine service.
@@ -704,6 +946,56 @@ impl HttpReferralClient {
     pub fn from_env() -> anyhow::Result<Self> {
         let base_url = env::var("REFERRAL_SERVICE_BASE_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8092".to_owned());
+        Self::new(&base_url)
+    }
+}
+
+impl HttpMarketServiceClient {
+    /// Creates an HTTP client for the internal market service.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `base_url` is not a valid URL.
+    pub fn new(base_url: &str) -> anyhow::Result<Self> {
+        Ok(Self {
+            base_url: Url::parse(base_url)?,
+            client: reqwest::Client::new(),
+        })
+    }
+
+    /// Creates a client from `MARKET_SERVICE_BASE_URL`, defaulting to localhost.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configured URL is invalid.
+    pub fn from_env() -> anyhow::Result<Self> {
+        let base_url = env::var("MARKET_SERVICE_BASE_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:8087".to_owned());
+        Self::new(&base_url)
+    }
+}
+
+impl HttpKycServiceClient {
+    /// Creates an HTTP client for the internal KYC service.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `base_url` is not a valid URL.
+    pub fn new(base_url: &str) -> anyhow::Result<Self> {
+        Ok(Self {
+            base_url: Url::parse(base_url)?,
+            client: reqwest::Client::new(),
+        })
+    }
+
+    /// Creates a client from `KYC_SERVICE_BASE_URL`, defaulting to localhost.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configured URL is invalid.
+    pub fn from_env() -> anyhow::Result<Self> {
+        let base_url =
+            env::var("KYC_SERVICE_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:8090".to_owned());
         Self::new(&base_url)
     }
 }
@@ -1137,6 +1429,109 @@ impl ReferralClient for HttpReferralClient {
     }
 }
 
+#[async_trait]
+impl MarketServiceClient for HttpMarketServiceClient {
+    async fn list_markets(
+        &self,
+        status: Option<&str>,
+        category: Option<&str>,
+    ) -> Result<MarketListResponse, ApiError> {
+        let mut url = self
+            .base_url
+            .join("/internal/markets")
+            .map_err(|error| ApiError::market_service(error.to_string()))?;
+        {
+            let mut query = url.query_pairs_mut();
+            if let Some(status) = status {
+                query.append_pair("status", status);
+            }
+            if let Some(category) = category {
+                query.append_pair("category", category);
+            }
+        }
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::market_service(error.to_string()))?;
+
+        response
+            .error_for_status()
+            .map_err(|error| ApiError::market_service(error.to_string()))?
+            .json::<MarketListResponse>()
+            .await
+            .map_err(|error| ApiError::market_service(error.to_string()))
+    }
+
+    async fn get_market(&self, market_id: &str) -> Result<Market, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/internal/markets/{market_id}"))
+            .map_err(|error| ApiError::market_service(error.to_string()))?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::market_service(error.to_string()))?;
+
+        response
+            .error_for_status()
+            .map_err(|error| ApiError::market_service(error.to_string()))?
+            .json::<Market>()
+            .await
+            .map_err(|error| ApiError::market_service(error.to_string()))
+    }
+}
+
+#[async_trait]
+impl<T> MarketFeeReader for T
+where
+    T: MarketServiceClient + Send + Sync,
+{
+    async fn fee_bps_cap(&self, market_id: &str) -> Result<u32, ApiError> {
+        let market = self.get_market(market_id).await?;
+        Ok(market
+            .fee_bps
+            .unwrap_or(DEFAULT_ORDER_FEE_BPS)
+            .max(DEFAULT_ORDER_FEE_BPS))
+    }
+}
+
+#[async_trait]
+impl KycTierClient for HttpKycServiceClient {
+    async fn get_kyc_tier(&self, user_id: &str) -> Result<String, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/internal/kyc/users/{user_id}/tier"))
+            .map_err(|error| ApiError::kyc_lookup_unavailable(error.to_string()))?;
+
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::kyc_lookup_unavailable(error.to_string()))?;
+
+        let body = response
+            .error_for_status()
+            .map_err(|error| ApiError::kyc_lookup_unavailable(error.to_string()))?
+            .json::<KycTierResponse>()
+            .await
+            .map_err(|error| ApiError::kyc_lookup_unavailable(error.to_string()))?;
+
+        Ok(body.tier)
+    }
+}
+
+#[async_trait]
+impl KycTierClient for AllowAllKycTierClient {
+    async fn get_kyc_tier(&self, _user_id: &str) -> Result<String, ApiError> {
+        Ok("TIER_1".to_owned())
+    }
+}
+
 async fn decode_engine_response<T>(response: reqwest::Response) -> Result<T, ApiError>
 where
     T: serde::de::DeserializeOwned,
@@ -1264,10 +1659,19 @@ pub fn router<C>(wallet_ledger: C) -> Router
 where
     C: WalletLedgerClient + Clone + Send + Sync + 'static,
 {
+    router_with_payment_flags(wallet_ledger, InMemoryFeatureFlagStore::default())
+}
+
+pub fn router_with_payment_flags<C, F>(wallet_ledger: C, flags: F) -> Router
+where
+    C: WalletLedgerClient + Clone + Send + Sync + 'static,
+    F: PaymentsRealMoneyFlagReader + Clone + Send + Sync + 'static,
+{
     Router::new()
         .route("/v1/me/wallet/balance", get(get_my_wallet_balance::<C>))
         .route("/v1/ledger/entries", get(list_ledger_entries::<C>))
         .with_state(Arc::new(AppState::new(wallet_ledger)))
+        .merge(payments_real_money_router(flags))
 }
 
 pub fn router_with_engine<W, E>(wallet_ledger: W, engine: E) -> Router
@@ -1275,22 +1679,57 @@ where
     W: WalletLedgerClient + Clone + Send + Sync + 'static,
     E: MatchingEngineClient + Clone + Send + Sync + 'static,
 {
+    router_with_engine_and_kyc(wallet_ledger, engine, AllowAllKycTierClient)
+}
+
+pub fn router_with_engine_and_kyc<W, E, K>(wallet_ledger: W, engine: E, kyc: K) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    K: KycTierClient + Clone + Send + Sync + 'static,
+{
+    router_with_engine_and_kyc_and_market_fees(wallet_ledger, engine, kyc, DefaultMarketFeeReader)
+}
+
+pub fn router_with_engine_and_kyc_and_market_fees<W, E, K, M>(
+    wallet_ledger: W,
+    engine: E,
+    kyc: K,
+    market_fees: M,
+) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    K: KycTierClient + Clone + Send + Sync + 'static,
+    M: MarketFeeReader + Send + Sync + 'static,
+{
     Router::new()
         .route(
             "/v1/me/wallet/balance",
-            get(get_my_wallet_balance_with_engine::<W, E>),
+            get(get_my_wallet_balance_with_engine::<W, E, K>),
         )
         .route(
             "/v1/ledger/entries",
-            get(list_ledger_entries_with_engine::<W, E>),
+            get(list_ledger_entries_with_engine::<W, E, K>),
         )
-        .route("/v1/markets/:market_id/orders", post(place_order::<W, E>))
-        .route("/v1/orders/:order_id", delete(cancel_order::<W, E>))
+        .route(
+            "/v1/markets/:market_id/orders",
+            post(place_order::<W, E, K>),
+        )
+        .route("/v1/orders/:order_id", delete(cancel_order::<W, E, K>))
         .route(
             "/v1/markets/:market_id/book",
-            get(get_book_snapshot::<W, E>),
+            get(get_book_snapshot::<W, E, K>),
         )
-        .with_state(Arc::new(AppStateWithEngine::new(wallet_ledger, engine)))
+        .with_state(Arc::new(AppStateWithEngine::new_with_market_fees(
+            wallet_ledger,
+            engine,
+            kyc,
+            market_fees,
+        )))
+        .merge(payments_real_money_router(
+            InMemoryFeatureFlagStore::default(),
+        ))
 }
 
 pub fn router_with_services<W, E, R>(wallet_ledger: W, engine: E, referral: R) -> Router
@@ -1298,6 +1737,70 @@ where
     W: WalletLedgerClient + Clone + Send + Sync + 'static,
     E: MatchingEngineClient + Clone + Send + Sync + 'static,
     R: ReferralClient + Clone + Send + Sync + 'static,
+{
+    router_with_services_and_kyc(wallet_ledger, engine, referral, AllowAllKycTierClient)
+}
+
+pub fn router_with_services_and_kyc<W, E, R, K>(
+    wallet_ledger: W,
+    engine: E,
+    referral: R,
+    kyc: K,
+) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    R: ReferralClient + Clone + Send + Sync + 'static,
+    K: KycTierClient + Clone + Send + Sync + 'static,
+{
+    router_with_services_and_kyc_and_payment_flags(
+        wallet_ledger,
+        engine,
+        referral,
+        kyc,
+        InMemoryFeatureFlagStore::default(),
+    )
+}
+
+pub fn router_with_services_and_kyc_and_payment_flags<W, E, R, K, F>(
+    wallet_ledger: W,
+    engine: E,
+    referral: R,
+    kyc: K,
+    payment_flags: F,
+) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    R: ReferralClient + Clone + Send + Sync + 'static,
+    K: KycTierClient + Clone + Send + Sync + 'static,
+    F: PaymentsRealMoneyFlagReader + Clone + Send + Sync + 'static,
+{
+    router_with_services_and_kyc_and_payment_flags_and_market_fees(
+        wallet_ledger,
+        engine,
+        referral,
+        kyc,
+        payment_flags,
+        DefaultMarketFeeReader,
+    )
+}
+
+pub fn router_with_services_and_kyc_and_payment_flags_and_market_fees<W, E, R, K, F, M>(
+    wallet_ledger: W,
+    engine: E,
+    referral: R,
+    kyc: K,
+    payment_flags: F,
+    market_fees: M,
+) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    R: ReferralClient + Clone + Send + Sync + 'static,
+    K: KycTierClient + Clone + Send + Sync + 'static,
+    F: PaymentsRealMoneyFlagReader + Clone + Send + Sync + 'static,
+    M: MarketFeeReader + Send + Sync + 'static,
 {
     let rg_router = responsible_gaming::responsible_gaming_router(
         wallet_ledger.clone(),
@@ -1308,64 +1811,207 @@ where
     Router::new()
         .route(
             "/v1/me/wallet/balance",
-            get(get_my_wallet_balance_with_services::<W, E, R>),
+            get(get_my_wallet_balance_with_services::<W, E, R, K>),
         )
         .route(
             "/v1/ledger/entries",
-            get(list_ledger_entries_with_services::<W, E, R>),
+            get(list_ledger_entries_with_services::<W, E, R, K>),
         )
         .route(
             "/v1/markets/:market_id/orders",
-            post(place_order_with_services::<W, E, R>),
+            post(place_order_with_services::<W, E, R, K>),
         )
         .route(
             "/v1/orders/:order_id",
-            delete(cancel_order_with_services::<W, E, R>),
+            delete(cancel_order_with_services::<W, E, R, K>),
         )
         .route(
             "/v1/markets/:market_id/book",
-            get(get_book_snapshot_with_services::<W, E, R>),
+            get(get_book_snapshot_with_services::<W, E, R, K>),
         )
         .route(
             "/v1/account/affiliate",
-            get(get_my_affiliate_dashboard::<W, E, R>),
+            get(get_my_affiliate_dashboard::<W, E, R, K>),
         )
         .route(
             "/v1/account/affiliate/referrals",
-            get(list_my_affiliate_referrals::<W, E, R>),
+            get(list_my_affiliate_referrals::<W, E, R, K>),
         )
         .route(
             "/v1/account/affiliate/commission-summary",
-            get(get_my_affiliate_commission_summary::<W, E, R>),
+            get(get_my_affiliate_commission_summary::<W, E, R, K>),
         )
         .route(
             "/api/internal/referrals/capture",
-            post(capture_referral::<W, E, R>),
+            post(capture_referral::<W, E, R, K>),
         )
         .route(
             "/api/internal/admin/affiliates",
-            get(list_admin_affiliates::<W, E, R>).post(create_admin_affiliate::<W, E, R>),
+            get(list_admin_affiliates::<W, E, R, K>).post(create_admin_affiliate::<W, E, R, K>),
         )
         .route(
             "/api/internal/admin/affiliates/:affiliate_id",
-            get(get_admin_affiliate_detail::<W, E, R>)
-                .patch(update_admin_affiliate::<W, E, R>)
-                .delete(archive_admin_affiliate::<W, E, R>),
+            get(get_admin_affiliate_detail::<W, E, R, K>)
+                .patch(update_admin_affiliate::<W, E, R, K>)
+                .delete(archive_admin_affiliate::<W, E, R, K>),
         )
         .route(
             "/api/internal/admin/affiliate-commission-adjustments",
-            get(list_commission_adjustment_reviews::<W, E, R>),
+            get(list_commission_adjustment_reviews::<W, E, R, K>),
         )
         .route(
             "/api/internal/admin/affiliate-payouts",
-            get(list_affiliate_payout_reviews::<W, E, R>),
+            get(list_affiliate_payout_reviews::<W, E, R, K>),
         )
-        .with_state(Arc::new(AppStateWithServices::new(
+        .with_state(Arc::new(AppStateWithServices::new_with_market_fees(
             wallet_ledger,
             engine,
             referral,
+            kyc,
+            market_fees,
         )))
         .merge(rg_router)
+        .merge(payments_real_money_router(payment_flags))
+}
+
+pub fn payments_real_money_router<R>(flags: R) -> Router
+where
+    R: PaymentsRealMoneyFlagReader + Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route(
+            "/v1/payments/real-money-status",
+            get(get_payments_real_money_status::<R>),
+        )
+        .with_state(Arc::new(PaymentsRealMoneyState { flags }))
+}
+
+pub fn market_router<M>(market_service: M) -> Router
+where
+    M: MarketServiceClient + Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route("/v1/markets", get(list_public_markets::<M>))
+        .route("/v1/markets/:market_id", get(get_public_market::<M>))
+        .with_state(Arc::new(market_service))
+}
+
+async fn list_public_markets<M>(
+    State(market_service): State<Arc<M>>,
+    Query(query): Query<MarketListQuery>,
+) -> Result<Json<MarketListResponse>, ApiError>
+where
+    M: MarketServiceClient,
+{
+    market_service
+        .list_markets(query.status.as_deref(), query.category.as_deref())
+        .await
+        .map(Json)
+}
+
+async fn get_public_market<M>(
+    State(market_service): State<Arc<M>>,
+    Path(market_id): Path<String>,
+) -> Result<Json<Market>, ApiError>
+where
+    M: MarketServiceClient,
+{
+    market_service.get_market(&market_id).await.map(Json)
+}
+
+async fn get_payments_real_money_status<R>(
+    State(state): State<Arc<PaymentsRealMoneyState<R>>>,
+) -> Json<PaymentsRealMoneyStatusResponse>
+where
+    R: PaymentsRealMoneyFlagReader,
+{
+    Json(PaymentsRealMoneyStatusResponse {
+        real_money_enabled: state.flags.payments_real_money_enabled(),
+    })
+}
+
+async fn enforce_order_prechecks<W, K>(
+    wallet_ledger: &W,
+    kyc: &K,
+    market_fees: &(dyn MarketFeeReader + Send + Sync),
+    user_id: &str,
+    market_id: &str,
+    request: &PlaceOrderRequest,
+) -> Result<(), ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
+{
+    let tier = kyc.get_kyc_tier(user_id).await.inspect_err(|_| {
+        record_order_precheck_rejected("kyc_lookup_unavailable");
+    })?;
+    if !kyc_tier_allows_trading(&tier) {
+        record_order_precheck_rejected("kyc_tier_insufficient");
+        return Err(ApiError::kyc_tier_insufficient(&tier));
+    }
+
+    let order_kind = parse_order_kind(&request.order_type).inspect_err(|_| {
+        record_order_precheck_rejected("invalid_order_type");
+    })?;
+    let side = parse_order_side(&request.side).inspect_err(|_| {
+        record_order_precheck_rejected("invalid_order_side");
+    })?;
+    let fee_bps_cap = if matches!(side, OrderSide::Bid) {
+        market_fees.fee_bps_cap(market_id).await?
+    } else {
+        DEFAULT_ORDER_FEE_BPS
+    };
+    let required_minor_units = required_minor_units(
+        order_kind,
+        side,
+        i64::from(request.price_pts),
+        request.quantity,
+        fee_bps_cap,
+    );
+    if required_minor_units <= 0 {
+        return Ok(());
+    }
+
+    let balance = wallet_ledger.get_wallet_balance(user_id).await?;
+    if balance.available_minor_units < required_minor_units {
+        record_order_precheck_rejected("insufficient_funds");
+        return Err(ApiError::insufficient_funds(
+            required_minor_units,
+            balance.available_minor_units,
+        ));
+    }
+
+    Ok(())
+}
+
+fn kyc_tier_allows_trading(tier: &str) -> bool {
+    matches!(tier, "TIER_1" | "TIER_2" | "TIER_3")
+}
+
+fn parse_order_kind(value: &str) -> Result<OrderKind, ApiError> {
+    if value.eq_ignore_ascii_case("LIMIT") {
+        return Ok(OrderKind::Limit);
+    }
+    if value.eq_ignore_ascii_case("MARKET") {
+        return Ok(OrderKind::Market);
+    }
+    Err(ApiError::bad_request(
+        "invalid_order_type",
+        "Order type must be LIMIT or MARKET",
+    ))
+}
+
+fn parse_order_side(value: &str) -> Result<OrderSide, ApiError> {
+    if value.eq_ignore_ascii_case("BUY") || value.eq_ignore_ascii_case("BID") {
+        return Ok(OrderSide::Bid);
+    }
+    if value.eq_ignore_ascii_case("SELL") || value.eq_ignore_ascii_case("ASK") {
+        return Ok(OrderSide::Ask);
+    }
+    Err(ApiError::bad_request(
+        "invalid_order_side",
+        "Order side must be BUY or SELL",
+    ))
 }
 
 #[tracing::instrument(fields(service.name = SERVICE_NAME, proph.user_id = %auth.user_id), skip(state))]
@@ -1383,13 +2029,14 @@ where
     Ok(Json(balance))
 }
 
-async fn get_my_wallet_balance_with_engine<W, E>(
-    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+async fn get_my_wallet_balance_with_engine<W, E, K>(
+    State(state): State<Arc<AppStateWithEngine<W, E, K>>>,
     auth: AuthContext,
 ) -> Result<Json<WalletBalance>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let balance = state
         .wallet_ledger
@@ -1415,14 +2062,15 @@ where
     Ok(Json(LedgerEntriesResponse { entries }))
 }
 
-async fn list_ledger_entries_with_engine<W, E>(
-    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+async fn list_ledger_entries_with_engine<W, E, K>(
+    State(state): State<Arc<AppStateWithEngine<W, E, K>>>,
     _auth: AuthContext,
     Query(query): Query<LedgerEntriesQuery>,
 ) -> Result<Json<LedgerEntriesResponse>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let entries = state
@@ -1433,8 +2081,8 @@ where
 }
 
 #[tracing::instrument(fields(service.name = SERVICE_NAME, proph.user_id = %auth.user_id, proph.market_id = %market_id, latency.budget.api_order_submit_e2e = 0.030), skip(state, request))]
-async fn place_order<W, E>(
-    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+async fn place_order<W, E, K>(
+    State(state): State<Arc<AppStateWithEngine<W, E, K>>>,
     auth: AuthContext,
     Path(market_id): Path<String>,
     headers: HeaderMap,
@@ -1443,6 +2091,7 @@ async fn place_order<W, E>(
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let scope = idempotency_scope(
         &headers,
@@ -1461,6 +2110,16 @@ where
         ));
     }
 
+    enforce_order_prechecks(
+        &state.wallet_ledger,
+        &state.kyc,
+        state.market_fees.as_ref(),
+        &auth.user_id,
+        &market_id,
+        &request,
+    )
+    .await?;
+
     let response = state
         .engine
         .place_order(&auth.user_id, &market_id, &request)
@@ -1476,8 +2135,8 @@ where
 }
 
 #[tracing::instrument(fields(service.name = SERVICE_NAME, proph.user_id = %auth.user_id), skip(state))]
-async fn cancel_order<W, E>(
-    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+async fn cancel_order<W, E, K>(
+    State(state): State<Arc<AppStateWithEngine<W, E, K>>>,
     auth: AuthContext,
     Path(order_id): Path<String>,
     headers: HeaderMap,
@@ -1485,6 +2144,7 @@ async fn cancel_order<W, E>(
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let scope = idempotency_scope(&headers, &auth.user_id, "DELETE", "/v1/orders/:order_id")?;
     let request_hash = cancel_request_hash(&auth.user_id, &order_id);
@@ -1510,28 +2170,30 @@ where
 }
 
 #[tracing::instrument(fields(service.name = SERVICE_NAME, proph.market_id = %market_id), skip(state))]
-async fn get_book_snapshot<W, E>(
-    State(state): State<Arc<AppStateWithEngine<W, E>>>,
+async fn get_book_snapshot<W, E, K>(
+    State(state): State<Arc<AppStateWithEngine<W, E, K>>>,
     Path(market_id): Path<String>,
     Query(query): Query<BookSnapshotQuery>,
 ) -> Result<Json<BookSnapshotResponse>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let depth = query.depth.unwrap_or(10).clamp(1, 100);
     let response = state.engine.get_book_snapshot(&market_id, depth).await?;
     Ok(Json(response))
 }
 
-async fn get_my_wallet_balance_with_services<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn get_my_wallet_balance_with_services<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     auth: AuthContext,
 ) -> Result<Json<WalletBalance>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let balance = state
         .wallet_ledger
@@ -1540,8 +2202,8 @@ where
     Ok(Json(balance))
 }
 
-async fn list_ledger_entries_with_services<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn list_ledger_entries_with_services<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     _auth: AuthContext,
     Query(query): Query<LedgerEntriesQuery>,
 ) -> Result<Json<LedgerEntriesResponse>, ApiError>
@@ -1549,6 +2211,7 @@ where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     let entries = state
@@ -1558,8 +2221,8 @@ where
     Ok(Json(LedgerEntriesResponse { entries }))
 }
 
-async fn place_order_with_services<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn place_order_with_services<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     auth: AuthContext,
     Path(market_id): Path<String>,
     headers: HeaderMap,
@@ -1569,6 +2232,7 @@ where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let scope = idempotency_scope(
         &headers,
@@ -1587,6 +2251,16 @@ where
         ));
     }
 
+    enforce_order_prechecks(
+        &state.wallet_ledger,
+        &state.kyc,
+        state.market_fees.as_ref(),
+        &auth.user_id,
+        &market_id,
+        &request,
+    )
+    .await?;
+
     let response = state
         .engine
         .place_order(&auth.user_id, &market_id, &request)
@@ -1601,8 +2275,8 @@ where
     Ok(Json(response))
 }
 
-async fn cancel_order_with_services<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn cancel_order_with_services<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     auth: AuthContext,
     Path(order_id): Path<String>,
     headers: HeaderMap,
@@ -1611,6 +2285,7 @@ where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let scope = idempotency_scope(&headers, &auth.user_id, "DELETE", "/v1/orders/:order_id")?;
     let request_hash = cancel_request_hash(&auth.user_id, &order_id);
@@ -1635,8 +2310,8 @@ where
     Ok(Json(response))
 }
 
-async fn get_book_snapshot_with_services<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn get_book_snapshot_with_services<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     Path(market_id): Path<String>,
     Query(query): Query<BookSnapshotQuery>,
 ) -> Result<Json<BookSnapshotResponse>, ApiError>
@@ -1644,14 +2319,15 @@ where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let depth = query.depth.unwrap_or(10).clamp(1, 100);
     let response = state.engine.get_book_snapshot(&market_id, depth).await?;
     Ok(Json(response))
 }
 
-async fn get_my_affiliate_dashboard<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn get_my_affiliate_dashboard<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     auth: AuthContext,
     Query(query): Query<AffiliateQuery>,
 ) -> Result<Json<AffiliateDashboardResponse>, ApiError>
@@ -1659,6 +2335,7 @@ where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let response = state
@@ -1668,21 +2345,22 @@ where
     Ok(Json(response))
 }
 
-async fn capture_referral<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn capture_referral<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     Json(request): Json<CaptureReferralRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let response = state.referral.capture_referral(request).await?;
     Ok(Json(response))
 }
 
-async fn list_my_affiliate_referrals<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn list_my_affiliate_referrals<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     auth: AuthContext,
     Query(query): Query<AffiliateQuery>,
 ) -> Result<Json<Vec<AffiliateReferralListItem>>, ApiError>
@@ -1690,6 +2368,7 @@ where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let referrals = state
@@ -1699,14 +2378,15 @@ where
     Ok(Json(referrals))
 }
 
-async fn get_my_affiliate_commission_summary<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn get_my_affiliate_commission_summary<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     auth: AuthContext,
 ) -> Result<Json<AffiliateCommissionSummary>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let summary = state
         .referral
@@ -1715,26 +2395,28 @@ where
     Ok(Json(summary))
 }
 
-async fn list_admin_affiliates<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn list_admin_affiliates<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
 ) -> Result<Json<serde_json::Value>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let affiliates = state.referral.list_admin_affiliates().await?;
     Ok(Json(affiliates))
 }
 
-async fn get_admin_affiliate_detail<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn get_admin_affiliate_detail<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     Path(affiliate_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let affiliate = state
         .referral
@@ -1743,8 +2425,8 @@ where
     Ok(Json(affiliate))
 }
 
-async fn create_admin_affiliate<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn create_admin_affiliate<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     headers: HeaderMap,
     Json(request): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError>
@@ -1752,6 +2434,7 @@ where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let context = admin_proxy_context(&headers)?;
     let affiliate = state
@@ -1761,8 +2444,8 @@ where
     Ok((StatusCode::CREATED, Json(affiliate)))
 }
 
-async fn update_admin_affiliate<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn update_admin_affiliate<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     headers: HeaderMap,
     Path(affiliate_id): Path<String>,
     Json(request): Json<serde_json::Value>,
@@ -1771,6 +2454,7 @@ where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let context = admin_proxy_context(&headers)?;
     let affiliate = state
@@ -1780,8 +2464,8 @@ where
     Ok(Json(affiliate))
 }
 
-async fn archive_admin_affiliate<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn archive_admin_affiliate<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     headers: HeaderMap,
     Path(affiliate_id): Path<String>,
     Json(request): Json<serde_json::Value>,
@@ -1790,6 +2474,7 @@ where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let context = admin_proxy_context(&headers)?;
     let affiliate = state
@@ -1820,25 +2505,27 @@ fn header_string(headers: &HeaderMap, name: &'static str) -> Option<String> {
         .map(str::to_owned)
 }
 
-async fn list_commission_adjustment_reviews<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn list_commission_adjustment_reviews<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
 ) -> Result<Json<serde_json::Value>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let reviews = state.referral.list_commission_adjustment_reviews().await?;
     Ok(Json(reviews))
 }
 
-async fn list_affiliate_payout_reviews<W, E, R>(
-    State(state): State<Arc<AppStateWithServices<W, E, R>>>,
+async fn list_affiliate_payout_reviews<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
 ) -> Result<Json<serde_json::Value>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     E: MatchingEngineClient + Send + Sync,
     R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
 {
     let reviews = state.referral.list_affiliate_payout_reviews().await?;
     Ok(Json(reviews))
@@ -1853,12 +2540,20 @@ where
 pub async fn run_http() -> anyhow::Result<()> {
     observability::init_json_tracing(SERVICE_NAME);
     let config = ServiceConfig::from_env(SERVICE_NAME, DEFAULT_PORT)?;
+    let payment_flags = payments_real_money_flags_from_env().await?;
+    let market_service = HttpMarketServiceClient::from_env()?;
     let app = service_stub::router(&config)
-        .merge(router_with_services(
-            HttpWalletLedgerClient::from_env()?,
-            HttpMatchingEngineClient::from_env()?,
-            HttpReferralClient::from_env()?,
-        ))
+        .merge(
+            router_with_services_and_kyc_and_payment_flags_and_market_fees(
+                HttpWalletLedgerClient::from_env()?,
+                HttpMatchingEngineClient::from_env()?,
+                HttpReferralClient::from_env()?,
+                HttpKycServiceClient::from_env()?,
+                payment_flags,
+                market_service.clone(),
+            ),
+        )
+        .merge(market_router(market_service))
         .merge(responsible_gaming::cooldown_router(
             responsible_gaming::InMemoryCooldownStore::default(),
             responsible_gaming::ResponsibleGamingClock::system(),
@@ -1878,6 +2573,55 @@ pub async fn run_http() -> anyhow::Result<()> {
         .await?;
 
     Ok(())
+}
+
+async fn payments_real_money_flags_from_env() -> anyhow::Result<InMemoryFeatureFlagStore> {
+    let flags = InMemoryFeatureFlagStore::default();
+    let Some(database_url) = feature_flags_database_url() else {
+        if is_production_env() {
+            anyhow::bail!("FEATURE_FLAGS_DATABASE_URL or DATABASE_URL is required in production")
+        }
+        return Ok(flags);
+    };
+
+    match load_payments_real_money_enabled_from_pg(&database_url).await {
+        Ok(enabled) => {
+            flags.set_payments_real_money_enabled(enabled);
+            Ok(flags)
+        }
+        Err(error) if is_production_env() => Err(error),
+        Err(error) => {
+            tracing::warn!(%error, "failed to load payments real money feature flag; defaulting disabled");
+            Ok(flags)
+        }
+    }
+}
+
+async fn load_payments_real_money_enabled_from_pg(database_url: &str) -> anyhow::Result<bool> {
+    let pool = sqlx::PgPool::connect(database_url)
+        .await
+        .map_err(|error| anyhow::anyhow!("failed to connect feature flag database: {error}"))?;
+    PgFeatureFlagStore::new(pool)
+        .load_payments_real_money_enabled()
+        .await
+        .map_err(|error| {
+            anyhow::anyhow!("failed to load payments real money feature flag: {error}")
+        })
+}
+
+fn feature_flags_database_url() -> Option<String> {
+    env::var("FEATURE_FLAGS_DATABASE_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            env::var("DATABASE_URL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+}
+
+fn is_production_env() -> bool {
+    env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production")
 }
 
 async fn admin_ops_router() -> anyhow::Result<Router> {
@@ -1907,7 +2651,7 @@ async fn admin_ops_router() -> anyhow::Result<Router> {
                 ),
             ))
         }
-        None if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") => {
+        None if is_production_env() => {
             anyhow::bail!("ADMIN_OPS_DATABASE_URL or DATABASE_URL is required in production")
         }
         None => Ok(admin_ops::internal_admin_router(upstream)),
@@ -1937,9 +2681,12 @@ mod tests {
     use super::{
         AdminProxyContext, AffiliateCommissionSummary, AffiliateDashboardResponse,
         AffiliateReferralListItem, ApiError, AuthVerifier, BookLevel, BookSnapshotResponse,
-        CaptureReferralRequest, LedgerEntry, MatchingEngineClient, OrderActionResponse,
-        PlaceOrderRequest, ReferralClient, WalletBalance, WalletLedgerClient, router,
-        router_with_engine, router_with_services,
+        CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore, KycTierClient,
+        LedgerEntry, Market, MarketListResponse, MarketServiceClient, MatchingEngineClient,
+        OrderActionResponse, PlaceOrderRequest, ReferralClient, SERVICE_NAME, WalletBalance,
+        WalletLedgerClient, market_router, observability, router, router_with_engine,
+        router_with_engine_and_kyc, router_with_engine_and_kyc_and_market_fees,
+        router_with_payment_flags, router_with_services,
     };
 
     #[tokio::test]
@@ -1953,6 +2700,89 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = response_json(response).await;
         assert_eq!(body["error"], json!("unauthorized"));
+    }
+
+    #[tokio::test]
+    async fn payments_real_money_status_is_public_and_disabled_by_default() {
+        let app = router(InMemoryWalletLedgerClient::default());
+
+        let response = app
+            .oneshot(empty_get("/v1/payments/real-money-status"))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(response).await,
+            json!({ "real_money_enabled": false })
+        );
+    }
+
+    #[tokio::test]
+    async fn payments_real_money_status_uses_configured_flag_reader() {
+        let flags = InMemoryFeatureFlagStore::default();
+        flags.set_payments_real_money_enabled(true);
+        let app = router_with_payment_flags(InMemoryWalletLedgerClient::default(), flags);
+
+        let response = app
+            .oneshot(empty_get("/v1/payments/real-money-status"))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(response).await,
+            json!({ "real_money_enabled": true })
+        );
+    }
+
+    #[tokio::test]
+    async fn public_markets_proxy_allows_anonymous_reads_and_forwards_filters() {
+        let client = InMemoryMarketServiceClient::default();
+        let app = market_router(client.clone());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/markets?status=open&category=sports")
+                    .header("x-user-id", "forged-user")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["markets"][0]["id"], json!("mkt-election"));
+        assert_eq!(
+            client.requests(),
+            vec![(Some("open".to_owned()), Some("sports".to_owned()))]
+        );
+    }
+
+    #[tokio::test]
+    async fn public_market_detail_proxy_allows_anonymous_reads() {
+        let client = InMemoryMarketServiceClient::default();
+        let app = market_router(client.clone());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/markets/mkt-election")
+                    .header("x-user-id", "forged-user")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["id"], json!("mkt-election"));
+        assert_eq!(client.detail_requests(), vec!["mkt-election".to_owned()]);
     }
 
     #[tokio::test]
@@ -2069,6 +2899,118 @@ mod tests {
         let body = response_json(second).await;
         assert_eq!(body["error"], json!("idempotency_conflict"));
         assert_eq!(engine.place_requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn place_order_rejects_tier_zero_before_matching_engine() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let kyc = InMemoryKycTierClient::with_tier("TIER_0");
+        let app =
+            router_with_engine_and_kyc(InMemoryWalletLedgerClient::default(), engine.clone(), kyc);
+
+        let response = app
+            .oneshot(order_post("idem-kyc-tier-zero", &order_request_body(3)))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("ERROR_CODE_KYC_TIER_INSUFFICIENT"));
+        assert_eq!(body["required_tier"], json!("TIER_1"));
+        assert_eq!(body["redirect_to"], json!("/kyc/tier-1"));
+        assert_eq!(engine.place_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn place_order_fails_closed_when_kyc_lookup_is_unavailable() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let kyc = InMemoryKycTierClient::unavailable();
+        let app =
+            router_with_engine_and_kyc(InMemoryWalletLedgerClient::default(), engine.clone(), kyc);
+
+        let response = app
+            .oneshot(order_post("idem-kyc-unavailable", &order_request_body(3)))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("ERROR_CODE_KYC_LOOKUP_UNAVAILABLE"));
+        assert_eq!(engine.place_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn place_order_rejects_insufficient_funds_for_buy_before_matching_engine() {
+        let wallet = InMemoryWalletLedgerClient::with_available_minor_units(100);
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine_and_kyc(
+            wallet,
+            engine.clone(),
+            InMemoryKycTierClient::with_tier("TIER_1"),
+        );
+
+        let response = app
+            .oneshot(order_post(
+                "idem-insufficient-funds",
+                &json!({
+                    "side": "buy",
+                    "outcome": "YES",
+                    "type": "LIMIT",
+                    "price_pts": 65,
+                    "quantity": 10,
+                    "time_in_force": "GTC"
+                }),
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::PAYMENT_REQUIRED);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("ERROR_CODE_INSUFFICIENT_FUNDS"));
+        assert_eq!(body["required_minor_units"], json!(663));
+        assert_eq!(body["available_minor_units"], json!(100));
+        assert_eq!(body["redirect_to"], json!("/topup"));
+        assert_eq!(engine.place_requests(), Vec::new());
+        let metrics = observability::prometheus_bootstrap_metrics(SERVICE_NAME);
+        assert!(metrics.contains("order_precheck_rejected_total"));
+        assert!(metrics.contains(r#"reason="insufficient_funds""#));
+    }
+
+    #[tokio::test]
+    async fn place_order_uses_market_fee_bps_cap_for_buy_balance_precheck() {
+        let wallet = InMemoryWalletLedgerClient::with_available_minor_units(665);
+        let engine = InMemoryMatchingEngineClient::default();
+        let market_service = InMemoryMarketServiceClient::with_fee_bps(300);
+        let app = router_with_engine_and_kyc_and_market_fees(
+            wallet,
+            engine.clone(),
+            InMemoryKycTierClient::with_tier("TIER_1"),
+            market_service.clone(),
+        );
+
+        let response = app
+            .oneshot(order_post(
+                "idem-market-fee-bps",
+                &json!({
+                    "side": "buy",
+                    "outcome": "YES",
+                    "type": "LIMIT",
+                    "price_pts": 65,
+                    "quantity": 10,
+                    "time_in_force": "GTC"
+                }),
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::PAYMENT_REQUIRED);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("ERROR_CODE_INSUFFICIENT_FUNDS"));
+        assert_eq!(body["required_minor_units"], json!(669));
+        assert_eq!(body["available_minor_units"], json!(665));
+        assert_eq!(body["redirect_to"], json!("/topup"));
+        assert_eq!(market_service.detail_requests(), vec!["mkt-election"]);
+        assert_eq!(engine.place_requests(), Vec::new());
     }
 
     #[tokio::test]
@@ -2191,6 +3133,9 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(engine.place_requests(), Vec::new());
+        let metrics = observability::prometheus_bootstrap_metrics(SERVICE_NAME);
+        assert!(metrics.contains("gateway_auth_validation_failed_total"));
+        assert!(metrics.contains(r#"reason="missing_bearer""#));
     }
 
     #[tokio::test]
@@ -2233,6 +3178,8 @@ mod tests {
                 },
             )]
         );
+        let metrics = observability::prometheus_bootstrap_metrics(SERVICE_NAME);
+        assert!(metrics.contains("gateway_principal_header_stripped_total"));
     }
 
     #[tokio::test]
@@ -2704,6 +3651,7 @@ mod tests {
     struct InMemoryWalletLedgerClient {
         requested_user_ids: Arc<Mutex<Vec<String>>>,
         entry_requests: Arc<Mutex<Vec<(String, i64)>>>,
+        available_minor_units: Option<i64>,
     }
 
     #[derive(Clone, Default)]
@@ -2719,6 +3667,65 @@ mod tests {
         dashboards: Arc<Mutex<Vec<(String, usize)>>>,
         referral_lists: Arc<Mutex<Vec<(String, usize)>>>,
         summaries: Arc<Mutex<Vec<String>>>,
+    }
+
+    type MarketListRequests = Arc<Mutex<Vec<(Option<String>, Option<String>)>>>;
+
+    #[derive(Clone, Default)]
+    struct InMemoryMarketServiceClient {
+        requests: MarketListRequests,
+        detail_requests: Arc<Mutex<Vec<String>>>,
+        fee_bps: Option<u32>,
+    }
+
+    #[derive(Clone)]
+    struct InMemoryKycTierClient {
+        tier: Option<String>,
+    }
+
+    impl Default for InMemoryKycTierClient {
+        fn default() -> Self {
+            Self {
+                tier: Some("TIER_1".to_owned()),
+            }
+        }
+    }
+
+    impl InMemoryKycTierClient {
+        fn with_tier(tier: &str) -> Self {
+            Self {
+                tier: Some(tier.to_owned()),
+            }
+        }
+
+        fn unavailable() -> Self {
+            Self { tier: None }
+        }
+    }
+
+    impl InMemoryMarketServiceClient {
+        fn with_fee_bps(fee_bps: u32) -> Self {
+            Self {
+                fee_bps: Some(fee_bps),
+                ..Self::default()
+            }
+        }
+
+        fn requests(&self) -> Vec<(Option<String>, Option<String>)> {
+            self.requests
+                .lock()
+                .unwrap_or_else(|error| panic!("market requests lock should not poison: {error}"))
+                .clone()
+        }
+
+        fn detail_requests(&self) -> Vec<String> {
+            self.detail_requests
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("market detail requests lock should not poison: {error}")
+                })
+                .clone()
+        }
     }
 
     impl InMemoryMatchingEngineClient {
@@ -2745,6 +3752,13 @@ mod tests {
     }
 
     impl InMemoryWalletLedgerClient {
+        fn with_available_minor_units(available_minor_units: i64) -> Self {
+            Self {
+                available_minor_units: Some(available_minor_units),
+                ..Self::default()
+            }
+        }
+
         fn requested_user_ids(&self) -> Vec<String> {
             self.requested_user_ids
                 .lock()
@@ -2791,6 +3805,65 @@ mod tests {
     }
 
     #[async_trait::async_trait]
+    impl MarketServiceClient for InMemoryMarketServiceClient {
+        async fn list_markets(
+            &self,
+            status: Option<&str>,
+            category: Option<&str>,
+        ) -> Result<MarketListResponse, ApiError> {
+            self.requests
+                .lock()
+                .unwrap_or_else(|error| panic!("market requests lock should not poison: {error}"))
+                .push((status.map(str::to_owned), category.map(str::to_owned)));
+
+            Ok(MarketListResponse {
+                markets: vec![self.market()],
+            })
+        }
+
+        async fn get_market(&self, market_id: &str) -> Result<Market, ApiError> {
+            self.detail_requests
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("market detail requests lock should not poison: {error}")
+                })
+                .push(market_id.to_owned());
+
+            Ok(self.market())
+        }
+    }
+
+    impl InMemoryMarketServiceClient {
+        fn market(&self) -> Market {
+            Market {
+                fee_bps: Some(self.fee_bps.unwrap_or(DEFAULT_ORDER_FEE_BPS)),
+                ..test_market()
+            }
+        }
+    }
+
+    fn test_market() -> Market {
+        Market {
+            id: "mkt-election".to_owned(),
+            title: "Election market".to_owned(),
+            brief: "Election outcome".to_owned(),
+            category: "sports".to_owned(),
+            status: "open".to_owned(),
+            yes_price_cents: 52,
+            yes_bid_cents: 51,
+            yes_ask_cents: 53,
+            fee_bps: Some(200),
+            volume_24h_points: 1_200,
+            volume_total_points: 12_000,
+            opened_at: "2026-05-20T00:00:00Z".to_owned(),
+            close_at: "2026-06-01T00:00:00Z".to_owned(),
+            oracle_source: "official".to_owned(),
+            resolved_outcome: None,
+            resolved_at: None,
+        }
+    }
+
+    #[async_trait::async_trait]
     impl WalletLedgerClient for InMemoryWalletLedgerClient {
         async fn get_wallet_balance(&self, user_id: &str) -> Result<WalletBalance, ApiError> {
             self.requested_user_ids
@@ -2800,7 +3873,7 @@ mod tests {
 
             Ok(WalletBalance {
                 user_id: user_id.to_owned(),
-                available_minor_units: -10_000,
+                available_minor_units: self.available_minor_units.unwrap_or(-10_000),
                 locked_minor_units: -2_500,
                 frozen_minor_units: -1_000,
             })
@@ -2832,6 +3905,15 @@ mod tests {
             _idempotency_key: &str,
         ) -> Result<(), ApiError> {
             Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl KycTierClient for InMemoryKycTierClient {
+        async fn get_kyc_tier(&self, _user_id: &str) -> Result<String, ApiError> {
+            self.tier
+                .clone()
+                .ok_or_else(|| ApiError::kyc_lookup_unavailable("KYC service unavailable"))
         }
     }
 

@@ -622,6 +622,16 @@
       }
     }
   },
+  "topup": {
+    "mvpAssistance": {
+      "label": "Nạp điểm có hỗ trợ",
+      "heading": "Hiện tại việc nạp điểm do đội vận hành hỗ trợ xử lý.",
+      "body": "Các kênh thanh toán thật sẽ mở sau khi LG-2 đạt yêu cầu. Trước thời điểm đó, điểm được điều chỉnh qua quy trình vận hành được phê duyệt; hãy liên hệ hỗ trợ cùng thông tin tài khoản và mục đích sử dụng.",
+      "flagUnavailable": "Hiện chưa đọc được trạng thái cờ thanh toán. Để tránh bật nhầm thanh toán tiền thật, trang này vẫn ở chế độ hỗ trợ.",
+      "ctaSupport": "Liên hệ hỗ trợ",
+      "ctaFaq": "Đọc FAQ nạp điểm"
+    }
+  },
   "kyc": {
     "privacyNotice": {
       "metadata": {

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import { TrendDown, TrendUp } from "@phosphor-icons/react";
-import { placeMarketOrder } from "@/lib/engine-api";
+import { orderRejectionRedirectPath, placeMarketOrder } from "@/lib/engine-api";
+import type { JourneyState } from "@/lib/journey-state";
 import type { Market } from "@/lib/mock-markets";
 
 /*
@@ -19,11 +21,19 @@ import type { Market } from "@/lib/mock-markets";
  *                     bottom sheet. Same form instance, CSS-positioned only.
  */
 
-export function TradePanel({ market }: { market: Market }) {
+export function TradePanel({
+  market,
+  journeyState,
+}: {
+  market: Market;
+  journeyState?: JourneyState;
+}) {
   const tValidation = useTranslations("tradePanel.validation");
   const tFlash = useTranslations("tradePanel");
   const tSummary = useTranslations("tradePanel.summary");
   const tPanel = useTranslations("tradePanel.panel");
+  const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
 
   const tradeSchema = z.object({
     side: z.enum(["YES", "NO"]),
@@ -48,6 +58,10 @@ export function TradePanel({ market }: { market: Market }) {
   } | null>(null);
 
   const isTradable = market.status === "open" || market.status === "closing";
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const {
     register,
@@ -80,6 +94,17 @@ export function TradePanel({ market }: { market: Market }) {
     side === "YES" ? market.yesAskCents : 100 - market.yesBidCents;
 
   const onSubmit = async (values: TradeOutput) => {
+    const returnTo = currentReturnToPath(market.id);
+    const softGateRedirect = orderSoftGateRedirectPath(
+      journeyState,
+      values,
+      returnTo,
+    );
+    if (softGateRedirect) {
+      router.push(softGateRedirect);
+      return;
+    }
+
     try {
       const order = await placeMarketOrder({
         marketId: market.id,
@@ -103,6 +128,12 @@ export function TradePanel({ market }: { market: Market }) {
       setSheetOpen(false);
       setTimeout(() => setFlash(null), 5000);
     } catch (error) {
+      const redirectPath = orderRejectionRedirectPath(error, returnTo);
+      if (redirectPath) {
+        router.push(redirectPath);
+        return;
+      }
+
       setFlash({
         kind: "error",
         message: tFlash("flashRejected", {
@@ -164,6 +195,8 @@ export function TradePanel({ market }: { market: Market }) {
        */}
       <aside
         aria-label={tPanel("ariaLabel")}
+        data-hydrated={hydrated ? "true" : "false"}
+        data-journey-status={journeyState?.status ?? "unknown"}
         className={
           "fixed inset-x-0 bottom-0 z-50 max-h-[88vh] overflow-y-auto rounded-t-proph-lg border-t border-proph-hairline bg-proph-canvas p-6 transition-transform duration-300 " +
           (sheetOpen ? "translate-y-0" : "translate-y-full") +
@@ -318,6 +351,39 @@ export function TradePanel({ market }: { market: Market }) {
       </aside>
     </>
   );
+}
+
+function currentReturnToPath(marketId: string): string {
+  if (typeof window === "undefined") {
+    return `/markets/${encodeURIComponent(marketId)}`;
+  }
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+function orderSoftGateRedirectPath(
+  journeyState: JourneyState | undefined,
+  values: { priceCents: number; quantity: number },
+  returnTo: string,
+): string | null {
+  const encodedReturnTo = encodeURIComponent(returnTo);
+  if (!journeyState || journeyState.status === "visitor") {
+    return `/auth/sign-in?return_to=${encodedReturnTo}`;
+  }
+  if ((journeyState.kycTier ?? 0) < 1) {
+    return `/kyc/tier-1?return_to=${encodedReturnTo}`;
+  }
+
+  const requiredMinorUnits = Math.ceil(
+    values.priceCents * values.quantity * 1.02,
+  );
+  if (
+    journeyState.balanceMinor !== undefined &&
+    journeyState.balanceMinor < requiredMinorUnits
+  ) {
+    return `/topup?return_to=${encodedReturnTo}`;
+  }
+
+  return null;
 }
 
 interface FormFieldProps {

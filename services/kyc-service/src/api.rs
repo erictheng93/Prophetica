@@ -103,6 +103,11 @@ pub struct KycStatusResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct KycTierResponse {
+    pub tier: KycTier,
+}
+
+#[derive(Debug, Serialize)]
 pub struct TierOneVerificationResponse {
     pub user_id: String,
     pub target_tier: KycTier,
@@ -217,6 +222,10 @@ where
     Router::new()
         .route("/api/v1/kyc/users/:user_id/status", get(get_status::<S>))
         .route(
+            "/internal/kyc/users/:user_id/tier",
+            get(get_internal_tier::<S>),
+        )
+        .route(
             "/api/v1/kyc/users/:user_id/tier-1",
             post(verify_tier_one::<S>),
         )
@@ -268,6 +277,24 @@ where
         record.as_ref(),
         tier_one_record.as_ref(),
     )))
+}
+
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.user_id = %user_id), skip(state))]
+async fn get_internal_tier<S>(
+    State(state): State<ApiState<S>>,
+    Path(user_id): Path<String>,
+) -> Result<Json<KycTierResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: KycStore,
+{
+    let record = state
+        .store
+        .current_record(&user_id)
+        .await
+        .map_err(store_error)?;
+    Ok(Json(KycTierResponse {
+        tier: record.as_ref().map_or(KycTier::Tier0, |record| record.tier),
+    }))
 }
 
 async fn pending_member_cases<S>(

@@ -622,6 +622,16 @@
       }
     }
   },
+  "topup": {
+    "mvpAssistance": {
+      "label": "Assisted top-up",
+      "heading": "Top-ups are currently handled by the operations team.",
+      "body": "Real payment rails will open after LG-2 passes. Until then, points are adjusted through an authorized operations process; contact support with your account details and intended use.",
+      "flagUnavailable": "The payment flag is currently unavailable. To avoid enabling real-money payments by mistake, this page is staying in assisted mode.",
+      "ctaSupport": "Contact support",
+      "ctaFaq": "Read top-up FAQ"
+    }
+  },
   "kyc": {
     "privacyNotice": {
       "metadata": {

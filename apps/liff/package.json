@@ -10,7 +10,7 @@
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lint": "tsc --project tsconfig.lint.json",
-    "test": "node -e \"console.log('liff bootstrap test ok')\""
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@cloudflare/kumo": "latest",

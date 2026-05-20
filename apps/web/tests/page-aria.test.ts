@@ -341,3 +341,66 @@ test("trade panel has a concrete default side for hydrated submission", () => {
 
   assert.match(source, /value="YES"[\s\S]*defaultChecked/);
 });
+
+test("trade panel redirects SPEC-023 order gate rejections with return_to", () => {
+  const source = readFileSync(
+    join(process.cwd(), "components/trade-panel.tsx"),
+    "utf8",
+  );
+
+  assert.match(source, /useRouter/);
+  assert.match(source, /orderRejectionRedirectPath/);
+  assert.match(source, /router\.push\(redirectPath\)/);
+  assert.match(source, /window\.location\.pathname/);
+});
+
+test("trade panel performs SPEC-023 pre-submit journey soft gates", () => {
+  const panelSource = readFileSync(
+    join(process.cwd(), "components/trade-panel.tsx"),
+    "utf8",
+  );
+  const pageSource = readFileSync(
+    join(process.cwd(), "app/markets/[id]/page.tsx"),
+    "utf8",
+  );
+
+  assert.match(
+    pageSource,
+    /import \{ getJourneyState \} from "@\/lib\/journey-state";/,
+  );
+  assert.match(pageSource, /getJourneyState\(\)/);
+  assert.match(
+    pageSource,
+    /<TradePanel market=\{market\} journeyState=\{journeyState\} \/>/,
+  );
+  assert.match(panelSource, /journeyState\?: JourneyState/);
+  assert.match(panelSource, /orderSoftGateRedirectPath/);
+  assert.match(panelSource, /journeyState\.status === "visitor"/);
+  assert.match(panelSource, /journeyState\.kycTier/);
+  assert.match(panelSource, /journeyState\.balanceMinor/);
+  assert.match(panelSource, /\/auth\/sign-in\?return_to=/);
+  assert.match(panelSource, /\/kyc\/tier-1\?return_to=/);
+  assert.match(panelSource, /\/topup\?return_to=/);
+});
+
+test("topup page hides real payment controls when LG-2 flag is disabled", () => {
+  const source = readFileSync(
+    join(process.cwd(), "app/topup/page.tsx"),
+    "utf8",
+  );
+
+  assert.match(source, /fetchPaymentsRealMoneyStatus/);
+  assert.match(source, /safeReturnTo\(rawReturnTo\)/);
+  assert.match(source, /paymentsStatus\.realMoneyEnabled/);
+  assert.match(source, /<ServiceAssistedTopup/);
+  assert.match(source, /returnTo=\{returnTo\}/);
+  assert.match(
+    source,
+    /<AmountSection[\s\S]*<ChannelSection[\s\S]*<ConfirmSection/,
+  );
+  assert.match(source, /mvpAssistance/);
+  assert.match(
+    source,
+    /\/support\/contact\?topic=topup&return_to=\$\{encodeURIComponent\(returnTo\)\}/,
+  );
+});

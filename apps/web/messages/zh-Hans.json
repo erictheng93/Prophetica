@@ -622,6 +622,16 @@
       }
     }
   },
+  "topup": {
+    "mvpAssistance": {
+      "label": "服务协助充值",
+      "heading": "目前充值由运营后台协助处理。",
+      "body": "真实支付通路会在 LG-2 通过后开放。在此之前，站内点数由授权运营流程协助调整；请联系客服并提供账户资讯与用途说明。",
+      "flagUnavailable": "目前无法读取支付开关状态；为避免误开真实金流，本页已维持服务协助模式。",
+      "ctaSupport": "联系客服",
+      "ctaFaq": "查看充值说明"
+    }
+  },
   "kyc": {
     "privacyNotice": {
       "metadata": {

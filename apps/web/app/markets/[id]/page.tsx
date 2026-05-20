@@ -13,7 +13,11 @@ import {
   type Market,
   type RecentTrade,
 } from "@/lib/mock-markets";
-import { fetchOrderBookSnapshot, type EngineOrderBookSnapshot } from "@/lib/engine-api";
+import {
+  fetchOrderBookSnapshot,
+  type EngineOrderBookSnapshot,
+} from "@/lib/engine-api";
+import { getJourneyState } from "@/lib/journey-state";
 import { fetchMarketById } from "@/lib/market-api";
 
 interface PageProps {
@@ -21,7 +25,9 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
   const { id } = await params;
   const [{ market }, t] = await Promise.all([
     fetchMarketById(id),
@@ -84,7 +90,9 @@ async function ChartSection({ market }: { market: Market }) {
         <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
           <header className="mb-4 flex items-baseline justify-between">
             <div>
-              <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">{t("title")}</h2>
+              <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">
+                {t("title")}
+              </h2>
               <p className="mt-1 font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
                 {t("subtitle")}
               </p>
@@ -114,14 +122,19 @@ async function ResolvedBanner({ market }: { market: Market }) {
         {market.resolvedOutcome}
       </div>
       <p className="mt-3 font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
-        {t("body", { date: formatCloseAt(market.resolvedAt ?? market.closeAt) })}
+        {t("body", {
+          date: formatCloseAt(market.resolvedAt ?? market.closeAt),
+        })}
       </p>
     </article>
   );
 }
 
 async function OpenMarketBody({ market }: { market: Market }) {
-  const book = await fetchOrderBookSnapshot({ marketId: market.id });
+  const [book, journeyState] = await Promise.all([
+    fetchOrderBookSnapshot({ marketId: market.id }),
+    getJourneyState(),
+  ]);
   const trades = getRecentTrades(market);
 
   return (
@@ -132,7 +145,7 @@ async function OpenMarketBody({ market }: { market: Market }) {
             <OrderBookTable book={book} />
             <RecentTradesTable trades={trades} />
           </div>
-          <TradePanel market={market} />
+          <TradePanel market={market} journeyState={journeyState} />
         </div>
       </div>
     </section>
@@ -144,7 +157,9 @@ async function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
   return (
     <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
       <header className="border-b border-proph-divider-soft px-6 py-4">
-        <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">{t("title")}</h2>
+        <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">
+          {t("title")}
+        </h2>
         <p className="mt-1 font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48">
           {t("subtitle")}
         </p>
@@ -164,9 +179,14 @@ async function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
             </thead>
             <tbody>
               {book.bids.map((row) => (
-                <tr key={`bid-${row.priceCents}`} className="border-b border-proph-divider-soft last:border-0">
+                <tr
+                  key={`bid-${row.priceCents}`}
+                  className="border-b border-proph-divider-soft last:border-0"
+                >
                   <td className="py-2 text-proph-primary">{row.priceCents}¢</td>
-                  <td className="py-2 text-right text-proph-ink-muted-80">{row.qty.toLocaleString()}</td>
+                  <td className="py-2 text-right text-proph-ink-muted-80">
+                    {row.qty.toLocaleString()}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -186,9 +206,14 @@ async function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
             </thead>
             <tbody>
               {book.asks.map((row) => (
-                <tr key={`ask-${row.priceCents}`} className="border-b border-proph-divider-soft last:border-0">
+                <tr
+                  key={`ask-${row.priceCents}`}
+                  className="border-b border-proph-divider-soft last:border-0"
+                >
                   <td className="py-2 text-proph-ink">{row.priceCents}¢</td>
-                  <td className="py-2 text-right text-proph-ink-muted-80">{row.qty.toLocaleString()}</td>
+                  <td className="py-2 text-right text-proph-ink-muted-80">
+                    {row.qty.toLocaleString()}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -204,7 +229,9 @@ async function RecentTradesTable({ trades }: { trades: RecentTrade[] }) {
   return (
     <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
       <header className="border-b border-proph-divider-soft px-6 py-4">
-        <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">{t("title")}</h2>
+        <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">
+          {t("title")}
+        </h2>
       </header>
       <table className="w-full font-mono text-[14px] tabular-nums">
         <thead>
@@ -217,13 +244,27 @@ async function RecentTradesTable({ trades }: { trades: RecentTrade[] }) {
         </thead>
         <tbody>
           {trades.map((trade, i) => (
-            <tr key={i} className="border-b border-proph-divider-soft last:border-0">
+            <tr
+              key={i}
+              className="border-b border-proph-divider-soft last:border-0"
+            >
               <td className="px-6 py-2 text-proph-ink-muted-48">{trade.ago}</td>
-              <td className={"px-6 py-2 " + (trade.side === "YES" ? "text-proph-primary" : "text-proph-ink")}>
+              <td
+                className={
+                  "px-6 py-2 " +
+                  (trade.side === "YES"
+                    ? "text-proph-primary"
+                    : "text-proph-ink")
+                }
+              >
                 {trade.side}
               </td>
-              <td className="px-6 py-2 text-right text-proph-ink">{trade.priceCents}¢</td>
-              <td className="px-6 py-2 text-right text-proph-ink-muted-80">{trade.qty}</td>
+              <td className="px-6 py-2 text-right text-proph-ink">
+                {trade.priceCents}¢
+              </td>
+              <td className="px-6 py-2 text-right text-proph-ink-muted-80">
+                {trade.qty}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -237,18 +278,32 @@ async function MarketInfoBlock({ market }: { market: Market }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mb-8 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">{t("heading")}</h2>
+        <h2 className="mb-8 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
+          {t("heading")}
+        </h2>
         <dl className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
           <Field label={t("fields.oracleSource")} value={market.oracleSource} />
-          <Field label={t("fields.openedAt")} value={formatCloseAt(market.openedAt)} />
-          <Field label={t("fields.closeAt")} value={formatCloseAt(market.closeAt)} />
-          <Field label={t("fields.volumeTotal")} value={formatPoints(market.volumeTotalPoints)} />
+          <Field
+            label={t("fields.openedAt")}
+            value={formatCloseAt(market.openedAt)}
+          />
+          <Field
+            label={t("fields.closeAt")}
+            value={formatCloseAt(market.closeAt)}
+          />
+          <Field
+            label={t("fields.volumeTotal")}
+            value={formatPoints(market.volumeTotalPoints)}
+          />
         </dl>
 
         <p className="mt-8 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-48">
           {t.rich("complianceNote", {
             disputes: (chunks) => (
-              <a href="/support/disputes" className="text-proph-primary underline">
+              <a
+                href="/support/disputes"
+                className="text-proph-primary underline"
+              >
                 {chunks}
               </a>
             ),

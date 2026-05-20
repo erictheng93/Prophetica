@@ -4,11 +4,16 @@ use std::{
 };
 
 pub const ENGINE_HALTED_FLAG: &str = "engine.halted";
+pub const PAYMENTS_REAL_MONEY_ENABLED_FLAG: &str = "payments.real_money_enabled";
 pub const DEFAULT_ENGINE_HALT_POLL_INTERVAL: Duration = Duration::from_secs(30);
 pub const PG_SELECT_ENGINE_HALTED_SQL: &str = "\
 SELECT enabled, subject_id, reason, updated_by \
 FROM feature_flags \
 WHERE key = 'engine.halted'";
+pub const PG_SELECT_PAYMENTS_REAL_MONEY_ENABLED_SQL: &str = "\
+SELECT enabled \
+FROM feature_flags \
+WHERE key = 'payments.real_money_enabled'";
 pub const PG_HALT_ENGINE_SQL: &str = "\
 INSERT INTO feature_flags (key, enabled, subject_id, reason, updated_by, updated_at) \
 VALUES ('engine.halted', TRUE, $1, $2, $3, now()) \
@@ -81,6 +86,10 @@ pub trait EngineHaltFlagWriter {
     fn release_engine_halt(&self, updated_by: &str);
 }
 
+pub trait PaymentsRealMoneyFlagReader {
+    fn payments_real_money_enabled(&self) -> bool;
+}
+
 #[derive(Debug, Clone)]
 pub struct EngineHaltFlagPoller<R> {
     reader: R,
@@ -122,28 +131,50 @@ where
 
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryFeatureFlagStore {
-    state: Arc<Mutex<HaltFlagSnapshot>>,
+    state: Arc<Mutex<FeatureFlagState>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct FeatureFlagState {
+    engine_halt: HaltFlagSnapshot,
+    payments_real_money_enabled: bool,
 }
 
 impl EngineHaltFlagReader for InMemoryFeatureFlagStore {
     fn engine_halt_snapshot(&self) -> HaltFlagSnapshot {
         self.state.lock().map_or_else(
-            |poisoned| poisoned.into_inner().clone(),
-            |snapshot| snapshot.clone(),
+            |poisoned| poisoned.into_inner().engine_halt.clone(),
+            |state| state.engine_halt.clone(),
         )
     }
 }
 
 impl EngineHaltFlagWriter for InMemoryFeatureFlagStore {
     fn halt_engine(&self, subject_id: &str, reason: &str, updated_by: &str) {
-        if let Ok(mut snapshot) = self.state.lock() {
-            *snapshot = HaltFlagSnapshot::enabled(subject_id, reason, updated_by);
+        if let Ok(mut state) = self.state.lock() {
+            state.engine_halt = HaltFlagSnapshot::enabled(subject_id, reason, updated_by);
         }
     }
 
     fn release_engine_halt(&self, updated_by: &str) {
-        if let Ok(mut snapshot) = self.state.lock() {
-            *snapshot = HaltFlagSnapshot::disabled(updated_by);
+        if let Ok(mut state) = self.state.lock() {
+            state.engine_halt = HaltFlagSnapshot::disabled(updated_by);
+        }
+    }
+}
+
+impl PaymentsRealMoneyFlagReader for InMemoryFeatureFlagStore {
+    fn payments_real_money_enabled(&self) -> bool {
+        self.state
+            .lock()
+            .is_ok_and(|state| state.payments_real_money_enabled)
+    }
+}
+
+impl InMemoryFeatureFlagStore {
+    pub fn set_payments_real_money_enabled(&self, enabled: bool) {
+        if let Ok(mut state) = self.state.lock() {
+            state.payments_real_money_enabled = enabled;
         }
     }
 }
@@ -181,6 +212,19 @@ impl PgFeatureFlagStore {
                 updated_by,
             },
         ))
+    }
+
+    /// Loads the current `payments.real_money_enabled` row from Postgres.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`sqlx::Error`] when the query fails.
+    pub async fn load_payments_real_money_enabled(&self) -> Result<bool, sqlx::Error> {
+        let row = sqlx::query_as::<_, (bool,)>(PG_SELECT_PAYMENTS_REAL_MONEY_ENABLED_SQL)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.is_some_and(|(enabled,)| enabled))
     }
 
     /// Sets `engine.halted=true` in Postgres.

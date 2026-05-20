@@ -7,8 +7,10 @@ import { ProphFooter, ProphSubNav, ProphTile } from "@prophetica/ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { authenticateWithPassword } from "@/lib/auth";
 import { REFERRAL_ATTRIBUTION_COOKIE } from "@/lib/referral-attribution";
+import { safeReturnTo } from "@/lib/safe-return-to";
 import { setViewerSession } from "@/lib/session";
 import { registerPublicAccount } from "@/lib/signup";
+import { recordJourneyRedirect } from "@/lib/telemetry/journey-metrics";
 import {
   Brand,
   FooterLegalRow,
@@ -22,6 +24,7 @@ interface PageProps {
     mode?: string | string[];
     login?: string | string[];
     signup?: string | string[];
+    return_to?: string | string[];
   }>;
 }
 
@@ -49,6 +52,10 @@ export default async function AuthPage({ searchParams }: PageProps) {
   const mode: "signin" | "signup" = raw === "signup" ? "signup" : "signin";
   const signinStatus = signinStatusFromParam(params.login);
   const signupStatus = signupStatusFromParam(params.signup);
+  const rawReturnTo = Array.isArray(params.return_to)
+    ? params.return_to[0]
+    : params.return_to;
+  const returnTo = safeReturnTo(rawReturnTo);
 
   return (
     <main className="min-h-screen bg-proph-canvas">
@@ -75,12 +82,12 @@ export default async function AuthPage({ searchParams }: PageProps) {
         tagline={t(`hero.${mode}.tagline`)}
       />
 
-      <ModeToggle mode={mode} t={t} />
+      <ModeToggle mode={mode} returnTo={returnTo} t={t} />
 
       {mode === "signup" ? (
-        <SignupForm t={t} status={signupStatus} />
+        <SignupForm t={t} status={signupStatus} returnTo={returnTo} />
       ) : (
-        <SigninForm t={t} status={signinStatus} />
+        <SigninForm t={t} status={signinStatus} returnTo={returnTo} />
       )}
 
       <ProphFooter columns={sectionFooterColumns} legal={<FooterLegalRow />} />
@@ -93,10 +100,11 @@ async function submitSigninAction(formData: FormData) {
 
   const identifier = readFormValue(formData, "identifier");
   const password = readFormValue(formData, "password");
+  const returnTo = safeReturnTo(readFormValue(formData, "return_to"));
   const remember = formData.get("remember") === "on";
 
   if (!identifier.trim() || !password) {
-    redirect("/auth/sign-in?login=missing");
+    redirect(authPath({ login: "missing", returnTo }));
   }
 
   const result = await authenticateWithPassword(
@@ -116,17 +124,18 @@ async function submitSigninAction(formData: FormData) {
       remember,
       upstreamSessionToken: result.sessionToken,
     });
-    redirect("/portfolio");
+    recordJourneyRedirect("/auth/sign-in", returnTo);
+    redirect(returnTo);
   }
 
   if (
     result.status === "invalid_identifier" ||
     result.status === "invalid_credentials"
   ) {
-    redirect("/auth/sign-in?login=invalid");
+    redirect(authPath({ login: "invalid", returnTo }));
   }
 
-  redirect("/auth/sign-in?login=unavailable");
+  redirect(authPath({ login: "unavailable", returnTo }));
 }
 
 async function loginEventForwardHeaders(): Promise<Headers> {
@@ -159,12 +168,13 @@ async function submitSignupAction(formData: FormData) {
   const phone = readFormValue(formData, "phone");
   const password = readFormValue(formData, "password");
   const displayName = readFormValue(formData, "displayName");
+  const returnTo = safeReturnTo(readFormValue(formData, "return_to"));
   const referralCode = (await cookies()).get(
     REFERRAL_ATTRIBUTION_COOKIE,
   )?.value;
 
   if (!email.trim() || !phone.trim() || !password || !displayName.trim()) {
-    redirect("/auth/sign-in?mode=signup&signup=missing");
+    redirect(authPath({ mode: "signup", signup: "missing", returnTo }));
   }
 
   const result = await registerPublicAccount({
@@ -176,17 +186,28 @@ async function submitSignupAction(formData: FormData) {
   });
 
   switch (result.status) {
-    case "registered":
-      redirect("/auth/sign-in?signup=registered");
+    case "registered": {
+      const nextPath = authPath({ signup: "registered", returnTo });
+      recordJourneyRedirect("/auth/sign-in", nextPath);
+      redirect(nextPath);
+    }
     case "invalid":
-      redirect("/auth/sign-in?mode=signup&signup=invalid");
+      redirect(authPath({ mode: "signup", signup: "invalid", returnTo }));
     case "conflict":
-      redirect("/auth/sign-in?mode=signup&signup=conflict");
+      redirect(authPath({ mode: "signup", signup: "conflict", returnTo }));
     case "unavailable":
-      redirect("/auth/sign-in?mode=signup&signup=unavailable");
+      redirect(authPath({ mode: "signup", signup: "unavailable", returnTo }));
   }
 }
-function ModeToggle({ mode, t }: { mode: "signin" | "signup"; t: AuthCopy }) {
+function ModeToggle({
+  mode,
+  returnTo,
+  t,
+}: {
+  mode: "signin" | "signup";
+  returnTo: string;
+  t: AuthCopy;
+}) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-6 md:px-10">
@@ -198,7 +219,7 @@ function ModeToggle({ mode, t }: { mode: "signin" | "signup"; t: AuthCopy }) {
           <a
             role="tab"
             aria-selected={mode === "signin"}
-            href="/auth/sign-in"
+            href={authPath({ returnTo })}
             className={
               "inline-flex items-center rounded-proph-pill px-5 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors " +
               (mode === "signin"
@@ -211,7 +232,7 @@ function ModeToggle({ mode, t }: { mode: "signin" | "signup"; t: AuthCopy }) {
           <a
             role="tab"
             aria-selected={mode === "signup"}
-            href="/auth/sign-in?mode=signup"
+            href={authPath({ mode: "signup", returnTo })}
             className={
               "inline-flex items-center rounded-proph-pill px-5 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors " +
               (mode === "signup"
@@ -227,7 +248,15 @@ function ModeToggle({ mode, t }: { mode: "signin" | "signup"; t: AuthCopy }) {
   );
 }
 
-function SigninForm({ t, status }: { t: AuthCopy; status?: SigninStatusKey }) {
+function SigninForm({
+  t,
+  status,
+  returnTo,
+}: {
+  t: AuthCopy;
+  status?: SigninStatusKey;
+  returnTo: string;
+}) {
   const statusBannerId = status ? `signin-status-${status}` : undefined;
   const passwordDescribedBy = status === "invalid" ? statusBannerId : undefined;
 
@@ -235,6 +264,7 @@ function SigninForm({ t, status }: { t: AuthCopy; status?: SigninStatusKey }) {
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
         <form action={submitSigninAction} className="space-y-6">
+          <input type="hidden" name="return_to" value={returnTo} />
           {status && statusBannerId ? (
             <SigninStatusBanner id={statusBannerId} t={t} status={status} />
           ) : null}
@@ -310,7 +340,7 @@ function SigninForm({ t, status }: { t: AuthCopy; status?: SigninStatusKey }) {
             {t.rich("signin.signupPrompt", {
               signupLink: (chunks) => (
                 <a
-                  href="/auth/sign-in?mode=signup"
+                  href={authPath({ mode: "signup", returnTo })}
                   className="text-proph-primary underline"
                 >
                   {chunks}
@@ -345,7 +375,15 @@ function SigninStatusBanner({
   );
 }
 
-function SignupForm({ t, status }: { t: AuthCopy; status?: SignupStatusKey }) {
+function SignupForm({
+  t,
+  status,
+  returnTo,
+}: {
+  t: AuthCopy;
+  status?: SignupStatusKey;
+  returnTo: string;
+}) {
   const statusBannerId = status ? `signup-status-${status}` : undefined;
 
   return (
@@ -355,6 +393,7 @@ function SignupForm({ t, status }: { t: AuthCopy; status?: SignupStatusKey }) {
           action={submitSignupAction}
           className="space-y-6 rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 md:p-8"
         >
+          <input type="hidden" name="return_to" value={returnTo} />
           <p className="font-text text-[12px] uppercase leading-none tracking-[0] text-proph-primary">
             {t("signup.form.eyebrow")}
           </p>
@@ -441,7 +480,7 @@ function SignupForm({ t, status }: { t: AuthCopy; status?: SignupStatusKey }) {
               {t("signup.form.submit")}
             </button>
             <a
-              href="/auth/sign-in"
+              href={authPath({ returnTo })}
               className="inline-flex min-h-11 select-none items-center justify-center rounded-proph-pill border border-proph-hairline bg-proph-canvas px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80 transition-colors hover:border-proph-primary hover:text-proph-ink"
             >
               {t("signup.form.signinCta")}
@@ -508,4 +547,33 @@ function signupStatusFromParam(
 function readFormValue(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === "string" ? value : "";
+}
+
+function authPath({
+  mode,
+  login,
+  signup,
+  returnTo,
+}: {
+  mode?: "signup";
+  login?: SigninStatusKey;
+  signup?: SignupStatusKey | "registered";
+  returnTo?: string;
+}): string {
+  const params = new URLSearchParams();
+  if (mode) {
+    params.set("mode", mode);
+  }
+  if (login) {
+    params.set("login", login);
+  }
+  if (signup) {
+    params.set("signup", signup);
+  }
+  const safe = safeReturnTo(returnTo);
+  if (safe !== "/portfolio") {
+    params.set("return_to", safe);
+  }
+  const query = params.toString();
+  return query ? `/auth/sign-in?${query}` : "/auth/sign-in";
 }

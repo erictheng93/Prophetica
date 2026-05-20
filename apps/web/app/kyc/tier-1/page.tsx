@@ -3,6 +3,8 @@ import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { ProphTile } from "@prophetica/ui";
 import { submitTierOneVerification } from "@/lib/kyc-api";
+import { safeReturnTo } from "@/lib/safe-return-to";
+import { recordJourneyRedirect } from "@/lib/telemetry/journey-metrics";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("kyc.tier1.metadata");
@@ -31,9 +33,17 @@ const countries: CountrySpec[] = [
 
 type Tier1Copy = Awaited<ReturnType<typeof getTranslations<"kyc.tier1">>>;
 
+interface PageProps {
+  searchParams?: Promise<{ return_to?: string | string[] }>;
+}
+
 async function submitTierOneAction(formData: FormData) {
   "use server";
 
+  const returnTo = safeReturnTo(
+    readFormValue(formData, "return_to"),
+    "/kyc/status",
+  );
   await submitTierOneVerification({
     legalName: readFormValue(formData, "legalName"),
     birthday: readFormValue(formData, "birthday"),
@@ -41,7 +51,8 @@ async function submitTierOneAction(formData: FormData) {
     documentId: readFormValue(formData, "documentId"),
     consent: formData.get("consent") === "on",
   });
-  redirect("/kyc/status");
+  recordJourneyRedirect("/kyc/tier-1", returnTo);
+  redirect(returnTo);
 }
 
 function PrivacyReminder({ t }: { t: Tier1Copy }) {
@@ -125,7 +136,7 @@ function CountryGuide({ t }: { t: Tier1Copy }) {
   );
 }
 
-function Tier1Form({ t }: { t: Tier1Copy }) {
+function Tier1Form({ t, returnTo }: { t: Tier1Copy; returnTo: string }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
@@ -145,6 +156,7 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
         </header>
 
         <form action={submitTierOneAction}>
+          <input type="hidden" name="return_to" value={returnTo} />
           <fieldset className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-2">
@@ -209,10 +221,10 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
             </div>
 
             <label className="flex items-start gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-                <input
-                  type="checkbox"
-                  name="consent"
-                  required
+              <input
+                type="checkbox"
+                name="consent"
+                required
                 className="mt-1 h-4 w-4 accent-proph-primary"
               />
               <span>
@@ -255,8 +267,13 @@ function Tier1Form({ t }: { t: Tier1Copy }) {
   );
 }
 
-export default async function Tier1Page() {
+export default async function Tier1Page({ searchParams }: PageProps) {
   const t = await getTranslations("kyc.tier1");
+  const params = await searchParams;
+  const returnTo = safeReturnTo(
+    firstQueryValue(params?.return_to),
+    "/kyc/status",
+  );
 
   return (
     <>
@@ -267,7 +284,7 @@ export default async function Tier1Page() {
       />
       <PrivacyReminder t={t} />
       <CountryGuide t={t} />
-      <Tier1Form t={t} />
+      <Tier1Form t={t} returnTo={returnTo} />
     </>
   );
 }
@@ -275,4 +292,8 @@ export default async function Tier1Page() {
 function readFormValue(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === "string" ? value : "";
+}
+
+function firstQueryValue(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 }

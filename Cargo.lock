@@ -69,6 +69,7 @@ dependencies = [
  "kyc-service",
  "matching-engine",
  "notification-service",
+ "prometheus",
  "proto",
  "reqwest",
  "risk-antifraud-service",
