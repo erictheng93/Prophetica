@@ -5,6 +5,7 @@ import {
   referralCodeFromSearchParams,
 } from "@/lib/referral-attribution";
 import { SESSION_COOKIE_NAME } from "@/lib/auth";
+import { secureCookies } from "@/lib/cookie-policy";
 import { recordJourneyRedirect } from "@/lib/telemetry/journey-metrics";
 
 const PROTECTED_PATH_PREFIXES = ["/portfolio", "/topup", "/kyc", "/account"];
@@ -50,7 +51,7 @@ function setReferralAttributionCookie(
       name: REFERRAL_ATTRIBUTION_COOKIE,
       value: referralCode,
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: secureCookies(),
       sameSite: "lax",
       path: "/",
       maxAge: REFERRAL_ATTRIBUTION_MAX_AGE_SECONDS,

@@ -5,6 +5,7 @@ import {
   SESSION_COOKIE_NAME,
   verifySessionToken,
 } from "./auth";
+import { secureCookies } from "./cookie-policy";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24;
 const REMEMBERED_SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
@@ -48,7 +49,7 @@ export async function setViewerSession({
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookies(),
     path: "/",
     maxAge: ttl,
   });
@@ -56,7 +57,7 @@ export async function setViewerSession({
     cookieStore.set("proph_user_service_session", upstreamSessionToken, {
       httpOnly: true,
       sameSite: "strict",
-      secure: process.env.NODE_ENV === "production",
+      secure: secureCookies(),
       path: "/",
       maxAge: ttl,
     });
