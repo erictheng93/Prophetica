@@ -4,7 +4,7 @@ import {
   REFERRAL_ATTRIBUTION_MAX_AGE_SECONDS,
   referralCodeFromSearchParams,
 } from "@/lib/referral-attribution";
-import { SESSION_COOKIE_NAME } from "@/lib/auth";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth";
 import { secureCookies } from "@/lib/cookie-policy";
 import { recordJourneyRedirect } from "@/lib/telemetry/journey-metrics";
 
@@ -18,16 +18,32 @@ const PUBLIC_PATH_PREFIXES = [
   "/auth",
 ];
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest): Promise<NextResponse> {
   const pathname = req.nextUrl.pathname;
-  const response =
-    isProtectedPath(pathname) && !req.cookies.get(SESSION_COOKIE_NAME)?.value
-      ? redirectToSignIn(req)
-      : NextResponse.next();
+  const needsRedirect =
+    isProtectedPath(pathname) && !(await hasValidSession(req));
+  const response = needsRedirect
+    ? redirectToSignIn(req)
+    : NextResponse.next();
 
   setReferralAttributionCookie(req, response);
 
   return response;
+}
+
+// SPEC-023 plan v0.1.3 follow-up I-6: verify the proph_session HMAC, not
+// just cookie presence. A garbage cookie value previously slipped through
+// the middleware redirect to the protected page (where getViewer() would
+// then reject it). Validating here keeps the redirect contract tight and
+// prevents server components from receiving an "authenticated" request
+// they then have to second-guess.
+async function hasValidSession(req: NextRequest): Promise<boolean> {
+  const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (!token) {
+    return false;
+  }
+  const payload = await verifySessionToken(token);
+  return payload !== null;
 }
 
 function redirectToSignIn(req: NextRequest): NextResponse {

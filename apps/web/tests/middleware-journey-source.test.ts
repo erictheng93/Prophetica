@@ -30,3 +30,10 @@ test("middleware redirects protected anonymous requests with same-origin return_
   );
   assert.match(source, /NextResponse\.redirect\(redirectUrl\)/);
 });
+
+test("middleware verifies proph_session HMAC, not just cookie presence", () => {
+  // SPEC-023 plan v0.1.3 follow-up I-6: middleware must reject garbage
+  // cookie values, not only missing ones.
+  assert.match(source, /verifySessionToken/);
+  assert.match(source, /async function hasValidSession/);
+});
