@@ -29,7 +29,7 @@
 <body>
   <h1>SPEC-023 — 玩家入門與首次下單旅程實作計畫</h1>
   <div class="meta">
-    <strong>版本</strong>: v0.1.2<br>
+    <strong>版本</strong>: v0.1.3<br>
     <strong>更新日</strong>: 2026-05-20<br>
     <strong>對應規格</strong>: <a href="../../specs/SPEC-023-player-onboarding-journey.html">SPEC-023-player-onboarding-journey.html</a> v0.1.2<br>
     <strong>主要依賴規格</strong>: <a href="../../specs/SPEC-014-tech-architecture.html">SPEC-014 §4 / §6.1.2</a>, <a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005 §2</a>, <a href="../../specs/SPEC-003-matching-engine.html">SPEC-003</a>, <a href="../../specs/SPEC-022-login-event-intelligence.html">SPEC-022</a>, <a href="../../specs/SPEC-021-landing-variants.html">SPEC-021</a><br>
@@ -39,6 +39,7 @@
   <section>
     <h2>0. 變更紀錄</h2>
     <ul>
+      <li><strong>v0.1.3（2026-05-20）</strong>：D-3 對齊實作現況（phased reality alignment）。Phase 0 實作審視顯示 6 個 principal header 中目前只有 <code>x-user-id</code> 在下游被消費；其餘 5 個（<code>x-principal-type</code> / <code>x-principal-id</code> / <code>x-affiliate-id</code> / <code>x-mfa-at</code> / <code>x-operator-role</code>）無 reader、提前 inject 等於寫死沒有 consumer 的契約。本版把 D-3 切為「Phase 0 已實作」與「未來補件」兩表，並加入規則：任何 PR 新增 downstream consumer 必須於同 PR 補上 gateway inject + strip + attack-surface test，並把對應 header 從「未來」搬到「已實作」。SPEC-014 §6.1.2 v0.2.10 為 target state 不變；本縮減屬 plan 層級 phased implementation。</li>
       <li><strong>v0.1.2（2026-05-20）</strong>：收斂 §11 全部 7 個待決策（D-1 ~ D-7）為已決策結論，並對齊既有實作資產（user-service <code>SessionSigner</code> 已簽 EdDSA JWT、<code>/.well-known/jwks.json</code> 已暴露、<code>crates/sdk/src/feature_flags.rs</code> 已有 DB-backed flag infra、<code>@playwright/test</code> 已裝且有 mock pattern）。重點：D-1 採 <code>Authorization: Bearer &lt;user-service EdDSA JWT&gt;</code> 為唯一 caller credential；D-2 統一對外 prefix 為 <code>/v1/auth/*</code>、<code>/api/auth/*</code> 維持 alias 至 2026-08-31；D-3 注入 6 個 header（<code>x-user-id</code>, <code>x-principal-type</code>, <code>x-principal-id</code>, <code>x-affiliate-id</code>, <code>x-mfa-at</code>, <code>x-operator-role</code>）並對應 strip；D-4 由 kyc-service 為 tier 單一權威，新增 <code>GET /internal/kyc/users/:user_id/tier</code>；D-5 採 SPEC-003 §14.2 公式之保守上界，僅對 BUY 前置；D-6 採 <code>payments.real_money_enabled</code> feature flag；D-7 沿用 Playwright 加新 config <code>playwright.journey.config.ts</code> 與 npm script <code>test:e2e:journey</code>。Task 0.0 / 0.6 改為「實作 §11 已決策結論」之執行任務；§11 改為 Resolved 區。</li>
       <li><strong>v0.1.1（2026-05-20）</strong>：採用 <strong>Option B（api-gateway 邊緣 JWT 驗章）</strong>為目標架構，acknowledge 現況為 BFF-trust transitional state。主要修訂：
         <ul>
@@ -576,24 +577,36 @@ rtk pnpm --filter @prophetica/web test:e2e:journey</code></pre>
     <p><strong>落地</strong>：Task 0.0（BFF 切 <code>/v1/auth/login</code> + user-service alias 加 deprecation header）。SPEC-014 v0.2.11 或同等版本之 changelog 記載 sunset。</p>
 
     <h3>D-3 Principal header 注入與 strip 清單</h3>
-    <p><strong>結論</strong>：gateway 驗章後從 verified JWT claims 注入下游下列 header，並在入口剝除外部送入的同名 header：</p>
+    <p><strong>Phase 0 結論（2026-05-20）</strong>：Phase 0 只實作 <code>x-user-id</code> 之注入與外部同名 header 剝除（透過 gateway 對下游 reqwest 重新構建 outbound request，不 forward 入口 headers，等價於 strip）。其餘 5 個 header 留待實際 downstream 消費者出現時再補。</p>
+    <p><strong>Phase 0 注入 / strip 清單</strong>：</p>
     <table>
       <thead>
-        <tr><th>Header</th><th>來源 claim</th><th>注入時機</th><th>不注入時機</th></tr>
+        <tr><th>Header</th><th>來源 claim</th><th>狀態</th></tr>
       </thead>
       <tbody>
-        <tr><td><code>x-user-id</code></td><td>JWT <code>sub</code></td><td>認證成功</td><td>公開唯讀 allowlist</td></tr>
-        <tr><td><code>x-principal-type</code></td><td>由 <code>role</code> 衍生（<code>player</code>/<code>admin</code>/<code>manager</code>/<code>affiliate</code>，用 user-service 既有 <code>principal_type_from_role()</code>）</td><td>認證成功</td><td>公開唯讀 allowlist</td></tr>
-        <tr><td><code>x-principal-id</code></td><td>同 <code>x-user-id</code>（單一 caller 場景下相同；保留欄位語義為「執行操作的 principal id」）</td><td>認證成功</td><td>公開唯讀 allowlist</td></tr>
-        <tr><td><code>x-affiliate-id</code></td><td>JWT <code>affiliateId</code> claim（如有）</td><td>role=affiliate 或 affiliate 連動操作</td><td>一般 player / admin 路徑</td></tr>
-        <tr><td><code>x-mfa-at</code></td><td>JWT <code>mfa_at</code> claim（如有）</td><td>KYC / topup / withdrawal 等高敏感路徑</td><td>一般讀取</td></tr>
-        <tr><td><code>x-operator-role</code></td><td>JWT <code>role</code> claim（admin / manager）</td><td>admin context</td><td>player context</td></tr>
+        <tr><td><code>x-user-id</code></td><td>JWT <code>sub</code></td><td>✅ Phase 0 已實作（<code>services/api-gateway/src/lib.rs:1266, 1291</code>）；入口同名 header 被 reqwest 新請求隱式剝除，metric <code>gateway_principal_header_stripped_total</code> 在 inbound 帶 <code>x-user-id</code> 但被 bearer 覆蓋時累計。</td></tr>
       </tbody>
     </table>
-    <p><strong>Strip 名單</strong>（gateway 在驗章前無條件剝除外部送入）：上表全部 6 個 header。</p>
-    <p><strong>理由</strong>：與 SPEC-014 §6.1.2 v0.2.10 之 principal injection 規範一致；<code>affiliateId</code> 已在 user-service JWT payload 內（<code>auth.rs:2636</code>），不需 gateway 二次查詢。<code>x-mfa-at</code> 為 SPEC-022 step-up auth 預留欄位，現階段 downstream 可忽略；先定 schema 避免後續破壞性變更。</p>
-    <p><strong>取捨</strong>：失 — JWT payload 變大（已含 <code>affiliateId</code>、<code>mfa_at</code>，無實際膨脹）。得 — downstream service 不需呼叫 user-service / kyc-service 拿基本身份。</p>
-    <p><strong>落地</strong>：Task 0.3（注入 + strip）、Task 0.5 攻擊面測試。</p>
+    <p><strong>未來補件（follow-up，當下無 downstream 消費需求）</strong>：</p>
+    <table>
+      <thead>
+        <tr><th>Header</th><th>來源 claim</th><th>何時實作</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>x-principal-type</code></td><td>由 JWT <code>role</code> 衍生（<code>principal_type_from_role()</code>）</td><td>第一個下游 service 需要區分 player / admin / manager / affiliate 行為時。最可能觸發者：SPEC-022 admin login-event 寫入路徑、SPEC-011 affiliate 漏斗。</td></tr>
+        <tr><td><code>x-principal-id</code></td><td>同 <code>x-user-id</code></td><td>同上（與 <code>x-principal-type</code> 一併補）。</td></tr>
+        <tr><td><code>x-affiliate-id</code></td><td>JWT <code>affiliateId</code> claim</td><td>SPEC-011 affiliate commission 流程需要在 gateway 層 attribute commission 時。</td></tr>
+        <tr><td><code>x-mfa-at</code></td><td>JWT <code>mfa_at</code> claim</td><td>SPEC-022 step-up auth 啟用時（高敏感動作要求 fresh MFA）。</td></tr>
+        <tr><td><code>x-operator-role</code></td><td>JWT <code>role</code> claim（admin / manager）</td><td>admin proxy path 已用既有 <code>x-operator-role</code>（<code>lib.rs:1691</code>），但目前來源為 admin BFF 的 HMAC-signed internal call（<code>internal_call_auth.rs</code>），不是 gateway 自驗 JWT。當 admin 路徑統一遷移至 Bearer 驗章時補。</td></tr>
+      </tbody>
+    </table>
+    <p><strong>理由（為何縮減）</strong>：審視顯示沒有任何 downstream service 目前消費這 5 個 header；提前 inject 等同寫死沒有 reader 的契約。SPEC-014 §6.1.2 規範允許 gateway 注入 <code>x-user-id</code> 等 principal header「<strong>如有需要</strong>」，未硬性要求一次到位。提前 inject 的成本（payload 變大、log 變多、需要對應 strip 名單與 attack-surface test）大於收益（零 downstream consumer）。</p>
+    <p><strong>規則（防止 silent drift）</strong>：</p>
+    <ul>
+      <li>任何 PR 若<strong>新增</strong> downstream service 對上表「未來補件」5 個 header 的讀取，<strong>必須</strong>在同一 PR 內補上 gateway 端的 inject + strip + attack-surface test，並於本計畫 §11 D-3 從「未來補件」表搬到「Phase 0 已實作」表。</li>
+      <li>任何 PR 若新增其他 <code>x-principal-*</code> / <code>x-actor-*</code> 等 principal-class header，必須在本計畫 §11 D-3 加列，並對應 strip。</li>
+    </ul>
+    <p><strong>落地</strong>：Phase 0 已完成 <code>x-user-id</code> 注入與隱式 strip；其餘 5 個延至 trigger condition 出現時補。<strong>SPEC-014 v0.2.10 為 target state 不變</strong>——本縮減屬 plan 層級的 phased implementation，spec 不需 bump。</p>
 
     <h3>D-4 KYC tier 權威端點</h3>
     <p><strong>結論</strong>：kyc-service 為 KYC tier 的單一權威。gateway 對下單 pre-trade gate 呼叫新端點 <code>GET /internal/kyc/users/:user_id/tier</code>，回應 <code>{ "tier": "TIER_0" | "TIER_1" | "TIER_2" | "TIER_3" }</code>。user-service <code>/v1/auth/me</code> <strong>不</strong>新增 tier 欄位。</p>
