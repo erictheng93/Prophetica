@@ -88,6 +88,7 @@ fn empty_get(uri: &str) -> Request<Body> {
         .method("GET")
         .uri(uri)
         .header("x-user-id", "user_42")
+        .header("x-transition-caller", "apps-web-dev-bff")
         .body(Body::empty())
         .unwrap_or_else(|error| panic!("request should build: {error}"))
 }
@@ -97,6 +98,7 @@ fn json_post(uri: &str, body: &Value) -> Request<Body> {
         .method("POST")
         .uri(uri)
         .header("x-user-id", "user_42")
+        .header("x-transition-caller", "apps-web-dev-bff")
         .header("content-type", "application/json")
         .body(Body::from(body.to_string()))
         .unwrap_or_else(|error| panic!("request should build: {error}"))

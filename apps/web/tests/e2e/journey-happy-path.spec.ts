@@ -289,7 +289,9 @@ async function submitTrade(page: Page) {
   const submitButton = panel.getByRole("button", { name: "送出訂單" });
   await expect(submitButton).toBeEnabled();
   await submitButton.scrollIntoViewIfNeeded();
-  await submitButton.click({ force: true });
+  await submitButton.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {

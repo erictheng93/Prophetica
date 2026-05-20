@@ -13,6 +13,8 @@ const DEFAULT_DEV_USER_ID = "user_01";
 const POINTS_PER_TWD = 100;
 const COOLDOWN_PATH = "/v1/me/responsible-gaming/cooldown";
 const SELF_EXCLUSION_PATH = "/v1/responsible-gaming/self-exclusion";
+const TRANSITION_CALLER_HEADER = "x-transition-caller";
+const APPS_WEB_DEV_BFF_TRANSITION_CALLER = "apps-web-dev-bff";
 
 export const COOLDOWN_DURATIONS = ["24h", "7d", "30d"] as const;
 
@@ -428,6 +430,7 @@ function requestHeaders(
     : {
         accept: "application/json",
         "x-user-id": userId,
+        [TRANSITION_CALLER_HEADER]: APPS_WEB_DEV_BFF_TRANSITION_CALLER,
       };
 }
 

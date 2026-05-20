@@ -3,6 +3,8 @@ import { getUpstreamSessionToken, getViewer } from "@/lib/session";
 
 const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
 const DEFAULT_ENGINE_USER_ID = "10";
+const TRANSITION_CALLER_HEADER = "x-transition-caller";
+const APPS_WEB_DEV_BFF_TRANSITION_CALLER = "apps-web-dev-bff";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,6 +65,7 @@ export async function POST(
     headers.set("authorization", `Bearer ${bearerToken}`);
   } else if (process.env.NODE_ENV !== "production") {
     headers.set("x-user-id", userId);
+    headers.set(TRANSITION_CALLER_HEADER, APPS_WEB_DEV_BFF_TRANSITION_CALLER);
   } else {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

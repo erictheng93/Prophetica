@@ -7,7 +7,11 @@ import {
 } from "../lib/responsible-gaming-api.js";
 
 test("fetchSelfExclusionStatus maps live api-gateway response with transition x-user-id fallback", async () => {
-  const calls: Array<{ url: string; userIdHeader: string | null }> = [];
+  const calls: Array<{
+    url: string;
+    userIdHeader: string | null;
+    transitionCallerHeader: string | null;
+  }> = [];
 
   const status = await fetchSelfExclusionStatus({
     baseUrl: "http://gateway.local",
@@ -21,6 +25,7 @@ test("fetchSelfExclusionStatus maps live api-gateway response with transition x-
       calls.push({
         url: String(input),
         userIdHeader: headers.get("x-user-id"),
+        transitionCallerHeader: headers.get("x-transition-caller"),
       });
       return Response.json({
         user_id: "user_42",
@@ -46,6 +51,7 @@ test("fetchSelfExclusionStatus maps live api-gateway response with transition x-
     "http://gateway.local/v1/responsible-gaming/self-exclusion",
   );
   assert.equal(calls[0]?.userIdHeader, "user_42");
+  assert.equal(calls[0]?.transitionCallerHeader, "apps-web-dev-bff");
   assert.equal(status.source, "api-gateway");
   assert.equal(status.active, true);
   assert.equal(status.record?.frozenPoints, 125);

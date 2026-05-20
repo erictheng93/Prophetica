@@ -34,7 +34,11 @@ const apiDashboard = {
 };
 
 test("fetchAffiliateDashboard hits api-gateway with transition x-user-id fallback and maps minor units to points", async () => {
-  const calls: { url: string; userIdHeader: string | undefined }[] = [];
+  const calls: {
+    url: string;
+    userIdHeader: string | undefined;
+    transitionCallerHeader: string | undefined;
+  }[] = [];
 
   const dashboard = await fetchAffiliateDashboard({
     baseUrl: "http://gateway.local",
@@ -46,6 +50,7 @@ test("fetchAffiliateDashboard hits api-gateway with transition x-user-id fallbac
       calls.push({
         url: String(input),
         userIdHeader: headers.get("x-user-id") ?? undefined,
+        transitionCallerHeader: headers.get("x-transition-caller") ?? undefined,
       });
       return Response.json(apiDashboard);
     },
@@ -56,6 +61,7 @@ test("fetchAffiliateDashboard hits api-gateway with transition x-user-id fallbac
     "http://gateway.local/v1/account/affiliate?limit=10",
   );
   assert.equal(calls[0]?.userIdHeader, "user_01");
+  assert.equal(calls[0]?.transitionCallerHeader, "apps-web-dev-bff");
   assert.equal(dashboard.source, "api-gateway");
   assert.equal(dashboard.referralCode, "a3f9c12be801_X9PK");
   assert.equal(dashboard.shareUrl, "https://proph.net/?ref=a3f9c12be801_X9PK");

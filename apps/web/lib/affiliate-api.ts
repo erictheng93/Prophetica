@@ -12,6 +12,8 @@ const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
 const DEFAULT_DEV_USER_ID = "user_01";
 const DEFAULT_REFERRAL_LIMIT = 25;
 const POINTS_PER_TWD = 100; // SPEC-002 §3.1: 1 點 = TWD 1; 100 minor units = 1 點.
+const TRANSITION_CALLER_HEADER = "x-transition-caller";
+const APPS_WEB_DEV_BFF_TRANSITION_CALLER = "apps-web-dev-bff";
 
 export type AffiliateReferralStatus =
   | "pending"
@@ -152,6 +154,7 @@ export async function fetchAffiliateDashboard({
       headers.set("authorization", `Bearer ${bearerToken}`);
     } else {
       headers.set("x-user-id", userId);
+      headers.set(TRANSITION_CALLER_HEADER, APPS_WEB_DEV_BFF_TRANSITION_CALLER);
     }
     const response = await fetcher(url, {
       cache: "no-store",

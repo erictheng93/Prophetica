@@ -39,8 +39,83 @@ pub mod order_precheck;
 pub mod responsible_gaming;
 
 const USER_ID_HEADER: HeaderName = HeaderName::from_static("x-user-id");
+const TRANSITION_CALLER_HEADER: HeaderName = HeaderName::from_static("x-transition-caller");
 const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-key");
 const DEFAULT_ORDER_FEE_BPS: u32 = 200;
+
+pub const X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF: &str = "apps-web-dev-bff";
+pub const X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON: &str = "2026-08-31";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct XUserIdTransitionAllowlistEntry {
+    pub caller: &'static str,
+    pub method: &'static str,
+    pub path_pattern: &'static str,
+    pub expires_on: &'static str,
+}
+
+pub const X_USER_ID_TRANSITION_ALLOWLIST: &[XUserIdTransitionAllowlistEntry] = &[
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "GET",
+        path_pattern: "/v1/me/wallet/balance",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "GET",
+        path_pattern: "/v1/ledger/entries",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "POST",
+        path_pattern: "/v1/markets/:market_id/orders",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "GET",
+        path_pattern: "/v1/account/affiliate",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "GET",
+        path_pattern: "/v1/account/affiliate/referrals",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "GET",
+        path_pattern: "/v1/account/affiliate/commission-summary",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "GET",
+        path_pattern: "/v1/me/responsible-gaming/cooldown",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "POST",
+        path_pattern: "/v1/me/responsible-gaming/cooldown",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "GET",
+        path_pattern: "/v1/responsible-gaming/self-exclusion",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+    XUserIdTransitionAllowlistEntry {
+        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        method: "POST",
+        path_pattern: "/v1/responsible-gaming/self-exclusion",
+        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+    },
+];
 
 fn gateway_auth_validation_failed_total() -> &'static IntCounterVec {
     static COUNTER: OnceLock<IntCounterVec> = OnceLock::new();
@@ -222,7 +297,8 @@ struct AuthJwk {
 impl AuthVerifier {
     #[must_use]
     pub fn from_env() -> Self {
-        let require_verified_principal = env_flag("API_GATEWAY_REQUIRE_BEARER")
+        let require_verified_principal = !cfg!(test)
+            || env_flag("API_GATEWAY_REQUIRE_BEARER")
             || env_flag("API_GATEWAY_REQUIRE_VERIFIED_PRINCIPAL")
             || env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production");
         let keys = env::var("API_GATEWAY_AUTH_JWKS_JSON")
@@ -361,28 +437,80 @@ where
             return Ok(auth);
         }
         if verifier.require_verified_principal {
+            if x_user_id_transition_fallback_allowed(
+                &parts.headers,
+                parts.method.as_str(),
+                parts.uri.path(),
+            ) {
+                return x_user_id_auth_context(&parts.headers);
+            }
             record_gateway_auth_validation_failed("missing_bearer");
             return Err(ApiError::unauthorized("missing bearer token"));
         }
 
-        let Some(value) = parts.headers.get(&USER_ID_HEADER) else {
-            record_gateway_auth_validation_failed("missing_x_user_id");
-            return Err(ApiError::unauthorized("missing x-user-id auth context"));
-        };
-        let user_id = value.to_str().map_err(|_| {
-            record_gateway_auth_validation_failed("invalid_x_user_id");
-            ApiError::unauthorized("invalid x-user-id auth context")
-        })?;
-
-        if user_id.is_empty() {
-            record_gateway_auth_validation_failed("empty_x_user_id");
-            return Err(ApiError::unauthorized("empty x-user-id auth context"));
-        }
-
-        Ok(Self {
-            user_id: user_id.to_owned(),
-        })
+        x_user_id_auth_context(&parts.headers)
     }
+}
+
+fn x_user_id_auth_context(headers: &HeaderMap) -> Result<AuthContext, ApiError> {
+    let Some(value) = headers.get(&USER_ID_HEADER) else {
+        record_gateway_auth_validation_failed("missing_x_user_id");
+        return Err(ApiError::unauthorized("missing x-user-id auth context"));
+    };
+    let user_id = value.to_str().map_err(|_| {
+        record_gateway_auth_validation_failed("invalid_x_user_id");
+        ApiError::unauthorized("invalid x-user-id auth context")
+    })?;
+
+    if user_id.is_empty() {
+        record_gateway_auth_validation_failed("empty_x_user_id");
+        return Err(ApiError::unauthorized("empty x-user-id auth context"));
+    }
+
+    Ok(AuthContext {
+        user_id: user_id.to_owned(),
+    })
+}
+
+fn x_user_id_transition_fallback_allowed(headers: &HeaderMap, method: &str, path: &str) -> bool {
+    if is_production_env() {
+        return false;
+    }
+    let Some(caller) = headers
+        .get(&TRANSITION_CALLER_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return false;
+    };
+    x_user_id_transition_fallback_allowed_for(caller, method, path)
+}
+
+fn x_user_id_transition_fallback_allowed_for(caller: &str, method: &str, path: &str) -> bool {
+    X_USER_ID_TRANSITION_ALLOWLIST.iter().any(|entry| {
+        entry.caller == caller
+            && entry.method.eq_ignore_ascii_case(method)
+            && path_matches_pattern(path, entry.path_pattern)
+    })
+}
+
+fn path_matches_pattern(path: &str, pattern: &str) -> bool {
+    let path_segments = path.trim_matches('/').split('/');
+    let pattern_segments = pattern.trim_matches('/').split('/');
+    path_segments
+        .zip(pattern_segments)
+        .try_fold(0usize, |count, (actual, expected)| {
+            if expected.starts_with(':') || actual == expected {
+                Some(count + 1)
+            } else {
+                None
+            }
+        })
+        .is_some_and(|matched| {
+            matched == path.trim_matches('/').split('/').count()
+                && matched == pattern.trim_matches('/').split('/').count()
+        })
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -2684,9 +2812,11 @@ mod tests {
         CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore, KycTierClient,
         LedgerEntry, Market, MarketListResponse, MarketServiceClient, MatchingEngineClient,
         OrderActionResponse, PlaceOrderRequest, ReferralClient, SERVICE_NAME, WalletBalance,
-        WalletLedgerClient, market_router, observability, router, router_with_engine,
-        router_with_engine_and_kyc, router_with_engine_and_kyc_and_market_fees,
-        router_with_payment_flags, router_with_services,
+        WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
+        X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        market_router, observability, router, router_with_engine, router_with_engine_and_kyc,
+        router_with_engine_and_kyc_and_market_fees, router_with_payment_flags,
+        router_with_services,
     };
 
     #[tokio::test]
@@ -3136,6 +3266,109 @@ mod tests {
         let metrics = observability::prometheus_bootstrap_metrics(SERVICE_NAME);
         assert!(metrics.contains("gateway_auth_validation_failed_total"));
         assert!(metrics.contains(r#"reason="missing_bearer""#));
+    }
+
+    #[test]
+    fn x_user_id_transition_allowlist_is_explicit_and_time_limited() {
+        let actual = X_USER_ID_TRANSITION_ALLOWLIST
+            .iter()
+            .map(|entry| {
+                (
+                    entry.caller,
+                    entry.method,
+                    entry.path_pattern,
+                    entry.expires_on,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual,
+            vec![
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "GET",
+                    "/v1/me/wallet/balance",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "GET",
+                    "/v1/ledger/entries",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "POST",
+                    "/v1/markets/:market_id/orders",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "GET",
+                    "/v1/account/affiliate",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "GET",
+                    "/v1/account/affiliate/referrals",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "GET",
+                    "/v1/account/affiliate/commission-summary",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "GET",
+                    "/v1/me/responsible-gaming/cooldown",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "POST",
+                    "/v1/me/responsible-gaming/cooldown",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "GET",
+                    "/v1/responsible-gaming/self-exclusion",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+                (
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    "POST",
+                    "/v1/responsible-gaming/self-exclusion",
+                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+                ),
+            ]
+        );
+        assert!(actual.iter().all(|(_, _, path, expires_on)| {
+            !path.contains('*') && *expires_on <= "2026-08-31"
+        }));
+    }
+
+    #[test]
+    fn x_user_id_transition_allowlist_matches_only_named_caller_routes() {
+        assert!(super::x_user_id_transition_fallback_allowed_for(
+            X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+            "POST",
+            "/v1/markets/mkt-election/orders",
+        ));
+        assert!(!super::x_user_id_transition_fallback_allowed_for(
+            "unknown-caller",
+            "POST",
+            "/v1/markets/mkt-election/orders",
+        ));
+        assert!(!super::x_user_id_transition_fallback_allowed_for(
+            X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+            "DELETE",
+            "/v1/orders/ord_123",
+        ));
     }
 
     #[tokio::test]

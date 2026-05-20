@@ -15,6 +15,10 @@ test("order proxy forwards browser trades to api-gateway with server bearer toke
   assert.match(routeSource, /process\.env\.NODE_ENV !== "production"/);
   assert.match(
     routeSource,
+    /headers\.set\(TRANSITION_CALLER_HEADER, APPS_WEB_DEV_BFF_TRANSITION_CALLER\)/,
+  );
+  assert.match(
+    routeSource,
     /\/v1\/markets\/\$\{encodeURIComponent\(marketId\)\}\/orders/,
   );
   assert.doesNotMatch(routeSource, /createEngineClient/);

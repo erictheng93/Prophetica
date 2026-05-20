@@ -76,6 +76,8 @@ test("fetchWalletOverview calls api-gateway wallet and ledger endpoints with tra
   );
   assert.equal(calls[0]?.headers["x-user-id"], "user_42");
   assert.equal(calls[1]?.headers["x-user-id"], "user_42");
+  assert.equal(calls[0]?.headers["x-transition-caller"], "apps-web-dev-bff");
+  assert.equal(calls[1]?.headers["x-transition-caller"], "apps-web-dev-bff");
 });
 
 test("fetchWalletOverview does not call api-gateway without bearer token by default", async () => {

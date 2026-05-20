@@ -42,6 +42,7 @@ test("fetchCooldownStatus calls api-gateway cooldown endpoint with transition x-
     "http://api.local/v1/me/responsible-gaming/cooldown",
   );
   assert.equal(calls[0]?.headers["x-user-id"], "user_42");
+  assert.equal(calls[0]?.headers["x-transition-caller"], "apps-web-dev-bff");
   assert.equal(status.userId, "user_42");
   assert.equal(status.active, true);
   assert.equal(status.duration, "24h");

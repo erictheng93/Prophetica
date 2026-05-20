@@ -11,6 +11,8 @@ export const API_GATEWAY_FALLBACK_USER_ID = "user_01";
 
 const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
 const DEFAULT_LEDGER_LIMIT = 25;
+const TRANSITION_CALLER_HEADER = "x-transition-caller";
+const APPS_WEB_DEV_BFF_TRANSITION_CALLER = "apps-web-dev-bff";
 
 export interface WalletBalance {
   userId: string;
@@ -66,6 +68,10 @@ export async function fetchWalletOverview(
   // explicit fetcher and bypass propagation by design.
   const fetcher =
     options.fetcher ?? ((input, init) => tracedFetch(input, init));
+  const apiGatewayFetcher =
+    !options.bearerToken && options.allowUserIdFallback
+      ? withTransitionCaller(fetcher)
+      : fetcher;
   const ledgerLimit = options.ledgerLimit ?? DEFAULT_LEDGER_LIMIT;
   if (!options.bearerToken && !options.allowUserIdFallback) {
     return fallbackWalletOverview(userId);
@@ -77,7 +83,7 @@ export async function fetchWalletOverview(
     auth: options.bearerToken
       ? { bearerToken: options.bearerToken }
       : { userId },
-    fetcher,
+    fetcher: apiGatewayFetcher,
   });
 
   try {
@@ -94,6 +100,14 @@ export async function fetchWalletOverview(
   } catch {
     return fallbackWalletOverview(userId);
   }
+}
+
+function withTransitionCaller(fetcher: Fetcher): Fetcher {
+  return (input, init) => {
+    const headers = new Headers(init?.headers);
+    headers.set(TRANSITION_CALLER_HEADER, APPS_WEB_DEV_BFF_TRANSITION_CALLER);
+    return fetcher(input, { ...init, headers });
+  };
 }
 
 async function loadWalletClientFactory(): Promise<WalletClientFactory> {
