@@ -106,9 +106,14 @@ export function TradePanel({
     }
 
     try {
+      // No `userId` / `bearerToken` here: this hits the same-origin BFF
+      // proxy at /api/engine/markets/:id/orders, which derives the caller
+      // identity server-side from the proph_session cookie (see
+      // apps/web/app/api/engine/markets/[marketId]/orders/route.ts).
+      // Forwarding a browser-supplied `x-user-id` would be misleading —
+      // the BFF discards it before calling api-gateway.
       const order = await placeMarketOrder({
         marketId: market.id,
-        userId: process.env.NEXT_PUBLIC_PROPHETICA_ENGINE_USER_ID ?? "10",
         side: "buy",
         outcome: values.side,
         type: "LIMIT",
