@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPEC-023-player-onboarding-journey</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+      margin: 2rem;
+      line-height: 1.5;
+    }
+    img { max-width: 100%; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    pre {
+      overflow: auto;
+      padding: 1rem;
+      background: #f6f8fa;
+      border: 1px solid #d8dee3;
+    }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+    a { color: #0969da; }
+    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
+    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
+    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+    .changelog-entry p,
+    .changelog-entry ul { margin: 0.35rem 0; }
+    .changelog-entry ul { padding-left: 1.15rem; }
+    .changelog-entry li { margin-bottom: 0.35rem; }
+  </style>
+</head>
+<body>
+<h1>SPEC-023 — 玩家入門與首次下單旅程（Player Onboarding &amp; First-Trade Journey）</h1>
+<blockquote>
+  <p>優先級：<strong>P1</strong><br>
+  版本：v0.1.0 · 最後更新：2026-05-19<br>
+  依賴：SPEC-003, SPEC-005, SPEC-005a, SPEC-014, SPEC-015, SPEC-016, SPEC-021, SPEC-022<br>
+  被依賴：前端 onboarding 實作、轉換漏斗與 SPEC-020 分析、未來 native app / LIFF 內嵌產品面</p>
+</blockquote>
+<section class="changelog">
+  <div class="changelog-list">
+    <article class="changelog-entry">
+      <h3>v0.1.0 變更</h3>
+      <p>新增玩家入門與首次下單旅程規格。將原本分散於 SPEC-021（landing）、SPEC-022（登入）、SPEC-005 / SPEC-005a（KYC）、SPEC-016（支付）、SPEC-015（市場）、SPEC-003（撮合）的零件，編排為單一條「落地頁 → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單」旅程：定義旅程階段與狀態機、跨頁重導向契約、門檻攔截規則與進場入口交接。本 SPEC 為編排層，不重寫各零件 SPEC 的內部機制。</p>
+    </article>
+  </div>
+</section>
+<hr>
+
+<h2>1. Objective</h2>
+<p>在 SPEC-023 之前，玩家從 landing page 進入、登入、通過 KYC 與儲值、進場下注的完整旅程，沒有任何單一 SPEC 負責。每個零件都有規格——landing 變體在 SPEC-021、登入事件在 SPEC-022、KYC 在 SPEC-005 / SPEC-005a、支付在 SPEC-016、市場生命週期在 SPEC-015、撮合在 SPEC-003——但「這些零件如何串成一條使用者旅程、誰是這條旅程的 owner、各階段之間如何銜接與重導向」沒有規範來源。實務上旅程真正斷掉的地方，正是這些零件之間的銜接縫。</p>
+<p>本 SPEC 是這條旅程的<strong>編排層（orchestration spec）</strong>與唯一 owner。它定義旅程的階段與狀態機、階段之間的跨頁重導向契約、各下單前置門檻的攔截與導向規則，以及進場入口的交接邊界。本 SPEC <strong>不</strong>重寫各零件 SPEC 的內部機制——KYC 分層機制以 SPEC-005 為權威、支付機制以 SPEC-016 為權威、撮合與訂單機制以 SPEC-003 為權威——只規範它們在旅程中如何被觸發、如何銜接、未滿足時把使用者導去哪裡。</p>
+<p>旅程的「完成」定義為：一名新訪客在 <code>apps/web</code> 成功送出第一筆被撮合引擎接受的訂單（SPEC-003 訂單下單成功回應）。</p>
+
+<h2>2. Scope</h2>
+<h3>2.1 In Scope</h3>
+<ul>
+  <li><code>apps/web</code>（玩家前台）由 landing page 至首次下單的端到端旅程。</li>
+  <li>旅程階段定義與狀態機（§3、§4）。</li>
+  <li>跨頁重導向契約：<code>return_to</code> 語義、深連結保存、登入後導向、open redirect 防護（§5）。</li>
+  <li>進場入口交接：landing 變體與 LIFF 如何把使用者交付到旅程起點（§6）。</li>
+  <li>下單前置門檻的攔截與導向規則：未登入、KYC tier 不足、錢包餘額不足時的系統行為（§7）。</li>
+  <li>旅程狀態判定的權威來源（server session、KYC tier、錢包餘額），以及不得依賴 client 端狀態的要求。</li>
+</ul>
+
+<h3>2.2 Out of Scope</h3>
+<ul>
+  <li>KYC 分層機制、SumSub 整合、tier 升級觸發條件——以 SPEC-005 / SPEC-005a 為權威，本 SPEC 僅引用。</li>
+  <li>支付通路、入金 / 出金機制——以 SPEC-016 為權威；MVP 真實入金前的調點路徑以 SPEC-002 <code>manual_points_adjustment</code> 為權威。</li>
+  <li>市場生命週期、撮合與訂單撮合邏輯——以 SPEC-015 / SPEC-003 為權威。</li>
+  <li>登入事件記錄、IP / 裝置情報——以 SPEC-022 為權威。</li>
+  <li>landing 變體 lifecycle、region × product matrix、合規檢核——以 SPEC-021 為權威。</li>
+  <li>session token 簽發與 gateway 驗證機制——以 SPEC-014 §6.1.2 與 SPEC-022 為權威。</li>
+  <li>LIFF 內嵌產品面（在 LINE 內瀏覽市場、儲值、下單）。目前 LIFF 僅負責把使用者帶到 landing page（見 §6.2）；LINE 內嵌產品旅程為未來 SPEC 或版本範圍。</li>
+  <li>轉換漏斗指標定義與報表——以 SPEC-020 為權威，本 SPEC 僅提供階段切點。</li>
+</ul>
+
+<h2>3. 旅程階段與狀態機</h2>
+<p>旅程由 7 個階段組成。S0–S2 為線性序列；S3（KYC 門檻）與 S4（錢包儲值）為<strong>兩道順序無關的閘門</strong>，使用者可以任意先後完成，兩者皆滿足且 session 有效時才達到可下單狀態。S5 市場探索在登入後即可進行，不需先完成 S3 / S4。</p>
+<pre><code>S0 落地        S1 註冊        S2 登入
+[landing] ──CTA──&gt; [/auth/sign-in?mode=signup] ──&gt; [authenticated]
+                          │（已有帳號）
+                          └──&gt; [/auth/sign-in] ──&gt; [authenticated]
+                                                        │
+                                   ┌────────────────────┼────────────────────┐
+                                   ▼                    ▼                    ▼
+                            S5 市場探索           S3 KYC 門檻           S4 錢包儲值
+                            [/markets]            [/kyc/*]              [/topup]
+                                   │                    │（達下單最低 tier）  │（餘額 ≥ 成本）
+                                   ▼                    └────────┬───────────┘
+                            S6 首次下單  ◀───── trade_ready（S2 + S3 + S4 同時成立）
+                            [/markets/:id]
+</code></pre>
+<p>旅程狀態以下列受控值表示。狀態是 server 端推導結果，不是 client 持有的旗標（見 §8）：</p>
+<table>
+  <thead>
+    <tr><th>狀態</th><th>意義</th><th>判定來源</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>visitor</code></td><td>未登入訪客，可唯讀瀏覽 landing 與公開市場頁。</td><td>無有效 session。</td></tr>
+    <tr><td><code>registered</code></td><td>帳號已建立，可能尚未完成 email 驗證（見 §13 OQ）。</td><td>user-service 帳號存在。</td></tr>
+    <tr><td><code>authenticated</code></td><td>持有有效 session，可進入需登入頁面。</td><td>gateway 驗證通過的 session（SPEC-014 §6.1.2）。</td></tr>
+    <tr><td><code>kyc_cleared</code></td><td>KYC 已達下單所需最低 tier。</td><td>SPEC-005 §2 KYC tier 狀態。</td></tr>
+    <tr><td><code>funded</code></td><td>錢包銅幣餘額足以支應目標訂單成本。</td><td>wallet-ledger 可動用餘額。</td></tr>
+    <tr><td><code>trade_ready</code></td><td><code>authenticated</code> + <code>kyc_cleared</code> + <code>funded</code> 同時成立，可實際送出訂單。</td><td>上述三者之合取。</td></tr>
+  </tbody>
+</table>
+
+<h2>4. 階段詳述</h2>
+
+<h3>4.1 S0 — 落地（Landing）</h3>
+<ul>
+  <li>使用者抵達某個 <code>apps/landing-*</code> 變體（SPEC-021）。landing page 為純行銷面，不持有 session cookie（SPEC-021 §5.3）。</li>
+  <li>landing 的主要 CTA（「立即註冊」/「開始體驗」等）必須跳轉至 <code>apps/web</code> 的 <code>/auth/sign-in?mode=signup</code>；次要「登入」連結跳至 <code>/auth/sign-in</code>。</li>
+  <li>CTA 點擊可附帶來源歸因參數（landing variant、行銷來源）。歸因參數的格式與保存以 SPEC-021 / SPEC-020 為權威；本 SPEC 僅要求歸因不得阻塞旅程、且不得被當成身份。</li>
+  <li>離開條件：使用者點擊 CTA 進入 <code>apps/web</code> 的認證頁。</li>
+</ul>
+
+<h3>4.2 S1 / S2 — 註冊與登入（Sign-up &amp; Login）</h3>
+<ul>
+  <li>認證面為 <code>apps/web</code> 的 <code>/auth/sign-in</code>；<code>?mode=signup</code> 顯示註冊、無參數顯示登入。</li>
+  <li>註冊成功建立 <code>registered</code> 帳號；登入成功建立 session，進入 <code>authenticated</code>。</li>
+  <li>session token 由 user-service 簽發、由 api-gateway 驗證——機制以 SPEC-014 §6.1.2 與 SPEC-022 為權威。本 SPEC 不規範 token 格式。</li>
+  <li>每次登入成功 / 失敗都必須產生 login event（SPEC-022）；本 SPEC 不重述其欄位。</li>
+  <li>登入完成後的導向遵循 §5 重導向契約：有 <code>return_to</code> 則導回，否則導向 <code>/portfolio</code>。</li>
+  <li>離開條件：session 建立完成。</li>
+</ul>
+
+<h3>4.3 S3 — KYC 門檻（KYC Gating）</h3>
+<ul>
+  <li>下單所需的最低 KYC tier 由 SPEC-005 §2 定義（見 §13 OQ-1，需與 SPEC-005 對齊確認）。</li>
+  <li>觸發方式有二：(a) 使用者嘗試一個需要該 tier 的動作（如下單）而 tier 不足，被 §7 攔截導向 <code>/kyc/*</code>；(b) 使用者主動發起 KYC 升級。</li>
+  <li>KYC 流程本身（Tier 1 OTP、Tier 2 SumSub iframe 等）以 SPEC-005 / SPEC-005a 為權威。本 SPEC 僅要求：因下單被攔截而進入 KYC 時，完成後必須依 §5 導回原本的下單意圖頁。</li>
+  <li>離開條件：KYC tier 達到下單所需最低值（<code>kyc_cleared</code>）。</li>
+</ul>
+
+<h3>4.4 S4 — 錢包儲值（Wallet Funding）</h3>
+<ul>
+  <li>送出訂單前，可動用銅幣餘額必須足以支應該訂單成本（含 SPEC-003 定義的下單鎖定額）。</li>
+  <li>觸發方式有二：(a) 使用者嘗試下單但餘額不足，被 §7 攔截導向 <code>/topup</code>；(b) 使用者主動儲值。</li>
+  <li>資金來源依階段不同：
+    <ul>
+      <li><strong>MVP（真實入金前，SPEC-000 Launch Gate LG-2 未通過）</strong>：銅幣由 SPEC-002 <code>manual_points_adjustment</code> 之授權調點路徑提供。此階段 <code>/topup</code> 不得呈現會誤導為真實金流已開通的 UI。</li>
+      <li><strong>真實入金開放後（LG-2 通過）</strong>：依 SPEC-016 支付通路儲值。</li>
+    </ul>
+  </li>
+  <li>儲值機制以 SPEC-016 / SPEC-002 為權威。本 SPEC 僅要求：因下單被攔截而進入儲值時，完成後必須依 §5 導回原本的下單意圖頁。</li>
+  <li>離開條件：餘額 ≥ 目標訂單成本（<code>funded</code>）。</li>
+</ul>
+
+<h3>4.5 S5 — 市場探索（Market Discovery）</h3>
+<ul>
+  <li>市場列表 <code>/markets</code> 與市場詳情 <code>/markets/:id</code> 顯示 SPEC-015 定義的市場。公開市場列表預設允許 <code>visitor</code> 唯讀瀏覽（見 §13 OQ-3）。</li>
+  <li>市場資料、訂單簿、近期成交以 SPEC-015 / SPEC-003 為權威。</li>
+  <li>離開條件：使用者於市場詳情頁發起下單。</li>
+</ul>
+
+<h3>4.6 S6 — 首次下單（First Order）</h3>
+<ul>
+  <li>使用者於 <code>/markets/:id</code> 透過下單面板選擇結果腿（YES / NO）、價格與數量送出訂單。</li>
+  <li>送出前，前端與後端都必須確認旅程狀態為 <code>trade_ready</code>。任一門檻未滿足，依 §7 攔截；不得在前端先行宣稱已下單。</li>
+  <li>訂單撮合、pre-trade 檢查、回應契約以 SPEC-003 為權威。</li>
+  <li>旅程完成條件：撮合引擎回傳訂單已被接受（SPEC-003 下單成功回應）。</li>
+</ul>
+
+<h2>5. 跨頁重導向契約</h2>
+<p>旅程跨越 <code>apps/landing-*</code> 與 <code>apps/web</code> 多個頁面，重導向必須有一致契約，否則使用者會在被攔截後迷失意圖。</p>
+<ul>
+  <li><strong>landing 不持有 session</strong>：landing 變體不得設定或讀取 session cookie；認證態僅存在於 <code>apps/web</code>（呼應 SPEC-021 §5.3）。</li>
+  <li><strong><code>return_to</code> 參數</strong>：當使用者因門檻被攔截導向認證 / KYC / 儲值頁時，系統必須以 <code>return_to</code> query 參數保留原始意圖頁的完整路徑（含 query string）。例如未登入使用者深連結到 <code>/markets/abc?side=yes</code> 嘗試下單，被導向 <code>/auth/sign-in?return_to=%2Fmarkets%2Fabc%3Fside%3Dyes</code>。</li>
+  <li><strong>open redirect 防護</strong>：<code>return_to</code> 必須只接受 same-origin 的相對路徑。絕對 URL、協定相對 URL（<code>//host</code>）、跨網域目標一律拒絕並 fallback 至預設導向。此規則由 <code>apps/web</code> 中介層強制（見 §13 OQ-4）。</li>
+  <li><strong>門檻完成後導回</strong>：使用者完成被攔截的門檻（登入 / KYC / 儲值）後，若 <code>return_to</code> 存在且合法，必須導回該頁；否則導向預設頁 <code>/portfolio</code>。</li>
+  <li><strong>導向單跳</strong>：每次攔截導向必須在單次 request 完成，不得讓使用者經過多層中介跳轉。</li>
+  <li><strong>多重門檻</strong>：使用者下單同時缺 KYC 與餘額時，系統一次只導向一個門檻；該門檻完成後導回原市場頁，由 §7 規則重新評估、必要時再導向下一個門檻。每一步的 <code>return_to</code> 都必須指回最初的下單意圖頁。</li>
+</ul>
+
+<h2>6. 進場入口交接</h2>
+<h3>6.1 Landing 變體</h3>
+<p>各 <code>apps/landing-*</code> 變體是旅程的主要進場入口。變體的 region × product matrix、合規檢核與上線 / 退役以 SPEC-021 為權威。對本 SPEC 而言，所有變體的交接契約一致：landing CTA 把使用者交付到 <code>apps/web</code> 的認證頁（§4.1），旅程自 S1 起一致。</p>
+<h3>6.2 LIFF</h3>
+<p>目前 LIFF（LINE）入口在本 SPEC 旅程中<strong>僅負責把使用者帶到 landing page</strong>。使用者一旦自 LINE 進入 landing，即走與一般 web 訪客完全相同的標準旅程（S0 起）。</p>
+<ul>
+  <li>本版本 LIFF <strong>不</strong>在 LINE 內承載註冊、登入、KYC、儲值或下單。</li>
+  <li>LIFF 內嵌產品面（在 LINE 內完成旅程、使用 LINE 身份登入）為未來 SPEC 或版本範圍，屆時需擴充本 SPEC §6 或另開銜接 SPEC。</li>
+  <li>因此本 SPEC 的旅程階段（§3、§4）與門檻規則（§7）只針對 <code>apps/web</code> 撰寫。</li>
+</ul>
+
+<h2>7. 門檻與攔截規則</h2>
+<p>下表為旅程的規範性攔截規則。前端與後端對「使用者嘗試的動作」評估所需狀態；未滿足時，系統必須執行對應導向，並依 §5 保留 <code>return_to</code>。</p>
+<table>
+  <thead>
+    <tr><th>嘗試的動作</th><th>所需狀態</th><th>未滿足時的系統行為</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>瀏覽 landing / 公開市場列表 / 市場詳情（唯讀）</td>
+      <td><code>visitor</code> 即可</td>
+      <td>允許。不得攔截唯讀瀏覽。</td>
+    </tr>
+    <tr>
+      <td>進入需登入頁（<code>/portfolio</code>、<code>/topup</code>、<code>/kyc/*</code>、<code>/account/*</code>）</td>
+      <td><code>authenticated</code></td>
+      <td>導向 <code>/auth/sign-in?return_to=&lt;原路徑&gt;</code>；登入後導回。</td>
+    </tr>
+    <tr>
+      <td rowspan="3">送出訂單（下單）</td>
+      <td><code>authenticated</code></td>
+      <td>導向 <code>/auth/sign-in?return_to=&lt;市場頁&gt;</code>；登入後導回市場頁，重新評估。</td>
+    </tr>
+    <tr>
+      <td><code>kyc_cleared</code>（達下單最低 tier）</td>
+      <td>導向 <code>/kyc/*</code> 對應 tier；完成後導回市場頁，重新評估。</td>
+    </tr>
+    <tr>
+      <td><code>funded</code>（餘額 ≥ 訂單成本）</td>
+      <td>導向 <code>/topup</code>；完成後導回市場頁，重新評估。</td>
+    </tr>
+    <tr>
+      <td>提領 / 出金</td>
+      <td>依 SPEC-016 / SPEC-005</td>
+      <td>超出本 SPEC 範圍，引用對應 SPEC。</td>
+    </tr>
+  </tbody>
+</table>
+<p>規則要點：</p>
+<ul>
+  <li><strong>後端為最終權威</strong>：前端門檻檢查只為改善體驗，不可取代後端強制。即使前端被繞過，api-gateway 與下游 service 仍必須拒絕不符旅程狀態的下單（SPEC-003 pre-trade 檢查、SPEC-014 §6.1.2 認證）。</li>
+  <li><strong>攔截不得靜默失敗</strong>：被攔截時必須給出明確、可操作的下一步導向；不得只回一個無導向的錯誤。</li>
+  <li><strong>門檻順序無關</strong>：KYC 與儲值兩道閘門可任意先後完成；§7 在每次導回市場頁後重新評估剩餘缺口。</li>
+</ul>
+
+<h2>8. Non-Functional Requirements</h2>
+<table>
+  <thead>
+    <tr><th>項目</th><th>要求</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>狀態權威</td><td>旅程狀態判定必須以 server session、KYC tier、錢包餘額為準，不得依賴 client 端可竄改的旗標或 localStorage。</td></tr>
+    <tr><td>意圖保存</td><td>被攔截導向後完成門檻，必須導回原始意圖頁；深連結（含 query）必須完整保留。</td></tr>
+    <tr><td>導向延遲</td><td>每次攔截導向在單次 request 完成；不得多層中介跳轉。</td></tr>
+    <tr><td>降級行為</td><td>市場資料、錢包餘額等下游查詢失敗時，旅程頁可顯示降級狀態，但不得以 mock 資料誘導使用者送出無法成立的訂單。</td></tr>
+    <tr><td>安全</td><td><code>return_to</code> 僅接受 same-origin 相對路徑；landing 不持有 session。</td></tr>
+  </tbody>
+</table>
+
+<h2>9. Commands</h2>
+<p>實作本 SPEC 時依實際觸碰範圍選擇最小驗證命令。常用命令如下：</p>
+<pre><code>rtk pnpm lint
+rtk pnpm typecheck
+rtk pnpm test
+rtk cargo check -p &lt;crate&gt; --locked
+rtk cargo test -p &lt;crate&gt; --locked
+rtk cargo clippy -p &lt;crate&gt; --all-targets --locked -- -D warnings</code></pre>
+<p>本 SPEC 旅程跨 <code>apps/web</code> 前端與 <code>api-gateway</code> / <code>user-service</code> 等後端；若變更跨服務認證契約或共享資料模型，需依 <code>AGENTS.md</code> 的 Development Compute Policy 安排完整 workspace 驗證或 CI 驗證。</p>
+
+<h2>10. Testing Strategy</h2>
+<ul>
+  <li>E2E journey tests：覆蓋 happy path——新訪客自 landing CTA → 註冊 → 登入 → <code>/portfolio</code> → <code>/markets</code> → 市場詳情 → 首次下單成功。</li>
+  <li>攔截導向 tests：未登入嘗試下單 → 導向 <code>/auth/sign-in</code> → 登入後導回市場頁；KYC tier 不足下單 → 導向 <code>/kyc/*</code> → 完成後導回；餘額不足下單 → 導向 <code>/topup</code> → 完成後導回。</li>
+  <li>多重門檻 tests：同時缺 KYC 與餘額時，逐道閘門導向、每步 <code>return_to</code> 都指回原市場頁。</li>
+  <li>深連結 tests：未登入深連結到帶 query 的市場頁並嘗試下單，登入後完整導回（含 query）。</li>
+  <li>安全 tests：<code>return_to</code> 帶絕對 URL / 跨網域 / 協定相對 URL 時被拒絕並 fallback 至預設頁。</li>
+  <li>後端強制 tests：繞過前端、直接對 api-gateway 送出不符旅程狀態的下單，必須被拒絕（未認證 → 401、KYC / 餘額不足 → 對應錯誤）。</li>
+  <li>Manual QA：以桌面與手機瀏覽器走完整旅程，確認每個攔截點都給出明確下一步。</li>
+</ul>
+
+<h2>11. Success Criteria</h2>
+<ul>
+  <li>存在單一規範來源（本 SPEC）描述 landing → 首次下單的完整旅程，且每階段都標明權威零件 SPEC。</li>
+  <li>新訪客可在 <code>apps/web</code> 走完 happy path 並成功送出第一筆被撮合引擎接受的訂單。</li>
+  <li>所有下單前置門檻（登入、KYC、餘額）未滿足時，使用者被導向唯一明確、可解鎖的下一步，完成後導回原意圖頁。</li>
+  <li>旅程狀態完全由 server 端推導；繞過前端的不合法下單被後端拒絕。</li>
+  <li><code>return_to</code> 僅接受 same-origin 相對路徑，跨網域目標被拒絕。</li>
+  <li>landing 變體與 LIFF 入口都把使用者一致交付到旅程起點。</li>
+  <li>測試覆蓋 happy path、各攔截導向、多重門檻、深連結保存、open redirect 防護與後端強制。</li>
+</ul>
+
+<h2>12. Boundaries</h2>
+<h3>12.1 Always</h3>
+<ul>
+  <li>旅程每個攔截點都把使用者導向唯一明確、可解鎖的下一步。</li>
+  <li>完成被攔截的門檻後，導回原始意圖頁並保留深連結。</li>
+  <li>以 server session、KYC tier、錢包餘額作為旅程狀態的唯一權威。</li>
+  <li>後端對下單獨立強制旅程門檻，不信任前端檢查結果。</li>
+  <li>各零件機制一律引用權威 SPEC（SPEC-003 / 005 / 015 / 016 / 021 / 022），不在本 SPEC 重寫。</li>
+</ul>
+<h3>12.2 Ask First</h3>
+<ul>
+  <li>變更下單前置門檻的組合（例如取消 KYC 門檻、開放未驗證下單、調整下單所需最低 tier）。</li>
+  <li>新增進場入口或改變既有入口的交接方式（native app、LIFF 內嵌下單、第三方嵌入）。</li>
+  <li>變更登入後的預設導向頁。</li>
+  <li>在真實入金開放（LG-2）前於 <code>/topup</code> 呈現真實金流 UI。</li>
+</ul>
+<h3>12.3 Never</h3>
+<ul>
+  <li>在前端宣稱訂單已送出，而後端尚未回傳成功。</li>
+  <li>信任 client 傳入的身份，或允許繞過 KYC / 餘額門檻送出訂單。</li>
+  <li>讓 <code>return_to</code> 接受跨網域絕對 URL（open redirect）。</li>
+  <li>把 landing page 變成持有 session 的登入態頁。</li>
+  <li>以 mock / fallback 資料誘導使用者送出無法成立的訂單。</li>
+  <li>攔截使用者後只回無導向的錯誤、不指出下一步。</li>
+</ul>
+
+<h2>13. Open Questions</h2>
+<ul>
+  <li><strong>OQ-1</strong>：下單所需的最低 KYC tier 為 Tier 1 還是 Tier 2？SPEC-005 §2 為權威；目前 <code>apps/web</code> KYC 頁訊息顯示「Tier 2 required to trade」，需與 SPEC-005 對齊確認，並回填本 SPEC §4.3。</li>
+  <li><strong>OQ-2</strong>：MVP 真實入金前（LG-2 未通過），<code>/topup</code> 階段的 UI 應如何呈現？是顯示 SPEC-002 manual points 調點說明、還是隱藏儲值入口僅由營運後台調點？</li>
+  <li><strong>OQ-3</strong>：<code>visitor</code> 可唯讀瀏覽哪些市場頁？公開市場列表與市場詳情是否全面對未登入訪客開放，或部分需登入？</li>
+  <li><strong>OQ-4</strong>：<code>return_to</code> 白名單與 same-origin 強制由 <code>apps/web</code> 前端中介層執行，還是同時於 api-gateway 強制？</li>
+  <li><strong>OQ-5</strong>：註冊後的 email 驗證是否為 <code>authenticated</code> 的前置條件（即 S1 → S2 之間是否插入強制驗證），還是可先登入、後補驗證？</li>
+  <li><strong>OQ-6</strong>：旅程轉換漏斗的階段切點（S0–S6）由 SPEC-020 分析定義；本 SPEC 是否需在每階段發出標準化的旅程事件供漏斗計算？</li>
+</ul>
+</body>
+</html>

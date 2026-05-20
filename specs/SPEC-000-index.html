@@ -34,7 +34,7 @@
 <h1>Master Index — 規格總索引</h1>
 <blockquote>
 <p><strong>prophetica</strong> — 趣味預測娛樂遊戲平台
-文件版本：v0.3.5 · 最後更新：2026-05-11 · 維護人：Tech Lead</p>
+文件版本：v0.3.7 · 最後更新：2026-05-19 · 維護人：Tech Lead</p>
 <p>Legacy file path：<code>specs/SPEC-000-index.html</code>；本文件不作為單一功能 SPEC 實作輸入。</p>
 </blockquote>
 <hr>
@@ -207,6 +207,12 @@
   <td>登入 IP、IP 推估地點、裝置資訊、可信 proxy header、隱私保存、查詢權限與後續風控基礎事件</td>
   <td>🟢 v0.1.3</td>
 </tr>
+<tr>
+  <td><a href="./SPEC-023-player-onboarding-journey.html">SPEC-023</a></td>
+  <td>玩家入門與首次下單旅程</td>
+  <td>landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單之旅程編排層：階段狀態機、跨頁重導向契約（<code>return_to</code> / open redirect 防護）、門檻攔截規則、進場入口交接；範圍涵蓋完整旅程（含 KYC / 儲值門檻），僅 <code>apps/web</code></td>
+  <td>🟢 v0.1.0 draft</td>
+</tr>
 </tbody></table>
 <h3>P2 — 公開 Beta 後 90 天內完成</h3>
 <table>
@@ -244,8 +250,8 @@
 <tbody><tr>
 <td><a href="./SPEC-014-tech-architecture.html">SPEC-014</a></td>
 <td>整體技術架構</td>
-<td>服務拓撲、技術棧（Rust 1.85 / edition 2024，<strong>ADR-0005 governance</strong>）、Repo 結構、§3.2.1 Cloudflare Pages Edge runtime PoC（T-10，PoC plan 落地）、§4.1 MVP 合併部署、§4.1.1 目前採 <code>services/_binaries/*</code> deployable entrypoints，保留 12 service crate lib 邊界並定義未來拆回 12-binary 條件</td>
-<td>🟢 v0.2.8</td>
+<td>服務拓撲、技術棧（Rust 1.85 / edition 2024，<strong>ADR-0005 governance</strong>）、Repo 結構、§3.2.1 Cloudflare Pages Edge runtime PoC（T-10，PoC plan 落地）、§4.1 MVP 合併部署、§4.1.1 目前採 <code>services/_binaries/*</code> deployable entrypoints，保留 12 service crate lib 邊界並定義未來拆回 12-binary 條件、§6.1.2 Gateway 認證與 principal 傳遞契約</td>
+<td>🟢 v0.2.9</td>
 </tr>
 </tbody></table>
 <h3>Public Beta Launch Gate（真實入金 / 公開 Beta 前必須全部通過）</h3>
@@ -386,6 +392,15 @@
 <h2>4. 變更紀錄</h2>
 <section class="changelog">
 <div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>2026-05-19 · v0.3.7 · Tech Lead</h3>
+    <p><strong>新增 SPEC-023 玩家入門旅程 + SPEC-014 §6.1.2 gateway 認證契約</strong>：landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單之端到端旅程原先分散於 SPEC-021 / 022 / 005 / 016 / 015 / 003，無單一 owner。本輪閉環如下：</p>
+    <ul>
+      <li>新增 <strong>SPEC-023</strong>「玩家入門與首次下單旅程」（P1）作為旅程編排層，定義階段狀態機、跨頁重導向契約、門檻攔截規則與進場入口交接。範圍為完整旅程（含 KYC / 儲值門檻），僅涵蓋 <code>apps/web</code>；LIFF 目前僅負責把使用者帶到 landing page，不在本旅程承載註冊 / 登入 / 下單。SPEC-023 不重寫各零件機制，KYC / 支付 / 撮合分別以 SPEC-005 / 016 / 003 為權威。</li>
+      <li><strong>SPEC-014 bump 至 v0.2.9</strong>：§6.1 新增 §6.1.2「Gateway 認證與 principal 傳遞契約」，把 §4 服務表中 api-gateway 的「認證」職責具體化為可實作契約——gateway 自驗 session token（user-service JWKS）、注入 <code>x-user-id</code> 等 principal header、剝除外部 client 傳入的同名 header。對應現行 <code>AuthContext</code> 直接讀取未驗證 <code>x-user-id</code> header 之缺陷，亦為 SPEC-023 旅程認證接縫的權威來源。</li>
+      <li>同步更新 P1 表（新增 SPEC-023 列）與跨章節表（SPEC-014 版本與摘要）。</li>
+    </ul>
+  </article>
   <article class="changelog-entry">
     <h3>2026-05-12 · v0.3.6 · Tech Lead</h3>
     <p><strong>SPEC-011 affiliate credit governance alignment</strong>：SPEC-011 v0.2.4 新增 §4.7，明確平台官方管理員可調整簽約代理信用評級，並可增加、限制、暫停或撤銷代理可提供的信用帳戶數量、狀態與限額；所有信用管控變更必須寫入操作留痕。同步更新 P2 表摘要與版本。</p>
