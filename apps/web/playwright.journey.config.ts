@@ -10,13 +10,16 @@ const KYC_SERVICE_URL =
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  timeout: 120_000,
+  timeout: 180_000,
+  // Next.js dev mode compiles pages lazily on first request. The journey
+  // tests touch multiple distinct routes — the default 20s expect timeout
+  // is tight against a cold-compile / re-compile cycle.
   expect: {
-    timeout: 20_000,
+    timeout: 45_000,
   },
   use: {
     baseURL: WEB_ORIGIN,
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
   },
   webServer: {
     command: "pnpm dev",
