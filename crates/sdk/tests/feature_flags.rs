@@ -76,3 +76,19 @@ fn pg_feature_flag_queries_target_engine_halted_row() {
             .contains("WHERE key = 'payments.real_money_enabled'")
     );
 }
+
+#[test]
+fn api_gateway_and_wallet_feature_flag_migrations_stay_in_sync() {
+    let wallet_migration = include_str!(
+        "../../../services/wallet-ledger-service/migrations/202605080002_create_feature_flags.sql"
+    );
+    let api_gateway_migration = include_str!(
+        "../../../services/api-gateway/migrations/202605210001_create_feature_flags.sql"
+    );
+
+    assert_eq!(api_gateway_migration, wallet_migration);
+    assert!(api_gateway_migration.contains("metadata JSONB NOT NULL DEFAULT '{}'::jsonb"));
+    assert!(api_gateway_migration.contains("CONSTRAINT feature_flags_engine_halted_subject"));
+    assert!(api_gateway_migration.contains("CHECK (key <> 'engine.halted'"));
+    assert!(api_gateway_migration.contains("VALUES ('payments.real_money_enabled', FALSE"));
+}

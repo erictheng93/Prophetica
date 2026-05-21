@@ -2201,7 +2201,7 @@ where
 
 /// SPEC-023 plan v0.1.3 follow-up I-5: outer-edge bounds on order shape.
 /// Width is intentionally looser than the trade-panel client validation
-/// (100_000 qty / [1,99] price) so legitimate non-UI clients aren't
+/// (`100_000` qty / [1,99] price) so legitimate non-UI clients aren't
 /// blocked — but tight enough to catch garbage before kyc + wallet RPC.
 const MAX_ORDER_QUANTITY: i64 = 1_000_000;
 
@@ -2839,7 +2839,7 @@ pub async fn run_http() -> anyhow::Result<()> {
 /// When `FEATURE_FLAGS_DATABASE_URL` (or `DATABASE_URL`) is unset:
 /// - In production, returns Err — boot must fail closed.
 /// - In dev/test, returns the in-memory store with flag = false and no
-///   pg_store (caller skips poller spawn).
+///   `pg_store` (caller skips poller spawn).
 struct PaymentsRealMoneyFlagSetup {
     flags: InMemoryFeatureFlagStore,
     pg_store: Option<PgFeatureFlagStore>,
@@ -4147,7 +4147,9 @@ mod tests {
         let token = jwt_with_optional_kid("user-1", [7; 32], 1_900_000_000, None);
         let auth = verifier
             .verify_bearer(&token, 1_800_000_000)
-            .expect("single-key JWKS should accept kid-less token");
+            .unwrap_or_else(|error| {
+                panic!("single-key JWKS should accept kid-less token: {error:?}")
+            });
         assert_eq!(auth.user_id, "user-1");
     }
 
@@ -4169,7 +4171,9 @@ mod tests {
         let token = jwt_with_optional_kid("user-1", [7; 32], 1_900_000_000, Some("test-key"));
         let auth = verifier
             .verify_bearer(&token, 1_800_000_000)
-            .expect("kid-tagged token should verify against matching JWKS entry");
+            .unwrap_or_else(|error| {
+                panic!("kid-tagged token should verify against matching JWKS entry: {error:?}")
+            });
         assert_eq!(auth.user_id, "user-1");
     }
 
