@@ -1,10 +1,13 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import {
   closeJourneyMocks,
+  completeTierOne,
   freshJourneyState,
   JOURNEY_MARKET_ID,
+  pathToRegExp,
   setupJourneyMocks,
+  signInFromMarketTrade,
   submitTrade,
   type JourneyMockState,
   type JourneyMocks,
@@ -35,10 +38,9 @@ test("trade with no KYC and no funds clears one gate at a time, preserving retur
   const marketReturnPath = `/markets/${JOURNEY_MARKET_ID}?side=yes&qty=10`;
   const encodedMarketReturnPath = encodeURIComponent(marketReturnPath);
 
-  // Start as a visitor and complete the same sign-in step the happy-path
-  // covers; the focus of this spec is what happens AFTER login when both
-  // KYC and funds are missing.
-  await signInFromMarket(page, marketReturnPath, encodedMarketReturnPath);
+  // Sign in as a visitor (state: TIER_0, balance 0). Focus here is what
+  // happens AFTER login when both gates are unmet.
+  await signInFromMarketTrade(page, marketReturnPath);
 
   // Gate 1: KYC. Tier 0 → /kyc/tier-1?return_to=…
   await submitTrade(page);
@@ -46,9 +48,7 @@ test("trade with no KYC and no funds clears one gate at a time, preserving retur
     new RegExp(`/kyc/tier-1\\?return_to=${encodedMarketReturnPath}`),
   );
   await completeTierOne(page);
-  await expect(page).toHaveURL(
-    new RegExp(`/markets/${JOURNEY_MARKET_ID}\\?side=yes&qty=10$`),
-  );
+  await expect(page).toHaveURL(pathToRegExp(marketReturnPath));
 
   // Gate 2: funds. Balance still 0 → /topup?return_to=…
   await submitTrade(page);
@@ -69,33 +69,3 @@ test("trade with no KYC and no funds clears one gate at a time, preserving retur
     quantity: 10,
   });
 });
-
-async function signInFromMarket(
-  page: Page,
-  marketReturnPath: string,
-  encodedMarketReturnPath: string,
-): Promise<void> {
-  await page.context().clearCookies();
-  await page.goto(marketReturnPath, { waitUntil: "domcontentloaded" });
-  await submitTrade(page);
-  await expect(page).toHaveURL(
-    new RegExp(`/auth/sign-in\\?return_to=${encodedMarketReturnPath}`),
-  );
-  await page.locator('input[name="identifier"]').fill("journey@example.com");
-  await page
-    .locator('input[name="password"]')
-    .fill("correct horse battery staple");
-  await page.getByRole("button", { name: "登入" }).click();
-  await expect(page).toHaveURL(
-    new RegExp(`/markets/${JOURNEY_MARKET_ID}\\?side=yes&qty=10$`),
-  );
-}
-
-async function completeTierOne(page: Page): Promise<void> {
-  await page.locator('input[name="legalName"]').fill("Journey User");
-  await page.locator('input[name="birthday"]').fill("1990-01-02");
-  await page.locator('select[name="country"]').selectOption("TW");
-  await page.locator('input[name="documentId"]').fill("A123456789");
-  await page.locator('input[name="consent"]').check();
-  await page.getByRole("button", { name: "送出基礎驗證" }).click();
-}

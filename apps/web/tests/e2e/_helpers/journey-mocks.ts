@@ -243,6 +243,45 @@ async function createJsonServer(
   return server;
 }
 
+/// Anchors `path` (which may contain query string) as an exact-match
+/// RegExp, escaping all regex metacharacters so `?`, `&` etc. are literal.
+export function pathToRegExp(path: string): RegExp {
+  return new RegExp(`${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+}
+
+/// Drives the visitor → trade → intercepted-to-sign-in → login flow, ending
+/// back on `marketReturnPath`. Used by specs whose focus is what happens
+/// AFTER login (e.g. single-gate isolation).
+export async function signInFromMarketTrade(
+  page: Page,
+  marketReturnPath: string,
+): Promise<void> {
+  const encoded = encodeURIComponent(marketReturnPath);
+  await page.context().clearCookies();
+  await page.goto(marketReturnPath, { waitUntil: "domcontentloaded" });
+  await submitTrade(page);
+  await expect(page).toHaveURL(
+    new RegExp(`/auth/sign-in\\?return_to=${encoded}`),
+  );
+  await page.locator('input[name="identifier"]').fill("journey@example.com");
+  await page
+    .locator('input[name="password"]')
+    .fill("correct horse battery staple");
+  await page.getByRole("button", { name: "登入" }).click();
+  await expect(page).toHaveURL(pathToRegExp(marketReturnPath));
+}
+
+/// Fills and submits the Tier 1 KYC form (the mock kyc-service flips
+/// state.kycTier to TIER_1 on receipt).
+export async function completeTierOne(page: Page): Promise<void> {
+  await page.locator('input[name="legalName"]').fill("Journey User");
+  await page.locator('input[name="birthday"]').fill("1990-01-02");
+  await page.locator('select[name="country"]').selectOption("TW");
+  await page.locator('input[name="documentId"]').fill("A123456789");
+  await page.locator('input[name="consent"]').check();
+  await page.getByRole("button", { name: "送出基礎驗證" }).click();
+}
+
 export async function submitTrade(page: Page) {
   const panel = page.locator("aside");
   await expect(panel).toHaveAttribute("data-hydrated", "true");
