@@ -50,8 +50,8 @@ pub fn verify_internal_call(
     if (now - timestamp).abs() > TIMESTAMP_SKEW_LIMIT_SECS {
         return Err(InternalCallRejection::Unauthorized);
     }
-    let signature =
-        header(headers, INTERNAL_CALL_SIGNATURE_HEADER).ok_or(InternalCallRejection::Unauthorized)?;
+    let signature = header(headers, INTERNAL_CALL_SIGNATURE_HEADER)
+        .ok_or(InternalCallRejection::Unauthorized)?;
     let expected = sign_internal_call(method, path, body, timestamp, secret);
     if !constant_time_eq(signature.as_bytes(), expected.as_bytes()) {
         return Err(InternalCallRejection::Unauthorized);
@@ -113,44 +113,52 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
+    use axum::http::header::InvalidHeaderValue;
 
-    fn signed_headers(method: &str, path: &str, ts: i64, secret: &str) -> HeaderMap {
+    fn signed_headers(
+        method: &str,
+        path: &str,
+        ts: i64,
+        secret: &str,
+    ) -> Result<HeaderMap, InvalidHeaderValue> {
         let mut headers = HeaderMap::new();
         headers.insert(
             INTERNAL_CALL_TIMESTAMP_HEADER,
-            HeaderValue::from_str(&ts.to_string()).expect("ts header"),
+            HeaderValue::from_str(&ts.to_string())?,
         );
         let sig = sign_internal_call(method, path, b"", ts, secret);
-        headers.insert(
-            INTERNAL_CALL_SIGNATURE_HEADER,
-            HeaderValue::from_str(&sig).expect("sig header"),
+        headers.insert(INTERNAL_CALL_SIGNATURE_HEADER, HeaderValue::from_str(&sig)?);
+        Ok(headers)
+    }
+
+    #[test]
+    fn matching_signature_passes() -> Result<(), InvalidHeaderValue> {
+        let h = signed_headers("GET", "/internal/kyc/users/u/tier", 1_000, "s")?;
+        assert_eq!(
+            verify_internal_call(&h, "GET", "/internal/kyc/users/u/tier", b"", "s", 1_000),
+            Ok(()),
         );
-        headers
+        Ok(())
     }
 
     #[test]
-    fn matching_signature_passes() {
-        let h = signed_headers("GET", "/internal/kyc/users/u/tier", 1_000, "s");
-        verify_internal_call(&h, "GET", "/internal/kyc/users/u/tier", b"", "s", 1_000)
-            .expect("valid call");
-    }
-
-    #[test]
-    fn skew_beyond_limit_rejected() {
-        let h = signed_headers("GET", "/p", 1_000, "s");
+    fn skew_beyond_limit_rejected() -> Result<(), InvalidHeaderValue> {
+        let h = signed_headers("GET", "/p", 1_000, "s")?;
         assert_eq!(
             verify_internal_call(&h, "GET", "/p", b"", "s", 1_000 + 301),
             Err(InternalCallRejection::Unauthorized),
         );
+        Ok(())
     }
 
     #[test]
-    fn wrong_secret_rejected() {
-        let h = signed_headers("GET", "/p", 1_000, "s");
+    fn wrong_secret_rejected() -> Result<(), InvalidHeaderValue> {
+        let h = signed_headers("GET", "/p", 1_000, "s")?;
         assert_eq!(
             verify_internal_call(&h, "GET", "/p", b"", "other", 1_000),
             Err(InternalCallRejection::Unauthorized),
         );
+        Ok(())
     }
 
     #[test]
@@ -163,11 +171,12 @@ mod tests {
     }
 
     #[test]
-    fn path_mismatch_rejected() {
-        let h = signed_headers("GET", "/intended", 1_000, "s");
+    fn path_mismatch_rejected() -> Result<(), InvalidHeaderValue> {
+        let h = signed_headers("GET", "/intended", 1_000, "s")?;
         assert_eq!(
             verify_internal_call(&h, "GET", "/different", b"", "s", 1_000),
             Err(InternalCallRejection::Unauthorized),
         );
+        Ok(())
     }
 }

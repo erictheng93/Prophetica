@@ -812,9 +812,7 @@ mod api_contract_tests {
         let path = format!("/internal/kyc/users/{user_id}/tier");
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0_i64, |d| {
-                i64::try_from(d.as_secs()).unwrap_or(i64::MAX)
-            });
+            .map_or(0_i64, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
         let signature =
             crate::internal_auth::sign_internal_call("GET", &path, b"", timestamp, secret);
         match Request::builder()
@@ -824,7 +822,10 @@ mod api_contract_tests {
                 crate::internal_auth::INTERNAL_CALL_TIMESTAMP_HEADER,
                 timestamp.to_string(),
             )
-            .header(crate::internal_auth::INTERNAL_CALL_SIGNATURE_HEADER, signature)
+            .header(
+                crate::internal_auth::INTERNAL_CALL_SIGNATURE_HEADER,
+                signature,
+            )
             .body(Body::empty())
         {
             Ok(request) => request,

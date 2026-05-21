@@ -2845,8 +2845,7 @@ struct PaymentsRealMoneyFlagSetup {
     pg_store: Option<PgFeatureFlagStore>,
 }
 
-async fn payments_real_money_flag_setup_from_env()
--> anyhow::Result<PaymentsRealMoneyFlagSetup> {
+async fn payments_real_money_flag_setup_from_env() -> anyhow::Result<PaymentsRealMoneyFlagSetup> {
     let flags = InMemoryFeatureFlagStore::default();
     let Some(database_url) = feature_flags_database_url() else {
         if is_production_env() {
@@ -2987,8 +2986,8 @@ mod tests {
         AffiliateReferralListItem, ApiError, AuthVerifier, BookLevel, BookSnapshotResponse,
         CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore, KycTier,
         KycTierClient, LedgerEntry, Market, MarketListResponse, MarketServiceClient,
-        MatchingEngineClient, OrderActionResponse, PlaceOrderRequest, ReferralClient,
-        SERVICE_NAME, WalletBalance, WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
+        MatchingEngineClient, OrderActionResponse, PlaceOrderRequest, ReferralClient, SERVICE_NAME,
+        WalletBalance, WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
         X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
         market_router, observability, router, router_with_engine, router_with_engine_and_kyc,
         router_with_engine_and_kyc_and_market_fees, router_with_payment_flags,
@@ -3320,10 +3319,7 @@ mod tests {
             });
             let response = app
                 .clone()
-                .oneshot(order_post(
-                    &format!("idem-price-{price_pts}"),
-                    &body,
-                ))
+                .oneshot(order_post(&format!("idem-price-{price_pts}"), &body))
                 .await
                 .expect("request should be handled");
 
