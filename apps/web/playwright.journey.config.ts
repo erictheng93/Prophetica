@@ -26,6 +26,12 @@ export default defineConfig({
       KYC_SERVICE_BASE_URL: KYC_SERVICE_URL,
       MATCHING_ENGINE_BASE_URL: API_GATEWAY_URL,
       PROPHETICA_DEV_USER_ID: "E2E-USER",
+      // SPEC-023 plan v0.1.3: BFF + cookie dev opt-outs. Without these the
+      // Next server returns 401 for unauthenticated BFF calls (post-H-1)
+      // and writes Secure cookies that browsers may refuse on http://
+      // localhost (post-S-2).
+      PROPHETICA_ALLOW_DEV_BFF: "1",
+      PROPHETICA_INSECURE_COOKIES: "1",
     },
     url: `${WEB_ORIGIN}/api/health`,
     reuseExistingServer: false,
