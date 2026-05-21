@@ -1,22 +1,26 @@
-name: Rust
+name: rust-tests
+
+# Backend test execution. ci.yml already runs cargo check / clippy / fmt;
+# this workflow fills the gap it leaves — actually running the workspace
+# test suite via cargo nextest (the canonical runner per `make test`).
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
-
-env:
-  CARGO_TERM_COLOR: always
+  push:
+    branches: [main]
 
 jobs:
-  build:
-
+  workspace-tests:
     runs-on: ubuntu-latest
-
+    env:
+      SQLX_OFFLINE: "true"
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - uses: mozilla-actions/sccache-action@v0.0.10
+      - uses: taiki-e/install-action@nextest
+      - name: install native rdkafka deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
+      - name: cargo nextest
+        run: cargo nextest run --workspace --locked
