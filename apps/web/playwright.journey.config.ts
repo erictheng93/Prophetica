@@ -17,6 +17,12 @@ export default defineConfig({
   expect: {
     timeout: 45_000,
   },
+  // The journey suite mocks user-service / api-gateway / kyc-service on
+  // fixed ports (43_280 / 43_284 / 43_285) shared across all spec files.
+  // Forbid parallel workers so subsequent specs do not collide on those
+  // sockets while the previous spec is still tearing down.
+  fullyParallel: false,
+  workers: 1,
   use: {
     baseURL: WEB_ORIGIN,
     trace: "retain-on-failure",

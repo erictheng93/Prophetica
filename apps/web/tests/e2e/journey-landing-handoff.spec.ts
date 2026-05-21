@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // SPEC-023 plan Task 4.9 — verify the landing/LIFF entry contracts
 // described in §6.1 / §6.2. The handoff is server-rendered (static hrefs +
@@ -13,7 +14,8 @@ import { join } from "node:path";
 //   - landing does not touch session cookies / next/headers cookies()
 //   - LIFF entry redirects to landing only; no in-LINE registration
 
-const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(HERE, "..", "..", "..", "..");
 
 function readRepoFile(path: string): string {
   return readFileSync(join(REPO_ROOT, path), "utf8");
