@@ -5,13 +5,13 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use position_service::api::{Position, router};
+use position_service::api::{Position, in_memory_router};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
 #[tokio::test]
 async fn list_positions_returns_positions_for_user() {
-    let app = router([
+    let app = in_memory_router([
         sample_position("pos-1", "user_01", "mkt-election", None),
         sample_position("pos-2", "user_02", "mkt-other", None),
     ]);
@@ -29,7 +29,7 @@ async fn list_positions_returns_positions_for_user() {
 
 #[tokio::test]
 async fn list_positions_filters_active_and_settled() {
-    let app = router([
+    let app = in_memory_router([
         sample_position("active-1", "user_01", "mkt-active", None),
         sample_position(
             "settled-1",

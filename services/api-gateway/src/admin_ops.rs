@@ -2792,6 +2792,6 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
     fn kyc_service_base_url(&self) -> String {
         self.kyc_url_override
             .clone()
-            .unwrap_or_else(|| crate::kyc_service_base_url_from_env())
+            .unwrap_or_else(crate::kyc_service_base_url_from_env)
     }
 }

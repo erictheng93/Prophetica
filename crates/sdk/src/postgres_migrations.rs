@@ -16,6 +16,7 @@ pub const USER_SERVICE_MIGRATION_TABLE: &str = "_sqlx_migrations_user_service";
 pub const API_GATEWAY_MIGRATION_TABLE: &str = "_sqlx_migrations_api_gateway";
 pub const REFERRAL_SERVICE_MIGRATION_TABLE: &str = "_sqlx_migrations_referral_service";
 pub const KYC_SERVICE_MIGRATION_TABLE: &str = "_sqlx_migrations_kyc_service";
+pub const POSITION_SERVICE_MIGRATION_TABLE: &str = "_sqlx_migrations_position_service";
 
 /// Shared migration table used before per-service isolation. A database created by an older
 /// build records every service's migrations here; [`adopt_legacy_migrations`] bridges those rows
@@ -337,7 +338,8 @@ mod tests {
     use std::collections::HashSet;
 
     use super::{
-        API_GATEWAY_MIGRATION_TABLE, LEGACY_MIGRATION_TABLE, REFERRAL_SERVICE_MIGRATION_TABLE,
+        API_GATEWAY_MIGRATION_TABLE, KYC_SERVICE_MIGRATION_TABLE, LEGACY_MIGRATION_TABLE,
+        POSITION_SERVICE_MIGRATION_TABLE, REFERRAL_SERVICE_MIGRATION_TABLE,
         USER_SERVICE_MIGRATION_TABLE, migration_table_identifier,
     };
 
@@ -347,6 +349,8 @@ mod tests {
             USER_SERVICE_MIGRATION_TABLE,
             API_GATEWAY_MIGRATION_TABLE,
             REFERRAL_SERVICE_MIGRATION_TABLE,
+            KYC_SERVICE_MIGRATION_TABLE,
+            POSITION_SERVICE_MIGRATION_TABLE,
         ];
 
         assert_eq!(
@@ -361,6 +365,8 @@ mod tests {
             USER_SERVICE_MIGRATION_TABLE,
             API_GATEWAY_MIGRATION_TABLE,
             REFERRAL_SERVICE_MIGRATION_TABLE,
+            KYC_SERVICE_MIGRATION_TABLE,
+            POSITION_SERVICE_MIGRATION_TABLE,
         ] {
             assert_ne!(table, LEGACY_MIGRATION_TABLE);
         }

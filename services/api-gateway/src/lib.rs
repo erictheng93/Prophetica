@@ -28,6 +28,7 @@ use sdk::{
     service_stub,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::{net::TcpListener, signal};
 
 pub const SERVICE_NAME: &str = "api-gateway";
@@ -47,6 +48,7 @@ const TRANSITION_CALLER_HEADER: HeaderName = HeaderName::from_static("x-transiti
 const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-key");
 const DEFAULT_ORDER_FEE_BPS: u32 = 200;
 const DEFAULT_KYC_SERVICE_BASE_URL: &str = "http://127.0.0.1:8085";
+const DEFAULT_POSITION_SERVICE_BASE_URL: &str = "http://127.0.0.1:8089";
 
 pub const X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF: &str = "apps-web-dev-bff";
 pub const X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON: &str = "2026-08-31";
@@ -220,6 +222,7 @@ pub struct AppStateWithEngine<W, E, K> {
     engine: E,
     kyc: K,
     market_fees: Arc<dyn MarketFeeReader + Send + Sync>,
+    position_projection: Arc<dyn PositionProjectionClient + Send + Sync>,
     idempotency: IdempotencyStore,
 }
 
@@ -234,11 +237,33 @@ impl<W, E, K> AppStateWithEngine<W, E, K> {
     where
         M: MarketFeeReader + Send + Sync + 'static,
     {
+        Self::new_with_market_fees_and_position_projection(
+            wallet_ledger,
+            engine,
+            kyc,
+            market_fees,
+            NoopPositionProjectionClient,
+        )
+    }
+
+    #[must_use]
+    pub fn new_with_market_fees_and_position_projection<M, P>(
+        wallet_ledger: W,
+        engine: E,
+        kyc: K,
+        market_fees: M,
+        position_projection: P,
+    ) -> Self
+    where
+        M: MarketFeeReader + Send + Sync + 'static,
+        P: PositionProjectionClient + Send + Sync + 'static,
+    {
         Self {
             wallet_ledger,
             engine,
             kyc,
             market_fees: Arc::new(market_fees),
+            position_projection: Arc::new(position_projection),
             idempotency: IdempotencyStore::default(),
         }
     }
@@ -251,6 +276,7 @@ pub struct AppStateWithServices<W, E, R, K> {
     referral: R,
     kyc: K,
     market_fees: Arc<dyn MarketFeeReader + Send + Sync>,
+    position_projection: Arc<dyn PositionProjectionClient + Send + Sync>,
     idempotency: IdempotencyStore,
 }
 
@@ -271,12 +297,36 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
     where
         M: MarketFeeReader + Send + Sync + 'static,
     {
+        Self::new_with_market_fees_and_position_projection(
+            wallet_ledger,
+            engine,
+            referral,
+            kyc,
+            market_fees,
+            NoopPositionProjectionClient,
+        )
+    }
+
+    #[must_use]
+    pub fn new_with_market_fees_and_position_projection<M, P>(
+        wallet_ledger: W,
+        engine: E,
+        referral: R,
+        kyc: K,
+        market_fees: M,
+        position_projection: P,
+    ) -> Self
+    where
+        M: MarketFeeReader + Send + Sync + 'static,
+        P: PositionProjectionClient + Send + Sync + 'static,
+    {
         Self {
             wallet_ledger,
             engine,
             referral,
             kyc,
             market_fees: Arc::new(market_fees),
+            position_projection: Arc::new(position_projection),
             idempotency: IdempotencyStore::default(),
         }
     }
@@ -663,6 +713,14 @@ impl ApiError {
         )
     }
 
+    fn position_service(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::BAD_GATEWAY,
+            "position_service_unavailable",
+            message,
+        )
+    }
+
     fn kyc_lookup_unavailable(message: impl Into<String>) -> Self {
         Self::new(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -747,6 +805,31 @@ pub struct LedgerEntriesResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Position {
+    pub id: String,
+    pub user_id: String,
+    pub market_id: String,
+    pub outcome: String,
+    pub qty: i64,
+    pub avg_price_pts: i32,
+    pub locked_amount: i64,
+    pub opened_at: String,
+    pub closed_at: Option<String>,
+    pub settle_txn_id: Option<i64>,
+    pub realized_pnl_points: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PositionListResponse {
+    pub positions: Vec<Position>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct PositionListQuery {
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlaceOrderRequest {
     pub side: String,
     pub outcome: String,
@@ -765,6 +848,31 @@ pub struct OrderActionResponse {
     pub avg_price_pts: i32,
     pub remaining_qty: i64,
     pub fee_pts: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LedgerPostResult {
+    pub txn_id: i64,
+    pub replayed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PositionFillProjectionRequest {
+    pub user_id: String,
+    pub market_id: String,
+    pub outcome: String,
+    pub side: String,
+    pub quantity: i64,
+    pub price_pts: i32,
+    pub order_id: String,
+    pub fill_id: String,
+    pub filled_at: Option<String>,
+    pub ledger_txn_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrderPrecheckOutcome {
+    pub required_minor_units: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -912,6 +1020,28 @@ pub trait WalletLedgerClient {
         amount_minor_units: i64,
         idempotency_key: &str,
     ) -> Result<(), ApiError>;
+
+    async fn reserve_order_funds(
+        &self,
+        user_id: &str,
+        market_id: &str,
+        amount_minor_units: i64,
+        idempotency_key: &str,
+    ) -> Result<Option<LedgerPostResult>, ApiError> {
+        let _ = (user_id, market_id, amount_minor_units, idempotency_key);
+        Ok(None)
+    }
+
+    async fn release_order_funds(
+        &self,
+        user_id: &str,
+        market_id: &str,
+        amount_minor_units: i64,
+        idempotency_key: &str,
+    ) -> Result<(), ApiError> {
+        let _ = (user_id, market_id, amount_minor_units, idempotency_key);
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -1004,6 +1134,39 @@ pub trait MarketServiceClient {
 }
 
 #[async_trait]
+pub trait PositionServiceClient {
+    async fn list_positions(
+        &self,
+        user_id: &str,
+        status: Option<&str>,
+    ) -> Result<PositionListResponse, ApiError>;
+}
+
+#[async_trait]
+pub trait PositionProjectionClient {
+    async fn project_fill(
+        &self,
+        request: PositionFillProjectionRequest,
+        idempotency_key: &str,
+    ) -> Result<(), ApiError>;
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NoopPositionProjectionClient;
+
+#[async_trait]
+impl PositionProjectionClient for NoopPositionProjectionClient {
+    async fn project_fill(
+        &self,
+        request: PositionFillProjectionRequest,
+        idempotency_key: &str,
+    ) -> Result<(), ApiError> {
+        let _ = (request, idempotency_key);
+        Ok(())
+    }
+}
+
+#[async_trait]
 pub trait MarketFeeReader {
     async fn fee_bps_cap(&self, market_id: &str) -> Result<u32, ApiError>;
 }
@@ -1050,6 +1213,12 @@ pub struct HttpReferralClient {
 
 #[derive(Debug, Clone)]
 pub struct HttpMarketServiceClient {
+    base_url: Url,
+    client: reqwest::Client,
+}
+
+#[derive(Debug, Clone)]
+pub struct HttpPositionServiceClient {
     base_url: Url,
     client: reqwest::Client,
 }
@@ -1117,6 +1286,35 @@ impl HttpWalletLedgerClient {
             .unwrap_or_else(|_| "http://127.0.0.1:8086".to_owned());
         Self::new(&base_url)
     }
+
+    async fn post_ledger_transaction(
+        &self,
+        idempotency_key: &str,
+        body: &PostLedgerTransactionRequest,
+    ) -> Result<LedgerPostResult, ApiError> {
+        let url = self
+            .base_url
+            .join("/internal/ledger/transactions")
+            .map_err(|error| ApiError::upstream(error.to_string()))?;
+        let response = self
+            .client
+            .post(url)
+            .header(IDEMPOTENCY_KEY_HEADER.as_str(), idempotency_key)
+            .json(body)
+            .send()
+            .await
+            .map_err(|error| ApiError::upstream(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::upstream(error.to_string()))?
+            .json::<PostLedgerTransactionResponse>()
+            .await
+            .map_err(|error| ApiError::upstream(error.to_string()))?;
+
+        Ok(LedgerPostResult {
+            txn_id: response.txn_id,
+            replayed: response.replayed,
+        })
+    }
 }
 
 impl HttpReferralClient {
@@ -1165,6 +1363,32 @@ impl HttpMarketServiceClient {
     pub fn from_env() -> anyhow::Result<Self> {
         let base_url = env::var("MARKET_SERVICE_BASE_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8087".to_owned());
+        Self::new(&base_url)
+    }
+}
+
+impl HttpPositionServiceClient {
+    /// Creates an HTTP client for the internal position-service facade.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `base_url` is not a valid URL.
+    pub fn new(base_url: &str) -> anyhow::Result<Self> {
+        Ok(Self {
+            base_url: Url::parse(base_url)?,
+            client: reqwest::Client::new(),
+        })
+    }
+
+    /// Creates a client from `POSITION_SERVICE_BASE_URL`, defaulting to the
+    /// local position-service port used by `core-api`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configured URL is invalid.
+    pub fn from_env() -> anyhow::Result<Self> {
+        let base_url = env::var("POSITION_SERVICE_BASE_URL")
+            .unwrap_or_else(|_| DEFAULT_POSITION_SERVICE_BASE_URL.to_owned());
         Self::new(&base_url)
     }
 }
@@ -1269,13 +1493,9 @@ impl WalletLedgerClient for HttpWalletLedgerClient {
             return Ok(());
         }
 
-        let url = self
-            .base_url
-            .join("/internal/ledger/transactions")
-            .map_err(|error| ApiError::upstream(error.to_string()))?;
-        let body = FreezePlayerFundsRequest {
+        let body = PostLedgerTransactionRequest {
             txn_type: "freeze",
-            correlation_id: Some(idempotency_key),
+            correlation_id: Some(idempotency_key.to_owned()),
             description: Some("self-exclusion freeze player funds"),
             metadata: serde_json::json!({
                 "reason": "self_exclusion",
@@ -1283,12 +1503,12 @@ impl WalletLedgerClient for HttpWalletLedgerClient {
                 "ref_id": idempotency_key,
             }),
             entries: vec![
-                FreezePlayerFundsEntry {
+                PostLedgerEntry {
                     account_code: format!("Player.Wallet.{user_id}"),
                     direction: "debit",
                     amount_minor_units,
                 },
-                FreezePlayerFundsEntry {
+                PostLedgerEntry {
                     account_code: format!("Player.Frozen.{user_id}"),
                     direction: "credit",
                     amount_minor_units,
@@ -1296,34 +1516,126 @@ impl WalletLedgerClient for HttpWalletLedgerClient {
             ],
         };
 
-        self.client
-            .post(url)
-            .header(IDEMPOTENCY_KEY_HEADER.as_str(), idempotency_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|error| ApiError::upstream(error.to_string()))?
-            .error_for_status()
-            .map_err(|error| ApiError::upstream(error.to_string()))?;
+        self.post_ledger_transaction(idempotency_key, &body).await?;
 
+        Ok(())
+    }
+
+    async fn reserve_order_funds(
+        &self,
+        user_id: &str,
+        market_id: &str,
+        amount_minor_units: i64,
+        idempotency_key: &str,
+    ) -> Result<Option<LedgerPostResult>, ApiError> {
+        if amount_minor_units <= 0 {
+            return Ok(None);
+        }
+
+        let body = PostLedgerTransactionRequest {
+            txn_type: "order_lock",
+            correlation_id: Some(idempotency_key.to_owned()),
+            description: Some("reserve player funds for order"),
+            metadata: serde_json::json!({
+                "market_id": market_id,
+                "user_id": user_id,
+                "reason": "order_lock",
+            }),
+            entries: vec![
+                PostLedgerEntry {
+                    account_code: format!("Player.Wallet.{user_id}"),
+                    direction: "debit",
+                    amount_minor_units,
+                },
+                PostLedgerEntry {
+                    account_code: format!("Player.Locked.{user_id}"),
+                    direction: "credit",
+                    amount_minor_units,
+                },
+            ],
+        };
+
+        self.post_ledger_transaction(idempotency_key, &body)
+            .await
+            .map(Some)
+    }
+
+    async fn release_order_funds(
+        &self,
+        user_id: &str,
+        market_id: &str,
+        amount_minor_units: i64,
+        idempotency_key: &str,
+    ) -> Result<(), ApiError> {
+        if amount_minor_units <= 0 {
+            return Ok(());
+        }
+
+        let body = PostLedgerTransactionRequest {
+            txn_type: "order_unlock",
+            correlation_id: Some(idempotency_key.to_owned()),
+            description: Some("release player order funds after matching failure"),
+            metadata: serde_json::json!({
+                "market_id": market_id,
+                "user_id": user_id,
+                "reason": "matching_engine_failure",
+            }),
+            entries: vec![
+                PostLedgerEntry {
+                    account_code: format!("Player.Locked.{user_id}"),
+                    direction: "debit",
+                    amount_minor_units,
+                },
+                PostLedgerEntry {
+                    account_code: format!("Player.Wallet.{user_id}"),
+                    direction: "credit",
+                    amount_minor_units,
+                },
+            ],
+        };
+
+        self.post_ledger_transaction(idempotency_key, &body).await?;
         Ok(())
     }
 }
 
 #[derive(Debug, Serialize)]
-struct FreezePlayerFundsRequest<'a> {
+struct PostLedgerTransactionRequest {
     txn_type: &'static str,
-    correlation_id: Option<&'a str>,
+    correlation_id: Option<String>,
     description: Option<&'static str>,
     metadata: serde_json::Value,
-    entries: Vec<FreezePlayerFundsEntry>,
+    entries: Vec<PostLedgerEntry>,
 }
 
 #[derive(Debug, Serialize)]
-struct FreezePlayerFundsEntry {
+struct PostLedgerEntry {
     account_code: String,
     direction: &'static str,
     amount_minor_units: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct PostLedgerTransactionResponse {
+    txn_id: i64,
+    replayed: bool,
+}
+
+fn matching_engine_user_id_header_value(user_id: &str) -> String {
+    if let Ok(parsed) = user_id.parse::<u64>() {
+        if parsed >= 9 {
+            return parsed.to_string();
+        }
+    }
+
+    let digest = Sha256::digest(user_id.as_bytes());
+    let mut bytes = [0_u8; 8];
+    bytes.copy_from_slice(&digest[..8]);
+    let mut mapped = u64::from_be_bytes(bytes);
+    if mapped < 9 {
+        mapped = mapped.saturating_add(9);
+    }
+    mapped.to_string()
 }
 
 #[async_trait]
@@ -1343,7 +1655,10 @@ impl MatchingEngineClient for HttpMatchingEngineClient {
         let response = self
             .client
             .post(url)
-            .header(USER_ID_HEADER.as_str(), user_id)
+            .header(
+                USER_ID_HEADER.as_str(),
+                matching_engine_user_id_header_value(user_id),
+            )
             .json(request)
             .send()
             .await
@@ -1368,7 +1683,10 @@ impl MatchingEngineClient for HttpMatchingEngineClient {
         let response = self
             .client
             .delete(url)
-            .header(USER_ID_HEADER.as_str(), user_id)
+            .header(
+                USER_ID_HEADER.as_str(),
+                matching_engine_user_id_header_value(user_id),
+            )
             .send()
             .await
             .map_err(|error| {
@@ -1694,6 +2012,61 @@ impl MarketServiceClient for HttpMarketServiceClient {
 }
 
 #[async_trait]
+impl PositionServiceClient for HttpPositionServiceClient {
+    async fn list_positions(
+        &self,
+        user_id: &str,
+        status: Option<&str>,
+    ) -> Result<PositionListResponse, ApiError> {
+        let mut url = self
+            .base_url
+            .join(&format!("/internal/users/{user_id}/positions"))
+            .map_err(|error| ApiError::position_service(error.to_string()))?;
+        if let Some(status) = status {
+            url.query_pairs_mut().append_pair("status", status);
+        }
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::position_service(error.to_string()))?;
+
+        response
+            .error_for_status()
+            .map_err(|error| ApiError::position_service(error.to_string()))?
+            .json::<PositionListResponse>()
+            .await
+            .map_err(|error| ApiError::position_service(error.to_string()))
+    }
+}
+
+#[async_trait]
+impl PositionProjectionClient for HttpPositionServiceClient {
+    async fn project_fill(
+        &self,
+        request: PositionFillProjectionRequest,
+        idempotency_key: &str,
+    ) -> Result<(), ApiError> {
+        let url = self
+            .base_url
+            .join("/internal/positions/fills")
+            .map_err(|error| ApiError::position_service(error.to_string()))?;
+        self.client
+            .post(url)
+            .header(IDEMPOTENCY_KEY_HEADER.as_str(), idempotency_key)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|error| ApiError::position_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::position_service(error.to_string()))?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
 impl<T> MarketFeeReader for T
 where
     T: MarketServiceClient + Send + Sync,
@@ -1923,6 +2296,29 @@ where
     K: KycTierClient + Clone + Send + Sync + 'static,
     M: MarketFeeReader + Send + Sync + 'static,
 {
+    router_with_engine_and_kyc_and_market_fees_and_position_projection(
+        wallet_ledger,
+        engine,
+        kyc,
+        market_fees,
+        NoopPositionProjectionClient,
+    )
+}
+
+pub fn router_with_engine_and_kyc_and_market_fees_and_position_projection<W, E, K, M, P>(
+    wallet_ledger: W,
+    engine: E,
+    kyc: K,
+    market_fees: M,
+    position_projection: P,
+) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    K: KycTierClient + Clone + Send + Sync + 'static,
+    M: MarketFeeReader + Send + Sync + 'static,
+    P: PositionProjectionClient + Send + Sync + 'static,
+{
     Router::new()
         .route(
             "/v1/me/wallet/balance",
@@ -1941,12 +2337,15 @@ where
             "/v1/markets/:market_id/book",
             get(get_book_snapshot::<W, E, K>),
         )
-        .with_state(Arc::new(AppStateWithEngine::new_with_market_fees(
-            wallet_ledger,
-            engine,
-            kyc,
-            market_fees,
-        )))
+        .with_state(Arc::new(
+            AppStateWithEngine::new_with_market_fees_and_position_projection(
+                wallet_ledger,
+                engine,
+                kyc,
+                market_fees,
+                position_projection,
+            ),
+        ))
         .merge(payments_real_money_router(
             InMemoryFeatureFlagStore::default(),
         ))
@@ -2026,6 +2425,43 @@ where
     F: PaymentsRealMoneyFlagReader + Clone + Send + Sync + 'static,
     M: MarketFeeReader + Send + Sync + 'static,
 {
+    router_with_services_and_kyc_and_payment_flags_and_market_fees_and_position_projection(
+        wallet_ledger,
+        engine,
+        referral,
+        kyc,
+        payment_flags,
+        market_fees,
+        NoopPositionProjectionClient,
+    )
+}
+
+pub fn router_with_services_and_kyc_and_payment_flags_and_market_fees_and_position_projection<
+    W,
+    E,
+    R,
+    K,
+    F,
+    M,
+    P,
+>(
+    wallet_ledger: W,
+    engine: E,
+    referral: R,
+    kyc: K,
+    payment_flags: F,
+    market_fees: M,
+    position_projection: P,
+) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    R: ReferralClient + Clone + Send + Sync + 'static,
+    K: KycTierClient + Clone + Send + Sync + 'static,
+    F: PaymentsRealMoneyFlagReader + Clone + Send + Sync + 'static,
+    M: MarketFeeReader + Send + Sync + 'static,
+    P: PositionProjectionClient + Send + Sync + 'static,
+{
     let rg_router = responsible_gaming::responsible_gaming_router(
         wallet_ledger.clone(),
         responsible_gaming::InMemorySelfExclusionStore::default(),
@@ -2087,13 +2523,16 @@ where
             "/api/internal/admin/affiliate-payouts",
             get(list_affiliate_payout_reviews::<W, E, R, K>),
         )
-        .with_state(Arc::new(AppStateWithServices::new_with_market_fees(
-            wallet_ledger,
-            engine,
-            referral,
-            kyc,
-            market_fees,
-        )))
+        .with_state(Arc::new(
+            AppStateWithServices::new_with_market_fees_and_position_projection(
+                wallet_ledger,
+                engine,
+                referral,
+                kyc,
+                market_fees,
+                position_projection,
+            ),
+        ))
         .merge(rg_router)
         .merge(payments_real_money_router(payment_flags))
 }
@@ -2120,6 +2559,15 @@ where
         .with_state(Arc::new(market_service))
 }
 
+pub fn positions_router<P>(position_service: P) -> Router
+where
+    P: PositionServiceClient + Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route("/v1/me/positions", get(list_my_positions::<P>))
+        .with_state(Arc::new(position_service))
+}
+
 async fn list_public_markets<M>(
     State(market_service): State<Arc<M>>,
     Query(query): Query<MarketListQuery>,
@@ -2143,6 +2591,20 @@ where
     market_service.get_market(&market_id).await.map(Json)
 }
 
+async fn list_my_positions<P>(
+    State(position_service): State<Arc<P>>,
+    auth: AuthContext,
+    Query(query): Query<PositionListQuery>,
+) -> Result<Json<PositionListResponse>, ApiError>
+where
+    P: PositionServiceClient,
+{
+    position_service
+        .list_positions(&auth.user_id, query.status.as_deref())
+        .await
+        .map(Json)
+}
+
 async fn get_payments_real_money_status<R>(
     State(state): State<Arc<PaymentsRealMoneyState<R>>>,
 ) -> Json<PaymentsRealMoneyStatusResponse>
@@ -2161,7 +2623,7 @@ async fn enforce_order_prechecks<W, K>(
     user_id: &str,
     market_id: &str,
     request: &PlaceOrderRequest,
-) -> Result<(), ApiError>
+) -> Result<OrderPrecheckOutcome, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
     K: KycTierClient + Send + Sync,
@@ -2203,19 +2665,73 @@ where
         fee_bps_cap,
     );
     if required_minor_units <= 0 {
-        return Ok(());
+        return Ok(OrderPrecheckOutcome {
+            required_minor_units: 0,
+        });
     }
 
     let balance = wallet_ledger.get_wallet_balance(user_id).await?;
-    if balance.available_minor_units < required_minor_units {
+    let available_minor_units = wallet_spendable_minor_units(balance.available_minor_units);
+    if available_minor_units < required_minor_units {
         record_order_precheck_rejected("insufficient_funds");
         return Err(ApiError::insufficient_funds(
             required_minor_units,
-            balance.available_minor_units,
+            available_minor_units,
         ));
     }
 
-    Ok(())
+    Ok(OrderPrecheckOutcome {
+        required_minor_units,
+    })
+}
+
+fn wallet_spendable_minor_units(raw_available_minor_units: i64) -> i64 {
+    raw_available_minor_units.saturating_abs()
+}
+
+fn order_chain_idempotency_key(
+    prefix: &'static str,
+    scope: &IdempotencyScope,
+    market_id: &str,
+) -> String {
+    format!("{prefix}:{}:{market_id}:{}", scope.user_id, scope.key)
+}
+
+async fn project_order_fill_if_needed<P>(
+    position_projection: &P,
+    user_id: &str,
+    market_id: &str,
+    request: &PlaceOrderRequest,
+    response: &OrderActionResponse,
+    reservation: Option<&LedgerPostResult>,
+) -> Result<(), ApiError>
+where
+    P: PositionProjectionClient + ?Sized,
+{
+    if response.filled_qty <= 0 {
+        return Ok(());
+    }
+
+    let projection = PositionFillProjectionRequest {
+        user_id: user_id.to_owned(),
+        market_id: market_id.to_owned(),
+        outcome: request.outcome.clone(),
+        side: request.side.clone(),
+        quantity: response.filled_qty,
+        price_pts: response.avg_price_pts,
+        order_id: response.order_id.clone(),
+        fill_id: format!("{}:taker:aggregate", response.order_id),
+        filled_at: None,
+        ledger_txn_id: reservation.map(|result| result.txn_id),
+    };
+    let idempotency_key = format!(
+        "position-fill:{user_id}:{market_id}:{}:taker",
+        response.order_id
+    );
+
+    position_projection
+        .project_fill(projection, &idempotency_key)
+        .await
 }
 
 /// SPEC-023 plan v0.1.3 follow-up I-5: outer-edge bounds on order shape.
@@ -2372,7 +2888,7 @@ where
         ));
     }
 
-    enforce_order_prechecks(
+    let precheck = enforce_order_prechecks(
         &state.wallet_ledger,
         &state.kyc,
         state.market_fees.as_ref(),
@@ -2382,10 +2898,46 @@ where
     )
     .await?;
 
-    let response = state
+    let reservation_key = order_chain_idempotency_key("order-lock", &scope, &market_id);
+    let release_key = order_chain_idempotency_key("order-unlock", &scope, &market_id);
+    let reservation = state
+        .wallet_ledger
+        .reserve_order_funds(
+            &auth.user_id,
+            &market_id,
+            precheck.required_minor_units,
+            &reservation_key,
+        )
+        .await?;
+
+    let response = match state
         .engine
         .place_order(&auth.user_id, &market_id, &request)
-        .await?;
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            state
+                .wallet_ledger
+                .release_order_funds(
+                    &auth.user_id,
+                    &market_id,
+                    precheck.required_minor_units,
+                    &release_key,
+                )
+                .await?;
+            return Err(error);
+        }
+    };
+    project_order_fill_if_needed(
+        state.position_projection.as_ref(),
+        &auth.user_id,
+        &market_id,
+        &request,
+        &response,
+        reservation.as_ref(),
+    )
+    .await?;
     state.idempotency.insert(
         scope,
         IdempotencyRecord {
@@ -2513,7 +3065,7 @@ where
         ));
     }
 
-    enforce_order_prechecks(
+    let precheck = enforce_order_prechecks(
         &state.wallet_ledger,
         &state.kyc,
         state.market_fees.as_ref(),
@@ -2523,10 +3075,46 @@ where
     )
     .await?;
 
-    let response = state
+    let reservation_key = order_chain_idempotency_key("order-lock", &scope, &market_id);
+    let release_key = order_chain_idempotency_key("order-unlock", &scope, &market_id);
+    let reservation = state
+        .wallet_ledger
+        .reserve_order_funds(
+            &auth.user_id,
+            &market_id,
+            precheck.required_minor_units,
+            &reservation_key,
+        )
+        .await?;
+
+    let response = match state
         .engine
         .place_order(&auth.user_id, &market_id, &request)
-        .await?;
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            state
+                .wallet_ledger
+                .release_order_funds(
+                    &auth.user_id,
+                    &market_id,
+                    precheck.required_minor_units,
+                    &release_key,
+                )
+                .await?;
+            return Err(error);
+        }
+    };
+    project_order_fill_if_needed(
+        state.position_projection.as_ref(),
+        &auth.user_id,
+        &market_id,
+        &request,
+        &response,
+        reservation.as_ref(),
+    )
+    .await?;
     state.idempotency.insert(
         scope,
         IdempotencyRecord {
@@ -2812,6 +3400,7 @@ pub async fn run_http() -> anyhow::Result<()> {
         );
     }
     let market_service = HttpMarketServiceClient::from_env()?;
+    let position_service = HttpPositionServiceClient::from_env()?;
     // SPEC-023 plan v0.1.3 follow-up I-4: build AuthVerifier once at boot
     // and attach via Extension. Previously the `AuthContext` extractor fell
     // back to `AuthVerifier::from_env()` per request, re-parsing the JWKS
@@ -2819,16 +3408,18 @@ pub async fn run_http() -> anyhow::Result<()> {
     let auth_verifier = AuthVerifier::from_env();
     let app = service_stub::router(&config)
         .merge(
-            router_with_services_and_kyc_and_payment_flags_and_market_fees(
+            router_with_services_and_kyc_and_payment_flags_and_market_fees_and_position_projection(
                 HttpWalletLedgerClient::from_env()?,
                 HttpMatchingEngineClient::from_env()?,
                 HttpReferralClient::from_env()?,
                 HttpKycServiceClient::from_env()?,
                 payment_flags,
                 market_service.clone(),
+                position_service.clone(),
             ),
         )
         .merge(market_router(market_service))
+        .merge(positions_router(position_service))
         .merge(responsible_gaming::cooldown_router(
             responsible_gaming::InMemoryCooldownStore::default(),
             responsible_gaming::ResponsibleGamingClock::system(),
@@ -3004,13 +3595,16 @@ mod tests {
         AdminProxyContext, AffiliateCommissionSummary, AffiliateDashboardResponse,
         AffiliateReferralListItem, ApiError, AuthVerifier, BookLevel, BookSnapshotResponse,
         CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore, KycTier,
-        KycTierClient, LedgerEntry, Market, MarketListResponse, MarketServiceClient,
-        MatchingEngineClient, OrderActionResponse, PlaceOrderRequest, ReferralClient, SERVICE_NAME,
-        WalletBalance, WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
-        X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        market_router, observability, router, router_with_engine, router_with_engine_and_kyc,
-        router_with_engine_and_kyc_and_market_fees, router_with_payment_flags,
-        router_with_services,
+        KycTierClient, LedgerEntry, LedgerPostResult, Market, MarketListResponse,
+        MarketServiceClient, MatchingEngineClient, OrderActionResponse, PlaceOrderRequest,
+        Position, PositionFillProjectionRequest, PositionListResponse, PositionProjectionClient,
+        PositionServiceClient, ReferralClient, SERVICE_NAME, WalletBalance, WalletLedgerClient,
+        X_USER_ID_TRANSITION_ALLOWLIST, X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+        X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF, market_router,
+        matching_engine_user_id_header_value, observability, positions_router, router,
+        router_with_engine, router_with_engine_and_kyc, router_with_engine_and_kyc_and_market_fees,
+        router_with_engine_and_kyc_and_market_fees_and_position_projection,
+        router_with_payment_flags, router_with_services, wallet_spendable_minor_units,
     };
 
     #[tokio::test]
@@ -3149,6 +3743,70 @@ mod tests {
         assert_eq!(body["user_id"], json!("user_01"));
         assert_eq!(body["available_minor_units"], json!(-10_000));
         assert_eq!(client.requested_user_ids(), vec!["user_01".to_owned()]);
+    }
+
+    #[tokio::test]
+    async fn positions_proxy_requires_auth_context() {
+        let app =
+            positions_router(InMemoryPositionServiceClient::default()).layer(test_auth_extension());
+
+        let response = app
+            .oneshot(empty_get("/v1/me/positions"))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("unauthorized"));
+    }
+
+    #[tokio::test]
+    async fn positions_proxy_uses_bearer_subject_and_forwards_status_filter() {
+        let positions = InMemoryPositionServiceClient::default();
+        let app = positions_router(positions.clone()).layer(test_auth_extension());
+        let token = jwt_with_optional_kid("MEM-42", [7; 32], 1_900_000_000, None);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/me/positions?status=active")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["positions"][0]["user_id"], json!("MEM-42"));
+        assert_eq!(
+            positions.requests(),
+            vec![("MEM-42".to_owned(), Some("active".to_owned()))]
+        );
+    }
+
+    #[test]
+    fn matching_engine_user_id_header_accepts_member_ids_without_using_sentinels() {
+        assert_eq!(matching_engine_user_id_header_value("42"), "42");
+
+        let mapped = matching_engine_user_id_header_value("MEM-01KS5CETTCN2BA4P3T2X51PZ25");
+        let parsed = mapped
+            .parse::<u64>()
+            .unwrap_or_else(|error| panic!("mapped id should be numeric: {error}"));
+        assert!(parsed >= 9);
+        assert_eq!(
+            mapped,
+            matching_engine_user_id_header_value("MEM-01KS5CETTCN2BA4P3T2X51PZ25")
+        );
+    }
+
+    #[test]
+    fn wallet_spendable_minor_units_normalizes_ledger_liability_sign() {
+        assert_eq!(wallet_spendable_minor_units(-10_000), 10_000);
+        assert_eq!(wallet_spendable_minor_units(10_000), 10_000);
+        assert_eq!(wallet_spendable_minor_units(0), 0);
     }
 
     #[tokio::test]
@@ -3403,6 +4061,138 @@ mod tests {
         let metrics = observability::prometheus_bootstrap_metrics(SERVICE_NAME);
         assert!(metrics.contains("order_precheck_rejected_total"));
         assert!(metrics.contains(r#"reason="insufficient_funds""#));
+    }
+
+    #[tokio::test]
+    async fn place_order_accepts_funded_ledger_liability_balance_for_buy_before_matching_engine() {
+        let wallet = InMemoryWalletLedgerClient::with_available_minor_units(-1_000);
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine_and_kyc(
+            wallet.clone(),
+            engine.clone(),
+            InMemoryKycTierClient::with_tier(KycTier::Tier1),
+        );
+
+        let response = app
+            .oneshot(order_post(
+                "idem-ledger-liability-sign",
+                &json!({
+                    "side": "buy",
+                    "outcome": "YES",
+                    "type": "LIMIT",
+                    "price_pts": 65,
+                    "quantity": 10,
+                    "time_in_force": "GTC"
+                }),
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(engine.place_requests().len(), 1);
+        assert_eq!(
+            wallet.reservation_requests(),
+            vec![(
+                "10".to_owned(),
+                "mkt-election".to_owned(),
+                663,
+                "order-lock:10:mkt-election:idem-ledger-liability-sign".to_owned()
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn place_order_releases_reserved_funds_when_matching_engine_fails() {
+        let wallet = InMemoryWalletLedgerClient::with_available_minor_units(-1_000);
+        let engine = InMemoryMatchingEngineClient::failing_place();
+        let app = router_with_engine_and_kyc(
+            wallet.clone(),
+            engine,
+            InMemoryKycTierClient::with_tier(KycTier::Tier1),
+        );
+
+        let response = app
+            .oneshot(order_post(
+                "idem-release-on-engine-fail",
+                &json!({
+                    "side": "buy",
+                    "outcome": "YES",
+                    "type": "LIMIT",
+                    "price_pts": 65,
+                    "quantity": 10,
+                    "time_in_force": "GTC"
+                }),
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(wallet.reservation_requests().len(), 1);
+        assert_eq!(
+            wallet.release_requests(),
+            vec![(
+                "10".to_owned(),
+                "mkt-election".to_owned(),
+                663,
+                "order-unlock:10:mkt-election:idem-release-on-engine-fail".to_owned()
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn place_order_projects_filled_buy_to_position_service() {
+        let wallet = InMemoryWalletLedgerClient::with_available_minor_units(-1_000);
+        let engine = InMemoryMatchingEngineClient::with_place_response(OrderActionResponse {
+            order_id: "ord_filled_01".to_owned(),
+            status: "FILLED".to_owned(),
+            filled_qty: 10,
+            avg_price_pts: 65,
+            remaining_qty: 0,
+            fee_pts: 0,
+        });
+        let positions = InMemoryPositionProjectionClient::default();
+        let app = router_with_engine_and_kyc_and_market_fees_and_position_projection(
+            wallet,
+            engine,
+            InMemoryKycTierClient::with_tier(KycTier::Tier1),
+            InMemoryMarketServiceClient::default(),
+            positions.clone(),
+        );
+
+        let response = app
+            .oneshot(order_post(
+                "idem-filled-position",
+                &json!({
+                    "side": "buy",
+                    "outcome": "YES",
+                    "type": "LIMIT",
+                    "price_pts": 65,
+                    "quantity": 10,
+                    "time_in_force": "GTC"
+                }),
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            positions.requests(),
+            vec![(
+                PositionFillProjectionRequest {
+                    user_id: "10".to_owned(),
+                    market_id: "mkt-election".to_owned(),
+                    outcome: "YES".to_owned(),
+                    side: "buy".to_owned(),
+                    quantity: 10,
+                    price_pts: 65,
+                    order_id: "ord_filled_01".to_owned(),
+                    fill_id: "ord_filled_01:taker:aggregate".to_owned(),
+                    filled_at: None,
+                    ledger_txn_id: Some(42),
+                },
+                "position-fill:10:mkt-election:ord_filled_01:taker".to_owned()
+            )]
+        );
     }
 
     #[tokio::test]
@@ -4280,10 +5070,14 @@ mod tests {
             .unwrap_or_else(|error| panic!("response should be json: {error}"))
     }
 
+    type OrderFundsRequests = Arc<Mutex<Vec<(String, String, i64, String)>>>;
+
     #[derive(Clone, Default)]
     struct InMemoryWalletLedgerClient {
         requested_user_ids: Arc<Mutex<Vec<String>>>,
         entry_requests: Arc<Mutex<Vec<(String, i64)>>>,
+        reservations: OrderFundsRequests,
+        releases: OrderFundsRequests,
         available_minor_units: Option<i64>,
     }
 
@@ -4292,6 +5086,8 @@ mod tests {
         placed_orders: Arc<Mutex<Vec<(String, String, PlaceOrderRequest)>>>,
         canceled_orders: Arc<Mutex<Vec<(String, String)>>>,
         snapshot_reads: Arc<Mutex<Vec<(String, usize)>>>,
+        place_response: Option<OrderActionResponse>,
+        fail_place: bool,
     }
 
     #[derive(Clone, Default)]
@@ -4300,6 +5096,20 @@ mod tests {
         dashboards: Arc<Mutex<Vec<(String, usize)>>>,
         referral_lists: Arc<Mutex<Vec<(String, usize)>>>,
         summaries: Arc<Mutex<Vec<String>>>,
+    }
+
+    type PositionListRequests = Arc<Mutex<Vec<(String, Option<String>)>>>;
+
+    #[derive(Clone, Default)]
+    struct InMemoryPositionServiceClient {
+        requests: PositionListRequests,
+    }
+
+    type PositionProjectionRequests = Arc<Mutex<Vec<(PositionFillProjectionRequest, String)>>>;
+
+    #[derive(Clone, Default)]
+    struct InMemoryPositionProjectionClient {
+        requests: PositionProjectionRequests,
     }
 
     type MarketListRequests = Arc<Mutex<Vec<(Option<String>, Option<String>)>>>;
@@ -4359,7 +5169,41 @@ mod tests {
         }
     }
 
+    impl InMemoryPositionServiceClient {
+        fn requests(&self) -> Vec<(String, Option<String>)> {
+            self.requests
+                .lock()
+                .unwrap_or_else(|error| panic!("position requests lock should not poison: {error}"))
+                .clone()
+        }
+    }
+
+    impl InMemoryPositionProjectionClient {
+        fn requests(&self) -> Vec<(PositionFillProjectionRequest, String)> {
+            self.requests
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("position projection requests lock should not poison: {error}")
+                })
+                .clone()
+        }
+    }
+
     impl InMemoryMatchingEngineClient {
+        fn with_place_response(response: OrderActionResponse) -> Self {
+            Self {
+                place_response: Some(response),
+                ..Self::default()
+            }
+        }
+
+        fn failing_place() -> Self {
+            Self {
+                fail_place: true,
+                ..Self::default()
+            }
+        }
+
         fn place_requests(&self) -> Vec<(String, String, PlaceOrderRequest)> {
             self.placed_orders
                 .lock()
@@ -4401,6 +5245,22 @@ mod tests {
             self.entry_requests
                 .lock()
                 .unwrap_or_else(|error| panic!("entry requests lock should not poison: {error}"))
+                .clone()
+        }
+
+        fn reservation_requests(&self) -> Vec<(String, String, i64, String)> {
+            self.reservations
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("reservation requests lock should not poison: {error}")
+                })
+                .clone()
+        }
+
+        fn release_requests(&self) -> Vec<(String, String, i64, String)> {
+            self.releases
+                .lock()
+                .unwrap_or_else(|error| panic!("release requests lock should not poison: {error}"))
                 .clone()
         }
     }
@@ -4461,6 +5321,54 @@ mod tests {
                 .push(market_id.to_owned());
 
             Ok(self.market())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl PositionServiceClient for InMemoryPositionServiceClient {
+        async fn list_positions(
+            &self,
+            user_id: &str,
+            status: Option<&str>,
+        ) -> Result<PositionListResponse, ApiError> {
+            self.requests
+                .lock()
+                .unwrap_or_else(|error| panic!("position requests lock should not poison: {error}"))
+                .push((user_id.to_owned(), status.map(str::to_owned)));
+
+            Ok(PositionListResponse {
+                positions: vec![Position {
+                    id: "pos-1".to_owned(),
+                    user_id: user_id.to_owned(),
+                    market_id: "mkt-election".to_owned(),
+                    outcome: "YES".to_owned(),
+                    qty: 100,
+                    avg_price_pts: 42,
+                    locked_amount: 4_200,
+                    opened_at: "2026-05-01T00:00:00+08:00".to_owned(),
+                    closed_at: None,
+                    settle_txn_id: None,
+                    realized_pnl_points: None,
+                }],
+            })
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl PositionProjectionClient for InMemoryPositionProjectionClient {
+        async fn project_fill(
+            &self,
+            request: PositionFillProjectionRequest,
+            idempotency_key: &str,
+        ) -> Result<(), ApiError> {
+            self.requests
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("position projection requests lock should not poison: {error}")
+                })
+                .push((request, idempotency_key.to_owned()));
+
+            Ok(())
         }
     }
 
@@ -4537,6 +5445,56 @@ mod tests {
         ) -> Result<(), ApiError> {
             Ok(())
         }
+
+        async fn reserve_order_funds(
+            &self,
+            user_id: &str,
+            market_id: &str,
+            amount_minor_units: i64,
+            idempotency_key: &str,
+        ) -> Result<Option<LedgerPostResult>, ApiError> {
+            if amount_minor_units <= 0 {
+                return Ok(None);
+            }
+            self.reservations
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("reservation requests lock should not poison: {error}")
+                })
+                .push((
+                    user_id.to_owned(),
+                    market_id.to_owned(),
+                    amount_minor_units,
+                    idempotency_key.to_owned(),
+                ));
+
+            Ok(Some(LedgerPostResult {
+                txn_id: 42,
+                replayed: false,
+            }))
+        }
+
+        async fn release_order_funds(
+            &self,
+            user_id: &str,
+            market_id: &str,
+            amount_minor_units: i64,
+            idempotency_key: &str,
+        ) -> Result<(), ApiError> {
+            if amount_minor_units <= 0 {
+                return Ok(());
+            }
+            self.releases
+                .lock()
+                .unwrap_or_else(|error| panic!("release requests lock should not poison: {error}"))
+                .push((
+                    user_id.to_owned(),
+                    market_id.to_owned(),
+                    amount_minor_units,
+                    idempotency_key.to_owned(),
+                ));
+            Ok(())
+        }
     }
 
     #[async_trait::async_trait]
@@ -4555,19 +5513,25 @@ mod tests {
             market_id: &str,
             request: &PlaceOrderRequest,
         ) -> Result<OrderActionResponse, ApiError> {
+            if self.fail_place {
+                return Err(ApiError::matching_engine(
+                    StatusCode::BAD_GATEWAY,
+                    "matching engine unavailable",
+                ));
+            }
             self.placed_orders
                 .lock()
                 .unwrap_or_else(|error| panic!("place requests lock should not poison: {error}"))
                 .push((user_id.to_owned(), market_id.to_owned(), request.clone()));
 
-            Ok(OrderActionResponse {
+            Ok(self.place_response.clone().unwrap_or(OrderActionResponse {
                 order_id: "ord_01HZ0000000000000000000000".to_owned(),
                 status: "ACTIVE".to_owned(),
                 filled_qty: 0,
                 avg_price_pts: 0,
                 remaining_qty: 3,
                 fee_pts: 0,
-            })
+            }))
         }
 
         async fn cancel_order(
