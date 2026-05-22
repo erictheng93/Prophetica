@@ -65,6 +65,7 @@ test("engine client places orders through matching-engine REST facade", async ()
     avgPricePts: 0,
     remainingQty: 3,
     feePts: 0,
+    fills: [],
   });
 });
 

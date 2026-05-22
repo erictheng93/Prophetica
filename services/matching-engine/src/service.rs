@@ -7,7 +7,7 @@ use std::{
 use proto::proph::v1::{
     BookLevel, BookSnapshot, CancelOrderRequest, CancelOrderResponse, GetBookSnapshotRequest,
     MarketId, Money, Order, OrderId as ProtoOrderId, OrderStatus, OrderType as ProtoOrderType,
-    PlaceOrderRequest, PlaceOrderResponse, Side as ProtoSide, TimeInForce, UserId,
+    PlaceOrderRequest, PlaceOrderResponse, Side as ProtoSide, TimeInForce, Trade, TradeId, UserId,
     engine_service_server::EngineService,
 };
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
@@ -18,7 +18,7 @@ use crate::{
     durability::EngineDurabilityGuard,
     order_book::{
         AddOrderResult, NewOrder, OrderBook, OrderBookError, OrderBookSnapshot, OrderId, OrderSide,
-        OrderType, Price, Quantity, SnapshotRestingOrder, Symbol,
+        OrderType, Price, Quantity, SnapshotRestingOrder, Symbol, TradeEvent,
     },
     shard::{MarketCommand, MarketEvent, MarketShard},
     snapshot::{PersistedOrderBookSnapshot, read_persisted_snapshot, write_persisted_snapshot},
@@ -112,7 +112,8 @@ impl EngineService for InMemoryEngineService {
             .await
             .map_err(|_| Status::unavailable("market shard dropped place order reply"))?
             .map_err(|error| map_order_book_error(&error))?;
-        self.append_wal_record(&market_id, &WalRecord::PlaceOrder(command_order))?;
+        let wal_records = place_order_wal_records(command_order, &result);
+        self.append_wal_records(&market_id, &wal_records)?;
 
         self.order_routes.lock().await.insert(
             order_id_bytes.clone(),
@@ -269,6 +270,29 @@ impl InMemoryEngineService {
         self.events.subscribe()
     }
 
+    /// Reads durable per-fill trade events from the market WAL.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the WAL file cannot be read or decoded.
+    pub fn read_market_trade_events(&self, market_id: &str) -> anyhow::Result<Vec<TradeEvent>> {
+        let Some(wal_dir) = &self.wal_dir else {
+            return Ok(Vec::new());
+        };
+        let path = market_wal_path(wal_dir, market_id);
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+
+        Ok(wal::read_records(&path)?
+            .into_iter()
+            .filter_map(|record| match record {
+                WalRecord::Trade(trade) => Some(trade),
+                WalRecord::PlaceOrder(_) | WalRecord::CancelOrder(_) => None,
+            })
+            .collect())
+    }
+
     /// Writes a persisted market snapshot with the WAL record count already applied.
     ///
     /// # Errors
@@ -356,6 +380,7 @@ impl InMemoryEngineService {
                         routes.remove(&order_key);
                     }
                 }
+                WalRecord::Trade(_) => {}
             }
         }
 
@@ -450,12 +475,16 @@ impl InMemoryEngineService {
     }
 
     fn append_wal_record(&self, market_id: &str, record: &WalRecord) -> Result<(), Status> {
+        self.append_wal_records(market_id, std::slice::from_ref(record))
+    }
+
+    fn append_wal_records(&self, market_id: &str, records: &[WalRecord]) -> Result<(), Status> {
         let Some(wal_dir) = &self.wal_dir else {
             return Ok(());
         };
 
         let path = market_wal_path(wal_dir, market_id);
-        wal::append_record(&path, record)
+        wal::append_records(&path, records)
             .map_err(|error| Status::internal(format!("failed to append wal record: {error}")))
     }
 
@@ -518,6 +547,17 @@ fn proto_order_key(order_id: &OrderId) -> Option<Vec<u8>> {
         .map(|ulid| ulid.to_bytes().to_vec())
 }
 
+fn proto_order_id(order_id: &OrderId) -> Option<ProtoOrderId> {
+    proto_order_key(order_id).map(|value| ProtoOrderId { value })
+}
+
+fn place_order_wal_records(order: NewOrder, result: &AddOrderResult) -> Vec<WalRecord> {
+    let mut records = Vec::with_capacity(1 + result.trades.len());
+    records.push(WalRecord::PlaceOrder(order));
+    records.extend(result.trades.iter().cloned().map(WalRecord::Trade));
+    records
+}
+
 fn place_order_response(
     result: &AddOrderResult,
     context: PlacedOrderContext,
@@ -538,6 +578,7 @@ fn place_order_response(
         OrderStatus::Cancelled
     };
 
+    let market_id = context.market_id.clone();
     PlaceOrderResponse {
         order: Some(Order {
             id: Some(ProtoOrderId {
@@ -567,6 +608,36 @@ fn place_order_response(
             amount: 0,
             currency: "PTS".to_string(),
         }),
+        fills: result
+            .trades
+            .iter()
+            .map(|trade| trade_response(trade, &market_id))
+            .collect(),
+    }
+}
+
+fn trade_response(trade: &TradeEvent, market_id: &str) -> Trade {
+    Trade {
+        seq_no: trade.sequence,
+        id: Some(TradeId {
+            value: trade.sequence,
+        }),
+        market_id: Some(MarketId {
+            value: market_id.to_string(),
+        }),
+        price_pts: i32::try_from(trade.price).unwrap_or(i32::MAX),
+        qty: i64::try_from(trade.quantity).unwrap_or(i64::MAX),
+        taker_order: proto_order_id(&trade.taker_order_id),
+        maker_order: proto_order_id(&trade.maker_order_id),
+        taker_user: Some(UserId {
+            value: trade.taker_user_id,
+        }),
+        maker_user: Some(UserId {
+            value: trade.maker_user_id,
+        }),
+        taker_fee_bps: 0,
+        maker_fee_bps: 0,
+        ts: None,
     }
 }
 

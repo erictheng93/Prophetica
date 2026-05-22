@@ -205,6 +205,11 @@ async fn filled_buy_no_http_order_reports_no_average_price() {
     assert_eq!(placed["filled_qty"], json!(3));
     assert_eq!(placed["avg_price_pts"], json!(45));
     assert_eq!(placed["remaining_qty"], json!(0));
+    assert_eq!(placed["fills"][0]["price_pts"], json!(45));
+    assert_eq!(placed["fills"][0]["quantity"], json!(3));
+    assert_eq!(placed["fills"][0]["taker_side"], json!("buy"));
+    assert_eq!(placed["fills"][0]["maker_side"], json!("sell"));
+    assert_eq!(placed["fills"][0]["outcome"], json!("NO"));
 }
 
 #[tokio::test]

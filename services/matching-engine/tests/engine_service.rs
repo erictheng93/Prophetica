@@ -300,6 +300,82 @@ async fn service_appends_successful_commands_to_market_wal() {
 }
 
 #[tokio::test]
+async fn service_exposes_and_persists_per_fill_trade_events() {
+    let wal_dir = unique_wal_dir();
+    std::fs::create_dir_all(&wal_dir).expect("wal dir should be created");
+    let service = InMemoryEngineService::with_wal_dir(wal_dir.clone());
+
+    let maker = service
+        .place_order(tonic::Request::new(place_order_request(
+            10,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "client-maker",
+        )))
+        .await
+        .expect("maker order should rest")
+        .into_inner()
+        .order
+        .expect("maker response should include order")
+        .id
+        .expect("maker order id should exist");
+
+    let taker = service
+        .place_order(tonic::Request::new(place_order_request(
+            20,
+            Side::Bid,
+            OrderType::Limit,
+            55,
+            2,
+            "client-taker",
+        )))
+        .await
+        .expect("taker order should fill")
+        .into_inner();
+
+    assert_eq!(taker.filled_qty, 2);
+    assert_eq!(taker.fills.len(), 1);
+    let fill = &taker.fills[0];
+    assert_eq!(fill.market_id, Some(market_id()));
+    assert_eq!(fill.price_pts, 55);
+    assert_eq!(fill.qty, 2);
+    assert_eq!(fill.maker_user, Some(UserId { value: 10 }));
+    assert_eq!(fill.taker_user, Some(UserId { value: 20 }));
+    assert_eq!(fill.maker_order, Some(maker));
+
+    let durable_trades = service
+        .read_market_trade_events("mkt-election")
+        .expect("durable trades should read");
+    assert_eq!(durable_trades.len(), 1);
+    assert_eq!(durable_trades[0].maker_user_id, 10);
+    assert_eq!(durable_trades[0].taker_user_id, 20);
+    assert_eq!(durable_trades[0].quantity, 2);
+
+    let records = matching_engine::wal::read_records(&wal_dir.join("mkt-election.wal.jsonl"))
+        .expect("wal records should read");
+    assert_eq!(records.len(), 3);
+    assert!(matches!(records[0], WalRecord::PlaceOrder(_)));
+    assert!(matches!(records[1], WalRecord::PlaceOrder(_)));
+    assert!(matches!(records[2], WalRecord::Trade(_)));
+
+    let recovered =
+        InMemoryEngineService::recover_from_wal_dir(wal_dir, ["mkt-election".to_string()])
+            .expect("service should recover from wal with trade records");
+    let snapshot = recovered
+        .get_book_snapshot(tonic::Request::new(GetBookSnapshotRequest {
+            market_id: Some(market_id()),
+            depth: 10,
+        }))
+        .await
+        .expect("snapshot should recover")
+        .into_inner();
+    assert_eq!(snapshot.asks.len(), 1);
+    assert_eq!(snapshot.asks[0].qty, 1);
+}
+
+#[tokio::test]
 async fn service_recovers_book_and_cancel_routes_from_market_wal() {
     let wal_dir = unique_wal_dir();
     std::fs::create_dir_all(&wal_dir).expect("wal dir should be created");

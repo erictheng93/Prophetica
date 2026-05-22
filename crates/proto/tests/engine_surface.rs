@@ -61,6 +61,7 @@ fn engine_proto_surface_exposes_matching_engine_messages() {
             amount: 0,
             currency: "PTS".to_string(),
         }),
+        fills: Vec::new(),
     };
     let _cancel = CancelOrderRequest {
         audit: None,

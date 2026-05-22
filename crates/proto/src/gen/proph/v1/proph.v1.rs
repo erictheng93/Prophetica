@@ -609,7 +609,7 @@ pub struct PlaceOrderRequest {
     #[prost(string, tag="11")]
     pub client_order_id: ::prost::alloc::string::String,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PlaceOrderResponse {
     #[prost(message, optional, tag="1")]
     pub order: ::core::option::Option<Order>,
@@ -619,6 +619,8 @@ pub struct PlaceOrderResponse {
     pub avg_price_pts: i32,
     #[prost(message, optional, tag="4")]
     pub fee: ::core::option::Option<Money>,
+    #[prost(message, repeated, tag="5")]
+    pub fills: ::prost::alloc::vec::Vec<Trade>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CancelOrderRequest {

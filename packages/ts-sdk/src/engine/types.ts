@@ -28,4 +28,20 @@ export interface PlaceEngineOrderResponse {
   avgPricePts: number;
   remainingQty: number;
   feePts: number;
+  fills: PlaceEngineOrderFill[];
+}
+
+export interface PlaceEngineOrderFill {
+  fillId: string;
+  marketId: string;
+  seqNo: number;
+  pricePts: number;
+  quantity: number;
+  takerOrderId: string;
+  makerOrderId: string;
+  takerUserId: number;
+  makerUserId: number;
+  takerSide: EngineOrderSide;
+  makerSide: EngineOrderSide;
+  outcome: EngineOutcome;
 }

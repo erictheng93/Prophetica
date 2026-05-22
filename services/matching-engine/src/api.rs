@@ -18,7 +18,7 @@ use axum::{
 use proto::proph::v1::{
     CancelOrderRequest, GetBookSnapshotRequest, MarketId, OrderId as ProtoOrderId, OrderStatus,
     OrderType as ProtoOrderType, Outcome as ProtoOutcome, PlaceOrderRequest, Side as ProtoSide,
-    TimeInForce, UserId,
+    TimeInForce, Trade as ProtoTrade, UserId,
     engine_service_server::{EngineService, EngineServiceServer},
 };
 use serde::{Deserialize, Serialize};
@@ -99,6 +99,23 @@ struct OrderActionResponse {
     avg_price_pts: i32,
     remaining_qty: i64,
     fee_pts: i64,
+    fills: Vec<OrderFillResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct OrderFillResponse {
+    fill_id: String,
+    market_id: String,
+    seq_no: u64,
+    price_pts: i32,
+    quantity: i64,
+    taker_order_id: String,
+    maker_order_id: String,
+    taker_user_id: u64,
+    maker_user_id: u64,
+    taker_side: &'static str,
+    maker_side: &'static str,
+    outcome: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -233,7 +250,9 @@ async fn place_order_http(
         .place_order(Request::new(PlaceOrderRequest {
             audit: None,
             user_id: Some(UserId { value: user_id }),
-            market_id: Some(MarketId { value: market_id }),
+            market_id: Some(MarketId {
+                value: market_id.clone(),
+            }),
             side: normalized.side.into(),
             outcome: normalized.outcome.into(),
             r#type: map_http_order_type(&payload.order_type)?.into(),
@@ -272,6 +291,11 @@ async fn place_order_http(
                 }),
             )
         })?;
+    let fills = response
+        .fills
+        .iter()
+        .map(|fill| http_trade_fill(fill, &payload, &market_id))
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Json(OrderActionResponse {
         order_id,
@@ -284,6 +308,7 @@ async fn place_order_http(
         ),
         remaining_qty: order.qty_remaining,
         fee_pts: response.fee.map_or(0, |fee| fee.amount),
+        fills,
     }))
 }
 
@@ -321,6 +346,7 @@ async fn cancel_order_http(
         avg_price_pts: 0,
         remaining_qty: order.qty_remaining,
         fee_pts: 0,
+        fills: Vec::new(),
     }))
 }
 
@@ -590,10 +616,101 @@ fn denormalize_avg_price_pts(outcome: &str, filled_qty: i64, avg_price_pts: i32)
         return avg_price_pts;
     }
 
+    denormalize_price_pts(outcome, avg_price_pts)
+}
+
+fn denormalize_price_pts(outcome: &str, price_pts: i32) -> i32 {
     if outcome.eq_ignore_ascii_case("NO") {
-        100 - avg_price_pts
+        100 - price_pts
     } else {
-        avg_price_pts
+        price_pts
+    }
+}
+
+fn http_trade_fill(
+    fill: &ProtoTrade,
+    request: &PlaceOrderHttpRequest,
+    market_id: &str,
+) -> Result<OrderFillResponse, (StatusCode, Json<ErrorResponse>)> {
+    let taker_order_id = fill
+        .taker_order
+        .as_ref()
+        .map(|order_id| http_order_id(&order_id.value))
+        .transpose()?
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "trade fill missing taker order id".to_string(),
+                }),
+            )
+        })?;
+    let maker_order_id = fill
+        .maker_order
+        .as_ref()
+        .map(|order_id| http_order_id(&order_id.value))
+        .transpose()?
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "trade fill missing maker order id".to_string(),
+                }),
+            )
+        })?;
+    let taker_user_id = fill.taker_user.as_ref().map_or(0, |user| user.value);
+    let maker_user_id = fill.maker_user.as_ref().map_or(0, |user| user.value);
+    if taker_user_id == 0 || maker_user_id == 0 {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "trade fill missing user id".to_string(),
+            }),
+        ));
+    }
+
+    let taker_side = http_side_label(&request.side);
+    Ok(OrderFillResponse {
+        fill_id: format!(
+            "{}:trade:{}",
+            market_id,
+            fill.id.as_ref().map_or(fill.seq_no, |id| id.value)
+        ),
+        market_id: market_id.to_string(),
+        seq_no: fill.seq_no,
+        price_pts: denormalize_price_pts(&request.outcome, fill.price_pts),
+        quantity: fill.qty,
+        taker_order_id,
+        maker_order_id,
+        taker_user_id,
+        maker_user_id,
+        taker_side,
+        maker_side: opposite_http_side_label(taker_side),
+        outcome: http_outcome_label(&request.outcome),
+    })
+}
+
+fn http_side_label(side: &str) -> &'static str {
+    if side.eq_ignore_ascii_case("sell") {
+        "sell"
+    } else {
+        "buy"
+    }
+}
+
+fn opposite_http_side_label(side: &str) -> &'static str {
+    if side.eq_ignore_ascii_case("buy") {
+        "sell"
+    } else {
+        "buy"
+    }
+}
+
+fn http_outcome_label(outcome: &str) -> &'static str {
+    if outcome.eq_ignore_ascii_case("NO") {
+        "NO"
+    } else {
+        "YES"
     }
 }
 

@@ -224,6 +224,7 @@ pub struct AppStateWithEngine<W, E, K> {
     market_fees: Arc<dyn MarketFeeReader + Send + Sync>,
     position_projection: Arc<dyn PositionProjectionClient + Send + Sync>,
     idempotency: IdempotencyStore,
+    order_owners: OrderOwnerStore,
 }
 
 impl<W, E, K> AppStateWithEngine<W, E, K> {
@@ -265,6 +266,7 @@ impl<W, E, K> AppStateWithEngine<W, E, K> {
             market_fees: Arc::new(market_fees),
             position_projection: Arc::new(position_projection),
             idempotency: IdempotencyStore::default(),
+            order_owners: OrderOwnerStore::default(),
         }
     }
 }
@@ -278,6 +280,7 @@ pub struct AppStateWithServices<W, E, R, K> {
     market_fees: Arc<dyn MarketFeeReader + Send + Sync>,
     position_projection: Arc<dyn PositionProjectionClient + Send + Sync>,
     idempotency: IdempotencyStore,
+    order_owners: OrderOwnerStore,
 }
 
 impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
@@ -328,6 +331,7 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
             market_fees: Arc::new(market_fees),
             position_projection: Arc::new(position_projection),
             idempotency: IdempotencyStore::default(),
+            order_owners: OrderOwnerStore::default(),
         }
     }
 }
@@ -335,6 +339,11 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
 #[derive(Debug, Clone, Default)]
 struct IdempotencyStore {
     records: Arc<Mutex<HashMap<IdempotencyScope, IdempotencyRecord>>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct OrderOwnerStore {
+    owners: Arc<Mutex<HashMap<String, String>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -848,12 +857,40 @@ pub struct OrderActionResponse {
     pub avg_price_pts: i32,
     pub remaining_qty: i64,
     pub fee_pts: i64,
+    #[serde(default)]
+    pub fills: Vec<OrderFill>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderFill {
+    pub fill_id: String,
+    pub market_id: String,
+    pub seq_no: u64,
+    pub price_pts: i32,
+    pub quantity: i64,
+    pub taker_order_id: String,
+    pub maker_order_id: String,
+    pub taker_user_id: u64,
+    pub maker_user_id: u64,
+    pub taker_side: String,
+    pub maker_side: String,
+    pub outcome: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LedgerPostResult {
     pub txn_id: i64,
     pub replayed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TradeSettlementRequest {
+    pub market_id: String,
+    pub fill_id: String,
+    pub buyer_user_id: String,
+    pub seller_user_id: String,
+    pub price_pts: i32,
+    pub quantity: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1041,6 +1078,15 @@ pub trait WalletLedgerClient {
     ) -> Result<(), ApiError> {
         let _ = (user_id, market_id, amount_minor_units, idempotency_key);
         Ok(())
+    }
+
+    async fn settle_trade_fill(
+        &self,
+        request: &TradeSettlementRequest,
+        idempotency_key: &str,
+    ) -> Result<Option<LedgerPostResult>, ApiError> {
+        let _ = (request, idempotency_key);
+        Ok(None)
     }
 }
 
@@ -1596,6 +1642,47 @@ impl WalletLedgerClient for HttpWalletLedgerClient {
 
         self.post_ledger_transaction(idempotency_key, &body).await?;
         Ok(())
+    }
+
+    async fn settle_trade_fill(
+        &self,
+        request: &TradeSettlementRequest,
+        idempotency_key: &str,
+    ) -> Result<Option<LedgerPostResult>, ApiError> {
+        let amount_minor_units =
+            trade_fill_notional_minor_units(request.price_pts, request.quantity)?;
+        if amount_minor_units <= 0 {
+            return Ok(None);
+        }
+
+        let body = PostLedgerTransactionRequest {
+            txn_type: "trade",
+            correlation_id: Some(idempotency_key.to_owned()),
+            description: Some("settle matched trade fill"),
+            metadata: serde_json::json!({
+                "market_id": request.market_id,
+                "fill_id": request.fill_id,
+                "buyer_user_id": request.buyer_user_id,
+                "seller_user_id": request.seller_user_id,
+                "reason": "trade_fill",
+            }),
+            entries: vec![
+                PostLedgerEntry {
+                    account_code: format!("Player.Locked.{}", request.buyer_user_id),
+                    direction: "debit",
+                    amount_minor_units,
+                },
+                PostLedgerEntry {
+                    account_code: format!("Player.Wallet.{}", request.seller_user_id),
+                    direction: "credit",
+                    amount_minor_units,
+                },
+            ],
+        };
+
+        self.post_ledger_transaction(idempotency_key, &body)
+            .await
+            .map(Some)
     }
 }
 
@@ -2184,6 +2271,23 @@ impl IdempotencyStore {
     }
 }
 
+impl OrderOwnerStore {
+    fn record(&self, order_id: &str, user_id: &str) -> Result<(), ApiError> {
+        self.owners
+            .lock()
+            .map_err(|_| ApiError::internal("order owner store lock poisoned"))?
+            .insert(order_id.to_owned(), user_id.to_owned());
+        Ok(())
+    }
+
+    fn find(&self, order_id: &str) -> Result<Option<String>, ApiError> {
+        self.owners
+            .lock()
+            .map_err(|_| ApiError::internal("order owner store lock poisoned"))
+            .map(|owners| owners.get(order_id).cloned())
+    }
+}
+
 fn idempotency_scope(
     headers: &HeaderMap,
     user_id: &str,
@@ -2697,7 +2801,109 @@ fn order_chain_idempotency_key(
     format!("{prefix}:{}:{market_id}:{}", scope.user_id, scope.key)
 }
 
-async fn project_order_fill_if_needed<P>(
+async fn settle_and_project_order_fills<W, P>(
+    wallet_ledger: &W,
+    position_projection: &P,
+    order_owners: &OrderOwnerStore,
+    user_id: &str,
+    market_id: &str,
+    request: &PlaceOrderRequest,
+    response: &OrderActionResponse,
+    reservation: Option<&LedgerPostResult>,
+) -> Result<(), ApiError>
+where
+    W: WalletLedgerClient + Sync + ?Sized,
+    P: PositionProjectionClient + ?Sized,
+{
+    if response.filled_qty <= 0 {
+        return Ok(());
+    }
+
+    if response.fills.is_empty() {
+        return project_aggregate_taker_fill(
+            position_projection,
+            user_id,
+            market_id,
+            request,
+            response,
+            reservation,
+        )
+        .await;
+    }
+
+    for fill in &response.fills {
+        let maker_user_id = order_owners
+            .find(&fill.maker_order_id)?
+            .unwrap_or_else(|| fill.maker_user_id.to_string());
+        let taker_side = non_empty_or(&fill.taker_side, &request.side);
+        let maker_side = non_empty_or(&fill.maker_side, opposite_side_label(taker_side));
+        let outcome = non_empty_or(&fill.outcome, &request.outcome);
+        let (buyer_user_id, seller_user_id) = if order_side_is_buy(taker_side) {
+            (user_id.to_owned(), maker_user_id.clone())
+        } else {
+            (maker_user_id.clone(), user_id.to_owned())
+        };
+        let settlement = wallet_ledger
+            .settle_trade_fill(
+                &TradeSettlementRequest {
+                    market_id: market_id.to_owned(),
+                    fill_id: fill.fill_id.clone(),
+                    buyer_user_id,
+                    seller_user_id,
+                    price_pts: fill.price_pts,
+                    quantity: fill.quantity,
+                },
+                &format!("trade-fill:{market_id}:{}", fill.fill_id),
+            )
+            .await?;
+        let ledger_txn_id = settlement
+            .as_ref()
+            .map(|result| result.txn_id)
+            .or_else(|| reservation.map(|result| result.txn_id));
+
+        project_position_fill(
+            position_projection,
+            PositionFillProjectionRequest {
+                user_id: user_id.to_owned(),
+                market_id: market_id.to_owned(),
+                outcome: outcome.to_owned(),
+                side: taker_side.to_owned(),
+                quantity: fill.quantity,
+                price_pts: fill.price_pts,
+                order_id: fill.taker_order_id.clone(),
+                fill_id: format!("{}:taker", fill.fill_id),
+                filled_at: None,
+                ledger_txn_id,
+            },
+            &format!("position-fill:{user_id}:{market_id}:{}:taker", fill.fill_id),
+        )
+        .await?;
+        project_position_fill(
+            position_projection,
+            PositionFillProjectionRequest {
+                user_id: maker_user_id.clone(),
+                market_id: market_id.to_owned(),
+                outcome: outcome.to_owned(),
+                side: maker_side.to_owned(),
+                quantity: fill.quantity,
+                price_pts: fill.price_pts,
+                order_id: fill.maker_order_id.clone(),
+                fill_id: format!("{}:maker", fill.fill_id),
+                filled_at: None,
+                ledger_txn_id,
+            },
+            &format!(
+                "position-fill:{maker_user_id}:{market_id}:{}:maker",
+                fill.fill_id
+            ),
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn project_aggregate_taker_fill<P>(
     position_projection: &P,
     user_id: &str,
     market_id: &str,
@@ -2708,10 +2914,6 @@ async fn project_order_fill_if_needed<P>(
 where
     P: PositionProjectionClient + ?Sized,
 {
-    if response.filled_qty <= 0 {
-        return Ok(());
-    }
-
     let projection = PositionFillProjectionRequest {
         user_id: user_id.to_owned(),
         market_id: market_id.to_owned(),
@@ -2732,6 +2934,55 @@ where
     position_projection
         .project_fill(projection, &idempotency_key)
         .await
+}
+
+async fn project_position_fill<P>(
+    position_projection: &P,
+    projection: PositionFillProjectionRequest,
+    idempotency_key: &str,
+) -> Result<(), ApiError>
+where
+    P: PositionProjectionClient + ?Sized,
+{
+    position_projection
+        .project_fill(projection, idempotency_key)
+        .await
+}
+
+fn trade_fill_notional_minor_units(price_pts: i32, quantity: i64) -> Result<i64, ApiError> {
+    if price_pts < 0 || quantity < 0 {
+        return Err(ApiError::matching_engine(
+            StatusCode::BAD_GATEWAY,
+            "matching engine returned a negative trade fill amount",
+        ));
+    }
+    i64::from(price_pts).checked_mul(quantity).ok_or_else(|| {
+        ApiError::matching_engine(
+            StatusCode::BAD_GATEWAY,
+            "matching engine returned a trade fill amount that overflows",
+        )
+    })
+}
+
+fn non_empty_or<'a>(value: &'a str, fallback: &'a str) -> &'a str {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        fallback
+    } else {
+        trimmed
+    }
+}
+
+fn order_side_is_buy(side: &str) -> bool {
+    side.eq_ignore_ascii_case("buy") || side.eq_ignore_ascii_case("bid")
+}
+
+fn opposite_side_label(side: &str) -> &'static str {
+    if order_side_is_buy(side) {
+        "sell"
+    } else {
+        "buy"
+    }
 }
 
 /// SPEC-023 plan v0.1.3 follow-up I-5: outer-edge bounds on order shape.
@@ -2929,8 +3180,13 @@ where
             return Err(error);
         }
     };
-    project_order_fill_if_needed(
+    state
+        .order_owners
+        .record(&response.order_id, &auth.user_id)?;
+    settle_and_project_order_fills(
+        &state.wallet_ledger,
         state.position_projection.as_ref(),
+        &state.order_owners,
         &auth.user_id,
         &market_id,
         &request,
@@ -3106,8 +3362,13 @@ where
             return Err(error);
         }
     };
-    project_order_fill_if_needed(
+    state
+        .order_owners
+        .record(&response.order_id, &auth.user_id)?;
+    settle_and_project_order_fills(
+        &state.wallet_ledger,
         state.position_projection.as_ref(),
+        &state.order_owners,
         &auth.user_id,
         &market_id,
         &request,
@@ -3596,15 +3857,17 @@ mod tests {
         AffiliateReferralListItem, ApiError, AuthVerifier, BookLevel, BookSnapshotResponse,
         CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore, KycTier,
         KycTierClient, LedgerEntry, LedgerPostResult, Market, MarketListResponse,
-        MarketServiceClient, MatchingEngineClient, OrderActionResponse, PlaceOrderRequest,
-        Position, PositionFillProjectionRequest, PositionListResponse, PositionProjectionClient,
-        PositionServiceClient, ReferralClient, SERVICE_NAME, WalletBalance, WalletLedgerClient,
-        X_USER_ID_TRANSITION_ALLOWLIST, X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-        X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF, market_router,
-        matching_engine_user_id_header_value, observability, positions_router, router,
-        router_with_engine, router_with_engine_and_kyc, router_with_engine_and_kyc_and_market_fees,
+        MarketServiceClient, MatchingEngineClient, OrderActionResponse, OrderFill, OrderOwnerStore,
+        PlaceOrderRequest, Position, PositionFillProjectionRequest, PositionListResponse,
+        PositionProjectionClient, PositionServiceClient, ReferralClient, SERVICE_NAME,
+        TradeSettlementRequest, WalletBalance, WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
+        X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        market_router, matching_engine_user_id_header_value, observability, positions_router,
+        router, router_with_engine, router_with_engine_and_kyc,
+        router_with_engine_and_kyc_and_market_fees,
         router_with_engine_and_kyc_and_market_fees_and_position_projection,
-        router_with_payment_flags, router_with_services, wallet_spendable_minor_units,
+        router_with_payment_flags, router_with_services, settle_and_project_order_fills,
+        wallet_spendable_minor_units,
     };
 
     #[tokio::test]
@@ -4149,6 +4412,7 @@ mod tests {
             avg_price_pts: 65,
             remaining_qty: 0,
             fee_pts: 0,
+            fills: Vec::new(),
         });
         let positions = InMemoryPositionProjectionClient::default();
         let app = router_with_engine_and_kyc_and_market_fees_and_position_projection(
@@ -4192,6 +4456,112 @@ mod tests {
                 },
                 "position-fill:10:mkt-election:ord_filled_01:taker".to_owned()
             )]
+        );
+    }
+
+    #[tokio::test]
+    async fn place_order_projects_per_fill_for_taker_and_maker_and_settles_trade() {
+        let wallet = InMemoryWalletLedgerClient::default();
+        let positions = InMemoryPositionProjectionClient::default();
+        let order_owners = OrderOwnerStore::default();
+        order_owners
+            .record("ord_maker_01", "11")
+            .expect("maker order owner should record");
+        let request = PlaceOrderRequest {
+            side: "buy".to_owned(),
+            outcome: "YES".to_owned(),
+            order_type: "LIMIT".to_owned(),
+            price_pts: 55,
+            quantity: 2,
+            time_in_force: "GTC".to_owned(),
+        };
+        let response = OrderActionResponse {
+            order_id: "ord_taker_01".to_owned(),
+            status: "FILLED".to_owned(),
+            filled_qty: 2,
+            avg_price_pts: 55,
+            remaining_qty: 0,
+            fee_pts: 0,
+            fills: vec![OrderFill {
+                fill_id: "mkt-election:trade:7".to_owned(),
+                market_id: "mkt-election".to_owned(),
+                seq_no: 7,
+                price_pts: 55,
+                quantity: 2,
+                taker_order_id: "ord_taker_01".to_owned(),
+                maker_order_id: "ord_maker_01".to_owned(),
+                taker_user_id: 10,
+                maker_user_id: 11,
+                taker_side: "buy".to_owned(),
+                maker_side: "sell".to_owned(),
+                outcome: "YES".to_owned(),
+            }],
+        };
+
+        settle_and_project_order_fills(
+            &wallet,
+            &positions,
+            &order_owners,
+            "10",
+            "mkt-election",
+            &request,
+            &response,
+            Some(&LedgerPostResult {
+                txn_id: 42,
+                replayed: false,
+            }),
+        )
+        .await
+        .expect("per-fill settlement and projection should succeed");
+
+        assert_eq!(
+            wallet.settlement_requests(),
+            vec![(
+                TradeSettlementRequest {
+                    market_id: "mkt-election".to_owned(),
+                    fill_id: "mkt-election:trade:7".to_owned(),
+                    buyer_user_id: "10".to_owned(),
+                    seller_user_id: "11".to_owned(),
+                    price_pts: 55,
+                    quantity: 2,
+                },
+                "trade-fill:mkt-election:mkt-election:trade:7".to_owned()
+            )]
+        );
+        assert_eq!(
+            positions.requests(),
+            vec![
+                (
+                    PositionFillProjectionRequest {
+                        user_id: "10".to_owned(),
+                        market_id: "mkt-election".to_owned(),
+                        outcome: "YES".to_owned(),
+                        side: "buy".to_owned(),
+                        quantity: 2,
+                        price_pts: 55,
+                        order_id: "ord_taker_01".to_owned(),
+                        fill_id: "mkt-election:trade:7:taker".to_owned(),
+                        filled_at: None,
+                        ledger_txn_id: Some(84),
+                    },
+                    "position-fill:10:mkt-election:mkt-election:trade:7:taker".to_owned()
+                ),
+                (
+                    PositionFillProjectionRequest {
+                        user_id: "11".to_owned(),
+                        market_id: "mkt-election".to_owned(),
+                        outcome: "YES".to_owned(),
+                        side: "sell".to_owned(),
+                        quantity: 2,
+                        price_pts: 55,
+                        order_id: "ord_maker_01".to_owned(),
+                        fill_id: "mkt-election:trade:7:maker".to_owned(),
+                        filled_at: None,
+                        ledger_txn_id: Some(84),
+                    },
+                    "position-fill:11:mkt-election:mkt-election:trade:7:maker".to_owned()
+                )
+            ]
         );
     }
 
@@ -5071,6 +5441,7 @@ mod tests {
     }
 
     type OrderFundsRequests = Arc<Mutex<Vec<(String, String, i64, String)>>>;
+    type TradeSettlementRequests = Arc<Mutex<Vec<(TradeSettlementRequest, String)>>>;
 
     #[derive(Clone, Default)]
     struct InMemoryWalletLedgerClient {
@@ -5078,6 +5449,7 @@ mod tests {
         entry_requests: Arc<Mutex<Vec<(String, i64)>>>,
         reservations: OrderFundsRequests,
         releases: OrderFundsRequests,
+        settlements: TradeSettlementRequests,
         available_minor_units: Option<i64>,
     }
 
@@ -5261,6 +5633,15 @@ mod tests {
             self.releases
                 .lock()
                 .unwrap_or_else(|error| panic!("release requests lock should not poison: {error}"))
+                .clone()
+        }
+
+        fn settlement_requests(&self) -> Vec<(TradeSettlementRequest, String)> {
+            self.settlements
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("settlement requests lock should not poison: {error}")
+                })
                 .clone()
         }
     }
@@ -5495,6 +5876,24 @@ mod tests {
                 ));
             Ok(())
         }
+
+        async fn settle_trade_fill(
+            &self,
+            request: &TradeSettlementRequest,
+            idempotency_key: &str,
+        ) -> Result<Option<LedgerPostResult>, ApiError> {
+            self.settlements
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("settlement requests lock should not poison: {error}")
+                })
+                .push((request.clone(), idempotency_key.to_owned()));
+
+            Ok(Some(LedgerPostResult {
+                txn_id: 84,
+                replayed: false,
+            }))
+        }
     }
 
     #[async_trait::async_trait]
@@ -5531,6 +5930,7 @@ mod tests {
                 avg_price_pts: 0,
                 remaining_qty: 3,
                 fee_pts: 0,
+                fills: Vec::new(),
             }))
         }
 
@@ -5551,6 +5951,7 @@ mod tests {
                 avg_price_pts: 0,
                 remaining_qty: 0,
                 fee_pts: 0,
+                fills: Vec::new(),
             })
         }
 

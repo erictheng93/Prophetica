@@ -44,6 +44,7 @@ message PlaceOrderResponse {
   int64 filled_qty = 2;
   int32 avg_price_pts = 3;
   Money fee = 4;
+  repeated Trade fills = 5;
 }
 
 message CancelOrderRequest {

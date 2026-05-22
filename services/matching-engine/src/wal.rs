@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::order_book::{NewOrder, OrderBook, OrderBookError, OrderId, Symbol};
+use crate::order_book::{NewOrder, OrderBook, OrderBookError, OrderId, Symbol, TradeEvent};
 
 const SPEC_003_SYNC_EVENT_THRESHOLD: usize = 100;
 const SPEC_003_SYNC_INTERVAL: Duration = Duration::from_millis(50);
@@ -15,6 +15,7 @@ const SPEC_003_SYNC_INTERVAL: Duration = Duration::from_millis(50);
 pub enum WalRecord {
     PlaceOrder(NewOrder),
     CancelOrder(OrderId),
+    Trade(TradeEvent),
 }
 
 pub trait WalSink {
@@ -163,16 +164,28 @@ where
 /// Returns an error when the file cannot be opened, the record cannot be
 /// serialized, or the record cannot be flushed to disk.
 pub fn append_record(path: &Path, record: &WalRecord) -> Result<()> {
+    append_records(path, std::slice::from_ref(record))
+}
+
+/// Appends JSONL WAL records and syncs them as a single durable batch.
+///
+/// # Errors
+///
+/// Returns an error when the file cannot be opened, a record cannot be
+/// serialized, or the records cannot be flushed to disk.
+pub fn append_records(path: &Path, records: &[WalRecord]) -> Result<()> {
     let file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)
         .with_context(|| format!("open WAL for append: {}", path.display()))?;
-    let payload = serde_json::to_vec(record).context("serialize WAL record")?;
     let mut writer = WalWriter::new(file, SystemWalClock::default(), WalSyncPolicy::spec_003());
-    writer
-        .append_json_line(&payload)
-        .context("write WAL record")?;
+    for record in records {
+        let payload = serde_json::to_vec(record).context("serialize WAL record")?;
+        writer
+            .append_json_line(&payload)
+            .context("write WAL record")?;
+    }
     writer.sync_data().context("sync WAL record")?;
     Ok(())
 }
@@ -231,6 +244,7 @@ pub fn replay_records_into(
             WalRecord::CancelOrder(order_id) => {
                 book.cancel_order(&order_id)?;
             }
+            WalRecord::Trade(_) => {}
         }
     }
 
