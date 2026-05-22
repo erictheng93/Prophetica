@@ -19,6 +19,7 @@ sqlx.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 user-service = { path = "../../user-service" }
+wallet-ledger-service = { path = "../../wallet-ledger-service" }
 
 [lints]
 workspace = true

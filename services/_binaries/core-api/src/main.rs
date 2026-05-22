@@ -2,7 +2,8 @@ use sdk::{
     config::ServiceConfig,
     postgres_migrations::{
         KYC_SERVICE_MIGRATION_TABLE, REFERRAL_SERVICE_MIGRATION_TABLE,
-        USER_SERVICE_MIGRATION_TABLE, run_postgres_migrations,
+        USER_SERVICE_MIGRATION_TABLE, WALLET_LEDGER_SERVICE_MIGRATION_TABLE,
+        run_postgres_migrations,
     },
     service_stub,
 };
@@ -18,6 +19,7 @@ async fn main() -> anyhow::Result<()> {
         position_service::api::run_http(),
         run_referral_http(),
         run_kyc_http(),
+        run_wallet_ledger_http(),
     )?;
 
     Ok(())
@@ -115,6 +117,63 @@ fn validate_user_service_store_mode(prophetica_env: &str, mode: &str) -> anyhow:
         anyhow::bail!("USER_SERVICE_STORE=postgres is required when PROPHETICA_ENV=production");
     }
     Ok(())
+}
+
+async fn run_wallet_ledger_http() -> anyhow::Result<()> {
+    let config = ServiceConfig::from_env(
+        wallet_ledger_service::SERVICE_NAME,
+        wallet_ledger_service::DEFAULT_PORT,
+    )?;
+    let database_url = wallet_ledger_database_url()?;
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await?;
+    run_postgres_migrations(
+        sqlx::migrate!("../../wallet-ledger-service/migrations"),
+        &pool,
+        WALLET_LEDGER_SERVICE_MIGRATION_TABLE,
+    )
+    .await?;
+
+    let app = service_stub::router(&config)
+        .merge(wallet_ledger_service::api::router(
+            wallet_ledger_service::ledger::PostgresLedgerStore::new(pool),
+        ))
+        .merge(wallet_ledger_service::internal_reports::internal_reports_router());
+    let listener = TcpListener::bind(config.bind_addr).await?;
+    tracing::info!(addr = %config.bind_addr, "wallet-ledger service listening inside core-api");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(wallet_ledger_service::SERVICE_NAME))
+        .await?;
+
+    Ok(())
+}
+
+fn wallet_ledger_database_url() -> anyhow::Result<String> {
+    let service_url = env::var("WALLET_LEDGER_DATABASE_URL").ok();
+    let shared_url = env::var("DATABASE_URL").ok();
+    wallet_ledger_database_url_from_values(service_url.as_deref(), shared_url.as_deref())
+}
+
+fn wallet_ledger_database_url_from_values(
+    service_url: Option<&str>,
+    shared_url: Option<&str>,
+) -> anyhow::Result<String> {
+    service_url
+        .and_then(non_empty_env_value)
+        .or_else(|| shared_url.and_then(non_empty_env_value))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "WALLET_LEDGER_DATABASE_URL or DATABASE_URL is required for wallet-ledger-service"
+            )
+        })
+}
+
+fn non_empty_env_value(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
 async fn run_kyc_http() -> anyhow::Result<()> {
@@ -228,7 +287,7 @@ fn validate_kyc_service_store_mode(prophetica_env: &str, mode: &str) -> anyhow::
 mod tests {
     use super::{
         store_mode, validate_kyc_service_store_mode, validate_referral_service_store_mode,
-        validate_user_service_store_mode,
+        validate_user_service_store_mode, wallet_ledger_database_url_from_values,
     };
 
     #[test]
@@ -286,6 +345,38 @@ mod tests {
         assert_eq!(
             error.as_deref(),
             Some("KYC_STORE=postgres is required when PROPHETICA_ENV=production")
+        );
+    }
+
+    #[test]
+    fn wallet_ledger_database_url_prefers_service_specific_url() {
+        let database_url = wallet_ledger_database_url_from_values(
+            Some("postgres://wallet-ledger"),
+            Some("postgres://shared"),
+        )
+        .expect("wallet-ledger database url should resolve");
+
+        assert_eq!(database_url, "postgres://wallet-ledger");
+    }
+
+    #[test]
+    fn wallet_ledger_database_url_falls_back_to_shared_database_url() {
+        let database_url = wallet_ledger_database_url_from_values(None, Some("postgres://shared"))
+            .expect("shared database url should resolve");
+
+        assert_eq!(database_url, "postgres://shared");
+    }
+
+    #[test]
+    fn wallet_ledger_database_url_requires_a_database_url() {
+        let result = wallet_ledger_database_url_from_values(None, None);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().map(|error| error.to_string()).as_deref(),
+            Some(
+                "WALLET_LEDGER_DATABASE_URL or DATABASE_URL is required for wallet-ledger-service"
+            )
         );
     }
 }

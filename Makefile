@@ -1,4 +1,4 @@
-.PHONY: doctor bootstrap dev dev-mvp dev-infra down test lint fmt proto migrate seed clean
+.PHONY: doctor bootstrap dev dev-mvp dev-core-api dev-infra down test lint fmt proto migrate seed clean
 
 BASH ?= bash
 
@@ -13,8 +13,12 @@ dev: dev-mvp
 dev-mvp:
 	pnpm run dev:mvp
 
+dev-core-api:
+	pnpm run dev:core-api
+
 dev-infra:
 	docker compose -f infra/docker-compose.local.yaml up -d
+	@echo "local infra is up; run 'make dev' to start core-api, wallet-ledger, web, and admin."
 
 down:
 	docker compose -f infra/docker-compose.local.yaml down -v

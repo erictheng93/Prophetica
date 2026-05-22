@@ -130,6 +130,7 @@ make dev
 ## 維護人
 
 Tech Lead · 由 Operating Co. 簽派
+
 # SPEC-017 Bootstrap
 
 This repository now uses the SPEC-017 monorepo scaffold:
@@ -142,21 +143,35 @@ This repository now uses the SPEC-017 monorepo scaffold:
 Common commands:
 
 ```bash
-make doctor
-make bootstrap
-make dev
-make dev-infra
-make test
-make lint
+rtk make doctor
+rtk make bootstrap
+rtk pnpm dev
+rtk pnpm dev:core-api
+rtk make dev-infra
+rtk make test
+rtk make lint
 ```
 
-MVP local development starts the player-facing web app and admin app only:
+See [`docs/runbooks/local-development.md`](./docs/runbooks/local-development.md)
+for the current local startup path, including backend services, Windows OpenSSL
+setup, and Docker validation.
+
+MVP local development starts the core API bundle, wallet-ledger-service, the
+player-facing web app, and the admin app:
 
 ```bash
-make dev
-# web:   http://localhost:3000
-# admin: http://localhost:3002
+rtk make dev-infra
+rtk pnpm dev
+# api-gateway:   http://localhost:8080
+# wallet-ledger: http://localhost:8086
+# web:           http://localhost:3000
+# admin:         http://localhost:3010 when using .env.example
 ```
+
+The root dev script loads `.env` from the repository root and falls back to
+`.env.example` when `.env` is missing. `core-api` now runs wallet-ledger inside
+the same local process group and applies wallet-ledger migrations on startup
+using `WALLET_LEDGER_DATABASE_URL` or `DATABASE_URL`.
 
 The admin app uses `user-service` local-login accounts configured via
 `USER_SERVICE_LOCAL_LOGIN_ACCOUNTS` (or legacy single-account mode):

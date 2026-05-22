@@ -10,7 +10,9 @@
   },
   "scripts": {
     "dev": "pnpm run dev:mvp",
-    "dev:mvp": "pnpm --parallel --filter @prophetica/web --filter @prophetica/admin dev",
+    "dev:mvp": "node tools/scripts/dev.mjs mvp",
+    "dev:core-api": "node tools/scripts/dev.mjs core-api",
+    "dev:apps": "pnpm --parallel --filter @prophetica/web --filter @prophetica/admin dev",
     "dev:all-apps": "turbo run dev --parallel",
     "health:web": "(curl -fsS -m 45 http://127.0.0.1:3000/api/health) || (sleep 2; curl -fsS -m 45 http://127.0.0.1:3000/api/health)",
     "health:admin": "ADMIN_PORT=${ADMIN_PORT:-3002}; (curl -fsS -m 45 http://127.0.0.1:${ADMIN_PORT}/api/health) || (sleep 2; curl -fsS -m 45 http://127.0.0.1:${ADMIN_PORT}/api/health)",
