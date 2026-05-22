@@ -3,6 +3,7 @@ use std::{
     env,
     hash::{Hash, Hasher},
     sync::{Arc, Mutex, OnceLock},
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -29,6 +30,7 @@ use sdk::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use sqlx::Row;
 use tokio::{net::TcpListener, signal};
 
 pub const SERVICE_NAME: &str = "api-gateway";
@@ -49,6 +51,8 @@ const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-
 const DEFAULT_ORDER_FEE_BPS: u32 = 200;
 const DEFAULT_KYC_SERVICE_BASE_URL: &str = "http://127.0.0.1:8085";
 const DEFAULT_POSITION_SERVICE_BASE_URL: &str = "http://127.0.0.1:8089";
+const DEFAULT_TRADE_FILL_SAGA_RETRY_INTERVAL: Duration = Duration::from_secs(5);
+const TRADE_FILL_SAGA_BATCH_LIMIT: i64 = 50;
 
 pub const X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF: &str = "apps-web-dev-bff";
 pub const X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON: &str = "2026-08-31";
@@ -224,7 +228,8 @@ pub struct AppStateWithEngine<W, E, K> {
     market_fees: Arc<dyn MarketFeeReader + Send + Sync>,
     position_projection: Arc<dyn PositionProjectionClient + Send + Sync>,
     idempotency: IdempotencyStore,
-    order_owners: OrderOwnerStore,
+    order_owners: Arc<dyn OrderOwnerRepository>,
+    trade_sagas: Arc<dyn TradeFillSagaStore>,
 }
 
 impl<W, E, K> AppStateWithEngine<W, E, K> {
@@ -259,6 +264,31 @@ impl<W, E, K> AppStateWithEngine<W, E, K> {
         M: MarketFeeReader + Send + Sync + 'static,
         P: PositionProjectionClient + Send + Sync + 'static,
     {
+        Self::new_with_market_fees_position_projection_and_trade_stores(
+            wallet_ledger,
+            engine,
+            kyc,
+            market_fees,
+            position_projection,
+            Arc::new(OrderOwnerStore::default()),
+            Arc::new(InMemoryTradeFillSagaStore::default()),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_with_market_fees_position_projection_and_trade_stores<M, P>(
+        wallet_ledger: W,
+        engine: E,
+        kyc: K,
+        market_fees: M,
+        position_projection: P,
+        order_owners: Arc<dyn OrderOwnerRepository>,
+        trade_sagas: Arc<dyn TradeFillSagaStore>,
+    ) -> Self
+    where
+        M: MarketFeeReader + Send + Sync + 'static,
+        P: PositionProjectionClient + Send + Sync + 'static,
+    {
         Self {
             wallet_ledger,
             engine,
@@ -266,7 +296,8 @@ impl<W, E, K> AppStateWithEngine<W, E, K> {
             market_fees: Arc::new(market_fees),
             position_projection: Arc::new(position_projection),
             idempotency: IdempotencyStore::default(),
-            order_owners: OrderOwnerStore::default(),
+            order_owners,
+            trade_sagas,
         }
     }
 }
@@ -280,7 +311,8 @@ pub struct AppStateWithServices<W, E, R, K> {
     market_fees: Arc<dyn MarketFeeReader + Send + Sync>,
     position_projection: Arc<dyn PositionProjectionClient + Send + Sync>,
     idempotency: IdempotencyStore,
-    order_owners: OrderOwnerStore,
+    order_owners: Arc<dyn OrderOwnerRepository>,
+    trade_sagas: Arc<dyn TradeFillSagaStore>,
 }
 
 impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
@@ -323,6 +355,33 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
         M: MarketFeeReader + Send + Sync + 'static,
         P: PositionProjectionClient + Send + Sync + 'static,
     {
+        Self::new_with_market_fees_position_projection_and_trade_stores(
+            wallet_ledger,
+            engine,
+            referral,
+            kyc,
+            market_fees,
+            position_projection,
+            Arc::new(OrderOwnerStore::default()),
+            Arc::new(InMemoryTradeFillSagaStore::default()),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_with_market_fees_position_projection_and_trade_stores<M, P>(
+        wallet_ledger: W,
+        engine: E,
+        referral: R,
+        kyc: K,
+        market_fees: M,
+        position_projection: P,
+        order_owners: Arc<dyn OrderOwnerRepository>,
+        trade_sagas: Arc<dyn TradeFillSagaStore>,
+    ) -> Self
+    where
+        M: MarketFeeReader + Send + Sync + 'static,
+        P: PositionProjectionClient + Send + Sync + 'static,
+    {
         Self {
             wallet_ledger,
             engine,
@@ -331,7 +390,8 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
             market_fees: Arc::new(market_fees),
             position_projection: Arc::new(position_projection),
             idempotency: IdempotencyStore::default(),
-            order_owners: OrderOwnerStore::default(),
+            order_owners,
+            trade_sagas,
         }
     }
 }
@@ -358,6 +418,126 @@ struct IdempotencyScope {
 struct IdempotencyRecord {
     request_hash: u64,
     response: OrderActionResponse,
+}
+
+#[allow(clippy::struct_field_names)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OrderOwnerRecord {
+    order_id: String,
+    user_id: String,
+    market_id: String,
+    matching_user_id: String,
+}
+
+#[async_trait]
+trait OrderOwnerRepository: Send + Sync {
+    async fn record_owner(&self, owner: OrderOwnerRecord) -> Result<(), ApiError>;
+
+    async fn find_owner(&self, order_id: &str) -> Result<Option<String>, ApiError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TradeFillSagaStatus {
+    Pending,
+    Running,
+    Retryable,
+    Completed,
+}
+
+impl TradeFillSagaStatus {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Running => "running",
+            Self::Retryable => "retryable",
+            Self::Completed => "completed",
+        }
+    }
+
+    fn from_str(value: &str) -> Self {
+        match value {
+            "running" => Self::Running,
+            "retryable" => Self::Retryable,
+            "completed" => Self::Completed,
+            _ => Self::Pending,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TradeFillSaga {
+    fill_key: String,
+    market_id: String,
+    fill_id: String,
+    taker_user_id: String,
+    maker_user_id: String,
+    buyer_user_id: String,
+    seller_user_id: String,
+    taker_order_id: String,
+    maker_order_id: String,
+    taker_side: String,
+    maker_side: String,
+    outcome: String,
+    price_pts: i32,
+    quantity: i64,
+    reservation_txn_id: Option<i64>,
+    ledger_txn_id: Option<i64>,
+    settlement_idempotency_key: String,
+    taker_projection_idempotency_key: String,
+    maker_projection_idempotency_key: String,
+    status: TradeFillSagaStatus,
+    attempts: i32,
+    settlement_posted: bool,
+    taker_projected: bool,
+    maker_projected: bool,
+}
+
+#[async_trait]
+trait TradeFillSagaStore: Send + Sync {
+    async fn enqueue(&self, saga: TradeFillSaga) -> Result<(), ApiError>;
+
+    async fn claim_due(&self, limit: i64) -> Result<Vec<TradeFillSaga>, ApiError>;
+
+    async fn mark_settlement_posted(
+        &self,
+        fill_key: &str,
+        ledger_txn_id: Option<i64>,
+    ) -> Result<(), ApiError>;
+
+    async fn mark_taker_projected(&self, fill_key: &str) -> Result<(), ApiError>;
+
+    async fn mark_maker_projected(&self, fill_key: &str) -> Result<(), ApiError>;
+
+    async fn mark_completed(&self, fill_key: &str) -> Result<(), ApiError>;
+
+    async fn mark_retryable(&self, fill_key: &str, error: &str) -> Result<(), ApiError>;
+}
+
+#[derive(Debug, Clone)]
+struct PostgresOrderOwnerStore {
+    pool: sqlx::PgPool,
+}
+
+#[derive(Debug, Clone)]
+struct PostgresTradeFillSagaStore {
+    pool: sqlx::PgPool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct InMemoryTradeFillSagaStore {
+    sagas: Arc<Mutex<HashMap<String, TradeFillSaga>>>,
+}
+
+impl PostgresOrderOwnerStore {
+    const fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl PostgresTradeFillSagaStore {
+    const fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2272,6 +2452,7 @@ impl IdempotencyStore {
 }
 
 impl OrderOwnerStore {
+    #[cfg(test)]
     fn record(&self, order_id: &str, user_id: &str) -> Result<(), ApiError> {
         self.owners
             .lock()
@@ -2279,13 +2460,425 @@ impl OrderOwnerStore {
             .insert(order_id.to_owned(), user_id.to_owned());
         Ok(())
     }
+}
 
-    fn find(&self, order_id: &str) -> Result<Option<String>, ApiError> {
+#[async_trait]
+impl OrderOwnerRepository for OrderOwnerStore {
+    async fn record_owner(&self, owner: OrderOwnerRecord) -> Result<(), ApiError> {
+        self.owners
+            .lock()
+            .map_err(|_| ApiError::internal("order owner store lock poisoned"))?
+            .insert(owner.order_id, owner.user_id);
+        Ok(())
+    }
+
+    async fn find_owner(&self, order_id: &str) -> Result<Option<String>, ApiError> {
         self.owners
             .lock()
             .map_err(|_| ApiError::internal("order owner store lock poisoned"))
             .map(|owners| owners.get(order_id).cloned())
     }
+}
+
+#[async_trait]
+impl OrderOwnerRepository for PostgresOrderOwnerStore {
+    async fn record_owner(&self, owner: OrderOwnerRecord) -> Result<(), ApiError> {
+        sqlx::query(
+            "
+            INSERT INTO api_gateway_order_owners
+                (order_id, user_id, market_id, matching_user_id)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (order_id) DO UPDATE SET
+                user_id = EXCLUDED.user_id,
+                market_id = EXCLUDED.market_id,
+                matching_user_id = EXCLUDED.matching_user_id,
+                updated_at = now()
+            ",
+        )
+        .bind(owner.order_id)
+        .bind(owner.user_id)
+        .bind(owner.market_id)
+        .bind(owner.matching_user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| ApiError::internal(format!("order owner persistence failed: {error}")))?;
+        Ok(())
+    }
+
+    async fn find_owner(&self, order_id: &str) -> Result<Option<String>, ApiError> {
+        sqlx::query_scalar("SELECT user_id FROM api_gateway_order_owners WHERE order_id = $1")
+            .bind(order_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|error| ApiError::internal(format!("order owner lookup failed: {error}")))
+    }
+}
+
+#[async_trait]
+impl TradeFillSagaStore for InMemoryTradeFillSagaStore {
+    async fn enqueue(&self, saga: TradeFillSaga) -> Result<(), ApiError> {
+        let mut sagas = self
+            .sagas
+            .lock()
+            .map_err(|_| ApiError::internal("trade fill saga store lock poisoned"))?;
+        sagas.entry(saga.fill_key.clone()).or_insert(saga);
+        Ok(())
+    }
+
+    async fn claim_due(&self, limit: i64) -> Result<Vec<TradeFillSaga>, ApiError> {
+        let mut sagas = self
+            .sagas
+            .lock()
+            .map_err(|_| ApiError::internal("trade fill saga store lock poisoned"))?;
+        let limit = usize::try_from(limit.max(0)).unwrap_or(usize::MAX);
+        let claimed_keys = sagas
+            .iter()
+            .filter(|(_, saga)| {
+                matches!(
+                    saga.status,
+                    TradeFillSagaStatus::Pending
+                        | TradeFillSagaStatus::Retryable
+                        | TradeFillSagaStatus::Running
+                )
+            })
+            .take(limit)
+            .map(|(fill_key, _)| fill_key.clone())
+            .collect::<Vec<_>>();
+        let mut claimed = Vec::with_capacity(claimed_keys.len());
+        for fill_key in claimed_keys {
+            if let Some(saga) = sagas.get_mut(&fill_key) {
+                saga.status = TradeFillSagaStatus::Running;
+                saga.attempts = saga.attempts.saturating_add(1);
+                claimed.push(saga.clone());
+            }
+        }
+        Ok(claimed)
+    }
+
+    async fn mark_settlement_posted(
+        &self,
+        fill_key: &str,
+        ledger_txn_id: Option<i64>,
+    ) -> Result<(), ApiError> {
+        self.update(fill_key, |saga| {
+            saga.ledger_txn_id = ledger_txn_id;
+            saga.settlement_posted = true;
+        })
+    }
+
+    async fn mark_taker_projected(&self, fill_key: &str) -> Result<(), ApiError> {
+        self.update(fill_key, |saga| saga.taker_projected = true)
+    }
+
+    async fn mark_maker_projected(&self, fill_key: &str) -> Result<(), ApiError> {
+        self.update(fill_key, |saga| saga.maker_projected = true)
+    }
+
+    async fn mark_completed(&self, fill_key: &str) -> Result<(), ApiError> {
+        self.update(fill_key, |saga| {
+            saga.status = TradeFillSagaStatus::Completed;
+        })
+    }
+
+    async fn mark_retryable(&self, fill_key: &str, error: &str) -> Result<(), ApiError> {
+        let _ = error;
+        self.update(fill_key, |saga| {
+            saga.status = TradeFillSagaStatus::Retryable;
+        })
+    }
+}
+
+impl InMemoryTradeFillSagaStore {
+    fn update(
+        &self,
+        fill_key: &str,
+        apply: impl FnOnce(&mut TradeFillSaga),
+    ) -> Result<(), ApiError> {
+        let mut sagas = self
+            .sagas
+            .lock()
+            .map_err(|_| ApiError::internal("trade fill saga store lock poisoned"))?;
+        let Some(saga) = sagas.get_mut(fill_key) else {
+            return Err(ApiError::internal("trade fill saga record was not found"));
+        };
+        apply(saga);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl TradeFillSagaStore for PostgresTradeFillSagaStore {
+    async fn enqueue(&self, saga: TradeFillSaga) -> Result<(), ApiError> {
+        sqlx::query(
+            "
+            INSERT INTO api_gateway_trade_fill_sagas (
+                fill_key, market_id, fill_id, taker_user_id, maker_user_id,
+                buyer_user_id, seller_user_id, taker_order_id, maker_order_id,
+                taker_side, maker_side, outcome, price_pts, quantity,
+                reservation_txn_id, ledger_txn_id, settlement_idempotency_key,
+                taker_projection_idempotency_key, maker_projection_idempotency_key,
+                status, attempts
+            )
+            VALUES (
+                $1, $2, $3, $4, $5,
+                $6, $7, $8, $9,
+                $10, $11, $12, $13, $14,
+                $15, $16, $17,
+                $18, $19,
+                $20, $21
+            )
+            ON CONFLICT (fill_key) DO NOTHING
+            ",
+        )
+        .bind(saga.fill_key)
+        .bind(saga.market_id)
+        .bind(saga.fill_id)
+        .bind(saga.taker_user_id)
+        .bind(saga.maker_user_id)
+        .bind(saga.buyer_user_id)
+        .bind(saga.seller_user_id)
+        .bind(saga.taker_order_id)
+        .bind(saga.maker_order_id)
+        .bind(saga.taker_side)
+        .bind(saga.maker_side)
+        .bind(saga.outcome)
+        .bind(saga.price_pts)
+        .bind(saga.quantity)
+        .bind(saga.reservation_txn_id)
+        .bind(saga.ledger_txn_id)
+        .bind(saga.settlement_idempotency_key)
+        .bind(saga.taker_projection_idempotency_key)
+        .bind(saga.maker_projection_idempotency_key)
+        .bind(saga.status.as_str())
+        .bind(saga.attempts)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| ApiError::internal(format!("trade fill saga enqueue failed: {error}")))?;
+        Ok(())
+    }
+
+    async fn claim_due(&self, limit: i64) -> Result<Vec<TradeFillSaga>, ApiError> {
+        let rows = sqlx::query(
+            "
+            WITH due AS (
+                SELECT fill_key
+                FROM api_gateway_trade_fill_sagas
+                WHERE (
+                    status IN ('pending', 'retryable')
+                    AND next_attempt_at <= now()
+                ) OR (
+                    status = 'running'
+                    AND updated_at < now() - interval '1 minute'
+                )
+                ORDER BY created_at
+                LIMIT $1
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE api_gateway_trade_fill_sagas AS saga
+            SET status = 'running',
+                attempts = saga.attempts + 1,
+                updated_at = now()
+            FROM due
+            WHERE saga.fill_key = due.fill_key
+            RETURNING
+                saga.*,
+                saga.settlement_posted_at IS NOT NULL AS settlement_posted,
+                saga.taker_projected_at IS NOT NULL AS taker_projected,
+                saga.maker_projected_at IS NOT NULL AS maker_projected
+            ",
+        )
+        .bind(limit.clamp(1, 500))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| ApiError::internal(format!("trade fill saga claim failed: {error}")))?;
+
+        rows.iter().map(trade_fill_saga_from_row).collect()
+    }
+
+    async fn mark_settlement_posted(
+        &self,
+        fill_key: &str,
+        ledger_txn_id: Option<i64>,
+    ) -> Result<(), ApiError> {
+        sqlx::query(
+            "
+            UPDATE api_gateway_trade_fill_sagas
+            SET status = 'running',
+                ledger_txn_id = $2,
+                settlement_posted_at = COALESCE(settlement_posted_at, now()),
+                updated_at = now()
+            WHERE fill_key = $1
+            ",
+        )
+        .bind(fill_key)
+        .bind(ledger_txn_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| ApiError::internal(format!("trade fill saga update failed: {error}")))?;
+        Ok(())
+    }
+
+    async fn mark_taker_projected(&self, fill_key: &str) -> Result<(), ApiError> {
+        self.mark_projection(fill_key, "taker_projected_at").await
+    }
+
+    async fn mark_maker_projected(&self, fill_key: &str) -> Result<(), ApiError> {
+        self.mark_projection(fill_key, "maker_projected_at").await
+    }
+
+    async fn mark_completed(&self, fill_key: &str) -> Result<(), ApiError> {
+        sqlx::query(
+            "
+            UPDATE api_gateway_trade_fill_sagas
+            SET status = 'completed',
+                completed_at = COALESCE(completed_at, now()),
+                updated_at = now()
+            WHERE fill_key = $1
+            ",
+        )
+        .bind(fill_key)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            ApiError::internal(format!("trade fill saga completion failed: {error}"))
+        })?;
+        Ok(())
+    }
+
+    async fn mark_retryable(&self, fill_key: &str, error: &str) -> Result<(), ApiError> {
+        sqlx::query(
+            "
+            UPDATE api_gateway_trade_fill_sagas
+            SET status = 'retryable',
+                last_error = $2,
+                next_attempt_at = now() + make_interval(
+                    secs => LEAST(300, CAST(POWER(2, LEAST(attempts, 8)) AS INTEGER))
+                ),
+                updated_at = now()
+            WHERE fill_key = $1
+            ",
+        )
+        .bind(fill_key)
+        .bind(error.chars().take(2_000).collect::<String>())
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            ApiError::internal(format!("trade fill saga retry update failed: {error}"))
+        })?;
+        Ok(())
+    }
+}
+
+impl PostgresTradeFillSagaStore {
+    async fn mark_projection(&self, fill_key: &str, column: &str) -> Result<(), ApiError> {
+        let statement = format!(
+            "
+            UPDATE api_gateway_trade_fill_sagas
+            SET status = 'running',
+                {column} = COALESCE({column}, now()),
+                updated_at = now()
+            WHERE fill_key = $1
+            "
+        );
+        sqlx::query(&statement)
+            .bind(fill_key)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| {
+                ApiError::internal(format!("trade fill saga projection update failed: {error}"))
+            })?;
+        Ok(())
+    }
+}
+
+fn trade_fill_saga_from_row(row: &sqlx::postgres::PgRow) -> Result<TradeFillSaga, ApiError> {
+    let status: String = row.try_get("status").map_err(|error| {
+        ApiError::internal(format!("trade fill saga status decode failed: {error}"))
+    })?;
+    let settlement_posted: bool = row.try_get("settlement_posted").map_err(|error| {
+        ApiError::internal(format!("trade fill saga settlement decode failed: {error}"))
+    })?;
+    let taker_projected: bool = row.try_get("taker_projected").map_err(|error| {
+        ApiError::internal(format!("trade fill saga taker decode failed: {error}"))
+    })?;
+    let maker_projected: bool = row.try_get("maker_projected").map_err(|error| {
+        ApiError::internal(format!("trade fill saga maker decode failed: {error}"))
+    })?;
+
+    Ok(TradeFillSaga {
+        fill_key: row.try_get("fill_key").map_err(|error| {
+            ApiError::internal(format!("trade fill saga key decode failed: {error}"))
+        })?,
+        market_id: row.try_get("market_id").map_err(|error| {
+            ApiError::internal(format!("trade fill saga market decode failed: {error}"))
+        })?,
+        fill_id: row.try_get("fill_id").map_err(|error| {
+            ApiError::internal(format!("trade fill saga fill decode failed: {error}"))
+        })?,
+        taker_user_id: row.try_get("taker_user_id").map_err(|error| {
+            ApiError::internal(format!("trade fill saga taker user decode failed: {error}"))
+        })?,
+        maker_user_id: row.try_get("maker_user_id").map_err(|error| {
+            ApiError::internal(format!("trade fill saga maker user decode failed: {error}"))
+        })?,
+        buyer_user_id: row.try_get("buyer_user_id").map_err(|error| {
+            ApiError::internal(format!("trade fill saga buyer decode failed: {error}"))
+        })?,
+        seller_user_id: row.try_get("seller_user_id").map_err(|error| {
+            ApiError::internal(format!("trade fill saga seller decode failed: {error}"))
+        })?,
+        taker_order_id: row.try_get("taker_order_id").map_err(|error| {
+            ApiError::internal(format!(
+                "trade fill saga taker order decode failed: {error}"
+            ))
+        })?,
+        maker_order_id: row.try_get("maker_order_id").map_err(|error| {
+            ApiError::internal(format!(
+                "trade fill saga maker order decode failed: {error}"
+            ))
+        })?,
+        taker_side: row.try_get("taker_side").map_err(|error| {
+            ApiError::internal(format!("trade fill saga taker side decode failed: {error}"))
+        })?,
+        maker_side: row.try_get("maker_side").map_err(|error| {
+            ApiError::internal(format!("trade fill saga maker side decode failed: {error}"))
+        })?,
+        outcome: row.try_get("outcome").map_err(|error| {
+            ApiError::internal(format!("trade fill saga outcome decode failed: {error}"))
+        })?,
+        price_pts: row.try_get("price_pts").map_err(|error| {
+            ApiError::internal(format!("trade fill saga price decode failed: {error}"))
+        })?,
+        quantity: row.try_get("quantity").map_err(|error| {
+            ApiError::internal(format!("trade fill saga quantity decode failed: {error}"))
+        })?,
+        reservation_txn_id: row.try_get("reservation_txn_id").map_err(|error| {
+            ApiError::internal(format!(
+                "trade fill saga reservation decode failed: {error}"
+            ))
+        })?,
+        ledger_txn_id: row.try_get("ledger_txn_id").map_err(|error| {
+            ApiError::internal(format!("trade fill saga ledger decode failed: {error}"))
+        })?,
+        settlement_idempotency_key: row.try_get("settlement_idempotency_key").map_err(|error| {
+            ApiError::internal(format!(
+                "trade fill saga settlement key decode failed: {error}"
+            ))
+        })?,
+        taker_projection_idempotency_key: row.try_get("taker_projection_idempotency_key").map_err(
+            |error| ApiError::internal(format!("trade fill saga taker key decode failed: {error}")),
+        )?,
+        maker_projection_idempotency_key: row.try_get("maker_projection_idempotency_key").map_err(
+            |error| ApiError::internal(format!("trade fill saga maker key decode failed: {error}")),
+        )?,
+        status: TradeFillSagaStatus::from_str(&status),
+        attempts: row.try_get("attempts").map_err(|error| {
+            ApiError::internal(format!("trade fill saga attempts decode failed: {error}"))
+        })?,
+        settlement_posted,
+        taker_projected,
+        maker_projected,
+    })
 }
 
 fn idempotency_scope(
@@ -2423,6 +3016,33 @@ where
     M: MarketFeeReader + Send + Sync + 'static,
     P: PositionProjectionClient + Send + Sync + 'static,
 {
+    router_with_engine_and_kyc_market_fees_position_projection_and_trade_stores(
+        wallet_ledger,
+        engine,
+        kyc,
+        market_fees,
+        position_projection,
+        Arc::new(OrderOwnerStore::default()),
+        Arc::new(InMemoryTradeFillSagaStore::default()),
+    )
+}
+
+fn router_with_engine_and_kyc_market_fees_position_projection_and_trade_stores<W, E, K, M, P>(
+    wallet_ledger: W,
+    engine: E,
+    kyc: K,
+    market_fees: M,
+    position_projection: P,
+    order_owners: Arc<dyn OrderOwnerRepository>,
+    trade_sagas: Arc<dyn TradeFillSagaStore>,
+) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    K: KycTierClient + Clone + Send + Sync + 'static,
+    M: MarketFeeReader + Send + Sync + 'static,
+    P: PositionProjectionClient + Send + Sync + 'static,
+{
     Router::new()
         .route(
             "/v1/me/wallet/balance",
@@ -2442,12 +3062,14 @@ where
             get(get_book_snapshot::<W, E, K>),
         )
         .with_state(Arc::new(
-            AppStateWithEngine::new_with_market_fees_and_position_projection(
+            AppStateWithEngine::new_with_market_fees_position_projection_and_trade_stores(
                 wallet_ledger,
                 engine,
                 kyc,
                 market_fees,
                 position_projection,
+                order_owners,
+                trade_sagas,
             ),
         ))
         .merge(payments_real_money_router(
@@ -2566,6 +3188,48 @@ where
     M: MarketFeeReader + Send + Sync + 'static,
     P: PositionProjectionClient + Send + Sync + 'static,
 {
+    router_with_services_kyc_payment_flags_market_fees_position_projection_and_trade_stores(
+        wallet_ledger,
+        engine,
+        referral,
+        kyc,
+        payment_flags,
+        market_fees,
+        position_projection,
+        Arc::new(OrderOwnerStore::default()),
+        Arc::new(InMemoryTradeFillSagaStore::default()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn router_with_services_kyc_payment_flags_market_fees_position_projection_and_trade_stores<
+    W,
+    E,
+    R,
+    K,
+    F,
+    M,
+    P,
+>(
+    wallet_ledger: W,
+    engine: E,
+    referral: R,
+    kyc: K,
+    payment_flags: F,
+    market_fees: M,
+    position_projection: P,
+    order_owners: Arc<dyn OrderOwnerRepository>,
+    trade_sagas: Arc<dyn TradeFillSagaStore>,
+) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    R: ReferralClient + Clone + Send + Sync + 'static,
+    K: KycTierClient + Clone + Send + Sync + 'static,
+    F: PaymentsRealMoneyFlagReader + Clone + Send + Sync + 'static,
+    M: MarketFeeReader + Send + Sync + 'static,
+    P: PositionProjectionClient + Send + Sync + 'static,
+{
     let rg_router = responsible_gaming::responsible_gaming_router(
         wallet_ledger.clone(),
         responsible_gaming::InMemorySelfExclusionStore::default(),
@@ -2628,13 +3292,15 @@ where
             get(list_affiliate_payout_reviews::<W, E, R, K>),
         )
         .with_state(Arc::new(
-            AppStateWithServices::new_with_market_fees_and_position_projection(
+            AppStateWithServices::new_with_market_fees_position_projection_and_trade_stores(
                 wallet_ledger,
                 engine,
                 referral,
                 kyc,
                 market_fees,
                 position_projection,
+                order_owners,
+                trade_sagas,
             ),
         ))
         .merge(rg_router)
@@ -2801,10 +3467,12 @@ fn order_chain_idempotency_key(
     format!("{prefix}:{}:{market_id}:{}", scope.user_id, scope.key)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn settle_and_project_order_fills<W, P>(
     wallet_ledger: &W,
     position_projection: &P,
-    order_owners: &OrderOwnerStore,
+    order_owners: &dyn OrderOwnerRepository,
+    trade_sagas: &dyn TradeFillSagaStore,
     user_id: &str,
     market_id: &str,
     request: &PlaceOrderRequest,
@@ -2831,76 +3499,202 @@ where
         .await;
     }
 
+    let reservation_txn_id = reservation.map(|result| result.txn_id);
     for fill in &response.fills {
-        let maker_user_id = order_owners
-            .find(&fill.maker_order_id)?
-            .unwrap_or_else(|| fill.maker_user_id.to_string());
-        let taker_side = non_empty_or(&fill.taker_side, &request.side);
-        let maker_side = non_empty_or(&fill.maker_side, opposite_side_label(taker_side));
-        let outcome = non_empty_or(&fill.outcome, &request.outcome);
-        let (buyer_user_id, seller_user_id) = if order_side_is_buy(taker_side) {
-            (user_id.to_owned(), maker_user_id.clone())
-        } else {
-            (maker_user_id.clone(), user_id.to_owned())
-        };
-        let settlement = wallet_ledger
-            .settle_trade_fill(
-                &TradeSettlementRequest {
-                    market_id: market_id.to_owned(),
-                    fill_id: fill.fill_id.clone(),
-                    buyer_user_id,
-                    seller_user_id,
-                    price_pts: fill.price_pts,
-                    quantity: fill.quantity,
-                },
-                &format!("trade-fill:{market_id}:{}", fill.fill_id),
-            )
-            .await?;
-        let ledger_txn_id = settlement
-            .as_ref()
-            .map(|result| result.txn_id)
-            .or_else(|| reservation.map(|result| result.txn_id));
+        let saga = build_trade_fill_saga(
+            order_owners,
+            user_id,
+            market_id,
+            request,
+            fill,
+            reservation_txn_id,
+        )
+        .await?;
+        trade_sagas.enqueue(saga).await?;
+    }
 
-        project_position_fill(
-            position_projection,
-            PositionFillProjectionRequest {
-                user_id: user_id.to_owned(),
-                market_id: market_id.to_owned(),
-                outcome: outcome.to_owned(),
-                side: taker_side.to_owned(),
-                quantity: fill.quantity,
-                price_pts: fill.price_pts,
-                order_id: fill.taker_order_id.clone(),
-                fill_id: format!("{}:taker", fill.fill_id),
-                filled_at: None,
-                ledger_txn_id,
-            },
-            &format!("position-fill:{user_id}:{market_id}:{}:taker", fill.fill_id),
-        )
-        .await?;
-        project_position_fill(
-            position_projection,
-            PositionFillProjectionRequest {
-                user_id: maker_user_id.clone(),
-                market_id: market_id.to_owned(),
-                outcome: outcome.to_owned(),
-                side: maker_side.to_owned(),
-                quantity: fill.quantity,
-                price_pts: fill.price_pts,
-                order_id: fill.maker_order_id.clone(),
-                fill_id: format!("{}:maker", fill.fill_id),
-                filled_at: None,
-                ledger_txn_id,
-            },
-            &format!(
-                "position-fill:{maker_user_id}:{market_id}:{}:maker",
-                fill.fill_id
-            ),
-        )
-        .await?;
+    let claimed = drain_due_trade_fill_sagas(
+        trade_sagas,
+        wallet_ledger,
+        position_projection,
+        TRADE_FILL_SAGA_BATCH_LIMIT,
+    )
+    .await?;
+    if claimed == 0 {
+        tracing::debug!(market_id, "no due trade fill sagas claimed after enqueue");
     }
 
     Ok(())
+}
+
+async fn build_trade_fill_saga(
+    order_owners: &dyn OrderOwnerRepository,
+    user_id: &str,
+    market_id: &str,
+    request: &PlaceOrderRequest,
+    fill: &OrderFill,
+    reservation_txn_id: Option<i64>,
+) -> Result<TradeFillSaga, ApiError> {
+    let maker_user_id = order_owners
+        .find_owner(&fill.maker_order_id)
+        .await?
+        .unwrap_or_else(|| fill.maker_user_id.to_string());
+    let taker_side = non_empty_or(&fill.taker_side, &request.side);
+    let maker_side = non_empty_or(&fill.maker_side, opposite_side_label(taker_side));
+    let outcome = non_empty_or(&fill.outcome, &request.outcome);
+    let (buyer_user_id, seller_user_id) = if order_side_is_buy(taker_side) {
+        (user_id.to_owned(), maker_user_id.clone())
+    } else {
+        (maker_user_id.clone(), user_id.to_owned())
+    };
+    let fill_key = trade_fill_saga_key(market_id, &fill.fill_id);
+
+    Ok(TradeFillSaga {
+        fill_key: fill_key.clone(),
+        market_id: market_id.to_owned(),
+        fill_id: fill.fill_id.clone(),
+        taker_user_id: user_id.to_owned(),
+        maker_user_id: maker_user_id.clone(),
+        buyer_user_id,
+        seller_user_id,
+        taker_order_id: fill.taker_order_id.clone(),
+        maker_order_id: fill.maker_order_id.clone(),
+        taker_side: taker_side.to_owned(),
+        maker_side: maker_side.to_owned(),
+        outcome: outcome.to_owned(),
+        price_pts: fill.price_pts,
+        quantity: fill.quantity,
+        reservation_txn_id,
+        ledger_txn_id: None,
+        settlement_idempotency_key: fill_key,
+        taker_projection_idempotency_key: format!(
+            "position-fill:{user_id}:{market_id}:{}:taker",
+            fill.fill_id
+        ),
+        maker_projection_idempotency_key: format!(
+            "position-fill:{maker_user_id}:{market_id}:{}:maker",
+            fill.fill_id
+        ),
+        status: TradeFillSagaStatus::Pending,
+        attempts: 0,
+        settlement_posted: false,
+        taker_projected: false,
+        maker_projected: false,
+    })
+}
+
+async fn drain_due_trade_fill_sagas<W, P>(
+    trade_sagas: &dyn TradeFillSagaStore,
+    wallet_ledger: &W,
+    position_projection: &P,
+    limit: i64,
+) -> Result<usize, ApiError>
+where
+    W: WalletLedgerClient + Sync + ?Sized,
+    P: PositionProjectionClient + ?Sized,
+{
+    let claimed = trade_sagas.claim_due(limit).await?;
+    let claimed_count = claimed.len();
+    for saga in claimed {
+        let fill_key = saga.fill_key.clone();
+        if let Err(error) =
+            process_trade_fill_saga(trade_sagas, wallet_ledger, position_projection, saga).await
+        {
+            let message = format!("{error:?}");
+            trade_sagas.mark_retryable(&fill_key, &message).await?;
+            tracing::warn!(
+                fill_key,
+                error = %message,
+                "trade fill saga failed; queued for retry"
+            );
+        }
+    }
+    Ok(claimed_count)
+}
+
+async fn process_trade_fill_saga<W, P>(
+    trade_sagas: &dyn TradeFillSagaStore,
+    wallet_ledger: &W,
+    position_projection: &P,
+    mut saga: TradeFillSaga,
+) -> Result<(), ApiError>
+where
+    W: WalletLedgerClient + Sync + ?Sized,
+    P: PositionProjectionClient + ?Sized,
+{
+    if !saga.settlement_posted {
+        let settlement = wallet_ledger
+            .settle_trade_fill(
+                &TradeSettlementRequest {
+                    market_id: saga.market_id.clone(),
+                    fill_id: saga.fill_id.clone(),
+                    buyer_user_id: saga.buyer_user_id.clone(),
+                    seller_user_id: saga.seller_user_id.clone(),
+                    price_pts: saga.price_pts,
+                    quantity: saga.quantity,
+                },
+                &saga.settlement_idempotency_key,
+            )
+            .await?;
+        saga.ledger_txn_id = settlement
+            .as_ref()
+            .map(|result| result.txn_id)
+            .or(saga.reservation_txn_id);
+        trade_sagas
+            .mark_settlement_posted(&saga.fill_key, saga.ledger_txn_id)
+            .await?;
+        saga.settlement_posted = true;
+    }
+
+    let ledger_txn_id = saga.ledger_txn_id.or(saga.reservation_txn_id);
+    if !saga.taker_projected {
+        project_position_fill(
+            position_projection,
+            PositionFillProjectionRequest {
+                user_id: saga.taker_user_id.clone(),
+                market_id: saga.market_id.clone(),
+                outcome: saga.outcome.clone(),
+                side: saga.taker_side.clone(),
+                quantity: saga.quantity,
+                price_pts: saga.price_pts,
+                order_id: saga.taker_order_id.clone(),
+                fill_id: format!("{}:taker", saga.fill_id),
+                filled_at: None,
+                ledger_txn_id,
+            },
+            &saga.taker_projection_idempotency_key,
+        )
+        .await?;
+        trade_sagas.mark_taker_projected(&saga.fill_key).await?;
+        saga.taker_projected = true;
+    }
+
+    if !saga.maker_projected {
+        project_position_fill(
+            position_projection,
+            PositionFillProjectionRequest {
+                user_id: saga.maker_user_id.clone(),
+                market_id: saga.market_id.clone(),
+                outcome: saga.outcome.clone(),
+                side: saga.maker_side.clone(),
+                quantity: saga.quantity,
+                price_pts: saga.price_pts,
+                order_id: saga.maker_order_id.clone(),
+                fill_id: format!("{}:maker", saga.fill_id),
+                filled_at: None,
+                ledger_txn_id,
+            },
+            &saga.maker_projection_idempotency_key,
+        )
+        .await?;
+        trade_sagas.mark_maker_projected(&saga.fill_key).await?;
+    }
+
+    trade_sagas.mark_completed(&saga.fill_key).await
+}
+
+fn trade_fill_saga_key(market_id: &str, fill_id: &str) -> String {
+    format!("trade-fill:{market_id}:{fill_id}")
 }
 
 async fn project_aggregate_taker_fill<P>(
@@ -3182,11 +3976,18 @@ where
     };
     state
         .order_owners
-        .record(&response.order_id, &auth.user_id)?;
+        .record_owner(OrderOwnerRecord {
+            order_id: response.order_id.clone(),
+            user_id: auth.user_id.clone(),
+            market_id: market_id.clone(),
+            matching_user_id: matching_engine_user_id_header_value(&auth.user_id),
+        })
+        .await?;
     settle_and_project_order_fills(
         &state.wallet_ledger,
         state.position_projection.as_ref(),
-        &state.order_owners,
+        state.order_owners.as_ref(),
+        state.trade_sagas.as_ref(),
         &auth.user_id,
         &market_id,
         &request,
@@ -3364,11 +4165,18 @@ where
     };
     state
         .order_owners
-        .record(&response.order_id, &auth.user_id)?;
+        .record_owner(OrderOwnerRecord {
+            order_id: response.order_id.clone(),
+            user_id: auth.user_id.clone(),
+            market_id: market_id.clone(),
+            matching_user_id: matching_engine_user_id_header_value(&auth.user_id),
+        })
+        .await?;
     settle_and_project_order_fills(
         &state.wallet_ledger,
         state.position_projection.as_ref(),
-        &state.order_owners,
+        state.order_owners.as_ref(),
+        state.trade_sagas.as_ref(),
         &auth.user_id,
         &market_id,
         &request,
@@ -3642,6 +4450,80 @@ where
     Ok(Json(reviews))
 }
 
+struct ApiGatewayDurabilitySetup {
+    order_owners: Arc<dyn OrderOwnerRepository>,
+    trade_sagas: Arc<dyn TradeFillSagaStore>,
+}
+
+async fn api_gateway_durability_setup_from_env() -> anyhow::Result<ApiGatewayDurabilitySetup> {
+    let Some(database_url) = api_gateway_database_url() else {
+        if is_production_env() {
+            anyhow::bail!("API_GATEWAY_DATABASE_URL or DATABASE_URL is required in production")
+        }
+        tracing::warn!(
+            "API_GATEWAY_DATABASE_URL/DATABASE_URL is unset; order ownership and trade sagas are in-memory only"
+        );
+        return Ok(ApiGatewayDurabilitySetup {
+            order_owners: Arc::new(OrderOwnerStore::default()),
+            trade_sagas: Arc::new(InMemoryTradeFillSagaStore::default()),
+        });
+    };
+
+    let pool = sqlx::PgPool::connect(&database_url)
+        .await
+        .map_err(|error| anyhow::anyhow!("failed to connect api-gateway database: {error}"))?;
+    run_postgres_migrations(
+        sqlx::migrate!("./migrations"),
+        &pool,
+        API_GATEWAY_MIGRATION_TABLE,
+    )
+    .await?;
+
+    Ok(ApiGatewayDurabilitySetup {
+        order_owners: Arc::new(PostgresOrderOwnerStore::new(pool.clone())),
+        trade_sagas: Arc::new(PostgresTradeFillSagaStore::new(pool)),
+    })
+}
+
+fn api_gateway_database_url() -> Option<String> {
+    env::var("API_GATEWAY_DATABASE_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            env::var("DATABASE_URL")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+}
+
+fn spawn_trade_fill_saga_retry_worker<W>(
+    trade_sagas: Arc<dyn TradeFillSagaStore>,
+    wallet_ledger: W,
+    position_projection: Arc<dyn PositionProjectionClient + Send + Sync>,
+    interval: Duration,
+) -> tokio::task::JoinHandle<()>
+where
+    W: WalletLedgerClient + Send + Sync + 'static,
+{
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(interval);
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            if let Err(error) = drain_due_trade_fill_sagas(
+                trade_sagas.as_ref(),
+                &wallet_ledger,
+                position_projection.as_ref(),
+                TRADE_FILL_SAGA_BATCH_LIMIT,
+            )
+            .await
+            {
+                tracing::warn!(error = ?error, "trade fill saga retry worker failed");
+            }
+        }
+    })
+}
+
 /// Runs the API gateway HTTP server.
 ///
 /// # Errors
@@ -3651,6 +4533,7 @@ where
 pub async fn run_http() -> anyhow::Result<()> {
     observability::init_json_tracing(SERVICE_NAME);
     let config = ServiceConfig::from_env(SERVICE_NAME, DEFAULT_PORT)?;
+    let durability_setup = api_gateway_durability_setup_from_env().await?;
     let payments_setup = payments_real_money_flag_setup_from_env().await?;
     let payment_flags = payments_setup.flags.clone();
     if let Some(pg_store) = payments_setup.pg_store {
@@ -3662,6 +4545,18 @@ pub async fn run_http() -> anyhow::Result<()> {
     }
     let market_service = HttpMarketServiceClient::from_env()?;
     let position_service = HttpPositionServiceClient::from_env()?;
+    let wallet_ledger = HttpWalletLedgerClient::from_env()?;
+    let matching_engine = HttpMatchingEngineClient::from_env()?;
+    let referral = HttpReferralClient::from_env()?;
+    let kyc = HttpKycServiceClient::from_env()?;
+    let position_projection: Arc<dyn PositionProjectionClient + Send + Sync> =
+        Arc::new(position_service.clone());
+    let _trade_saga_retry_handle = spawn_trade_fill_saga_retry_worker(
+        durability_setup.trade_sagas.clone(),
+        wallet_ledger.clone(),
+        position_projection,
+        DEFAULT_TRADE_FILL_SAGA_RETRY_INTERVAL,
+    );
     // SPEC-023 plan v0.1.3 follow-up I-4: build AuthVerifier once at boot
     // and attach via Extension. Previously the `AuthContext` extractor fell
     // back to `AuthVerifier::from_env()` per request, re-parsing the JWKS
@@ -3669,14 +4564,16 @@ pub async fn run_http() -> anyhow::Result<()> {
     let auth_verifier = AuthVerifier::from_env();
     let app = service_stub::router(&config)
         .merge(
-            router_with_services_and_kyc_and_payment_flags_and_market_fees_and_position_projection(
-                HttpWalletLedgerClient::from_env()?,
-                HttpMatchingEngineClient::from_env()?,
-                HttpReferralClient::from_env()?,
-                HttpKycServiceClient::from_env()?,
+            router_with_services_kyc_payment_flags_market_fees_position_projection_and_trade_stores(
+                wallet_ledger,
+                matching_engine,
+                referral,
+                kyc,
                 payment_flags,
                 market_service.clone(),
                 position_service.clone(),
+                durability_setup.order_owners,
+                durability_setup.trade_sagas,
             ),
         )
         .merge(market_router(market_service))
@@ -3855,15 +4752,16 @@ mod tests {
     use super::{
         AdminProxyContext, AffiliateCommissionSummary, AffiliateDashboardResponse,
         AffiliateReferralListItem, ApiError, AuthVerifier, BookLevel, BookSnapshotResponse,
-        CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore, KycTier,
-        KycTierClient, LedgerEntry, LedgerPostResult, Market, MarketListResponse,
-        MarketServiceClient, MatchingEngineClient, OrderActionResponse, OrderFill, OrderOwnerStore,
-        PlaceOrderRequest, Position, PositionFillProjectionRequest, PositionListResponse,
-        PositionProjectionClient, PositionServiceClient, ReferralClient, SERVICE_NAME,
-        TradeSettlementRequest, WalletBalance, WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
+        CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore,
+        InMemoryTradeFillSagaStore, KycTier, KycTierClient, LedgerEntry, LedgerPostResult, Market,
+        MarketListResponse, MarketServiceClient, MatchingEngineClient, OrderActionResponse,
+        OrderFill, OrderOwnerStore, PlaceOrderRequest, Position, PositionFillProjectionRequest,
+        PositionListResponse, PositionProjectionClient, PositionServiceClient, ReferralClient,
+        SERVICE_NAME, TRADE_FILL_SAGA_BATCH_LIMIT, TradeFillSagaStatus, TradeSettlementRequest,
+        WalletBalance, WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
         X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        market_router, matching_engine_user_id_header_value, observability, positions_router,
-        router, router_with_engine, router_with_engine_and_kyc,
+        drain_due_trade_fill_sagas, market_router, matching_engine_user_id_header_value,
+        observability, positions_router, router, router_with_engine, router_with_engine_and_kyc,
         router_with_engine_and_kyc_and_market_fees,
         router_with_engine_and_kyc_and_market_fees_and_position_projection,
         router_with_payment_flags, router_with_services, settle_and_project_order_fills,
@@ -3900,6 +4798,18 @@ mod tests {
             super::resolve_kyc_service_base_url(None, None),
             "http://127.0.0.1:8085"
         );
+    }
+
+    #[test]
+    fn trade_saga_migration_defines_durable_order_owner_and_outbox_tables() {
+        let migration = include_str!(
+            "../migrations/202605220002_create_order_ownership_and_trade_fill_sagas.sql"
+        );
+
+        assert!(migration.contains("CREATE TABLE IF NOT EXISTS api_gateway_order_owners"));
+        assert!(migration.contains("CREATE TABLE IF NOT EXISTS api_gateway_trade_fill_sagas"));
+        assert!(migration.contains("next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now()"));
+        assert!(migration.contains("WHERE status IN ('pending', 'retryable', 'running')"));
     }
 
     #[tokio::test]
@@ -4464,6 +5374,7 @@ mod tests {
         let wallet = InMemoryWalletLedgerClient::default();
         let positions = InMemoryPositionProjectionClient::default();
         let order_owners = OrderOwnerStore::default();
+        let trade_sagas = InMemoryTradeFillSagaStore::default();
         order_owners
             .record("ord_maker_01", "11")
             .expect("maker order owner should record");
@@ -4502,6 +5413,7 @@ mod tests {
             &wallet,
             &positions,
             &order_owners,
+            &trade_sagas,
             "10",
             "mkt-election",
             &request,
@@ -4563,6 +5475,104 @@ mod tests {
                 )
             ]
         );
+        let saga = trade_sagas
+            .sagas
+            .lock()
+            .expect("saga store lock should not poison")
+            .get("trade-fill:mkt-election:mkt-election:trade:7")
+            .cloned()
+            .expect("trade fill saga should persist");
+        assert_eq!(saga.status, TradeFillSagaStatus::Completed);
+    }
+
+    #[tokio::test]
+    async fn trade_fill_saga_retries_after_settlement_failure() {
+        let wallet = InMemoryWalletLedgerClient::with_settlement_failures(1);
+        let positions = InMemoryPositionProjectionClient::default();
+        let order_owners = OrderOwnerStore::default();
+        let trade_sagas = InMemoryTradeFillSagaStore::default();
+        order_owners
+            .record("ord_maker_retry", "11")
+            .expect("maker order owner should record");
+        let request = PlaceOrderRequest {
+            side: "buy".to_owned(),
+            outcome: "YES".to_owned(),
+            order_type: "LIMIT".to_owned(),
+            price_pts: 55,
+            quantity: 2,
+            time_in_force: "GTC".to_owned(),
+        };
+        let response = OrderActionResponse {
+            order_id: "ord_taker_retry".to_owned(),
+            status: "FILLED".to_owned(),
+            filled_qty: 2,
+            avg_price_pts: 55,
+            remaining_qty: 0,
+            fee_pts: 0,
+            fills: vec![OrderFill {
+                fill_id: "mkt-election:trade:8".to_owned(),
+                market_id: "mkt-election".to_owned(),
+                seq_no: 8,
+                price_pts: 55,
+                quantity: 2,
+                taker_order_id: "ord_taker_retry".to_owned(),
+                maker_order_id: "ord_maker_retry".to_owned(),
+                taker_user_id: 10,
+                maker_user_id: 11,
+                taker_side: "buy".to_owned(),
+                maker_side: "sell".to_owned(),
+                outcome: "YES".to_owned(),
+            }],
+        };
+
+        settle_and_project_order_fills(
+            &wallet,
+            &positions,
+            &order_owners,
+            &trade_sagas,
+            "10",
+            "mkt-election",
+            &request,
+            &response,
+            Some(&LedgerPostResult {
+                txn_id: 42,
+                replayed: false,
+            }),
+        )
+        .await
+        .expect("failed settlement should leave retryable saga, not fail order path");
+
+        assert_eq!(wallet.settlement_requests(), Vec::new());
+        assert_eq!(positions.requests(), Vec::new());
+        let retryable = trade_sagas
+            .sagas
+            .lock()
+            .expect("saga store lock should not poison")
+            .get("trade-fill:mkt-election:mkt-election:trade:8")
+            .cloned()
+            .expect("trade fill saga should persist");
+        assert_eq!(retryable.status, TradeFillSagaStatus::Retryable);
+
+        let claimed = drain_due_trade_fill_sagas(
+            &trade_sagas,
+            &wallet,
+            &positions,
+            TRADE_FILL_SAGA_BATCH_LIMIT,
+        )
+        .await
+        .expect("retry drain should process the pending saga");
+
+        assert_eq!(claimed, 1);
+        assert_eq!(wallet.settlement_requests().len(), 1);
+        assert_eq!(positions.requests().len(), 2);
+        let completed = trade_sagas
+            .sagas
+            .lock()
+            .expect("saga store lock should not poison")
+            .get("trade-fill:mkt-election:mkt-election:trade:8")
+            .cloned()
+            .expect("trade fill saga should persist");
+        assert_eq!(completed.status, TradeFillSagaStatus::Completed);
     }
 
     #[tokio::test]
@@ -5450,6 +6460,7 @@ mod tests {
         reservations: OrderFundsRequests,
         releases: OrderFundsRequests,
         settlements: TradeSettlementRequests,
+        settlement_failures_remaining: Arc<Mutex<usize>>,
         available_minor_units: Option<i64>,
     }
 
@@ -5602,6 +6613,13 @@ mod tests {
         fn with_available_minor_units(available_minor_units: i64) -> Self {
             Self {
                 available_minor_units: Some(available_minor_units),
+                ..Self::default()
+            }
+        }
+
+        fn with_settlement_failures(failures: usize) -> Self {
+            Self {
+                settlement_failures_remaining: Arc::new(Mutex::new(failures)),
                 ..Self::default()
             }
         }
@@ -5882,6 +6900,18 @@ mod tests {
             request: &TradeSettlementRequest,
             idempotency_key: &str,
         ) -> Result<Option<LedgerPostResult>, ApiError> {
+            {
+                let mut failures =
+                    self.settlement_failures_remaining
+                        .lock()
+                        .unwrap_or_else(|error| {
+                            panic!("settlement failure lock should not poison: {error}")
+                        });
+                if *failures > 0 {
+                    *failures -= 1;
+                    return Err(ApiError::upstream("wallet-ledger settlement unavailable"));
+                }
+            }
             self.settlements
                 .lock()
                 .unwrap_or_else(|error| {

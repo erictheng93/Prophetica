@@ -99,6 +99,7 @@ Relevant local env vars:
 
 ```dotenv
 DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica
+API_GATEWAY_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica
 WALLET_LEDGER_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica
 API_GATEWAY_BASE_URL=http://localhost:8080
 KYC_SERVICE_BASE_URL=http://localhost:8085
@@ -107,6 +108,10 @@ MATCHING_ENGINE_BASE_URL=http://localhost:8088
 WALLET_LEDGER_BASE_URL=http://localhost:8086
 POSITION_SERVICE_STORE=memory
 ```
+
+`api-gateway` uses `API_GATEWAY_DATABASE_URL` (or `DATABASE_URL`) for durable
+order ownership and the trade-fill saga/outbox retry table. Leaving both unset
+falls back to in-memory state in local dev only; production fails closed.
 
 Set `POSITION_SERVICE_STORE=postgres` to read positions from `DATABASE_URL` (or
 `POSITION_SERVICE_DATABASE_URL`) and run the position-service migrations. Dev
