@@ -63,12 +63,14 @@ const deferredTranslationNamespaces = [
   "tradePanel",
 ];
 
-const maxDeferredTranslationLeafCount: Partial<Record<SupportedLocale, number>> = {
-  "zh-Hans": 865,
-  en: 865,
-  id: 865,
-  vi: 865,
-  tl: 865,
+const maxDeferredTranslationLeafCount: Partial<
+  Record<SupportedLocale, number>
+> = {
+  "zh-Hans": 866,
+  en: 866,
+  id: 866,
+  vi: 866,
+  tl: 866,
 };
 
 function readMessages(locale: SupportedLocale): MessageTree {
@@ -135,7 +137,14 @@ function pathIsWithinNamespace(path: string, namespace: string): boolean {
 
 test("web i18n supports the launch locales with Traditional Chinese as default", () => {
   assert.equal(DEFAULT_LOCALE, "zh-Hant");
-  assert.deepEqual(SUPPORTED_LOCALES, ["zh-Hant", "zh-Hans", "en", "id", "vi", "tl"]);
+  assert.deepEqual(SUPPORTED_LOCALES, [
+    "zh-Hant",
+    "zh-Hans",
+    "en",
+    "id",
+    "vi",
+    "tl",
+  ]);
 });
 
 test("locale resolver normalises browser and legacy language tags", () => {
@@ -149,8 +158,14 @@ test("locale resolver normalises browser and legacy language tags", () => {
 });
 
 test("accept-language resolver respects q-weighted supported candidates", () => {
-  assert.equal(resolveAcceptLanguageLocale("fr-FR, en;q=0.8, zh-CN;q=0.9"), "zh-Hans");
-  assert.equal(resolveAcceptLanguageLocale("fr-FR, fil-PH;q=0.7, id-ID;q=0.9"), "id");
+  assert.equal(
+    resolveAcceptLanguageLocale("fr-FR, en;q=0.8, zh-CN;q=0.9"),
+    "zh-Hans",
+  );
+  assert.equal(
+    resolveAcceptLanguageLocale("fr-FR, fil-PH;q=0.7, id-ID;q=0.9"),
+    "id",
+  );
   assert.equal(resolveAcceptLanguageLocale("fr-FR"), undefined);
 });
 
@@ -195,7 +210,9 @@ test("remaining non-default fallback coverage is explicit and cannot grow silent
     if (locale === DEFAULT_LOCALE) continue;
 
     const messages = readMessages(locale);
-    const missingPaths = defaultLeafPaths.filter((path) => !hasPath(messages, path));
+    const missingPaths = defaultLeafPaths.filter(
+      (path) => !hasPath(messages, path),
+    );
     const untrackedPaths = missingPaths.filter(
       (path) =>
         !deferredTranslationNamespaces.some((namespace) =>
@@ -244,7 +261,9 @@ test("Vietnamese sensitive compliance copy keeps tone marks", () => {
   const messages = readMessages("vi");
 
   for (const namespace of sensitiveNamespaces) {
-    for (const [path, value] of stringLeafEntries(valueAtPath(messages, namespace))) {
+    for (const [path, value] of stringLeafEntries(
+      valueAtPath(messages, namespace),
+    )) {
       const fullPath = `${namespace}.${path}`;
 
       if (

@@ -46,9 +46,29 @@ const USER_ID_HEADER: HeaderName = HeaderName::from_static("x-user-id");
 const TRANSITION_CALLER_HEADER: HeaderName = HeaderName::from_static("x-transition-caller");
 const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-key");
 const DEFAULT_ORDER_FEE_BPS: u32 = 200;
+const DEFAULT_KYC_SERVICE_BASE_URL: &str = "http://127.0.0.1:8085";
 
 pub const X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF: &str = "apps-web-dev-bff";
 pub const X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON: &str = "2026-08-31";
+
+fn resolve_kyc_service_base_url(
+    kyc_service_base_url: Option<&str>,
+    kyc_service_url: Option<&str>,
+) -> String {
+    kyc_service_base_url
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| kyc_service_url.filter(|value| !value.trim().is_empty()))
+        .unwrap_or(DEFAULT_KYC_SERVICE_BASE_URL)
+        .trim_end_matches('/')
+        .to_owned()
+}
+
+pub(crate) fn kyc_service_base_url_from_env() -> String {
+    resolve_kyc_service_base_url(
+        env::var("KYC_SERVICE_BASE_URL").ok().as_deref(),
+        env::var("KYC_SERVICE_URL").ok().as_deref(),
+    )
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct XUserIdTransitionAllowlistEntry {
@@ -1163,16 +1183,15 @@ impl HttpKycServiceClient {
         })
     }
 
-    /// Creates a client from `KYC_SERVICE_BASE_URL` + `INTERNAL_CALL_HMAC_SECRET`,
-    /// defaulting to localhost.
+    /// Creates a client from `KYC_SERVICE_BASE_URL` / `KYC_SERVICE_URL` plus
+    /// `INTERNAL_CALL_HMAC_SECRET`, defaulting to localhost.
     ///
     /// # Errors
     ///
     /// Returns an error when the configured URL is invalid, or when the HMAC
     /// secret is missing in production.
     pub fn from_env() -> anyhow::Result<Self> {
-        let base_url =
-            env::var("KYC_SERVICE_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:8090".to_owned());
+        let base_url = kyc_service_base_url_from_env();
         let secret = match env::var("INTERNAL_CALL_HMAC_SECRET")
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -3005,6 +3024,25 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         let body = response_json(response).await;
         assert_eq!(body["error"], json!("unauthorized"));
+    }
+
+    #[test]
+    fn kyc_service_base_url_accepts_both_env_names_and_defaults_to_8085() {
+        assert_eq!(
+            super::resolve_kyc_service_base_url(
+                Some("http://base.local"),
+                Some("http://url.local")
+            ),
+            "http://base.local"
+        );
+        assert_eq!(
+            super::resolve_kyc_service_base_url(None, Some("http://url.local")),
+            "http://url.local"
+        );
+        assert_eq!(
+            super::resolve_kyc_service_base_url(None, None),
+            "http://127.0.0.1:8085"
+        );
     }
 
     #[tokio::test]

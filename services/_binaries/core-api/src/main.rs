@@ -1,7 +1,8 @@
 use sdk::{
     config::ServiceConfig,
     postgres_migrations::{
-        REFERRAL_SERVICE_MIGRATION_TABLE, USER_SERVICE_MIGRATION_TABLE, run_postgres_migrations,
+        KYC_SERVICE_MIGRATION_TABLE, REFERRAL_SERVICE_MIGRATION_TABLE,
+        USER_SERVICE_MIGRATION_TABLE, run_postgres_migrations,
     },
     service_stub,
 };
@@ -16,6 +17,7 @@ async fn main() -> anyhow::Result<()> {
         market_service::api::run_http(),
         position_service::api::run_http(),
         run_referral_http(),
+        run_kyc_http(),
     )?;
 
     Ok(())
@@ -115,6 +117,52 @@ fn validate_user_service_store_mode(prophetica_env: &str, mode: &str) -> anyhow:
     Ok(())
 }
 
+async fn run_kyc_http() -> anyhow::Result<()> {
+    let config = ServiceConfig::from_env(kyc_service::SERVICE_NAME, kyc_service::DEFAULT_PORT)?;
+    let prophetica_env = env::var("PROPHETICA_ENV").unwrap_or_else(|_| "dev".to_owned());
+    let secrets = kyc_service::SecretConfig::from_env(&prophetica_env)?;
+    let mode = store_mode(env::var("KYC_STORE").ok().as_deref());
+    validate_kyc_service_store_mode(&prophetica_env, mode)?;
+
+    let app = if mode == "postgres" {
+        let database_url = env::var("KYC_SERVICE_DATABASE_URL")
+            .or_else(|_| env::var("DATABASE_URL"))
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "KYC_SERVICE_DATABASE_URL or DATABASE_URL is required when KYC_STORE=postgres"
+                )
+            })?;
+        let pool = sqlx::PgPool::connect(&database_url).await?;
+        run_postgres_migrations(
+            sqlx::migrate!("../../kyc-service/migrations"),
+            &pool,
+            KYC_SERVICE_MIGRATION_TABLE,
+        )
+        .await?;
+        let store =
+            kyc_service::kyc::PostgresKycStore::new(pool, secrets.document_hash_salt.clone());
+        axum::Router::new()
+            .merge(service_stub::router(&config))
+            .merge(kyc_service::api::router(store, secrets))
+            .merge(kyc_service::internal_reports::internal_reports_router())
+    } else {
+        let store = kyc_service::kyc::InMemoryKycStore::new(secrets.document_hash_salt.clone());
+        axum::Router::new()
+            .merge(service_stub::router(&config))
+            .merge(kyc_service::api::router(store, secrets))
+            .merge(kyc_service::internal_reports::internal_reports_router())
+    };
+
+    let listener = TcpListener::bind(config.bind_addr).await?;
+    tracing::info!(addr = %config.bind_addr, "kyc service listening inside core-api");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(kyc_service::SERVICE_NAME))
+        .await?;
+
+    Ok(())
+}
+
 async fn run_referral_http() -> anyhow::Result<()> {
     let config = ServiceConfig::from_env(
         referral_service::SERVICE_NAME,
@@ -169,10 +217,18 @@ fn validate_referral_service_store_mode(prophetica_env: &str, mode: &str) -> any
     Ok(())
 }
 
+fn validate_kyc_service_store_mode(prophetica_env: &str, mode: &str) -> anyhow::Result<()> {
+    if prophetica_env.eq_ignore_ascii_case("production") && mode != "postgres" {
+        anyhow::bail!("KYC_STORE=postgres is required when PROPHETICA_ENV=production");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        store_mode, validate_referral_service_store_mode, validate_user_service_store_mode,
+        store_mode, validate_kyc_service_store_mode, validate_referral_service_store_mode,
+        validate_user_service_store_mode,
     };
 
     #[test]
@@ -216,6 +272,20 @@ mod tests {
         assert_eq!(
             error.as_deref(),
             Some("REFERRAL_SERVICE_STORE=postgres is required when PROPHETICA_ENV=production")
+        );
+    }
+
+    #[test]
+    fn production_requires_kyc_postgres_store() {
+        assert!(validate_kyc_service_store_mode("production", "postgres").is_ok());
+        assert!(validate_kyc_service_store_mode("dev", "memory").is_ok());
+
+        let result = validate_kyc_service_store_mode("production", "memory");
+        assert!(result.is_err());
+        let error = result.err().map(|error| error.to_string());
+        assert_eq!(
+            error.as_deref(),
+            Some("KYC_STORE=postgres is required when PROPHETICA_ENV=production")
         );
     }
 }

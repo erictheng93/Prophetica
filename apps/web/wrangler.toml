@@ -27,6 +27,7 @@ bucket_name = "prophetica-kyc-liveness"
 
 [vars]
 KYC_SERVICE_BASE_URL = "http://127.0.0.1:8085"
+KYC_SERVICE_URL = "http://127.0.0.1:8085"
 PROPHETICA_DEV_USER_ID = "user_01"
 
 # Secrets must be configured outside git:

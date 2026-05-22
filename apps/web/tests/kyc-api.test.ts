@@ -4,6 +4,8 @@ import { test } from "node:test";
 import {
   KYC_FALLBACK_USER_ID,
   fetchKycOverview,
+  resolveKycServiceBaseUrl,
+  resolveKycSubmitErrorStatus,
   startKycUpgrade,
   submitTierOneVerification,
   tierMonthlyLimitPoints,
@@ -56,6 +58,99 @@ test("fetchKycOverview returns Tier 0 fallback when kyc-service is unavailable",
   assert.equal(overview.country, null);
   assert.equal(overview.tier1RecordId, null);
   assert.equal(overview.source, "fallback:kyc-service-unavailable");
+});
+
+test("resolveKycServiceBaseUrl accepts both KYC env names with one default port", () => {
+  const previousBaseUrl = process.env.KYC_SERVICE_BASE_URL;
+  const previousUrl = process.env.KYC_SERVICE_URL;
+  try {
+    delete process.env.KYC_SERVICE_BASE_URL;
+    delete process.env.KYC_SERVICE_URL;
+    assert.equal(resolveKycServiceBaseUrl(), "http://localhost:8085");
+
+    process.env.KYC_SERVICE_URL = "http://kyc-url.local/";
+    assert.equal(resolveKycServiceBaseUrl(), "http://kyc-url.local");
+
+    process.env.KYC_SERVICE_BASE_URL = "http://kyc-base.local/";
+    assert.equal(resolveKycServiceBaseUrl(), "http://kyc-base.local");
+    assert.equal(
+      resolveKycServiceBaseUrl("http://explicit.local/"),
+      "http://explicit.local",
+    );
+  } finally {
+    restoreEnv("KYC_SERVICE_BASE_URL", previousBaseUrl);
+    restoreEnv("KYC_SERVICE_URL", previousUrl);
+  }
+});
+
+test("submit helpers use KYC_SERVICE_URL when KYC_SERVICE_BASE_URL is absent", async () => {
+  const previousBaseUrl = process.env.KYC_SERVICE_BASE_URL;
+  const previousUrl = process.env.KYC_SERVICE_URL;
+  const previousDevUserId = process.env.PROPHETICA_DEV_USER_ID;
+  const seenBaseUrls: string[] = [];
+  const factory: KycClientFactory = ({ baseUrl }) => {
+    seenBaseUrls.push(baseUrl);
+    return {
+      async getStatus() {
+        throw new Error("not used");
+      },
+      async verifyTierOne(request) {
+        return {
+          userId: request.userId,
+          targetTier: "TIER_1",
+          status: "passed",
+          provider: "manual",
+          documentIdHash: "c".repeat(64),
+          replayed: false,
+        };
+      },
+      async startUpgrade() {
+        throw new Error("not used");
+      },
+    };
+  };
+
+  try {
+    delete process.env.KYC_SERVICE_BASE_URL;
+    process.env.KYC_SERVICE_URL = "http://kyc-url.local/";
+    process.env.PROPHETICA_DEV_USER_ID = "user_env";
+
+    await submitTierOneVerification(
+      {
+        legalName: "Test User",
+        birthday: "1990-01-02",
+        country: "TW",
+        documentId: "A123456789",
+        consent: true,
+      },
+      { kycClientFactory: factory },
+    );
+
+    assert.deepEqual(seenBaseUrls, ["http://kyc-url.local"]);
+  } finally {
+    restoreEnv("KYC_SERVICE_BASE_URL", previousBaseUrl);
+    restoreEnv("KYC_SERVICE_URL", previousUrl);
+    restoreEnv("PROPHETICA_DEV_USER_ID", previousDevUserId);
+  }
+});
+
+test("resolveKycSubmitErrorStatus maps submit failures to user-facing states", () => {
+  assert.equal(
+    resolveKycSubmitErrorStatus(apiError(409, "duplicate_document")),
+    "duplicate_document",
+  );
+  assert.equal(
+    resolveKycSubmitErrorStatus(apiError(422, "validation_failed")),
+    "invalid_submission",
+  );
+  assert.equal(
+    resolveKycSubmitErrorStatus(apiError(500, "kyc_store_unavailable")),
+    "service_unavailable",
+  );
+  assert.equal(
+    resolveKycSubmitErrorStatus(new TypeError("fetch failed")),
+    "service_unavailable",
+  );
 });
 
 test("submit helpers call kyc client mutations for server actions", async () => {
@@ -179,13 +274,10 @@ test("startKycUpgrade derives user identity server-side instead of trusting inpu
       targetTier: "TIER_2" as const,
     } as unknown as Parameters<typeof startKycUpgrade>[0];
 
-    await startKycUpgrade(
-      forgedInput,
-      {
-        baseUrl: "http://kyc.local",
-        kycClientFactory: factory,
-      },
-    );
+    await startKycUpgrade(forgedInput, {
+      baseUrl: "http://kyc.local",
+      kycClientFactory: factory,
+    });
 
     assert.deepEqual(calls, [
       {
@@ -283,3 +375,22 @@ const createFetchBackedKycClient: KycClientFactory = ({ auth }) => ({
     throw new Error("not used");
   },
 });
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
+
+function apiError(status: number, code: string): unknown {
+  return {
+    name: "ApiError",
+    status,
+    envelope: {
+      code,
+      message: code,
+    },
+  };
+}

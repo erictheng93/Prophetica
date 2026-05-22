@@ -37,7 +37,10 @@ impl SourceClients {
     pub fn from_env() -> Result<Self, ReportingError> {
         Ok(Self {
             http: reqwest::Client::new(),
-            kyc_url: Some(required_url("KYC_SERVICE_URL")?),
+            kyc_url: Some(required_url_with_alias(
+                "KYC_SERVICE_BASE_URL",
+                "KYC_SERVICE_URL",
+            )?),
             ledger_url: Some(required_url("LEDGER_SERVICE_URL")?),
             risk_url: Some(required_url("RISK_SERVICE_URL")?),
             user_url: Some(required_url("USER_SERVICE_URL")?),
@@ -271,6 +274,20 @@ fn required_url(name: &str) -> Result<Url, ReportingError> {
     let value =
         std::env::var(name).map_err(|_| ReportingError::Upstream(format!("{name} is required")))?;
     Url::parse(&value).map_err(|error| ReportingError::Upstream(error.to_string()))
+}
+
+fn required_url_with_alias(primary: &str, alias: &str) -> Result<Url, ReportingError> {
+    let value = std::env::var(primary)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var(alias)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .ok_or_else(|| ReportingError::Upstream(format!("{primary} or {alias} is required")))?;
+    Url::parse(value.trim_end_matches('/'))
+        .map_err(|error| ReportingError::Upstream(error.to_string()))
 }
 
 fn fixture_snapshot(service: &str, request_id: &str) -> SourceSnapshot {

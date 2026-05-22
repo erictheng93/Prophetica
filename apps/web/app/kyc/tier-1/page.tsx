@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { ProphTile } from "@prophetica/ui";
-import { submitTierOneVerification } from "@/lib/kyc-api";
+import {
+  resolveKycSubmitErrorStatus,
+  submitTierOneVerification,
+  type KycSubmitErrorStatus,
+} from "@/lib/kyc-api";
 import { safeReturnTo } from "@/lib/safe-return-to";
 import { recordJourneyRedirect } from "@/lib/telemetry/journey-metrics";
 
@@ -34,7 +38,10 @@ const countries: CountrySpec[] = [
 type Tier1Copy = Awaited<ReturnType<typeof getTranslations<"kyc.tier1">>>;
 
 interface PageProps {
-  searchParams?: Promise<{ return_to?: string | string[] }>;
+  searchParams?: Promise<{
+    return_to?: string | string[];
+    submission_error?: string | string[];
+  }>;
 }
 
 async function submitTierOneAction(formData: FormData) {
@@ -44,13 +51,17 @@ async function submitTierOneAction(formData: FormData) {
     readFormValue(formData, "return_to"),
     "/kyc/status",
   );
-  await submitTierOneVerification({
-    legalName: readFormValue(formData, "legalName"),
-    birthday: readFormValue(formData, "birthday"),
-    country: readFormValue(formData, "country"),
-    documentId: readFormValue(formData, "documentId"),
-    consent: formData.get("consent") === "on",
-  });
+  try {
+    await submitTierOneVerification({
+      legalName: readFormValue(formData, "legalName"),
+      birthday: readFormValue(formData, "birthday"),
+      country: readFormValue(formData, "country"),
+      documentId: readFormValue(formData, "documentId"),
+      consent: formData.get("consent") === "on",
+    });
+  } catch (error) {
+    redirect(tierOneFailurePath(returnTo, resolveKycSubmitErrorStatus(error)));
+  }
   recordJourneyRedirect("/kyc/tier-1", returnTo);
   redirect(returnTo);
 }
@@ -136,7 +147,15 @@ function CountryGuide({ t }: { t: Tier1Copy }) {
   );
 }
 
-function Tier1Form({ t, returnTo }: { t: Tier1Copy; returnTo: string }) {
+function Tier1Form({
+  t,
+  returnTo,
+  submissionError,
+}: {
+  t: Tier1Copy;
+  returnTo: string;
+  submissionError: KycSubmitErrorStatus | null;
+}) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
@@ -157,6 +176,19 @@ function Tier1Form({ t, returnTo }: { t: Tier1Copy; returnTo: string }) {
 
         <form action={submitTierOneAction}>
           <input type="hidden" name="return_to" value={returnTo} />
+          {submissionError ? (
+            <div
+              role="alert"
+              className="mb-6 rounded-proph-md border border-proph-feedback-error/40 bg-proph-feedback-error/10 px-4 py-3"
+            >
+              <p className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+                {t(`form.errors.${submissionError}.title`)}
+              </p>
+              <p className="mt-1 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+                {t(`form.errors.${submissionError}.body`)}
+              </p>
+            </div>
+          ) : null}
           <fieldset className="space-y-6">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-2">
@@ -274,6 +306,9 @@ export default async function Tier1Page({ searchParams }: PageProps) {
     firstQueryValue(params?.return_to),
     "/kyc/status",
   );
+  const submissionError = parseKycSubmitErrorStatus(
+    firstQueryValue(params?.submission_error),
+  );
 
   return (
     <>
@@ -284,7 +319,7 @@ export default async function Tier1Page({ searchParams }: PageProps) {
       />
       <PrivacyReminder t={t} />
       <CountryGuide t={t} />
-      <Tier1Form t={t} returnTo={returnTo} />
+      <Tier1Form t={t} returnTo={returnTo} submissionError={submissionError} />
     </>
   );
 }
@@ -296,4 +331,26 @@ function readFormValue(formData: FormData, key: string): string {
 
 function firstQueryValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+}
+
+function parseKycSubmitErrorStatus(value: string): KycSubmitErrorStatus | null {
+  switch (value) {
+    case "service_unavailable":
+    case "duplicate_document":
+    case "invalid_submission":
+      return value;
+    default:
+      return null;
+  }
+}
+
+function tierOneFailurePath(
+  returnTo: string,
+  submissionError: KycSubmitErrorStatus,
+): string {
+  const params = new URLSearchParams({ submission_error: submissionError });
+  if (returnTo !== "/kyc/status") {
+    params.set("return_to", returnTo);
+  }
+  return `/kyc/tier-1?${params.toString()}`;
 }

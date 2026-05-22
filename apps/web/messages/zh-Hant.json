@@ -1665,7 +1665,21 @@
         },
         "consent": "我已閱讀<privacyLink>KYC 隱私說明</privacyLink>與<termsLink>服務條款</termsLink>，並同意 prophetica 依據說明處理我提交的資料。",
         "footnote": "送出後 24 小時內最多嘗試 5 次。連續失敗將導入 Tier 2 流程。",
-        "submit": "送出基礎驗證"
+        "submit": "送出基礎驗證",
+        "errors": {
+          "service_unavailable": {
+            "title": "暫時無法送出 KYC",
+            "body": "KYC 服務目前無法連線，請稍後重試。你的資料尚未完成送出。"
+          },
+          "duplicate_document": {
+            "title": "此證件已被使用",
+            "body": "這組證件資料已連結到另一個帳戶。請確認輸入，或聯繫客服協助處理。"
+          },
+          "invalid_submission": {
+            "title": "資料格式需要調整",
+            "body": "請確認姓名、生日、國家與證件號碼符合上方格式後再送出。"
+          }
+        }
       }
     },
     "tier2": {

@@ -515,6 +515,7 @@ dependencies = [
  "anyhow",
  "api-gateway",
  "axum 0.7.9",
+ "kyc-service",
  "market-service",
  "position-service",
  "referral-service",

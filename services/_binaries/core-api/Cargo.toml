@@ -10,6 +10,7 @@ publish.workspace = true
 anyhow.workspace = true
 api-gateway = { path = "../../api-gateway" }
 axum.workspace = true
+kyc-service = { path = "../../kyc-service" }
 market-service = { path = "../../market-service" }
 position-service = { path = "../../position-service" }
 referral-service = { path = "../../referral-service" }

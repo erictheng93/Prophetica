@@ -89,9 +89,10 @@ pub trait AdminOpsStore {
     }
 
     /// Returns the base URL of the KYC service for the document proxy.
-    /// Reads `KYC_SERVICE_URL` from the process environment by default.
+    /// Reads `KYC_SERVICE_BASE_URL` / `KYC_SERVICE_URL` from the process
+    /// environment by default.
     fn kyc_service_base_url(&self) -> String {
-        env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned())
+        crate::kyc_service_base_url_from_env()
     }
 }
 
@@ -1053,8 +1054,7 @@ impl HttpAdminOpsStore {
     ///
     /// Returns an error when the configured KYC service URL is invalid.
     pub fn from_env() -> Result<Self, AdminOpsStoreError> {
-        let kyc_service_url =
-            env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned());
+        let kyc_service_url = crate::kyc_service_base_url_from_env();
         let user_service_url =
             env::var("USER_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8084".to_owned());
         let store = Self::with_side_effect_services(
@@ -2790,8 +2790,8 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
     }
 
     fn kyc_service_base_url(&self) -> String {
-        self.kyc_url_override.clone().unwrap_or_else(|| {
-            env::var("KYC_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8085".to_owned())
-        })
+        self.kyc_url_override
+            .clone()
+            .unwrap_or_else(|| crate::kyc_service_base_url_from_env())
     }
 }
