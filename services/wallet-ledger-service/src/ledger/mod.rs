@@ -250,6 +250,20 @@ where
             .map_err(PostTransactionError::from)
     }
 
+    /// Finds a previously committed ledger transaction by idempotency key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LedgerStoreError`] when the backing store lookup fails.
+    pub async fn find_transaction_by_idempotency_key(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<Option<CommittedLedgerTransaction>, LedgerStoreError> {
+        self.store
+            .find_by_idempotency_key(idempotency_key)
+            .await
+    }
+
     async fn validate_player_liability_bounds(
         &self,
         draft: &PostTransactionDraft,
@@ -1638,8 +1652,20 @@ mod tests {
                 }
                 Err(error) => panic!("entries lock should not be poisoned: {error}"),
             }
-            Ok(transaction)
-        }
+        Ok(transaction)
+    }
+
+    /// Finds a previously committed transaction by idempotency key.
+    ///
+    /// This read path is used by compensation reconciliation before any retry,
+    /// so callers can distinguish "ledger already committed but response was
+    /// lost" from "safe to repost with the same idempotency key".
+    pub async fn find_transaction_by_idempotency_key(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<Option<CommittedLedgerTransaction>, LedgerStoreError> {
+        self.store.find_by_idempotency_key(idempotency_key).await
+    }
 
         async fn get_account_balance(
             &self,

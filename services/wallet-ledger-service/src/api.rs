@@ -63,6 +63,13 @@ pub struct PostTransactionResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct LedgerTransactionLookupResponse {
+    pub txn_id: i64,
+    pub idempotency_key: String,
+    pub replayed: bool,
+}
+
+#[derive(Debug, Serialize)]
 pub struct WalletBalanceResponse {
     pub user_id: String,
     pub available_minor_units: i64,
@@ -103,6 +110,10 @@ where
     Router::new()
         .route("/internal/ledger/transactions", post(post_transaction::<S>))
         .route(
+            "/internal/ledger/transactions/by-idempotency-key/:idempotency_key",
+            get(get_transaction_by_idempotency_key::<S>),
+        )
+        .route(
             "/internal/ledger/manual-points-adjustments",
             post(post_manual_points_adjustment::<S>),
         )
@@ -112,6 +123,33 @@ where
         )
         .route("/internal/ledger/entries", get(list_entries::<S>))
         .with_state(LedgerService::new(store))
+}
+
+async fn get_transaction_by_idempotency_key<S>(
+    State(service): State<LedgerService<S>>,
+    Path(idempotency_key): Path<String>,
+) -> Result<Json<LedgerTransactionLookupResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: LedgerStore + Send + Sync,
+{
+    let transaction = service
+        .find_transaction_by_idempotency_key(&idempotency_key)
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ApiErrorResponse {
+                    error: "ledger_transaction_not_found",
+                    message: "transaction not found for idempotency key".to_owned(),
+                }),
+            )
+        })?;
+    Ok(Json(LedgerTransactionLookupResponse {
+        txn_id: transaction.id,
+        idempotency_key: transaction.idempotency_key,
+        replayed: transaction.replayed,
+    }))
 }
 
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME, idempotency.key = tracing::field::Empty), skip(service, request))]

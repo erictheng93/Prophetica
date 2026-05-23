@@ -1545,6 +1545,132 @@ async fn compensation_review_classifies_ledger_failures_without_reversing_approv
 }
 
 #[tokio::test]
+async fn compensation_retry_reposts_failed_with_existing_key() {
+    let store = InMemoryAdminOpsStore::default()
+        .with_compensation_known_members(vec!["user_123".to_owned()])
+        .with_compensation_ledger_4xx();
+    let app = internal_admin_router(store);
+    let created = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "manager-1",
+            "manager",
+            &json!({
+                "ticket_id": "TICKET-RETRY-FAILED",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("create compensation should be handled");
+    let proposal_id = response_json(created).await["proposal"]["proposal_id"]
+        .as_str()
+        .expect("proposal id")
+        .to_owned();
+    let approved = app
+        .clone()
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{proposal_id}/review"),
+            "admin-1",
+            "admin",
+            &json!({ "decision": "approved" }),
+        ))
+        .await
+        .expect("approval should be handled");
+    assert_eq!(response_json(approved).await["proposal"]["status"], json!("posting_failed"));
+
+    let retry = app
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{proposal_id}/retry-posting"),
+            "admin-1",
+            "admin",
+            &json!({}),
+        ))
+        .await
+        .expect("retry should be handled");
+    assert_eq!(retry.status(), StatusCode::OK);
+    let retry_body = response_json(retry).await;
+    assert_eq!(retry_body["proposal"]["status"], json!("posting_failed"));
+    assert_eq!(retry_body["proposal"]["posting_attempt_count"], json!(2));
+    assert_eq!(
+        retry_body["proposal"]["ledger_idempotency_key"],
+        json!(format!("cs-cmp-{proposal_id}"))
+    );
+    assert_eq!(retry_body["replayed"], json!(false));
+}
+
+#[tokio::test]
+async fn compensation_retry_marks_unknown_committed_without_reposting() {
+    let store = InMemoryAdminOpsStore::default()
+        .with_compensation_known_members(vec!["user_123".to_owned()])
+        .with_compensation_ledger_timeout()
+        .with_compensation_ledger_lookup_txn(9901);
+    let app = internal_admin_router(store);
+    let created = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "manager-1",
+            "manager",
+            &json!({
+                "ticket_id": "TICKET-RETRY-UNKNOWN",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("create compensation should be handled");
+    let proposal_id = response_json(created).await["proposal"]["proposal_id"]
+        .as_str()
+        .expect("proposal id")
+        .to_owned();
+    let approved = app
+        .clone()
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{proposal_id}/review"),
+            "admin-1",
+            "admin",
+            &json!({ "decision": "approved" }),
+        ))
+        .await
+        .expect("approval should be handled");
+    let approved_body = response_json(approved).await;
+    assert_eq!(approved_body["proposal"]["status"], json!("posting_unknown"));
+    assert_eq!(approved_body["proposal"]["posting_attempt_count"], json!(1));
+
+    let retry = app
+        .clone()
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{proposal_id}/retry-posting"),
+            "admin-1",
+            "admin",
+            &json!({}),
+        ))
+        .await
+        .expect("retry should be handled");
+    assert_eq!(retry.status(), StatusCode::OK);
+    let retry_body = response_json(retry).await;
+    assert_eq!(retry_body["proposal"]["status"], json!("posted"));
+    assert_eq!(retry_body["proposal"]["ledger_transaction_id"], json!(9901));
+    assert_eq!(retry_body["proposal"]["posting_attempt_count"], json!(1));
+    assert_eq!(retry_body["replayed"], json!(true));
+
+    let posted_retry = app
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{proposal_id}/retry-posting"),
+            "admin-1",
+            "admin",
+            &json!({}),
+        ))
+        .await
+        .expect("posted retry should be handled");
+    let posted_retry_body = response_json(posted_retry).await;
+    assert_eq!(posted_retry_body["proposal"]["status"], json!("posted"));
+    assert_eq!(posted_retry_body["replayed"], json!(true));
+}
+
+#[tokio::test]
 async fn compensation_review_blocks_self_review_and_non_review_role() {
     let store =
         InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]);
