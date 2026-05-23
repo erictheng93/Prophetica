@@ -276,6 +276,10 @@ test("admin affiliate operations are grouped under the management area", () => {
   assert.match(layoutSource, /\.\.\.\(filteredChildren/);
   assert.match(layoutSource, /inDevelopmentHrefs/);
   assert.match(facadeSource, /inDevelopment: true/);
+  assert.doesNotMatch(
+    facadeSource,
+    /href: "\/compensation"[\s\S]*?inDevelopment: true[\s\S]*?href: "\/approvals"/,
+  );
   assert.match(sidebarSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
   assert.match(drawerSource, /aria-label=\{`\$\{link\.label\} 子導覽`\}/);
 });

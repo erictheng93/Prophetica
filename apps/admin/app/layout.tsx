@@ -134,8 +134,8 @@ function buildAdminNavLinks(role: Role) {
         key: route.domain,
         href: route.href,
         label: route.label,
-        // Top-level routes (e.g. /compensation) carry the「開發中」badge
-        // directly; children get it via inDevelopmentHrefs above.
+        // Top-level routes carry the「開發中」badge directly; children get it
+        // via inDevelopmentHrefs above.
         ...(route.inDevelopment
           ? { badge: adminCopy.shell.inDevelopmentBadge }
           : {}),
