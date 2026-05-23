@@ -20,8 +20,13 @@ export async function createAffiliateAction(formData: FormData): Promise<void> {
   const payload = mutationPayloadFromForm(formData);
   const result = await createAdminAffiliate(viewer, payload);
   if (!result) redirect("/affiliate?error=affiliate-create-failed");
+  if (result.status === "repair_required") {
+    redirect(
+      `/affiliate?error=affiliate-create-repair-required&affiliateAccountSaga=${encodeURIComponent(result.saga.idempotencyKey)}`,
+    );
+  }
   revalidatePath("/affiliate");
-  redirect(`/affiliate/${encodeURIComponent(result.affiliate.id)}`);
+  redirect(`/affiliate/${encodeURIComponent(result.affiliate.affiliate.id)}`);
 }
 
 export async function updateAffiliateAction(formData: FormData): Promise<void> {
@@ -71,8 +76,13 @@ function mutationPayloadFromForm(formData: FormData): AffiliateMutationPayload {
     authorizationBasis: requiredText(formData, "authorizationBasis"),
   };
   assignText(formData, payload, "displayName");
+  assignText(formData, payload, "userId");
+  assignText(formData, payload, "affiliateId");
   assignText(formData, payload, "email");
+  assignText(formData, payload, "phone");
+  assignText(formData, payload, "password");
   assignText(formData, payload, "ownerSponsorId");
+  assignText(formData, payload, "managingManagerId");
   assignText(formData, payload, "effectiveAt");
   assignText(formData, payload, "expiresAt");
   assignText(formData, payload, "creditReviewExpiresAt");
@@ -107,8 +117,13 @@ function assignText(
   payload: AffiliateMutationPayload,
   key:
     | "displayName"
+    | "userId"
+    | "affiliateId"
     | "email"
+    | "phone"
+    | "password"
     | "ownerSponsorId"
+    | "managingManagerId"
     | "effectiveAt"
     | "expiresAt"
     | "creditReviewExpiresAt",

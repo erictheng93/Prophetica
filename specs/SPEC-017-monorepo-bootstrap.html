@@ -25,9 +25,10 @@
 <h1>SPEC-017 — Monorepo Bootstrap &amp; Local Dev Environment</h1>
 <blockquote>
 <p>優先級：<strong>P0（必須在第一行業務 code 之前完成）</strong>
-版本：v0.2.8 · 最後更新：2026-05-18
+版本：v0.2.9 · 最後更新：2026-05-22
 依賴：SPEC-014（架構定義）
 被依賴：所有 SPEC（實作載體）</p>
+<p><strong>v0.2.9 變更</strong>：§6.3 新增 §6.3.5「角色帳號生命週期管理（分權 CRUD）」，明定自上而下的帳號管理鏈 <code>admin → manager → affiliate（代理）</code>：admin 對<strong>全部</strong> manager 帳號可增刪改查、manager 僅對<strong>自己旗下</strong>（<code>managing_manager_id</code> = 本人）的 affiliate 帳號可增刪改查，且禁止任何反向／橫向管理（affiliate 不得管理任何人、manager 不得管理 admin 或其他 manager、不得自我提權或竄改歸屬）。新增 <code>affiliate_profiles.managing_manager_id</code> 作為 RBAC 歸屬欄位，與既有 <code>owner_sponsor_id</code>（推薦人掛靠）<strong>語意分離</strong>。本節為「行政管理權委派」，與 SPEC-011 §2.1 禁止的「多層抽佣下線金字塔」屬不同概念，規格明文切割以通過 MLM 紅線審查；刪除採軟刪除（停用／封存）以符 SPEC-018 稽核留存。並明定（§6.3.5.4.1）manager 於範圍內可調整自己旗下代理的 <code>commission_rate_bps</code>（單層佣金率，非多層分潤），但不得改信用控制 <code>credit_*</code>、<code>role</code> 與 <code>managing_manager_id</code>。<code>managing_manager_id</code> 由 manager 修改採 <strong>deny-by-presence</strong>（payload 出現即 403，不比對現值），BFF 在 manager 視角須 strip 此欄位。</p>
 <p><strong>v0.2.8 變更</strong>：§6.3 新增 §6.3.4「Admin app 後端錯誤呈現」，明定 admin app 必須依 gateway 回應的 HTTP 狀態碼與 error code（SPEC-014 §6.1.1）呈現可辨識的使用者訊息，不得一律顯示籠統錯誤；BFF 層須透傳狀態碼與 error code、不得重新對映。首個落地對象為 KYC 審核會員查詢（<code>/members/kyc-review</code>）對不存在會員顯示「查無此會員」而非一般錯誤。</p>
 <p><strong>v0.2.7 變更</strong>：§6.3 新增 §6.3.3「Nav 資訊架構（IA）」，明示左側 nav 群組僅影響導覽呈現、不新增/移除路由、不改變 §6.3.1 路由 RBAC：決策支援（<code>/dashboard</code>）與分析報表（<code>/analytics</code>）合併為可展開的「數據與報表」群組；帳戶點數例外（<code>/points</code>）改以 <code>OpsRoute.navHidden</code> 自 top-level 收起、列入「會員管理」子導覽。連帶 erratum：§6.3.1 矩陣 <code>/points</code> 標籤由「帳戶銅幣例外」更正為「帳戶點數例外」，與 admin app UI（<code>apps/admin/lib/ops-facade.ts</code>）一致。另：「代理管理區」群組更名為「代理管理」；nav 排序將 FAQ 管理移至各操作領域之後（§6.3.3）。</p>
 <p><strong>v0.2.6 變更</strong>：§11 新增 §11.3「PoC gating」，明示 PoC-A（EdDSA / LIFF）+ PoC-B（Cloudflare Edge runtime 5 場景）為 launch acceptance gate；v0.2.7 後校準為「不阻擋 PR #1 / internal alpha，但阻擋公開 Beta / 真實入金 / prod deployment mode finalization」。PoC 結果需回填至 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md</code></a>。</p>
@@ -482,14 +483,14 @@
 <tr><td><code>/dashboard</code> 決策支援</td><td>✅ 全部</td><td>✅ 不含財務 hash</td><td>403</td></tr>
 <tr><td><code>/members</code> 會員管理</td><td>✅</td><td>✅ 唯讀</td><td>403</td></tr>
 <tr><td><code>/points</code> 帳戶點數例外</td><td>✅</td><td>✅ 提案</td><td>403</td></tr>
-<tr><td><code>/affiliate</code> 代理抽佣審查</td><td>✅</td><td>✅ 唯讀</td><td>403</td></tr>
+<tr><td><code>/affiliate</code> 代理抽佣審查</td><td>✅</td><td>✅ 範圍內可寫（資料列授權見 §6.3.5）</td><td>403</td></tr>
 <tr><td><code>/kyc-risk</code></td><td>✅</td><td>✅</td><td>403</td></tr>
 <tr><td><code>/compensation</code> 補償審批</td><td>✅ 終審</td><td>✅ 提案</td><td>403</td></tr>
 <tr><td><code>/approvals</code> 工單審批</td><td>✅ 終審</td><td>✅ 一審</td><td>403</td></tr>
 <tr><td><code>/me/affiliate*</code></td><td>403</td><td>403</td><td>✅ 代理 portal；含任意會員餘額查詢與 grant-only 調點</td></tr>
 </tbody>
 </table>
-<p>「✅ 唯讀」「✅ 提案」與 admin 共用同一頁面 component，差異由 RBAC 在 server-side 過濾 CTA 與 server fetch 範圍實現，<strong>不</strong>另開分支路由。</p>
+<p>「✅ 範圍內可寫」「✅ 唯讀」「✅ 提案」與 admin 共用同一頁面 component，差異由 RBAC 在 server-side 過濾 CTA、mutation 權限與 server fetch 範圍實現，<strong>不</strong>另開分支路由。</p>
 <h4>6.3.2 與 SPEC-010 §9.3.3 銜接</h4>
 <ul>
 <li>本節僅規範「進入 UI 之前」的 authn / authz；multi-sig 簽核與 hardware MFA step-up 仍依 SPEC-010 §9.3.3 集中 component。</li>
@@ -516,6 +517,44 @@
 <li>BFF 層（<code>apps/admin/lib/*-bff.ts</code>）必須透傳 gateway 的 HTTP 狀態碼與 error code，不得重新對映或壓平——否則前端無從辨識。</li>
 </ul>
 <p>首個落地對象：KYC 審核會員查詢（<code>/members/kyc-review</code>）。gateway 對不存在會員回 <code>404 ERROR_CODE_MEMBER_NOT_FOUND</code>（SPEC-014 §6.1.1），admin app 必須顯示「查無此會員」而非一般錯誤。實作見 <code>apps/admin/app/members/kyc-review/</code> 與 <code>apps/admin/lib/member-management-bff.ts</code>。</p>
+<h4>6.3.5 角色帳號生命週期管理（分權 CRUD）（新增 2026-05-22）</h4>
+<p><strong>意圖與邊界。</strong>本節定義<strong>自上而下的帳號管理鏈</strong>：<code>admin → manager → affiliate（代理）</code>。此為「行政管理權委派」（誰能對誰的帳號做增刪改查），<strong>不是</strong> SPEC-011 §2.1 明文禁止的「總代 → 代理 → 業務」多層<strong>抽佣下線金字塔</strong>。兩者語意必須分離：本節的管理歸屬<strong>不</strong>產生任何分潤、不沿管理鏈逐層抽成；分潤仍依 SPEC-011 之單層推薦規則，與此處的 <code>managing_manager_id</code> 無因果關係。§6.3.1 為<strong>路由層</strong> RBAC，本節為其下的<strong>資料列層（row-level）</strong>授權，兩者並存、皆以 server-side 為唯一真實來源，UI 僅作呈現過濾。</p>
+<p><strong>6.3.5.1 管理權矩陣。</strong>「✅ 增刪改查」中之「刪」一律為<strong>軟刪除</strong>（停用／封存，狀態轉為 <code>disabled</code>／<code>archived</code>），不得物理刪除帳號或其稽核軌跡（SPEC-018）。</p>
+<table>
+<thead><tr><th>操作對象</th><th><code>admin</code></th><th><code>manager</code></th><th><code>affiliate</code></th></tr></thead>
+<tbody>
+<tr><td>manager 帳號</td><td>✅ 增刪改查（<strong>全部</strong> manager）</td><td>403（不得管理任何 manager，含自身角色提權）</td><td>403</td></tr>
+<tr><td>affiliate 帳號</td><td>✅ 增刪改查（<strong>全部</strong> affiliate）；可指派／重指派 <code>managing_manager_id</code></td><td>✅ 增刪改查，<strong>僅限</strong> <code>managing_manager_id =</code> 本人之 affiliate</td><td>403（代理門戶為自助，非帳號管理）</td></tr>
+<tr><td>自身 profile（非角色／非歸屬欄位）</td><td>✅</td><td>✅</td><td>✅（既有 <code>/me/affiliate</code> 自助）</td></tr>
+</tbody>
+</table>
+<p><strong>6.3.5.2 歸屬模型。</strong><code>affiliate_profiles</code> 新增 <code>managing_manager_id TEXT NULL</code>，存「管理該代理之 manager 的 <code>user_id</code>」，並建索引。其與既有 <code>owner_sponsor_id</code>（推薦人／掛靠來源，屬 SPEC-011 推薦語意）<strong>語意分離、不得互相覆寫</strong>。歸屬規則：</p>
+<ul>
+<li>manager 建立 affiliate 時，<code>managing_manager_id</code> 由 server <strong>強制</strong>寫入該 manager 的 <code>user_id</code>，呼叫端不可指定他人。</li>
+<li>admin 建立 affiliate 時，可指派任一<strong>存在且未停用</strong>的 manager 或留空（<code>NULL</code> = 「admin 池」，僅 admin 可管）。因 <code>affiliate_profiles</code> 位於 referral-service、manager 帳號位於 user-service，<code>managing_manager_id</code> 不做跨服務 foreign key；有效性由 api-gateway 在建立與重指派前查 user-service 驗證。</li>
+<li><code>managing_manager_id</code> 的<strong>重指派（移交歸屬）僅限 admin</strong>；manager 不得修改任一 affiliate 的歸屬（含不得將他人代理改掛己身）。具體執法採 <strong>deny-by-presence</strong>：<code>manager</code> 之 PATCH payload 只要<strong>出現</strong> <code>managing_manager_id</code> 欄位即 <code>403</code>，<strong>不</strong>比對與現值是否相同——避免「同值送進」的潛在繞道與時序競態。BFF（admin app）在 manager 視角必須於邊界 strip 此欄位（見 <code>apps/admin/lib/affiliate-management-bff.ts</code> 之 <code>stripManagingManagerIdForManager</code>），以免 manager 編輯表單回填唯讀歸屬欄位造成誤拒；admin 視角保留欄位以支援重指派。</li>
+</ul>
+<p><strong>唯一事實來源。</strong><code>managing_manager_id</code> 僅由 referral-service 持有並執行範圍判斷；user-service 不得複製此欄位或自行判斷 affiliate 是否屬於某 manager。user-service 僅負責 login credential、role 與停用狀態；任何需要 affiliate 管理歸屬的流程都必須透過 referral-service 查驗，避免雙重事實來源漂移。</p>
+<p><strong>6.3.5.3 範圍強制（row-level）。</strong>當 actor 為 <code>manager</code>，所有對 affiliate 的<strong>讀取與寫入</strong>（list / get / create / update / soft-delete）一律於 server 端附加 <code>WHERE managing_manager_id = :actor_user_id</code> 條件；落在範圍外之目標一律回 <code>403</code>（或對清單查詢即不可見），<strong>不得</strong>僅靠前端隱藏 CTA。actor 為 <code>admin</code> 時無此範圍限制。</p>
+<p><strong>6.3.5.4 反向與橫向禁制（紅線）。</strong>下列一律 server-side 拒絕，並寫稽核：</p>
+<ul>
+<li><code>affiliate</code> 對任何帳號的管理操作 → <code>403</code>（呼應 SPEC-002 §4.4.5「不得代表 admin/manager 操作」）。</li>
+<li><code>manager</code> 對 <code>admin</code> 或其他 <code>manager</code> 帳號之任何 CRUD → <code>403</code>。</li>
+<li><code>manager</code> 對範圍外 affiliate 之任何 CRUD → <code>403</code>。</li>
+<li><strong>提權禁制</strong>：建立／更新帳號時，<code>manager</code> 可設定之 <code>role</code> 僅能為 <code>affiliate</code>；任何試圖寫入 <code>admin</code>／<code>manager</code> 角色或修改自身 <code>role</code> 之請求 → <code>403</code>。角色指派為 admin 專屬。</li>
+<li>承 §6.3.5.2，<code>manager</code> 之 PATCH payload 中<strong>出現</strong> <code>managing_manager_id</code> 欄位（無論值是否變動）→ <code>403</code>（deny-by-presence）。BFF 在 manager 視角須 strip 此欄位。</li>
+<li>上述拒絕事件皆須留下 denied audit（actor、target、action、reason / error code），不得只回 403 而無稽核軌跡。denied create 可能尚無 <code>affiliate_id</code>，不得寫入要求 <code>affiliate_id NOT NULL REFERENCES affiliate_profiles</code> 的既有成功 mutation audit 表；須使用 nullable target 的 denied-operation audit sink，或同等可存 attempted payload 的獨立表。歸屬／範圍／費率等 affiliate domain 拒絕由 referral-service 寫本地 denied audit；gateway 粗篩或 saga 編排拒絕由 api-gateway 寫 gateway denied audit。</li>
+</ul>
+<p><strong>6.3.5.4.1 manager 範圍內可寫欄位（含抽佣費率）。</strong>manager 對自己旗下（範圍內）affiliate 的可寫欄位包含 profile 與 <code>commission_rate_bps</code>（抽佣費率）：<strong>經理可調整自己旗下代理的佣金率</strong>，此為既有且預期行為（程式碼 <code>lib.rs:1982</code> 之 manager 限制僅涵蓋信用控制 <code>credit_*</code>，不含 <code>commission_rate_bps</code>）。此處調整的是<strong>單層</strong>佣金率（代理本身的抽佣），不沿管理鏈逐層分潤，不構成 SPEC-011 §2.1 禁止的多層下線分潤。manager 仍<strong>不得</strong>修改：<code>credit_*</code> 信用控制、<code>role</code>（§6.3.5.4 提權禁制）、<code>managing_manager_id</code>（§6.3.5.2 歸屬重指派限 admin）。每次費率變更須寫入 <code>affiliate_rate_changes</code>（含 <code>changed_by</code> / <code>reason</code>）與 operation audit。</p>
+<p><strong>6.3.5.5 帳號 API 與既有缺口。</strong>本節對應之 server 介面與目前實作落差（補完於 implementation plan）：</p>
+<ul>
+<li><code>user-service</code> 之 <code>/v1/internal/admin/members*</code>（建立／更新／刪除）目前 handler <strong>無 actor 角色閘</strong>且建帳號 <code>role</code> 寫死 <code>player</code>。本節要求：(1) 由 api-gateway 注入可信 actor（<code>user_id</code> + <code>role</code>），(2) <strong>manager 帳號 CRUD</strong>（建立／編輯／停用 manager）閘定為 <code>admin</code> 專屬，(3) <strong>affiliate 帳號 CRUD</strong> 可由 <code>admin</code> 或經 referral-service 驗證為範圍內的 <code>manager</code> 執行，建立時 login credential role 固定為 <code>affiliate</code>，並建立／更新 referral-service 的 <code>affiliate_profiles</code> 管理歸屬，(4) 建帳號需可指派 <code>manager</code>／<code>affiliate</code> 角色（受 §6.3.5.4 提權禁制約束）。</li>
+<li><code>referral-service</code> 之 affiliate mutation 已有 <code>admin|manager</code> 角色閘與「manager 不得改信用控制」限制（既有），但<strong>缺 §6.3.5.3 的 <code>managing_manager_id</code> 範圍強制</strong>，須補上。</li>
+<li>每筆 mutation 與 denied mutation 必須寫稽核（actor <code>user_id</code>／<code>role</code>、目標、動作、<code>reason</code>、<code>authorization_basis</code> 或拒絕原因），沿用既有 affiliate admin CRUD 稽核表式樣並擴及 manager 帳號操作（SPEC-018）。</li>
+</ul>
+<p><strong>6.3.5.5.1 Affiliate 帳號建立編排。</strong>建立 affiliate 是跨服務流程：user-service 建立 login credential / role，referral-service 建立 <code>affiliate_profiles</code> / <code>managing_manager_id</code>。不得以兩個無關同步寫入直接提交。api-gateway 必須作為 orchestrator，要求 client 提供或 server 產生穩定 <code>Idempotency-Key</code>，並以 saga / outbox 記錄階段狀態與補償動作。admin app 建立 affiliate 帳號時必須呼叫此 saga endpoint；既有 referral-service affiliate create 只可作為 saga 內部 profile-create step 或 profile-only 維護 API，不得由 UI/BFF 直接當成帳號建立入口。若 user-service 已成功但 referral-service 失敗，流程必須進入可重試或補償狀態（例如停用或標記 pending 的 credential，直到 profile 建立成功），不得對外回報完整成功；若 referral-service 已成功但 credential 失敗，也必須能以同一 idempotency key 重試或封存 profile。完成條件是兩邊皆存在且可登入／可管理，否則必須可查詢、可告警、可人工修復。</p>
+<p><strong>6.3.5.6 刪除與孤兒處理。</strong>停用（軟刪除）一個 manager 前，admin <strong>必須</strong>先將其旗下 affiliate 重指派給其他 manager 或移入 admin 池（<code>managing_manager_id = NULL</code>）；不得留下指向已停用 manager 的 affiliate。affiliate 軟刪除不影響其歷史分潤與撥款紀錄（SPEC-011）。</p>
+<p><strong>6.3.5.7 路由銜接。</strong>帳號管理 UI 依 §6.3.1 慣例以 server-side RBAC 過濾：manager 帳號管理頁為 <code>admin</code> 專屬（manager／affiliate 403）；代理帳號管理沿用 <code>/affiliate</code>，對 <code>manager</code> 為「範圍內可寫」，其資料與 CTA 範圍依 §6.3.5.3 過濾。涉及高敏感操作（如批次停用）是否納入 SPEC-010 §9.3 multi-sig，列為 OQ 待 §6.3.5 落地時定案。</p>
 <p>三個 Next.js app（web / admin / liff）共用 <code>packages/ts-sdk</code> 與 Kumo 元件，由 Turborepo <code>^build</code> 依賴拓撲連動。</p>
 <hr />
 <h2>7. 環境變數與配置</h2>

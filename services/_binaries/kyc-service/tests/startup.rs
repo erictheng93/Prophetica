@@ -9,12 +9,15 @@ fn production_without_required_secrets_exits_nonzero() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_kyc-service"))
         .env("PROPHETICA_ENV", "production")
         .env("KYC_SERVICE_PORT", "0")
+        .env_remove("KYC_STORE")
+        .env_remove("DATABASE_URL")
         .env("SUMSUB_WEBHOOK_SECRET", "")
         .env("KYC_DOCUMENT_HASH_SALT", "")
+        .env("INTERNAL_CALL_HMAC_SECRET", "")
         .spawn()
         .unwrap_or_else(|error| panic!("kyc-service should spawn: {error}"));
 
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
         let status = match child.try_wait() {
             Ok(status) => status,

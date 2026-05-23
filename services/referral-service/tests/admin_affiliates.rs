@@ -753,6 +753,7 @@ async fn commission_accrual_rejects_group_monthly_cap_overflow() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn admin_affiliate_crud_mutates_with_audit_context() {
     let store = InMemoryAffiliateDashboardStore::default().with_admin_affiliates(vec![sample()]);
     let app = router(store);
@@ -848,6 +849,9 @@ async fn admin_affiliate_crud_mutates_with_audit_context() {
             Request::builder()
                 .method("GET")
                 .uri("/internal/admin/affiliates")
+                .header("x-actor-id", "admin-1")
+                .header("x-operator-role", "admin")
+                .header("x-request-id", "req-1")
                 .body(Body::empty())
                 .expect("request builds"),
         )
@@ -916,6 +920,278 @@ async fn manager_cannot_mutate_credit_controls() {
     assert_eq!(
         response_json(response).await["error"],
         "affiliate_forbidden"
+    );
+}
+
+#[tokio::test]
+async fn manager_affiliate_scope_is_enforced_by_managing_manager_id() {
+    let mut own = sample();
+    own.summary.id = "AFF-OWN".to_owned();
+    own.summary.managing_manager_id = Some("mgr-1".to_owned());
+    let mut other = sample();
+    other.summary.id = "AFF-OTHER".to_owned();
+    other.summary.managing_manager_id = Some("mgr-2".to_owned());
+    let store = InMemoryAffiliateDashboardStore::default().with_admin_affiliates(vec![own, other]);
+    let app = router(store);
+
+    let list = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/internal/admin/affiliates")
+                .header("x-actor-id", "mgr-1")
+                .header("x-operator-role", "manager")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("list should be handled");
+    let list_body = response_json(list).await;
+    assert_eq!(list_body.as_array().expect("list").len(), 1);
+    assert_eq!(list_body[0]["id"], "AFF-OWN");
+
+    let out_of_scope = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/internal/admin/affiliates/AFF-OTHER")
+                .header("x-actor-id", "mgr-1")
+                .header("x-operator-role", "manager")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("detail should be handled");
+    assert_eq!(out_of_scope.status(), StatusCode::FORBIDDEN);
+
+    let create = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/internal/admin/affiliates")
+                .header("x-actor-id", "mgr-1")
+                .header("x-operator-role", "manager")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "id": "AFF-NEW",
+                        "displayName": "Scoped Affiliate",
+                        "email": "scoped@example.com",
+                        "managingManagerId": "mgr-2",
+                        "reason": "manager onboarding",
+                        "authorizationBasis": "manager scoped create"
+                    })
+                    .to_string(),
+                ))
+                .expect("request builds"),
+        )
+        .await
+        .expect("create should be handled");
+    assert_eq!(create.status(), StatusCode::CREATED);
+    assert_eq!(
+        response_json(create).await["affiliate"]["managingManagerId"],
+        "mgr-1"
+    );
+}
+
+#[tokio::test]
+async fn manager_can_update_scoped_rate_but_credit_denial_is_audited() {
+    let mut own = sample();
+    own.summary.id = "AFF-RATE".to_owned();
+    own.summary.managing_manager_id = Some("mgr-1".to_owned());
+    own.summary.commission_rate_bps = 500;
+    let store = InMemoryAffiliateDashboardStore::default().with_admin_affiliates(vec![own]);
+    let app = router(store.clone());
+
+    let updated = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/internal/admin/affiliates/AFF-RATE")
+                .header("x-actor-id", "mgr-1")
+                .header("x-operator-role", "manager")
+                .header("x-request-id", "req-rate")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "commissionRateBps": 650,
+                        "reason": "manager rate adjustment",
+                        "authorizationBasis": "manager scoped permission"
+                    })
+                    .to_string(),
+                ))
+                .expect("request builds"),
+        )
+        .await
+        .expect("rate update should be handled");
+    assert_eq!(updated.status(), StatusCode::OK);
+    let body = response_json(updated).await;
+    assert_eq!(body["affiliate"]["commissionRateBps"], 650);
+    assert_eq!(body["affiliate"]["rateHistory"][0]["previousBps"], 500);
+
+    let denied = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/internal/admin/affiliates/AFF-RATE")
+                .header("x-actor-id", "mgr-1")
+                .header("x-operator-role", "manager")
+                .header("x-request-id", "req-credit")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "creditRating": "A",
+                        "reason": "manager credit adjustment",
+                        "authorizationBasis": "manager request"
+                    })
+                    .to_string(),
+                ))
+                .expect("request builds"),
+        )
+        .await
+        .expect("credit update should be handled");
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+    let success_audits = store.affiliate_operation_audit_logs().await;
+    assert_eq!(success_audits.len(), 1);
+    assert_eq!(success_audits[0].action, "update");
+    assert_eq!(success_audits[0].actor_role, "manager");
+    let denied_audits = store.affiliate_denied_operation_audit_logs().await;
+    assert_eq!(denied_audits.len(), 1);
+    assert!(
+        denied_audits[0]
+            .reason_or_error_code
+            .contains("credit controls")
+    );
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn affiliate_mutations_write_success_and_denied_audit_logs() {
+    let mut own = sample();
+    own.summary.id = "AFF-OWN".to_owned();
+    own.summary.managing_manager_id = Some("mgr-1".to_owned());
+    let store = InMemoryAffiliateDashboardStore::default().with_admin_affiliates(vec![own]);
+    let app = router(store.clone());
+
+    let created = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/internal/admin/affiliates",
+            &json!({
+                "id": "AFF-AUDIT",
+                "displayName": "Audited Affiliate",
+                "email": "audit@example.com",
+                "reason": "contract signed",
+                "authorizationBasis": "admin approval"
+            }),
+        ))
+        .await
+        .expect("create should be handled");
+    assert_eq!(created.status(), StatusCode::CREATED);
+
+    let updated = app
+        .clone()
+        .oneshot(json_request(
+            "PATCH",
+            "/internal/admin/affiliates/AFF-AUDIT",
+            &json!({
+                "displayName": "Audited Affiliate Updated",
+                "commissionRateBps": 650,
+                "reason": "rate approved",
+                "authorizationBasis": "admin approval"
+            }),
+        ))
+        .await
+        .expect("update should be handled");
+    assert_eq!(updated.status(), StatusCode::OK);
+
+    let archived = app
+        .clone()
+        .oneshot(json_request(
+            "DELETE",
+            "/internal/admin/affiliates/AFF-AUDIT",
+            &json!({
+                "reason": "offboarding",
+                "authorizationBasis": "admin approval"
+            }),
+        ))
+        .await
+        .expect("archive should be handled");
+    assert_eq!(archived.status(), StatusCode::OK);
+
+    let denied_create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/internal/admin/affiliates")
+                .header("x-actor-id", "mgr-1")
+                .header("x-operator-role", "manager")
+                .header("x-request-id", "req-denied-create")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "displayName": "Denied Affiliate",
+                        "email": "denied@example.com",
+                        "creditRating": "A",
+                        "reason": "manager attempted credit create",
+                        "authorizationBasis": "manager request"
+                    })
+                    .to_string(),
+                ))
+                .expect("request builds"),
+        )
+        .await
+        .expect("denied create should be handled");
+    assert_eq!(denied_create.status(), StatusCode::FORBIDDEN);
+
+    let denied_reassign = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/internal/admin/affiliates/AFF-OWN")
+                .header("x-actor-id", "mgr-1")
+                .header("x-operator-role", "manager")
+                .header("x-request-id", "req-denied-reassign")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "managingManagerId": "mgr-2",
+                        "reason": "move affiliate",
+                        "authorizationBasis": "manager request"
+                    })
+                    .to_string(),
+                ))
+                .expect("request builds"),
+        )
+        .await
+        .expect("denied reassign should be handled");
+    assert_eq!(denied_reassign.status(), StatusCode::FORBIDDEN);
+
+    let success_audits = store.affiliate_operation_audit_logs().await;
+    assert_eq!(success_audits.len(), 3);
+    assert_eq!(success_audits[0].action, "create");
+    assert_eq!(success_audits[0].affiliate_id, "AFF-AUDIT");
+    assert_eq!(success_audits[1].action, "update");
+    assert_eq!(success_audits[2].action, "archive");
+
+    let denied_audits = store.affiliate_denied_operation_audit_logs().await;
+    assert_eq!(denied_audits.len(), 2);
+    assert_eq!(denied_audits[0].action, "create");
+    assert_eq!(denied_audits[0].target_id, None);
+    assert_eq!(denied_audits[0].actor_role, "manager");
+    assert!(denied_audits[0].reason_or_error_code.contains("forbidden:"));
+    assert_eq!(denied_audits[1].action, "update");
+    assert_eq!(denied_audits[1].target_id.as_deref(), Some("AFF-OWN"));
+    assert!(
+        denied_audits[1]
+            .reason_or_error_code
+            .contains("cannot reassign")
     );
 }
 
@@ -1058,6 +1334,7 @@ fn sample() -> AffiliateDetail {
             email_masked: "e***@partners.test".to_owned(),
             status: "active".to_owned(),
             owner_sponsor_id: None,
+            managing_manager_id: None,
             commission_rate_bps: 500,
             tier: 1,
             sub_tree_size: 0,

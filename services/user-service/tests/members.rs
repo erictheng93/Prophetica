@@ -43,6 +43,7 @@ async fn member_crud_defaults_inactive_until_kyc_verified() {
                 "referred_user_id": "MEM-900"
             }
         })),
+        admin_headers(),
     )
     .await;
 
@@ -61,6 +62,7 @@ async fn member_crud_defaults_inactive_until_kyc_verified() {
         "PATCH",
         "/v1/internal/admin/members/MEM-900",
         Some(json!({ "kyc_status": "verified", "risk_level": "low", "risk_score": 10 })),
+        admin_headers(),
     )
     .await;
 
@@ -68,6 +70,256 @@ async fn member_crud_defaults_inactive_until_kyc_verified() {
     assert_eq!(updated.body["member"]["status"], "active");
     assert_eq!(updated.body["kyc_risk"]["kyc_status"], "verified");
     assert_eq!(updated.body["kyc_risk"]["restrictions"], json!([]));
+}
+
+#[tokio::test]
+async fn manager_member_mutation_is_denied_and_audited() {
+    let store = InMemoryMemberStore::new(vec![fixture_record("MEM-001", None)]);
+    let app = internal_members_router(store.clone());
+
+    let response = request_json(
+        app,
+        "PATCH",
+        "/v1/internal/admin/members/MEM-001",
+        Some(json!({ "tier": "VIP" })),
+        manager_headers(),
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        response.body["error"],
+        json!("ERROR_CODE_MEMBER_ACCOUNT_FORBIDDEN")
+    );
+    let denied_audits = store.denied_audit_logs();
+    assert_eq!(denied_audits.len(), 1);
+    assert_eq!(denied_audits[0].target_user_id.as_deref(), Some("MEM-001"));
+    assert_eq!(denied_audits[0].action, "update");
+    assert_eq!(denied_audits[0].actor_id, "manager-1");
+    assert_eq!(denied_audits[0].actor_role, "manager");
+    assert_eq!(
+        denied_audits[0].reason_or_error_code,
+        "ERROR_CODE_MEMBER_ACCOUNT_FORBIDDEN"
+    );
+}
+
+#[tokio::test]
+async fn role_account_create_enforces_assignment_rules() {
+    let store = InMemoryMemberStore::default();
+    let app = internal_members_router(store.clone());
+
+    let admin_manager = request_json(
+        app.clone(),
+        "POST",
+        "/v1/internal/admin/members",
+        Some(json!({
+            "user_id": "MAN-001",
+            "display_name": "Manager One",
+            "email": "manager-one@example.com",
+            "phone": "0912345001",
+            "country": "TW",
+            "timezone": "Asia/Taipei",
+            "tier": "Internal",
+            "role": "manager",
+            "password": "correct horse manager"
+        })),
+        admin_headers(),
+    )
+    .await;
+
+    assert_eq!(admin_manager.status, StatusCode::CREATED);
+    assert_eq!(
+        store.credential_role_for_user_id("MAN-001").as_deref(),
+        Some("manager")
+    );
+    let account_audits = store.account_audit_logs();
+    assert_eq!(account_audits.len(), 1);
+    assert_eq!(account_audits[0].target_user_id, "MAN-001");
+    assert_eq!(account_audits[0].action, "create");
+    assert_eq!(account_audits[0].actor_role, "admin");
+
+    let manager_affiliate = request_json(
+        app.clone(),
+        "POST",
+        "/v1/internal/admin/members",
+        Some(json!({
+            "user_id": "AFF-USER-001",
+            "display_name": "Affiliate One",
+            "email": "affiliate-one@example.com",
+            "phone": "0912345002",
+            "country": "TW",
+            "timezone": "Asia/Taipei",
+            "tier": "Affiliate",
+            "role": "affiliate",
+            "password": "correct horse affiliate",
+            "affiliate_id": "AFF-001"
+        })),
+        manager_headers(),
+    )
+    .await;
+
+    assert_eq!(manager_affiliate.status, StatusCode::CREATED);
+    assert_eq!(
+        store.credential_role_for_user_id("AFF-USER-001").as_deref(),
+        Some("affiliate")
+    );
+
+    let denied_manager = request_json(
+        app,
+        "POST",
+        "/v1/internal/admin/members",
+        Some(json!({
+            "user_id": "MAN-002",
+            "display_name": "Manager Two",
+            "email": "manager-two@example.com",
+            "phone": "0912345003",
+            "country": "TW",
+            "timezone": "Asia/Taipei",
+            "tier": "Internal",
+            "role": "manager",
+            "password": "correct horse denied"
+        })),
+        manager_headers(),
+    )
+    .await;
+
+    assert_eq!(denied_manager.status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        denied_manager.body["error"],
+        json!("ERROR_CODE_MEMBER_ACCOUNT_FORBIDDEN")
+    );
+    let denied_audits = store.denied_audit_logs();
+    assert_eq!(denied_audits.len(), 1);
+    assert_eq!(denied_audits[0].target_user_id.as_deref(), Some("MAN-002"));
+    assert_eq!(denied_audits[0].actor_role, "manager");
+}
+
+#[tokio::test]
+async fn admin_update_and_delete_manager_account_are_audited_and_soft_disabled() {
+    let store = InMemoryMemberStore::new(vec![fixture_record("MAN-001", None)]);
+    store
+        .seed_login_credential(user_service::members::MemberLoginCredentialUpsert {
+            user_id: "MAN-001".to_owned(),
+            email: "manager-one@example.com".to_owned(),
+            phone: "0912345001".to_owned(),
+            password_hash: "hash".to_owned(),
+            role: "manager".to_owned(),
+            affiliate_id: None,
+        })
+        .expect("seed credential");
+    let app = internal_members_router(store.clone());
+
+    let updated = request_json(
+        app.clone(),
+        "PATCH",
+        "/v1/internal/admin/members/MAN-001",
+        Some(json!({
+            "display_name": "Manager Updated",
+            "reason": "profile correction",
+            "authorization_basis": "ticket-123"
+        })),
+        admin_headers(),
+    )
+    .await;
+    assert_eq!(updated.status, StatusCode::OK);
+    assert_eq!(updated.body["member"]["display_name"], "Manager Updated");
+
+    let deleted = request_json(
+        app.clone(),
+        "DELETE",
+        "/v1/internal/admin/members/MAN-001",
+        None,
+        admin_headers(),
+    )
+    .await;
+    assert_eq!(deleted.status, StatusCode::OK);
+
+    let listed = request_json(
+        app,
+        "GET",
+        "/v1/internal/admin/role-accounts?role=manager",
+        None,
+        admin_headers(),
+    )
+    .await;
+    assert_eq!(listed.status, StatusCode::OK);
+    assert_eq!(listed.body["accounts"][0]["disabled"], true);
+
+    let account_audits = store.account_audit_logs();
+    assert_eq!(account_audits.len(), 2);
+    assert_eq!(account_audits[0].action, "update");
+    assert_eq!(account_audits[0].reason, "profile correction");
+    assert_eq!(account_audits[1].action, "disable");
+}
+
+#[tokio::test]
+async fn actor_cannot_update_own_role_and_denied_audit_is_recorded() {
+    let store = InMemoryMemberStore::new(vec![fixture_record("admin-1", None)]);
+    let app = internal_members_router(store.clone());
+
+    let response = request_json(
+        app,
+        "PATCH",
+        "/v1/internal/admin/members/admin-1",
+        Some(json!({ "role": "manager" })),
+        admin_headers(),
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::FORBIDDEN);
+    let denied_audits = store.denied_audit_logs();
+    assert_eq!(denied_audits.len(), 1);
+    assert_eq!(denied_audits[0].target_user_id.as_deref(), Some("admin-1"));
+    assert_eq!(
+        denied_audits[0].reason_or_error_code,
+        "ERROR_CODE_MEMBER_ACCOUNT_SELF_ROLE_UPDATE_FORBIDDEN"
+    );
+}
+
+#[tokio::test]
+async fn admin_can_list_manager_role_accounts() {
+    let store = InMemoryMemberStore::default();
+    store
+        .seed_login_credential(user_service::members::MemberLoginCredentialUpsert {
+            user_id: "MAN-001".to_owned(),
+            email: "manager-one@example.com".to_owned(),
+            phone: "0912345001".to_owned(),
+            password_hash: "hash".to_owned(),
+            role: "manager".to_owned(),
+            affiliate_id: None,
+        })
+        .expect("seed credential");
+    store
+        .seed_login_credential(user_service::members::MemberLoginCredentialUpsert {
+            user_id: "AFF-001".to_owned(),
+            email: "affiliate-one@example.com".to_owned(),
+            phone: "0912345002".to_owned(),
+            password_hash: "hash".to_owned(),
+            role: "affiliate".to_owned(),
+            affiliate_id: Some("AFF-001".to_owned()),
+        })
+        .expect("seed credential");
+    let app = internal_members_router(store);
+
+    let response = request_json(
+        app,
+        "GET",
+        "/v1/internal/admin/role-accounts?role=manager",
+        None,
+        admin_headers(),
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(
+        response.body["accounts"]
+            .as_array()
+            .expect("accounts")
+            .len(),
+        1
+    );
+    assert_eq!(response.body["accounts"][0]["user_id"], "MAN-001");
+    assert_eq!(response.body["accounts"][0]["role"], "manager");
 }
 
 #[tokio::test]
@@ -83,6 +335,7 @@ async fn list_members_can_scope_to_affiliate() {
         "GET",
         "/v1/internal/admin/members?affiliate_id=AFF-001",
         None,
+        Vec::new(),
     )
     .await;
 
@@ -106,6 +359,7 @@ async fn contact_lookup_reads_masked_contact_from_member_store() {
         "POST",
         "/v1/internal/users/contacts:lookup-masked",
         Some(json!({ "ids": ["MEM-001"] })),
+        Vec::new(),
     )
     .await;
 
@@ -133,6 +387,7 @@ async fn public_registration_creates_inactive_member_with_referral_audit() {
             "display_name": " New Member ",
             "referral_code": "AFF_2026"
         })),
+        Vec::new(),
     )
     .await;
 
@@ -181,6 +436,7 @@ async fn public_registration_rejects_invalid_input_before_member_create() {
             "display_name": "",
             "referral_code": "AFF_2026"
         })),
+        Vec::new(),
     )
     .await;
 
@@ -212,6 +468,10 @@ async fn postgres_member_store_persists_crud_soft_delete_and_constraints() {
             tier: "Standard".to_owned(),
             affiliate_id: Some("AFF-PG".to_owned()),
             registration_audit: None,
+            role: None,
+            password: None,
+            reason: None,
+            authorization_basis: None,
         })
         .await
         .unwrap_or_else(|error| panic!("member insert should persist to postgres: {error}"));
@@ -236,6 +496,10 @@ async fn postgres_member_store_persists_crud_soft_delete_and_constraints() {
             tier: "Standard".to_owned(),
             affiliate_id: None,
             registration_audit: None,
+            role: None,
+            password: None,
+            reason: None,
+            authorization_basis: None,
         })
         .await;
     assert_eq!(duplicate, Err(MemberStoreError::Duplicate));
@@ -257,6 +521,10 @@ async fn postgres_member_store_persists_crud_soft_delete_and_constraints() {
                 risk_level: Some("low".to_owned()),
                 risk_score: Some(9),
                 restrictions: None,
+                role: None,
+                password: None,
+                reason: None,
+                authorization_basis: None,
             },
         )
         .await
@@ -295,10 +563,14 @@ async fn request_json(
     method: &str,
     uri: &str,
     body: Option<Value>,
+    headers: Vec<(&'static str, &'static str)>,
 ) -> TestResponse {
     let mut builder = Request::builder().method(method).uri(uri);
     if body.is_some() {
         builder = builder.header("content-type", "application/json");
+    }
+    for (name, value) in headers {
+        builder = builder.header(name, value);
     }
     let response = app
         .oneshot(
@@ -319,6 +591,22 @@ async fn request_json(
         .to_bytes();
     let body = serde_json::from_slice(&bytes).expect("json body");
     TestResponse { status, body }
+}
+
+fn admin_headers() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("x-actor-id", "admin-1"),
+        ("x-operator-role", "admin"),
+        ("x-request-id", "req-admin"),
+    ]
+}
+
+fn manager_headers() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("x-actor-id", "manager-1"),
+        ("x-operator-role", "manager"),
+        ("x-request-id", "req-manager"),
+    ]
 }
 
 fn fixture_record(user_id: &str, affiliate_id: Option<&str>) -> MemberRecord {

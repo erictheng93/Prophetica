@@ -22,29 +22,41 @@ export function AffiliateCreateForm({ role }: { role: Role }) {
         新增代理
       </h2>
       <form action={createAffiliateAction} className="mt-4 grid gap-3 md:grid-cols-4">
+        <Field name="userId" label="User ID" placeholder="018f..." required />
+        <Field name="affiliateId" label="代理 ID" placeholder="AFF-200" required />
         <Field name="displayName" label="名稱" placeholder="Orion Partners" required />
         <Field name="email" label="登入 Email" type="email" placeholder="ops@example.com" required />
+        <Field name="phone" label="電話" placeholder="0912345678" required />
+        <Field name="password" label="初始密碼" type="password" required />
+        <Field
+          name="managingManagerId"
+          label="管理經理 ID"
+          placeholder={isAdmin ? "U-MANAGER-001" : "自動歸屬自身"}
+          disabled={!isAdmin}
+        />
         <Select name="status" label="狀態" defaultValue="onboarding" options={affiliateStatusOptions} />
         <NumberField name="commissionRateBps" label="佣金 BPS" defaultValue={600} />
         <Select name="tier" label="層級" defaultValue="1" options={tierOptions} />
-        <Select
-          name="creditRating"
-          label="信用評級"
-          defaultValue="restricted"
-          options={creditRatingOptions}
-          disabled={!isAdmin}
-        />
-        <Select
-          name="creditStatus"
-          label="信用狀態"
-          defaultValue="pending_review"
-          options={creditStatusOptions}
-          disabled={!isAdmin}
-        />
-        <NumberField name="maxActiveCreditAccounts" label="Active 上限" defaultValue={0} disabled={!isAdmin} />
-        <NumberField name="totalCreditLimitMinorUnits" label="總授信 minor" defaultValue={0} disabled={!isAdmin} />
-        <NumberField name="perAccountLimitMinorUnits" label="單戶 minor" defaultValue={0} disabled={!isAdmin} />
-        <Field name="creditReviewExpiresAt" label="覆核到期" type="date" disabled={!isAdmin} />
+        {isAdmin && (
+          <>
+            <Select
+              name="creditRating"
+              label="信用評級"
+              defaultValue="restricted"
+              options={creditRatingOptions}
+            />
+            <Select
+              name="creditStatus"
+              label="信用狀態"
+              defaultValue="pending_review"
+              options={creditStatusOptions}
+            />
+            <NumberField name="maxActiveCreditAccounts" label="Active 上限" defaultValue={0} />
+            <NumberField name="totalCreditLimitMinorUnits" label="總授信 minor" defaultValue={0} />
+            <NumberField name="perAccountLimitMinorUnits" label="單戶 minor" defaultValue={0} />
+            <Field name="creditReviewExpiresAt" label="覆核到期" type="date" />
+          </>
+        )}
         <Field name="reason" label="原因" required className="md:col-span-2" />
         <Field name="authorizationBasis" label="授權依據" required className="md:col-span-2" />
         <div className="md:col-span-4">
@@ -78,45 +90,43 @@ export function AffiliateUpdateForm({
         <NumberField name="commissionRateBps" label="佣金 BPS" defaultValue={affiliate.commissionRateBps} />
         <Select name="tier" label="層級" defaultValue={String(affiliate.tier)} options={tierOptions} />
         <Field name="ownerSponsorId" label="上層 Sponsor" defaultValue={affiliate.ownerSponsorId ?? ""} />
-        <Select
-          name="creditRating"
-          label="信用評級"
-          defaultValue={affiliate.creditProfile.rating}
-          options={creditRatingOptions}
-          disabled={!isAdmin}
-        />
-        <Select
-          name="creditStatus"
-          label="信用狀態"
-          defaultValue={affiliate.creditProfile.status}
-          options={creditStatusOptions}
-          disabled={!isAdmin}
-        />
-        <NumberField
-          name="maxActiveCreditAccounts"
-          label="Active 上限"
-          defaultValue={affiliate.creditProfile.maxActiveCreditAccounts}
-          disabled={!isAdmin}
-        />
-        <NumberField
-          name="totalCreditLimitMinorUnits"
-          label="總授信 minor"
-          defaultValue={affiliate.creditProfile.totalCreditLimitMinorUnits}
-          disabled={!isAdmin}
-        />
-        <NumberField
-          name="perAccountLimitMinorUnits"
-          label="單戶 minor"
-          defaultValue={affiliate.creditProfile.perAccountLimitMinorUnits}
-          disabled={!isAdmin}
-        />
-        <Field
-          name="creditReviewExpiresAt"
-          label="覆核到期"
-          type="date"
-          defaultValue={affiliate.creditProfile.reviewExpiresAt ?? ""}
-          disabled={!isAdmin}
-        />
+        {isAdmin && (
+          <>
+            <Select
+              name="creditRating"
+              label="信用評級"
+              defaultValue={affiliate.creditProfile.rating}
+              options={creditRatingOptions}
+            />
+            <Select
+              name="creditStatus"
+              label="信用狀態"
+              defaultValue={affiliate.creditProfile.status}
+              options={creditStatusOptions}
+            />
+            <NumberField
+              name="maxActiveCreditAccounts"
+              label="Active 上限"
+              defaultValue={affiliate.creditProfile.maxActiveCreditAccounts}
+            />
+            <NumberField
+              name="totalCreditLimitMinorUnits"
+              label="總授信 minor"
+              defaultValue={affiliate.creditProfile.totalCreditLimitMinorUnits}
+            />
+            <NumberField
+              name="perAccountLimitMinorUnits"
+              label="單戶 minor"
+              defaultValue={affiliate.creditProfile.perAccountLimitMinorUnits}
+            />
+            <Field
+              name="creditReviewExpiresAt"
+              label="覆核到期"
+              type="date"
+              defaultValue={affiliate.creditProfile.reviewExpiresAt ?? ""}
+            />
+          </>
+        )}
         <Field name="effectiveAt" label="生效日" type="date" />
         <Field name="reason" label="原因" required className="md:col-span-2" />
         <Field name="authorizationBasis" label="授權依據" required className="md:col-span-2" />
@@ -126,11 +136,6 @@ export function AffiliateUpdateForm({
           </button>
         </div>
       </form>
-      {!isAdmin && (
-        <p className="mt-3 text-[12px] leading-[1.33] tracking-[-0.12px] text-proph-ink-muted-80">
-          Manager 可更新基本代理資料；信用評級與授信欄位需 admin 執行。
-        </p>
-      )}
     </section>
   );
 }

@@ -353,18 +353,19 @@ mod tests {
         let database_url = wallet_ledger_database_url_from_values(
             Some("postgres://wallet-ledger"),
             Some("postgres://shared"),
-        )
-        .expect("wallet-ledger database url should resolve");
+        );
 
-        assert_eq!(database_url, "postgres://wallet-ledger");
+        assert!(matches!(
+            database_url.as_deref(),
+            Ok("postgres://wallet-ledger")
+        ));
     }
 
     #[test]
     fn wallet_ledger_database_url_falls_back_to_shared_database_url() {
-        let database_url = wallet_ledger_database_url_from_values(None, Some("postgres://shared"))
-            .expect("shared database url should resolve");
+        let database_url = wallet_ledger_database_url_from_values(None, Some("postgres://shared"));
 
-        assert_eq!(database_url, "postgres://shared");
+        assert!(matches!(database_url.as_deref(), Ok("postgres://shared")));
     }
 
     #[test]

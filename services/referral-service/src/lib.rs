@@ -385,6 +385,7 @@ pub struct AffiliateSummary {
     pub email_masked: String,
     pub status: String,
     pub owner_sponsor_id: Option<String>,
+    pub managing_manager_id: Option<String>,
     pub commission_rate_bps: i32,
     pub tier: i16,
     pub sub_tree_size: i32,
@@ -405,6 +406,7 @@ pub struct AdminAffiliateMutationRequest {
     pub email_masked: Option<String>,
     pub status: Option<String>,
     pub owner_sponsor_id: Option<String>,
+    pub managing_manager_id: Option<String>,
     pub commission_rate_bps: Option<i32>,
     pub tier: Option<i16>,
     pub credit_rating: Option<String>,
@@ -433,6 +435,31 @@ pub struct AdminAffiliateActor {
     pub request_id: Option<String>,
     pub user_agent: Option<String>,
     pub ip: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateOperationAuditLog {
+    pub correlation_id: String,
+    pub affiliate_id: String,
+    pub action: String,
+    pub actor_id: String,
+    pub actor_role: String,
+    pub reason: String,
+    pub authorization_basis: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateDeniedOperationAuditLog {
+    pub correlation_id: String,
+    pub target_type: String,
+    pub target_id: Option<String>,
+    pub action: String,
+    pub actor_id: String,
+    pub actor_role: String,
+    pub reason_or_error_code: String,
+    pub attempted_payload: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -600,16 +627,20 @@ pub trait AffiliateDashboardStore {
         referrer_id: &str,
     ) -> Result<AffiliateCommissionSummary, ReferralStoreError>;
 
-    async fn list_admin_affiliates(&self) -> Result<Vec<AffiliateSummary>, ReferralStoreError>;
+    async fn list_admin_affiliates(
+        &self,
+        actor: AdminAffiliateActor,
+    ) -> Result<Vec<AffiliateSummary>, ReferralStoreError>;
 
     async fn admin_affiliate_detail(
         &self,
         affiliate_id: &str,
+        actor: AdminAffiliateActor,
     ) -> Result<AffiliateDetail, ReferralStoreError>;
 
     async fn create_admin_affiliate(
         &self,
-        request: AdminAffiliateMutationRequest,
+        mut request: AdminAffiliateMutationRequest,
         actor: AdminAffiliateActor,
     ) -> Result<AdminAffiliateMutationResponse, ReferralStoreError>;
 
@@ -910,6 +941,9 @@ pub struct InMemoryAffiliateDashboardStore {
     commission_adjustment_reviews: Vec<AffiliateCommissionAdjustmentReview>,
     payout_reviews: Vec<AffiliatePayoutReview>,
     admin_affiliates: Arc<tokio::sync::Mutex<HashMap<String, AffiliateDetail>>>,
+    affiliate_operation_audit_logs: Arc<tokio::sync::Mutex<Vec<AffiliateOperationAuditLog>>>,
+    affiliate_denied_operation_audit_logs:
+        Arc<tokio::sync::Mutex<Vec<AffiliateDeniedOperationAuditLog>>>,
 }
 
 impl InMemoryAffiliateDashboardStore {
@@ -929,6 +963,8 @@ impl InMemoryAffiliateDashboardStore {
             commission_adjustment_reviews: Vec::new(),
             payout_reviews: Vec::new(),
             admin_affiliates: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            affiliate_operation_audit_logs: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            affiliate_denied_operation_audit_logs: Arc::new(tokio::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -952,6 +988,57 @@ impl InMemoryAffiliateDashboardStore {
                 .collect(),
         ));
         self
+    }
+
+    pub async fn affiliate_operation_audit_logs(&self) -> Vec<AffiliateOperationAuditLog> {
+        self.affiliate_operation_audit_logs.lock().await.clone()
+    }
+
+    pub async fn affiliate_denied_operation_audit_logs(
+        &self,
+    ) -> Vec<AffiliateDeniedOperationAuditLog> {
+        self.affiliate_denied_operation_audit_logs
+            .lock()
+            .await
+            .clone()
+    }
+
+    async fn audit_affiliate_operation(
+        &self,
+        action: &str,
+        affiliate_id: &str,
+        request: &AdminAffiliateMutationRequest,
+        actor: &AdminAffiliateActor,
+        audit_correlation_id: &str,
+    ) {
+        self.affiliate_operation_audit_logs
+            .lock()
+            .await
+            .push(AffiliateOperationAuditLog {
+                correlation_id: audit_correlation_id.to_owned(),
+                affiliate_id: affiliate_id.to_owned(),
+                action: action.to_owned(),
+                actor_id: actor.actor_id.clone(),
+                actor_role: actor.role.clone(),
+                reason: request.reason.clone(),
+                authorization_basis: request.authorization_basis.clone(),
+            });
+    }
+
+    async fn audit_affiliate_denied_operation(
+        &self,
+        action: &str,
+        target_id: Option<&str>,
+        request: &AdminAffiliateMutationRequest,
+        actor: &AdminAffiliateActor,
+        error: &ReferralStoreError,
+    ) {
+        self.affiliate_denied_operation_audit_logs
+            .lock()
+            .await
+            .push(affiliate_denied_audit_log(
+                action, target_id, request, actor, error,
+            ));
     }
 }
 
@@ -1256,13 +1343,17 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
             }))
     }
 
-    async fn list_admin_affiliates(&self) -> Result<Vec<AffiliateSummary>, ReferralStoreError> {
+    async fn list_admin_affiliates(
+        &self,
+        actor: AdminAffiliateActor,
+    ) -> Result<Vec<AffiliateSummary>, ReferralStoreError> {
         Ok(self
             .admin_affiliates
             .lock()
             .await
             .values()
             .filter(|affiliate| affiliate.summary.status != "archived")
+            .filter(|affiliate| affiliate_in_actor_scope(&affiliate.summary, &actor))
             .map(|affiliate| affiliate.summary.clone())
             .collect())
     }
@@ -1270,21 +1361,38 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
     async fn admin_affiliate_detail(
         &self,
         affiliate_id: &str,
+        actor: AdminAffiliateActor,
     ) -> Result<AffiliateDetail, ReferralStoreError> {
-        self.admin_affiliates
+        let detail = self
+            .admin_affiliates
             .lock()
             .await
             .get(affiliate_id)
             .cloned()
-            .ok_or(ReferralStoreError::NotFound)
+            .ok_or(ReferralStoreError::NotFound)?;
+        ensure_affiliate_in_actor_scope(&detail.summary, &actor)?;
+        Ok(detail)
     }
 
     async fn create_admin_affiliate(
         &self,
-        request: AdminAffiliateMutationRequest,
+        mut request: AdminAffiliateMutationRequest,
         actor: AdminAffiliateActor,
     ) -> Result<AdminAffiliateMutationResponse, ReferralStoreError> {
-        validate_admin_affiliate_mutation(&request, true, &actor)?;
+        if let Err(error) = validate_admin_affiliate_mutation(&request, true, &actor) {
+            self.audit_affiliate_denied_operation(
+                "create",
+                request.id.as_deref(),
+                &request,
+                &actor,
+                &error,
+            )
+            .await;
+            return Err(error);
+        }
+        if actor.role == "manager" {
+            request.managing_manager_id = Some(actor.actor_id.clone());
+        }
         let affiliate_id = request.id.clone().unwrap_or_else(generate_affiliate_id);
         let user_id = request.user_id.clone().unwrap_or_else(new_uuid_v7_string);
         let email_masked = request
@@ -1294,6 +1402,7 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
             .ok_or_else(|| ReferralStoreError::Invalid("email is required".to_owned()))?;
         let now = now_string();
         let audit_correlation_id = audit_correlation_id("affiliate-create", &affiliate_id, &actor);
+        let audit_request = request.clone();
         let detail = AffiliateDetail {
             summary: AffiliateSummary {
                 id: affiliate_id.clone(),
@@ -1302,6 +1411,7 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
                 email_masked,
                 status: request.status.unwrap_or_else(|| "onboarding".to_owned()),
                 owner_sponsor_id: request.owner_sponsor_id,
+                managing_manager_id: request.managing_manager_id,
                 commission_rate_bps: request.commission_rate_bps.unwrap_or(0),
                 tier: request.tier.unwrap_or(1),
                 sub_tree_size: 0,
@@ -1326,8 +1436,8 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
                 active_credit_accounts: 0,
                 total_credit_limit_minor_units: request.total_credit_limit_minor_units.unwrap_or(0),
                 per_account_limit_minor_units: request.per_account_limit_minor_units.unwrap_or(0),
-                review_expires_at: request.credit_review_expires_at,
-                last_changed_by: actor.actor_id,
+                review_expires_at: request.credit_review_expires_at.clone(),
+                last_changed_by: actor.actor_id.clone(),
                 last_changed_at: now,
                 audit_correlation_ids: vec![audit_correlation_id.clone()],
                 accounts: Vec::new(),
@@ -1335,11 +1445,28 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
         };
         let mut affiliates = self.admin_affiliates.lock().await;
         if affiliates.contains_key(&affiliate_id) {
-            return Err(ReferralStoreError::Invalid(
-                "affiliate already exists".to_owned(),
-            ));
+            let error = ReferralStoreError::Invalid("affiliate already exists".to_owned());
+            drop(affiliates);
+            self.audit_affiliate_denied_operation(
+                "create",
+                Some(&affiliate_id),
+                &audit_request,
+                &actor,
+                &error,
+            )
+            .await;
+            return Err(error);
         }
         affiliates.insert(affiliate_id, detail.clone());
+        drop(affiliates);
+        self.audit_affiliate_operation(
+            "create",
+            &detail.summary.id,
+            &audit_request,
+            &actor,
+            &audit_correlation_id,
+        )
+        .await;
         Ok(AdminAffiliateMutationResponse {
             affiliate: detail,
             audit_correlation_id,
@@ -1352,15 +1479,64 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
         request: AdminAffiliateMutationRequest,
         actor: AdminAffiliateActor,
     ) -> Result<AdminAffiliateMutationResponse, ReferralStoreError> {
-        validate_admin_affiliate_mutation(&request, false, &actor)?;
         let mut affiliates = self.admin_affiliates.lock().await;
         let detail = affiliates
             .get_mut(affiliate_id)
             .ok_or(ReferralStoreError::NotFound)?;
+        if let Err(error) = ensure_affiliate_in_actor_scope(&detail.summary, &actor) {
+            drop(affiliates);
+            self.audit_affiliate_denied_operation(
+                "update",
+                Some(affiliate_id),
+                &request,
+                &actor,
+                &error,
+            )
+            .await;
+            return Err(error);
+        }
+        if let Err(error) = validate_admin_affiliate_mutation(&request, false, &actor) {
+            drop(affiliates);
+            self.audit_affiliate_denied_operation(
+                "update",
+                Some(affiliate_id),
+                &request,
+                &actor,
+                &error,
+            )
+            .await;
+            return Err(error);
+        }
+        if actor.role == "manager" && request.managing_manager_id.is_some() {
+            let error = ReferralStoreError::Forbidden(
+                "manager cannot reassign affiliate ownership".to_owned(),
+            );
+            drop(affiliates);
+            self.audit_affiliate_denied_operation(
+                "update",
+                Some(affiliate_id),
+                &request,
+                &actor,
+                &error,
+            )
+            .await;
+            return Err(error);
+        }
         let audit_correlation_id = audit_correlation_id("affiliate-update", affiliate_id, &actor);
+        let audit_request = request.clone();
         apply_affiliate_mutation(detail, request, &actor, &audit_correlation_id);
+        let detail = detail.clone();
+        drop(affiliates);
+        self.audit_affiliate_operation(
+            "update",
+            affiliate_id,
+            &audit_request,
+            &actor,
+            &audit_correlation_id,
+        )
+        .await;
         Ok(AdminAffiliateMutationResponse {
-            affiliate: detail.clone(),
+            affiliate: detail,
             audit_correlation_id,
         })
     }
@@ -1371,16 +1547,42 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
         request: AdminAffiliateMutationRequest,
         actor: AdminAffiliateActor,
     ) -> Result<AdminAffiliateMutationResponse, ReferralStoreError> {
-        validate_admin_affiliate_mutation(&request, false, &actor)?;
         let mut affiliates = self.admin_affiliates.lock().await;
         let detail = affiliates
             .get_mut(affiliate_id)
             .ok_or(ReferralStoreError::NotFound)?;
+        if let Err(error) = ensure_affiliate_in_actor_scope(&detail.summary, &actor) {
+            drop(affiliates);
+            self.audit_affiliate_denied_operation(
+                "archive",
+                Some(affiliate_id),
+                &request,
+                &actor,
+                &error,
+            )
+            .await;
+            return Err(error);
+        }
+        if let Err(error) = validate_admin_affiliate_mutation(&request, false, &actor) {
+            drop(affiliates);
+            self.audit_affiliate_denied_operation(
+                "archive",
+                Some(affiliate_id),
+                &request,
+                &actor,
+                &error,
+            )
+            .await;
+            return Err(error);
+        }
         let audit_correlation_id = audit_correlation_id("affiliate-archive", affiliate_id, &actor);
         "archived".clone_into(&mut detail.summary.status);
         "closed".clone_into(&mut detail.credit_profile.status);
         detail.credit_profile.max_active_credit_accounts = 0;
-        detail.credit_profile.last_changed_by = actor.actor_id;
+        detail
+            .credit_profile
+            .last_changed_by
+            .clone_from(&actor.actor_id);
         detail.credit_profile.last_changed_at = now_string();
         detail
             .audit_correlation_ids
@@ -1389,8 +1591,18 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
             .credit_profile
             .audit_correlation_ids
             .push(audit_correlation_id.clone());
+        let detail = detail.clone();
+        drop(affiliates);
+        self.audit_affiliate_operation(
+            "archive",
+            affiliate_id,
+            &request,
+            &actor,
+            &audit_correlation_id,
+        )
+        .await;
         Ok(AdminAffiliateMutationResponse {
-            affiliate: detail.clone(),
+            affiliate: detail,
             audit_correlation_id,
         })
     }
@@ -1759,12 +1971,14 @@ where
 
 async fn list_admin_affiliates<S>(
     State(store): State<Arc<S>>,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<AffiliateSummary>>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: AffiliateDashboardStore + Send + Sync,
 {
+    let actor = admin_actor_from_headers(&headers).map_err(|error| api_error(&error))?;
     let affiliates = store
-        .list_admin_affiliates()
+        .list_admin_affiliates(actor)
         .await
         .map_err(|error| api_error(&error))?;
     Ok(Json(affiliates))
@@ -1772,13 +1986,15 @@ where
 
 async fn get_admin_affiliate_detail<S>(
     State(store): State<Arc<S>>,
+    headers: HeaderMap,
     Path(affiliate_id): Path<String>,
 ) -> Result<Json<AffiliateDetail>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: AffiliateDashboardStore + Send + Sync,
 {
+    let actor = admin_actor_from_headers(&headers).map_err(|error| api_error(&error))?;
     let affiliate = store
-        .admin_affiliate_detail(&affiliate_id)
+        .admin_affiliate_detail(&affiliate_id, actor)
         .await
         .map_err(|error| api_error(&error))?;
     Ok(Json(affiliate))
@@ -1991,6 +2207,24 @@ fn validate_admin_affiliate_mutation(
         ));
     }
     Ok(())
+}
+
+fn affiliate_in_actor_scope(summary: &AffiliateSummary, actor: &AdminAffiliateActor) -> bool {
+    actor.role == "admin"
+        || (actor.role == "manager"
+            && summary.managing_manager_id.as_deref() == Some(actor.actor_id.as_str()))
+}
+
+fn ensure_affiliate_in_actor_scope(
+    summary: &AffiliateSummary,
+    actor: &AdminAffiliateActor,
+) -> Result<(), ReferralStoreError> {
+    if affiliate_in_actor_scope(summary, actor) {
+        return Ok(());
+    }
+    Err(ReferralStoreError::Forbidden(
+        "affiliate is outside manager scope".to_owned(),
+    ))
 }
 
 fn validate_admin_affiliate_identity_fields(
@@ -2400,6 +2634,9 @@ fn apply_affiliate_mutation(
     if let Some(owner_sponsor_id) = request.owner_sponsor_id {
         detail.summary.owner_sponsor_id = Some(owner_sponsor_id);
     }
+    if let Some(managing_manager_id) = request.managing_manager_id {
+        detail.summary.managing_manager_id = Some(managing_manager_id);
+    }
     if let Some(commission_rate_bps) = request.commission_rate_bps {
         let previous_bps = detail.summary.commission_rate_bps;
         detail.summary.commission_rate_bps = commission_rate_bps;
@@ -2461,6 +2698,47 @@ fn audit_correlation_id(action: &str, affiliate_id: &str, actor: &AdminAffiliate
     )
 }
 
+fn affiliate_denied_audit_log(
+    action: &str,
+    target_id: Option<&str>,
+    request: &AdminAffiliateMutationRequest,
+    actor: &AdminAffiliateActor,
+    error: &ReferralStoreError,
+) -> AffiliateDeniedOperationAuditLog {
+    let target = target_id.or(request.id.as_deref());
+    AffiliateDeniedOperationAuditLog {
+        correlation_id: denied_audit_correlation_id(action, target, actor),
+        target_type: "affiliate_profile".to_owned(),
+        target_id: target.map(str::to_owned),
+        action: action.to_owned(),
+        actor_id: actor.actor_id.clone(),
+        actor_role: actor.role.clone(),
+        reason_or_error_code: denied_audit_reason(error),
+        attempted_payload: serde_json::to_value(request).unwrap_or_else(|_| serde_json::json!({})),
+    }
+}
+
+fn denied_audit_correlation_id(
+    action: &str,
+    target_id: Option<&str>,
+    actor: &AdminAffiliateActor,
+) -> String {
+    format!(
+        "audit-denied:affiliate-{action}:{}:{}",
+        target_id.unwrap_or("new"),
+        actor.request_id.as_deref().unwrap_or(&actor.actor_id)
+    )
+}
+
+fn denied_audit_reason(error: &ReferralStoreError) -> String {
+    match error {
+        ReferralStoreError::Invalid(message) => format!("invalid:{message}"),
+        ReferralStoreError::Forbidden(message) => format!("forbidden:{message}"),
+        ReferralStoreError::NotFound => "not_found".to_owned(),
+        ReferralStoreError::Unavailable(message) => format!("unavailable:{message}"),
+    }
+}
+
 fn now_string() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2520,6 +2798,42 @@ async fn insert_affiliate_audit(
     .bind(&request.authorization_basis)
     .bind(before_summary)
     .bind(after_patch)
+    .bind(actor.request_id.as_deref())
+    .bind(actor.ip.as_deref())
+    .bind(actor.user_agent.as_deref())
+    .execute(pool)
+    .await
+    .map_err(sqlx_error)?;
+    Ok(())
+}
+
+async fn insert_affiliate_denied_audit(
+    pool: &PgPool,
+    action: &str,
+    target_id: Option<&str>,
+    request: &AdminAffiliateMutationRequest,
+    actor: &AdminAffiliateActor,
+    error: &ReferralStoreError,
+) -> Result<(), ReferralStoreError> {
+    let audit = affiliate_denied_audit_log(action, target_id, request, actor, error);
+    sqlx::query(
+        r"
+        INSERT INTO affiliate_denied_operation_audit_logs (
+            correlation_id, target_type, target_id, action, actor_id, actor_role,
+            reason_or_error_code, attempted_payload, request_id, ip, user_agent
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT (correlation_id) DO NOTHING
+        ",
+    )
+    .bind(&audit.correlation_id)
+    .bind(&audit.target_type)
+    .bind(audit.target_id.as_deref())
+    .bind(&audit.action)
+    .bind(&audit.actor_id)
+    .bind(&audit.actor_role)
+    .bind(&audit.reason_or_error_code)
+    .bind(&audit.attempted_payload)
     .bind(actor.request_id.as_deref())
     .bind(actor.ip.as_deref())
     .bind(actor.user_agent.as_deref())
@@ -3124,30 +3438,60 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         })
     }
 
-    async fn list_admin_affiliates(&self) -> Result<Vec<AffiliateSummary>, ReferralStoreError> {
-        let rows = sqlx::query(&admin_affiliate_summary_sql(
-            "",
-            "ORDER BY p.last_activity_at DESC",
-        ))
-        .fetch_all(&self.pool)
-        .await
-        .map_err(sqlx_error)?;
+    async fn list_admin_affiliates(
+        &self,
+        actor: AdminAffiliateActor,
+    ) -> Result<Vec<AffiliateSummary>, ReferralStoreError> {
+        let rows = if actor.role == "manager" {
+            sqlx::query(&admin_affiliate_summary_sql(
+                "WHERE p.managing_manager_id = $1",
+                "ORDER BY p.last_activity_at DESC",
+            ))
+            .bind(&actor.actor_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(sqlx_error)?
+        } else {
+            sqlx::query(&admin_affiliate_summary_sql(
+                "",
+                "ORDER BY p.last_activity_at DESC",
+            ))
+            .fetch_all(&self.pool)
+            .await
+            .map_err(sqlx_error)?
+        };
         rows.iter().map(affiliate_summary_from_row).collect()
     }
 
     async fn admin_affiliate_detail(
         &self,
         affiliate_id: &str,
+        actor: AdminAffiliateActor,
     ) -> Result<AffiliateDetail, ReferralStoreError> {
-        let row = sqlx::query(&admin_affiliate_summary_sql(
-            "WHERE p.affiliate_id = $1",
-            "",
-        ))
-        .bind(affiliate_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(sqlx_error)?
-        .ok_or(ReferralStoreError::NotFound)?;
+        let row = if actor.role == "manager" {
+            sqlx::query(&admin_affiliate_summary_sql(
+                "WHERE p.affiliate_id = $1 AND p.managing_manager_id = $2",
+                "",
+            ))
+            .bind(affiliate_id)
+            .bind(&actor.actor_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlx_error)?
+            .ok_or_else(|| {
+                ReferralStoreError::Forbidden("affiliate is outside manager scope".to_owned())
+            })?
+        } else {
+            sqlx::query(&admin_affiliate_summary_sql(
+                "WHERE p.affiliate_id = $1",
+                "",
+            ))
+            .bind(affiliate_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlx_error)?
+            .ok_or(ReferralStoreError::NotFound)?
+        };
         let summary = affiliate_summary_from_row(&row)?;
         let sub_tree_breakdown = fetch_sub_tree_breakdown(&self.pool, affiliate_id).await?;
         let recent_payouts = fetch_affiliate_payouts(&self.pool, affiliate_id).await?;
@@ -3166,10 +3510,24 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
 
     async fn create_admin_affiliate(
         &self,
-        request: AdminAffiliateMutationRequest,
+        mut request: AdminAffiliateMutationRequest,
         actor: AdminAffiliateActor,
     ) -> Result<AdminAffiliateMutationResponse, ReferralStoreError> {
-        validate_admin_affiliate_mutation(&request, true, &actor)?;
+        if let Err(error) = validate_admin_affiliate_mutation(&request, true, &actor) {
+            insert_affiliate_denied_audit(
+                &self.pool,
+                "create",
+                request.id.as_deref(),
+                &request,
+                &actor,
+                &error,
+            )
+            .await?;
+            return Err(error);
+        }
+        if actor.role == "manager" {
+            request.managing_manager_id = Some(actor.actor_id.clone());
+        }
         let affiliate_id = request.id.clone().unwrap_or_else(generate_affiliate_id);
         let profile_uuid = Uuid::now_v7();
         let user_id = request.user_id.clone().unwrap_or_else(new_uuid_v7_string);
@@ -3179,19 +3537,19 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
             .and_then(mask_email)
             .ok_or_else(|| ReferralStoreError::Invalid("email is required".to_owned()))?;
         let audit_correlation_id = audit_correlation_id("affiliate-create", &affiliate_id, &actor);
-        sqlx::query(
+        let insert_result = sqlx::query(
             r"
             INSERT INTO affiliate_profiles (
-                affiliate_id, profile_uuid, user_id, display_name, email_masked, status, owner_sponsor_id,
+                affiliate_id, profile_uuid, user_id, display_name, email_masked, status, owner_sponsor_id, managing_manager_id,
                 commission_rate_bps, tier, credit_rating, credit_status,
                 max_active_credit_accounts, total_credit_limit_minor_units,
                 per_account_limit_minor_units, credit_review_expires_at,
                 credit_last_changed_by, credit_audit_correlation_ids
             )
-            VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'onboarding'), $7,
-                    COALESCE($8, 0), COALESCE($9, 1), COALESCE($10, 'restricted'),
-                    COALESCE($11, 'pending_review'), COALESCE($12, 0),
-                    COALESCE($13, 0), COALESCE($14, 0), $15::DATE, $16, ARRAY[$17])
+            VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'onboarding'), $7, $8,
+                    COALESCE($9, 0), COALESCE($10, 1), COALESCE($11, 'restricted'),
+                    COALESCE($12, 'pending_review'), COALESCE($13, 0),
+                    COALESCE($14, 0), COALESCE($15, 0), $16::DATE, $17, ARRAY[$18])
             ",
         )
         .bind(&affiliate_id)
@@ -3201,6 +3559,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&email_masked)
         .bind(request.status.as_deref())
         .bind(request.owner_sponsor_id.as_deref())
+        .bind(request.managing_manager_id.as_deref())
         .bind(request.commission_rate_bps)
         .bind(request.tier)
         .bind(request.credit_rating.as_deref())
@@ -3213,7 +3572,19 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&audit_correlation_id)
         .execute(&self.pool)
         .await
-        .map_err(sqlx_error)?;
+        .map_err(|error| ReferralStoreError::Invalid(format!("affiliate create failed: {error}")));
+        if let Err(error) = insert_result {
+            insert_affiliate_denied_audit(
+                &self.pool,
+                "create",
+                Some(&affiliate_id),
+                &request,
+                &actor,
+                &error,
+            )
+            .await?;
+            return Err(error);
+        }
         insert_affiliate_audit(
             &self.pool,
             "create",
@@ -3225,19 +3596,66 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         )
         .await?;
         Ok(AdminAffiliateMutationResponse {
-            affiliate: self.admin_affiliate_detail(&affiliate_id).await?,
+            affiliate: self
+                .admin_affiliate_detail(&affiliate_id, actor.clone())
+                .await?,
             audit_correlation_id,
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn update_admin_affiliate(
         &self,
         affiliate_id: &str,
         request: AdminAffiliateMutationRequest,
         actor: AdminAffiliateActor,
     ) -> Result<AdminAffiliateMutationResponse, ReferralStoreError> {
-        validate_admin_affiliate_mutation(&request, false, &actor)?;
-        let before = self.admin_affiliate_detail(affiliate_id).await?;
+        if let Err(error) = validate_admin_affiliate_mutation(&request, false, &actor) {
+            insert_affiliate_denied_audit(
+                &self.pool,
+                "update",
+                Some(affiliate_id),
+                &request,
+                &actor,
+                &error,
+            )
+            .await?;
+            return Err(error);
+        }
+        let before = match self
+            .admin_affiliate_detail(affiliate_id, actor.clone())
+            .await
+        {
+            Ok(detail) => detail,
+            Err(error @ ReferralStoreError::Forbidden(_)) => {
+                insert_affiliate_denied_audit(
+                    &self.pool,
+                    "update",
+                    Some(affiliate_id),
+                    &request,
+                    &actor,
+                    &error,
+                )
+                .await?;
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+        };
+        if actor.role == "manager" && request.managing_manager_id.is_some() {
+            let error = ReferralStoreError::Forbidden(
+                "manager cannot reassign affiliate ownership".to_owned(),
+            );
+            insert_affiliate_denied_audit(
+                &self.pool,
+                "update",
+                Some(affiliate_id),
+                &request,
+                &actor,
+                &error,
+            )
+            .await?;
+            return Err(error);
+        }
         let audit_correlation_id = audit_correlation_id("affiliate-update", affiliate_id, &actor);
         let email_masked = request.email.as_deref().and_then(mask_email);
         sqlx::query(
@@ -3247,17 +3665,18 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
                 email_masked = COALESCE($3, email_masked),
                 status = COALESCE($4, status),
                 owner_sponsor_id = COALESCE($5, owner_sponsor_id),
-                commission_rate_bps = COALESCE($6, commission_rate_bps),
-                tier = COALESCE($7, tier),
-                credit_rating = COALESCE($8, credit_rating),
-                credit_status = COALESCE($9, credit_status),
-                max_active_credit_accounts = COALESCE($10, max_active_credit_accounts),
-                total_credit_limit_minor_units = COALESCE($11, total_credit_limit_minor_units),
-                per_account_limit_minor_units = COALESCE($12, per_account_limit_minor_units),
-                credit_review_expires_at = COALESCE($13::DATE, credit_review_expires_at),
-                credit_last_changed_by = $14,
+                managing_manager_id = CASE WHEN $6::TEXT IS NULL THEN managing_manager_id ELSE $6 END,
+                commission_rate_bps = COALESCE($7, commission_rate_bps),
+                tier = COALESCE($8, tier),
+                credit_rating = COALESCE($9, credit_rating),
+                credit_status = COALESCE($10, credit_status),
+                max_active_credit_accounts = COALESCE($11, max_active_credit_accounts),
+                total_credit_limit_minor_units = COALESCE($12, total_credit_limit_minor_units),
+                per_account_limit_minor_units = COALESCE($13, per_account_limit_minor_units),
+                credit_review_expires_at = COALESCE($14::DATE, credit_review_expires_at),
+                credit_last_changed_by = $15,
                 credit_last_changed_at = now(),
-                credit_audit_correlation_ids = array_append(credit_audit_correlation_ids, $15),
+                credit_audit_correlation_ids = array_append(credit_audit_correlation_ids, $16),
                 updated_at = now()
             WHERE affiliate_id = $1
             ",
@@ -3267,6 +3686,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(email_masked.as_deref())
         .bind(request.status.as_deref())
         .bind(request.owner_sponsor_id.as_deref())
+        .bind(request.managing_manager_id.as_deref())
         .bind(request.commission_rate_bps)
         .bind(request.tier)
         .bind(request.credit_rating.as_deref())
@@ -3315,7 +3735,9 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         )
         .await?;
         Ok(AdminAffiliateMutationResponse {
-            affiliate: self.admin_affiliate_detail(affiliate_id).await?,
+            affiliate: self
+                .admin_affiliate_detail(affiliate_id, actor.clone())
+                .await?,
             audit_correlation_id,
         })
     }
@@ -3326,8 +3748,37 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         request: AdminAffiliateMutationRequest,
         actor: AdminAffiliateActor,
     ) -> Result<AdminAffiliateMutationResponse, ReferralStoreError> {
-        validate_admin_affiliate_mutation(&request, false, &actor)?;
-        let before = self.admin_affiliate_detail(affiliate_id).await?;
+        if let Err(error) = validate_admin_affiliate_mutation(&request, false, &actor) {
+            insert_affiliate_denied_audit(
+                &self.pool,
+                "archive",
+                Some(affiliate_id),
+                &request,
+                &actor,
+                &error,
+            )
+            .await?;
+            return Err(error);
+        }
+        let before = match self
+            .admin_affiliate_detail(affiliate_id, actor.clone())
+            .await
+        {
+            Ok(detail) => detail,
+            Err(error @ ReferralStoreError::Forbidden(_)) => {
+                insert_affiliate_denied_audit(
+                    &self.pool,
+                    "archive",
+                    Some(affiliate_id),
+                    &request,
+                    &actor,
+                    &error,
+                )
+                .await?;
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+        };
         let audit_correlation_id = audit_correlation_id("affiliate-archive", affiliate_id, &actor);
         sqlx::query(
             r"
@@ -3359,7 +3810,9 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         )
         .await?;
         Ok(AdminAffiliateMutationResponse {
-            affiliate: self.admin_affiliate_detail(affiliate_id).await?,
+            affiliate: self
+                .admin_affiliate_detail(affiliate_id, actor.clone())
+                .await?,
             audit_correlation_id,
         })
     }
@@ -3413,7 +3866,7 @@ fn sqlx_error(error: sqlx::Error) -> ReferralStoreError {
 fn admin_affiliate_summary_sql(pre_group: &str, post_group: &str) -> String {
     format!(
         r#"
-        SELECT p.affiliate_id, p.user_id, p.display_name, p.email_masked, p.status, p.owner_sponsor_id,
+        SELECT p.affiliate_id, p.user_id, p.display_name, p.email_masked, p.status, p.owner_sponsor_id, p.managing_manager_id,
                p.commission_rate_bps, p.tier, to_char(p.last_activity_at, 'YYYY-MM-DD"T"HH24:MI:SSOF') AS last_activity_at,
                p.risk_flags,
                COALESCE(SUM(s.count), 0)::INT AS sub_tree_size,
@@ -3450,6 +3903,7 @@ fn affiliate_summary_from_row(
         email_masked: row.try_get("email_masked").map_err(sqlx_error)?,
         status: row.try_get("status").map_err(sqlx_error)?,
         owner_sponsor_id: row.try_get("owner_sponsor_id").map_err(sqlx_error)?,
+        managing_manager_id: row.try_get("managing_manager_id").map_err(sqlx_error)?,
         commission_rate_bps: row.try_get("commission_rate_bps").map_err(sqlx_error)?,
         tier: row.try_get("tier").map_err(sqlx_error)?,
         sub_tree_size: row.try_get("sub_tree_size").map_err(sqlx_error)?,

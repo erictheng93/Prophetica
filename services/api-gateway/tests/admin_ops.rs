@@ -352,6 +352,7 @@ async fn pending_member_cases_proxy_enqueues_email_and_in_app_reminders() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn member_management_proxy_to_user_service() {
     let upstream = Router::new()
         .route(
@@ -369,6 +370,15 @@ async fn member_management_proxy_to_user_service() {
         .route(
             "/v1/internal/admin/members",
             post(|Json(body): Json<Value>| async move { Json(body) }),
+        )
+        .route(
+            "/v1/internal/admin/role-accounts",
+            get(|| async {
+                Json(json!({
+                    "accounts": [],
+                    "source": "user-service:role-accounts"
+                }))
+            }),
         )
         .route(
             "/v1/internal/admin/members/MEM-900/summary",
@@ -426,6 +436,8 @@ async fn member_management_proxy_to_user_service() {
             Request::builder()
                 .method("PATCH")
                 .uri("/api/internal/admin/members/MEM-900")
+                .header("x-actor-id", "admin-1")
+                .header("x-operator-role", "admin")
                 .header("content-type", "application/json")
                 .body(Body::from(json!({ "display_name": "Updated" }).to_string()))
                 .expect("request builds"),
@@ -437,6 +449,8 @@ async fn member_management_proxy_to_user_service() {
             Request::builder()
                 .method("DELETE")
                 .uri("/api/internal/admin/members/MEM-900")
+                .header("x-actor-id", "admin-1")
+                .header("x-operator-role", "admin")
                 .body(Body::empty())
                 .expect("request builds"),
         )
@@ -451,6 +465,224 @@ async fn member_management_proxy_to_user_service() {
     assert_eq!(response_json(created).await["user_id"], "MEM-901");
     assert_eq!(response_json(updated).await["display_name"], "Updated");
     assert_eq!(response_json(deleted).await["user_id"], "MEM-900");
+}
+
+#[tokio::test]
+async fn role_account_proxy_is_admin_only() {
+    let upstream = Router::new().route(
+        "/v1/internal/admin/role-accounts",
+        get(|| async {
+            Json(json!({
+                "accounts": [{
+                    "user_id": "MAN-001",
+                    "email": "manager@example.com",
+                    "phone": "0912345001",
+                    "role": "manager",
+                    "affiliate_id": null,
+                    "disabled": false
+                }],
+                "source": "user-service:role-accounts"
+            }))
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind upstream");
+    let upstream_url = format!("http://{}", listener.local_addr().expect("local addr"));
+    tokio::spawn(async move {
+        axum::serve(listener, upstream)
+            .await
+            .expect("serve upstream");
+    });
+
+    let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
+    let app = internal_admin_router(store);
+
+    let admin = app
+        .clone()
+        .oneshot(empty_get_as(
+            "/api/internal/admin/role-accounts?role=manager",
+            "admin-1",
+            "admin",
+        ))
+        .await
+        .expect("handled");
+    assert_eq!(admin.status(), StatusCode::OK);
+    assert_eq!(response_json(admin).await["accounts"][0]["role"], "manager");
+
+    let manager = app
+        .oneshot(empty_get_as(
+            "/api/internal/admin/role-accounts?role=manager",
+            "manager-1",
+            "manager",
+        ))
+        .await
+        .expect("handled");
+    assert_eq!(manager.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn manager_disable_is_blocked_when_active_affiliates_remain() {
+    let user_service = Router::new()
+        .route(
+            "/v1/internal/admin/role-accounts",
+            get(|| async {
+                Json(json!({
+                    "accounts": [{
+                        "user_id": "MAN-ORPHAN",
+                        "email": "manager@example.com",
+                        "phone": "0912345001",
+                        "role": "manager",
+                        "affiliate_id": null,
+                        "disabled": false
+                    }],
+                    "source": "user-service:role-accounts"
+                }))
+            }),
+        )
+        .route(
+            "/v1/internal/admin/members/MAN-ORPHAN",
+            delete(|| async { Json(json!({ "user_id": "MAN-ORPHAN" })) }),
+        );
+    let user_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind user service");
+    let user_url = format!("http://{}", user_listener.local_addr().expect("local addr"));
+    tokio::spawn(async move {
+        axum::serve(user_listener, user_service)
+            .await
+            .expect("serve user service");
+    });
+
+    let referral_service = Router::new().route(
+        "/internal/admin/affiliates",
+        get(|| async {
+            Json(json!([{
+                "id": "AFF-ORPHAN",
+                "status": "active",
+                "managingManagerId": "MAN-ORPHAN"
+            }]))
+        }),
+    );
+    let referral_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind referral service");
+    let referral_url = format!(
+        "http://{}",
+        referral_listener.local_addr().expect("local addr")
+    );
+    tokio::spawn(async move {
+        axum::serve(referral_listener, referral_service)
+            .await
+            .expect("serve referral service");
+    });
+
+    let store = HttpAdminOpsStore::new(user_url.clone(), user_url)
+        .expect("store config")
+        .with_referral_service(referral_url)
+        .expect("referral config");
+    let app = internal_admin_router(store);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/internal/admin/members/MAN-ORPHAN")
+                .header("x-actor-id", "admin-1")
+                .header("x-operator-role", "admin")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("handled");
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        response_json(response).await["error"],
+        "ERROR_CODE_MANAGER_HAS_AFFILIATES"
+    );
+}
+
+#[tokio::test]
+async fn manager_disable_succeeds_after_affiliates_are_reassigned() {
+    let user_service = Router::new()
+        .route(
+            "/v1/internal/admin/role-accounts",
+            get(|| async {
+                Json(json!({
+                    "accounts": [{
+                        "user_id": "MAN-REASSIGNED",
+                        "email": "manager@example.com",
+                        "phone": "0912345001",
+                        "role": "manager",
+                        "affiliate_id": null,
+                        "disabled": false
+                    }],
+                    "source": "user-service:role-accounts"
+                }))
+            }),
+        )
+        .route(
+            "/v1/internal/admin/members/MAN-REASSIGNED",
+            delete(|| async { Json(json!({ "user_id": "MAN-REASSIGNED" })) }),
+        );
+    let user_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind user service");
+    let user_url = format!("http://{}", user_listener.local_addr().expect("local addr"));
+    tokio::spawn(async move {
+        axum::serve(user_listener, user_service)
+            .await
+            .expect("serve user service");
+    });
+
+    let referral_service = Router::new().route(
+        "/internal/admin/affiliates",
+        get(|| async {
+            Json(json!([{
+                "id": "AFF-REASSIGNED",
+                "status": "active",
+                "managingManagerId": "MAN-OTHER"
+            }]))
+        }),
+    );
+    let referral_listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind referral service");
+    let referral_url = format!(
+        "http://{}",
+        referral_listener.local_addr().expect("local addr")
+    );
+    tokio::spawn(async move {
+        axum::serve(referral_listener, referral_service)
+            .await
+            .expect("serve referral service");
+    });
+
+    let store = HttpAdminOpsStore::new(user_url.clone(), user_url)
+        .expect("store config")
+        .with_referral_service(referral_url)
+        .expect("referral config");
+    let app = internal_admin_router(store);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/internal/admin/members/MAN-REASSIGNED")
+                .header("x-actor-id", "admin-1")
+                .header("x-operator-role", "admin")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("handled");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(response).await["user_id"],
+        json!("MAN-REASSIGNED")
+    );
 }
 
 #[tokio::test]
@@ -1267,6 +1499,63 @@ async fn member_action_requires_actor_context() {
     );
 }
 
+#[tokio::test]
+async fn role_account_mutations_reject_non_admin_before_upstream() {
+    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+
+    let create = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members",
+            "manager-1",
+            "manager",
+            &json!({
+                "user_id": "MAN-002",
+                "display_name": "Manager Two",
+                "email": "manager2@example.com",
+                "phone": "0912345679",
+                "country": "TW",
+                "timezone": "Asia/Taipei",
+                "tier": "standard",
+                "role": "manager",
+                "password": "correct horse manager"
+            }),
+        ))
+        .await
+        .expect("create should be handled");
+    assert_eq!(create.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        response_json(create).await["error"],
+        json!("ERROR_CODE_ROLE_ACCOUNT_FORBIDDEN")
+    );
+
+    let update = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/api/internal/admin/members/MAN-002")
+                .header("x-actor-id", "manager-1")
+                .header("x-operator-role", "manager")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "role": "admin",
+                        "reason": "self elevation",
+                        "authorization_basis": "none"
+                    })
+                    .to_string(),
+                ))
+                .expect("request builds"),
+        )
+        .await
+        .expect("update should be handled");
+    assert_eq!(update.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        response_json(update).await["error"],
+        json!("ERROR_CODE_ROLE_ACCOUNT_FORBIDDEN")
+    );
+}
+
 fn json_post(uri: &str, body: &Value) -> Request<Body> {
     json_post_as(uri, "admin-1", "admin", body)
 }
@@ -1286,6 +1575,16 @@ fn empty_get(uri: &str) -> Request<Body> {
     Request::builder()
         .method("GET")
         .uri(uri)
+        .body(Body::empty())
+        .unwrap_or_else(|error| panic!("request should build: {error}"))
+}
+
+fn empty_get_as(uri: &str, actor_id: &str, role: &str) -> Request<Body> {
+    Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header("x-actor-id", actor_id)
+        .header("x-operator-role", role)
         .body(Body::empty())
         .unwrap_or_else(|error| panic!("request should build: {error}"))
 }

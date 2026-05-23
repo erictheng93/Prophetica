@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 
@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     routing::{delete, get, patch, post},
 };
 use sdk::masking::mask_email;
@@ -116,6 +116,10 @@ pub struct CreateMemberRequest {
     pub tier: String,
     pub affiliate_id: Option<String>,
     pub registration_audit: Option<Value>,
+    pub role: Option<String>,
+    pub password: Option<String>,
+    pub reason: Option<String>,
+    pub authorization_basis: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -148,6 +152,10 @@ pub struct UpdateMemberRequest {
     pub risk_level: Option<String>,
     pub risk_score: Option<i32>,
     pub restrictions: Option<Vec<String>>,
+    pub role: Option<String>,
+    pub password: Option<String>,
+    pub reason: Option<String>,
+    pub authorization_basis: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +171,27 @@ pub struct LookupMaskedContactsRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LookupMaskedContactsResponse {
     pub contacts: Vec<MaskedContact>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RoleAccountsQuery {
+    pub role: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoleAccountSummary {
+    pub user_id: String,
+    pub email: String,
+    pub phone: String,
+    pub role: String,
+    pub affiliate_id: Option<String>,
+    pub disabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoleAccountsResponse {
+    pub accounts: Vec<RoleAccountSummary>,
+    pub source: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,6 +223,53 @@ pub struct MemberRecord {
     pub two_factor_enabled: bool,
     pub created_at: String,
     pub registration_audit: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberDeniedAuditRecord {
+    pub target_user_id: Option<String>,
+    pub action: String,
+    pub actor_id: String,
+    pub actor_role: String,
+    pub reason_or_error_code: String,
+    pub attempted_payload: Value,
+    pub request_id: Option<String>,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberAccountAuditRecord {
+    pub target_user_id: String,
+    pub action: String,
+    pub actor_id: String,
+    pub actor_role: String,
+    pub reason: String,
+    pub authorization_basis: String,
+    pub before_summary: String,
+    pub after_patch: String,
+    pub request_id: Option<String>,
+    pub ip: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberLoginCredentialUpsert {
+    pub user_id: String,
+    pub email: String,
+    pub phone: String,
+    pub password_hash: String,
+    pub role: String,
+    pub affiliate_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MemberAccountActor {
+    actor_id: String,
+    role: String,
+    request_id: Option<String>,
+    ip: Option<String>,
+    user_agent: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -238,6 +314,11 @@ pub trait MemberStore: Clone + Send + Sync + 'static {
         ids: Vec<String>,
     ) -> Result<Vec<MaskedContact>, MemberStoreError>;
 
+    async fn list_role_accounts(
+        &self,
+        role: &str,
+    ) -> Result<Vec<RoleAccountSummary>, MemberStoreError>;
+
     async fn provision_login_credential(
         &self,
         _user_id: &str,
@@ -247,11 +328,36 @@ pub trait MemberStore: Clone + Send + Sync + 'static {
     ) -> Result<(), MemberStoreError> {
         Ok(())
     }
+
+    async fn upsert_login_credential(
+        &self,
+        _credential: MemberLoginCredentialUpsert,
+    ) -> Result<(), MemberStoreError> {
+        Ok(())
+    }
+
+    async fn audit_member_account_denied(
+        &self,
+        _record: MemberDeniedAuditRecord,
+    ) -> Result<(), MemberStoreError> {
+        Ok(())
+    }
+
+    async fn audit_member_account(
+        &self,
+        _record: MemberAccountAuditRecord,
+    ) -> Result<(), MemberStoreError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryMemberStore {
     records: Arc<Mutex<HashMap<String, MemberRecord>>>,
+    credentials: Arc<Mutex<HashMap<String, MemberLoginCredentialUpsert>>>,
+    disabled_credentials: Arc<Mutex<HashSet<String>>>,
+    denied_audits: Arc<Mutex<Vec<MemberDeniedAuditRecord>>>,
+    account_audits: Arc<Mutex<Vec<MemberAccountAuditRecord>>>,
 }
 
 impl InMemoryMemberStore {
@@ -264,7 +370,50 @@ impl InMemoryMemberStore {
                     .map(|record| (record.user_id.clone(), record))
                     .collect(),
             )),
+            credentials: Arc::new(Mutex::new(HashMap::new())),
+            disabled_credentials: Arc::new(Mutex::new(HashSet::new())),
+            denied_audits: Arc::new(Mutex::new(Vec::new())),
+            account_audits: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    #[must_use]
+    pub fn denied_audit_logs(&self) -> Vec<MemberDeniedAuditRecord> {
+        self.denied_audits
+            .lock()
+            .map_or_else(|_| Vec::new(), |records| records.clone())
+    }
+
+    #[must_use]
+    pub fn account_audit_logs(&self) -> Vec<MemberAccountAuditRecord> {
+        self.account_audits
+            .lock()
+            .map_or_else(|_| Vec::new(), |records| records.clone())
+    }
+
+    #[must_use]
+    pub fn credential_role_for_user_id(&self, user_id: &str) -> Option<String> {
+        self.credentials.lock().ok().and_then(|records| {
+            records
+                .get(user_id)
+                .map(|credential| credential.role.clone())
+        })
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`MemberStoreError::Unavailable`] when the in-memory credential
+    /// store lock is poisoned.
+    pub fn seed_login_credential(
+        &self,
+        credential: MemberLoginCredentialUpsert,
+    ) -> Result<(), MemberStoreError> {
+        let mut credentials = self
+            .credentials
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
+        credentials.insert(credential.user_id.clone(), credential);
+        Ok(())
     }
 }
 
@@ -286,6 +435,10 @@ where
 {
     Router::new()
         .route("/v1/internal/admin/members", get(list_members::<S>))
+        .route(
+            "/v1/internal/admin/role-accounts",
+            get(list_role_accounts::<S>),
+        )
         .route("/v1/internal/admin/members", post(create_member::<S>))
         .route(
             "/v1/public/registrations",
@@ -338,18 +491,79 @@ where
         .map_err(store_error)
 }
 
+async fn list_role_accounts<S>(
+    State(store): State<S>,
+    headers: HeaderMap,
+    Query(query): Query<RoleAccountsQuery>,
+) -> Result<Json<RoleAccountsResponse>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: MemberStore,
+{
+    require_admin_actor(
+        &store,
+        &headers,
+        "list_role_accounts",
+        None,
+        serde_json::json!({ "role": query.role }),
+    )
+    .await?;
+    let role = query.role.trim();
+    if !matches!(role, "manager" | "affiliate" | "admin" | "player") {
+        return Err(store_error(MemberStoreError::Invalid));
+    }
+    let accounts = store.list_role_accounts(role).await.map_err(store_error)?;
+    Ok(Json(RoleAccountsResponse {
+        accounts,
+        source: "user-service:role-accounts".to_owned(),
+    }))
+}
+
 async fn create_member<S>(
     State(store): State<S>,
+    headers: HeaderMap,
     Json(request): Json<CreateMemberRequest>,
 ) -> Result<(StatusCode, Json<MemberManagementSummary>), (StatusCode, Json<ErrorResponse>)>
 where
     S: MemberStore,
 {
-    store
-        .create_member(request)
-        .await
-        .map(|summary| (StatusCode::CREATED, Json(summary)))
-        .map_err(store_error)
+    let credential = credential_from_create_request(&request).map_err(store_error)?;
+    let actor = require_create_actor(
+        &store,
+        &headers,
+        &request,
+        credential
+            .as_ref()
+            .map(|credential| credential.role.as_str()),
+    )
+    .await?;
+    let reason = audit_reason(request.reason.as_deref());
+    let authorization_basis = audit_authorization_basis(request.authorization_basis.as_deref());
+    let summary = store.create_member(request).await.map_err(store_error)?;
+    if let Some(credential) = credential {
+        store
+            .upsert_login_credential(credential)
+            .await
+            .map_err(store_error)?;
+    }
+    if actor.role == "admin" {
+        store
+            .audit_member_account(MemberAccountAuditRecord {
+                target_user_id: summary.member.user_id.clone(),
+                action: "create".to_owned(),
+                actor_id: actor.actor_id,
+                actor_role: actor.role,
+                reason,
+                authorization_basis,
+                before_summary: String::new(),
+                after_patch: serde_json::to_string(&summary).unwrap_or_default(),
+                request_id: actor.request_id,
+                ip: actor.ip,
+                user_agent: actor.user_agent,
+            })
+            .await
+            .map_err(store_error)?;
+    }
+    Ok((StatusCode::CREATED, Json(summary)))
 }
 
 async fn register_public_member<S>(
@@ -386,31 +600,100 @@ where
 
 async fn update_member<S>(
     State(store): State<S>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
     Json(request): Json<UpdateMemberRequest>,
 ) -> Result<Json<MemberManagementSummary>, (StatusCode, Json<ErrorResponse>)>
 where
     S: MemberStore,
 {
-    store
+    let actor = require_admin_actor(
+        &store,
+        &headers,
+        "update",
+        Some(user_id.clone()),
+        serde_json::json!({ "target_user_id": user_id.clone() }),
+    )
+    .await?;
+    if request.role.is_some() && actor.actor_id == user_id {
+        store
+            .audit_member_account_denied(MemberDeniedAuditRecord {
+                target_user_id: Some(user_id),
+                action: "update".to_owned(),
+                actor_id: actor.actor_id,
+                actor_role: actor.role,
+                reason_or_error_code: "ERROR_CODE_MEMBER_ACCOUNT_SELF_ROLE_UPDATE_FORBIDDEN"
+                    .to_owned(),
+                attempted_payload: serde_json::json!({ "role": request.role }),
+                request_id: actor.request_id,
+                ip: actor.ip,
+                user_agent: actor.user_agent,
+            })
+            .await
+            .map_err(store_error)?;
+        return Err(forbidden_member_account());
+    }
+    let before = store.member_summary(&user_id).await.map_err(store_error)?;
+    let reason = audit_reason(request.reason.as_deref());
+    let authorization_basis = audit_authorization_basis(request.authorization_basis.as_deref());
+    let after = store
         .update_member(&user_id, request)
         .await
-        .map(Json)
-        .map_err(store_error)
+        .map_err(store_error)?;
+    store
+        .audit_member_account(MemberAccountAuditRecord {
+            target_user_id: user_id,
+            action: "update".to_owned(),
+            actor_id: actor.actor_id,
+            actor_role: actor.role,
+            reason,
+            authorization_basis,
+            before_summary: serde_json::to_string(&before).unwrap_or_default(),
+            after_patch: serde_json::to_string(&after).unwrap_or_default(),
+            request_id: actor.request_id,
+            ip: actor.ip,
+            user_agent: actor.user_agent,
+        })
+        .await
+        .map_err(store_error)?;
+    Ok(Json(after))
 }
 
 async fn delete_member<S>(
     State(store): State<S>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
 ) -> Result<Json<DeleteMemberResponse>, (StatusCode, Json<ErrorResponse>)>
 where
     S: MemberStore,
 {
+    let actor = require_admin_actor(
+        &store,
+        &headers,
+        "disable",
+        Some(user_id.clone()),
+        serde_json::json!({ "target_user_id": user_id.clone() }),
+    )
+    .await?;
+    let before = store.member_summary(&user_id).await.map_err(store_error)?;
+    let response = store.delete_member(&user_id).await.map_err(store_error)?;
     store
-        .delete_member(&user_id)
+        .audit_member_account(MemberAccountAuditRecord {
+            target_user_id: user_id,
+            action: "disable".to_owned(),
+            actor_id: actor.actor_id,
+            actor_role: actor.role,
+            reason: "manager account disabled".to_owned(),
+            authorization_basis: "SPEC-017 §6.3.5 manager account management".to_owned(),
+            before_summary: serde_json::to_string(&before).unwrap_or_default(),
+            after_patch: serde_json::to_string(&response).unwrap_or_default(),
+            request_id: actor.request_id,
+            ip: actor.ip,
+            user_agent: actor.user_agent,
+        })
         .await
-        .map(Json)
-        .map_err(store_error)
+        .map_err(store_error)?;
+    Ok(Json(response))
 }
 
 async fn lookup_masked_contacts<S>(
@@ -501,7 +784,12 @@ impl MemberStore for InMemoryMemberStore {
             .records
             .lock()
             .map_err(|_| MemberStoreError::Unavailable)?;
-        records.remove(user_id).ok_or(MemberStoreError::NotFound)?;
+        let record = records.get_mut(user_id).ok_or(MemberStoreError::NotFound)?;
+        "suspended".clone_into(&mut record.status);
+        self.disabled_credentials
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?
+            .insert(user_id.to_owned());
         Ok(DeleteMemberResponse {
             user_id: user_id.to_owned(),
         })
@@ -519,6 +807,74 @@ impl MemberStore for InMemoryMemberStore {
             .into_iter()
             .filter_map(|id| records.get(&id).map(masked_contact_from_record))
             .collect())
+    }
+
+    async fn list_role_accounts(
+        &self,
+        role: &str,
+    ) -> Result<Vec<RoleAccountSummary>, MemberStoreError> {
+        let credentials = self
+            .credentials
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
+        let disabled_credentials = self
+            .disabled_credentials
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
+        let mut accounts = credentials
+            .values()
+            .filter(|credential| credential.role == role)
+            .map(|credential| RoleAccountSummary {
+                user_id: credential.user_id.clone(),
+                email: credential.email.clone(),
+                phone: credential.phone.clone(),
+                role: credential.role.clone(),
+                affiliate_id: credential.affiliate_id.clone(),
+                disabled: disabled_credentials.contains(&credential.user_id),
+            })
+            .collect::<Vec<_>>();
+        accounts.sort_by(|left, right| left.user_id.cmp(&right.user_id));
+        Ok(accounts)
+    }
+
+    async fn upsert_login_credential(
+        &self,
+        credential: MemberLoginCredentialUpsert,
+    ) -> Result<(), MemberStoreError> {
+        let mut credentials = self
+            .credentials
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
+        self.disabled_credentials
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?
+            .remove(&credential.user_id);
+        credentials.insert(credential.user_id.clone(), credential);
+        Ok(())
+    }
+
+    async fn audit_member_account_denied(
+        &self,
+        record: MemberDeniedAuditRecord,
+    ) -> Result<(), MemberStoreError> {
+        let mut records = self
+            .denied_audits
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
+        records.push(record);
+        Ok(())
+    }
+
+    async fn audit_member_account(
+        &self,
+        record: MemberAccountAuditRecord,
+    ) -> Result<(), MemberStoreError> {
+        let mut records = self
+            .account_audits
+            .lock()
+            .map_err(|_| MemberStoreError::Unavailable)?;
+        records.push(record);
+        Ok(())
     }
 }
 
@@ -667,6 +1023,13 @@ impl MemberStore for PostgresMemberStore {
         if result.rows_affected() == 0 {
             return Err(MemberStoreError::NotFound);
         }
+        sqlx::query(
+            "UPDATE user_login_credentials SET disabled_at = now() WHERE user_id = $1 AND disabled_at IS NULL",
+        )
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
         Ok(DeleteMemberResponse {
             user_id: user_id.to_owned(),
         })
@@ -700,6 +1063,36 @@ impl MemberStore for PostgresMemberStore {
                 })
             })
             .collect::<Result<Vec<_>, MemberStoreError>>()?)
+    }
+
+    async fn list_role_accounts(
+        &self,
+        role: &str,
+    ) -> Result<Vec<RoleAccountSummary>, MemberStoreError> {
+        let rows = sqlx::query(
+            r"
+            SELECT user_id, email, phone, role, affiliate_id, disabled_at IS NOT NULL AS disabled
+            FROM user_login_credentials
+            WHERE role = $1
+            ORDER BY user_id ASC
+            ",
+        )
+        .bind(role)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        rows.iter()
+            .map(|row| {
+                Ok(RoleAccountSummary {
+                    user_id: row.try_get("user_id").map_err(sqlx_store_error)?,
+                    email: row.try_get("email").map_err(sqlx_store_error)?,
+                    phone: row.try_get("phone").map_err(sqlx_store_error)?,
+                    role: row.try_get("role").map_err(sqlx_store_error)?,
+                    affiliate_id: row.try_get("affiliate_id").map_err(sqlx_store_error)?,
+                    disabled: row.try_get("disabled").map_err(sqlx_store_error)?,
+                })
+            })
+            .collect()
     }
 
     async fn provision_login_credential(
@@ -736,6 +1129,258 @@ impl MemberStore for PostgresMemberStore {
         .map_err(sqlx_store_error)?;
         Ok(())
     }
+
+    async fn upsert_login_credential(
+        &self,
+        credential: MemberLoginCredentialUpsert,
+    ) -> Result<(), MemberStoreError> {
+        sqlx::query(
+            r"
+            INSERT INTO user_login_credentials (
+                user_id,
+                email,
+                phone,
+                password_hash,
+                role,
+                affiliate_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (user_id) DO UPDATE SET
+                email = EXCLUDED.email,
+                phone = EXCLUDED.phone,
+                password_hash = EXCLUDED.password_hash,
+                role = EXCLUDED.role,
+                affiliate_id = EXCLUDED.affiliate_id,
+                disabled_at = NULL
+            ",
+        )
+        .bind(credential.user_id)
+        .bind(credential.email)
+        .bind(credential.phone)
+        .bind(credential.password_hash)
+        .bind(credential.role)
+        .bind(credential.affiliate_id)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        Ok(())
+    }
+
+    async fn audit_member_account_denied(
+        &self,
+        record: MemberDeniedAuditRecord,
+    ) -> Result<(), MemberStoreError> {
+        sqlx::query(
+            r"
+            INSERT INTO member_account_denied_audit_logs (
+                correlation_id, target_user_id, action, actor_id, actor_role,
+                reason_or_error_code, attempted_payload, request_id, ip, user_agent
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ",
+        )
+        .bind(format!("member-denied-{}", Ulid::new()))
+        .bind(record.target_user_id)
+        .bind(record.action)
+        .bind(record.actor_id)
+        .bind(record.actor_role)
+        .bind(record.reason_or_error_code)
+        .bind(record.attempted_payload)
+        .bind(record.request_id)
+        .bind(record.ip)
+        .bind(record.user_agent)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        Ok(())
+    }
+
+    async fn audit_member_account(
+        &self,
+        record: MemberAccountAuditRecord,
+    ) -> Result<(), MemberStoreError> {
+        sqlx::query(
+            r"
+            INSERT INTO member_account_audit_logs (
+                correlation_id, target_user_id, action, actor_id, actor_role,
+                reason, authorization_basis, before_summary, after_patch,
+                request_id, ip, user_agent
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ",
+        )
+        .bind(format!("member-account-{}", Ulid::new()))
+        .bind(record.target_user_id)
+        .bind(record.action)
+        .bind(record.actor_id)
+        .bind(record.actor_role)
+        .bind(record.reason)
+        .bind(record.authorization_basis)
+        .bind(record.before_summary)
+        .bind(record.after_patch)
+        .bind(record.request_id)
+        .bind(record.ip)
+        .bind(record.user_agent)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_store_error)?;
+        Ok(())
+    }
+}
+
+async fn require_admin_actor<S>(
+    store: &S,
+    headers: &HeaderMap,
+    action: &'static str,
+    target_user_id: Option<String>,
+    attempted_payload: Value,
+) -> Result<MemberAccountActor, (StatusCode, Json<ErrorResponse>)>
+where
+    S: MemberStore,
+{
+    let actor = member_account_actor_from_headers(headers)?;
+    if actor.role == "admin" {
+        return Ok(actor);
+    }
+    store
+        .audit_member_account_denied(MemberDeniedAuditRecord {
+            target_user_id,
+            action: action.to_owned(),
+            actor_id: actor.actor_id.clone(),
+            actor_role: actor.role.clone(),
+            reason_or_error_code: "ERROR_CODE_MEMBER_ACCOUNT_FORBIDDEN".to_owned(),
+            attempted_payload,
+            request_id: actor.request_id.clone(),
+            ip: actor.ip.clone(),
+            user_agent: actor.user_agent.clone(),
+        })
+        .await
+        .map_err(store_error)?;
+    Err(forbidden_member_account())
+}
+
+async fn require_create_actor<S>(
+    store: &S,
+    headers: &HeaderMap,
+    request: &CreateMemberRequest,
+    requested_role: Option<&str>,
+) -> Result<MemberAccountActor, (StatusCode, Json<ErrorResponse>)>
+where
+    S: MemberStore,
+{
+    let actor = member_account_actor_from_headers(headers)?;
+    let role = requested_role.unwrap_or("player");
+    let allowed = match actor.role.as_str() {
+        "admin" => matches!(role, "player" | "manager" | "affiliate"),
+        "manager" => role == "affiliate",
+        _ => false,
+    };
+    if allowed {
+        return Ok(actor);
+    }
+    store
+        .audit_member_account_denied(MemberDeniedAuditRecord {
+            target_user_id: Some(request.user_id.clone()),
+            action: "create".to_owned(),
+            actor_id: actor.actor_id.clone(),
+            actor_role: actor.role.clone(),
+            reason_or_error_code: "ERROR_CODE_MEMBER_ACCOUNT_FORBIDDEN".to_owned(),
+            attempted_payload: serde_json::json!({
+                "target_user_id": request.user_id,
+                "requested_role": role
+            }),
+            request_id: actor.request_id.clone(),
+            ip: actor.ip.clone(),
+            user_agent: actor.user_agent.clone(),
+        })
+        .await
+        .map_err(store_error)?;
+    Err(forbidden_member_account())
+}
+
+fn member_account_actor_from_headers(
+    headers: &HeaderMap,
+) -> Result<MemberAccountActor, (StatusCode, Json<ErrorResponse>)> {
+    let Some(actor_id) = header_value(headers, "x-actor-id") else {
+        return Err(forbidden_member_account());
+    };
+    let Some(role) = header_value(headers, "x-operator-role") else {
+        return Err(forbidden_member_account());
+    };
+    Ok(MemberAccountActor {
+        actor_id,
+        role,
+        request_id: header_value(headers, "x-request-id"),
+        ip: header_value(headers, "x-forwarded-for"),
+        user_agent: header_value(headers, "user-agent"),
+    })
+}
+
+fn header_value(headers: &HeaderMap, name: &'static str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn forbidden_member_account() -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::FORBIDDEN,
+        Json(ErrorResponse {
+            error: "ERROR_CODE_MEMBER_ACCOUNT_FORBIDDEN",
+        }),
+    )
+}
+
+fn audit_reason(value: Option<&str>) -> String {
+    value
+        .and_then(trim_optional)
+        .unwrap_or_else(|| "role account management".to_owned())
+}
+
+fn audit_authorization_basis(value: Option<&str>) -> String {
+    value
+        .and_then(trim_optional)
+        .unwrap_or_else(|| "SPEC-017 §6.3.5 role account management".to_owned())
+}
+
+fn credential_from_create_request(
+    request: &CreateMemberRequest,
+) -> Result<Option<MemberLoginCredentialUpsert>, MemberStoreError> {
+    let Some(role) = request.role.as_deref().map(str::trim) else {
+        return Ok(None);
+    };
+    if !matches!(role, "player" | "manager" | "affiliate") {
+        return Err(MemberStoreError::Invalid);
+    }
+    let Some(password) = request.password.as_deref() else {
+        return Err(MemberStoreError::Invalid);
+    };
+    let password_hash = hash_account_password(password).map_err(|()| MemberStoreError::Invalid)?;
+    Ok(Some(MemberLoginCredentialUpsert {
+        user_id: request.user_id.trim().to_owned(),
+        email: request.email.trim().to_owned(),
+        phone: request.phone.trim().to_owned(),
+        password_hash,
+        role: role.to_owned(),
+        affiliate_id: request.affiliate_id.as_deref().and_then(trim_optional),
+    }))
+}
+
+fn hash_account_password(password: &str) -> Result<String, ()> {
+    let password = password.trim();
+    if password.len() < 8 {
+        return Err(());
+    }
+    let params = Params::new(19_456, 2, 1, None).map_err(|_| ())?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let salt = SaltString::encode_b64(Ulid::new().to_string().as_bytes()).map_err(|_| ())?;
+    argon2
+        .hash_password(password.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|_| ())
 }
 
 fn validate_create_member(request: &CreateMemberRequest) -> Result<(), MemberStoreError> {
@@ -786,24 +1431,17 @@ fn public_registration_to_create_member(
             "referral_code": referral_code,
             "referred_user_id": user_id
         })),
+        role: None,
+        password: None,
+        reason: None,
+        authorization_basis: None,
     })
 }
 
 fn hash_public_registration_password(
     password: &str,
 ) -> Result<String, (StatusCode, Json<ErrorResponse>)> {
-    let password = password.trim();
-    if password.len() < 8 {
-        return Err(invalid_registration());
-    }
-    let params = Params::new(19_456, 2, 1, None).map_err(|_| invalid_registration())?;
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-    let salt = SaltString::encode_b64(Ulid::new().to_string().as_bytes())
-        .map_err(|_| invalid_registration())?;
-    argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map(|hash| hash.to_string())
-        .map_err(|_| invalid_registration())
+    hash_account_password(password).map_err(|()| invalid_registration())
 }
 
 fn invalid_registration() -> (StatusCode, Json<ErrorResponse>) {

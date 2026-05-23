@@ -34,6 +34,12 @@ pub trait AdminOpsStore {
 
     async fn list_members(&self, query: MemberListQuery) -> Result<Value, AdminOpsStoreError>;
 
+    async fn list_role_accounts(
+        &self,
+        query: RoleAccountListQuery,
+        context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError>;
+
     /// Builds the internal admin member summary facade.
     ///
     /// # Errors
@@ -41,15 +47,24 @@ pub trait AdminOpsStore {
     /// Returns an error when the backing store cannot be read.
     async fn member_summary(&self, user_id: &str) -> Result<Value, AdminOpsStoreError>;
 
-    async fn create_member(&self, request: Value) -> Result<Value, AdminOpsStoreError>;
+    async fn create_member(
+        &self,
+        request: Value,
+        context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError>;
 
     async fn update_member(
         &self,
         user_id: &str,
         request: Value,
+        context: AdminOpsRequestContext,
     ) -> Result<Value, AdminOpsStoreError>;
 
-    async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError>;
+    async fn delete_member(
+        &self,
+        user_id: &str,
+        context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError>;
 
     async fn list_member_actions(
         &self,
@@ -111,6 +126,11 @@ pub struct PendingMemberCasesQuery {
     pub restriction: Option<String>,
     pub page: Option<usize>,
     pub page_size: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct RoleAccountListQuery {
+    pub role: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -397,6 +417,10 @@ where
 {
     Router::new()
         .route("/api/internal/admin/members", get(list_members::<S>))
+        .route(
+            "/api/internal/admin/role-accounts",
+            get(list_role_accounts::<S>),
+        )
         .route("/api/internal/admin/members", post(create_member::<S>))
         .route(
             "/api/internal/admin/members/pending-cases",
@@ -469,6 +493,25 @@ where
         .map_err(|error| pending_member_cases_error(&error))
 }
 
+async fn list_role_accounts<S>(
+    State(store): State<S>,
+    headers: HeaderMap,
+    Query(query): Query<RoleAccountListQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    let context = request_context(&headers)?;
+    if context.actor_role != "admin" {
+        return Err(forbidden_error("ERROR_CODE_ROLE_ACCOUNT_FORBIDDEN"));
+    }
+    store
+        .list_role_accounts(query, context)
+        .await
+        .map(Json)
+        .map_err(|_| internal_error())
+}
+
 async fn member_summary<S>(
     State(store): State<S>,
     Path(user_id): Path<String>,
@@ -485,45 +528,57 @@ where
 
 async fn create_member<S>(
     State(store): State<S>,
+    headers: HeaderMap,
     Json(request): Json<Value>,
 ) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<ErrorResponse>)>
 where
     S: AdminOpsStore,
 {
+    let context = request_context(&headers)?;
+    if context.actor_role != "admin" && targets_manager_account_role(&request) {
+        return Err(forbidden_error("ERROR_CODE_ROLE_ACCOUNT_FORBIDDEN"));
+    }
     store
-        .create_member(request)
+        .create_member(request, context)
         .await
         .map(|body| (StatusCode::CREATED, Json(body)))
-        .map_err(|_| internal_error())
+        .map_err(|error| member_mutation_error(&error))
 }
 
 async fn update_member<S>(
     State(store): State<S>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
     Json(request): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)>
 where
     S: AdminOpsStore,
 {
+    let context = request_context(&headers)?;
+    if context.actor_role != "admin" && targets_manager_account_role(&request) {
+        return Err(forbidden_error("ERROR_CODE_ROLE_ACCOUNT_FORBIDDEN"));
+    }
     store
-        .update_member(&user_id, request)
+        .update_member(&user_id, request, context)
         .await
         .map(Json)
-        .map_err(|_| internal_error())
+        .map_err(|error| member_mutation_error(&error))
 }
 
 async fn delete_member<S>(
     State(store): State<S>,
+    headers: HeaderMap,
     Path(user_id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)>
 where
     S: AdminOpsStore,
 {
+    let context = request_context(&headers)?;
     store
-        .delete_member(&user_id)
+        .delete_member(&user_id, context)
         .await
         .map(Json)
-        .map_err(|_| internal_error())
+        .map_err(|error| member_mutation_error(&error))
 }
 
 async fn create_member_action<S>(
@@ -808,6 +863,13 @@ fn validate_member_action(
     Ok(())
 }
 
+fn targets_manager_account_role(request: &Value) -> bool {
+    request
+        .get("role")
+        .and_then(Value::as_str)
+        .is_some_and(|role| matches!(role, "admin" | "manager"))
+}
+
 fn request_context(
     headers: &HeaderMap,
 ) -> Result<AdminOpsRequestContext, (StatusCode, Json<ErrorResponse>)> {
@@ -894,6 +956,10 @@ fn internal_error() -> (StatusCode, Json<ErrorResponse>) {
     )
 }
 
+fn forbidden_error(code: &'static str) -> (StatusCode, Json<ErrorResponse>) {
+    (StatusCode::FORBIDDEN, Json(ErrorResponse { error: code }))
+}
+
 fn pending_member_cases_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>) {
     let message = error.message();
     if message.contains("error sending request")
@@ -933,11 +999,33 @@ fn member_summary_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorRe
     internal_error()
 }
 
+fn member_mutation_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>) {
+    if let Some(upstream_status) = error.upstream_status() {
+        let status =
+            StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        let code = error
+            .upstream_code()
+            .and_then(member_summary_upstream_error_code)
+            .unwrap_or_else(|| member_summary_status_error_code(status));
+        return (status, Json(ErrorResponse { error: code }));
+    }
+    if is_transport_error(error) {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_USER_SERVICE_UNAVAILABLE",
+            }),
+        );
+    }
+    internal_error()
+}
+
 fn member_summary_upstream_error_code(code: &str) -> Option<&'static str> {
     match code {
         "ERROR_CODE_MEMBER_NOT_FOUND" => Some("ERROR_CODE_MEMBER_NOT_FOUND"),
         "ERROR_CODE_INVALID_MEMBER" => Some("ERROR_CODE_INVALID_MEMBER"),
         "ERROR_CODE_MEMBER_EXISTS" => Some("ERROR_CODE_MEMBER_EXISTS"),
+        "ERROR_CODE_MANAGER_HAS_AFFILIATES" => Some("ERROR_CODE_MANAGER_HAS_AFFILIATES"),
         "ERROR_CODE_INTERNAL" => Some("ERROR_CODE_INTERNAL"),
         _ => None,
     }
@@ -948,6 +1036,7 @@ fn member_summary_status_error_code(status: StatusCode) -> &'static str {
         StatusCode::NOT_FOUND => "ERROR_CODE_MEMBER_NOT_FOUND",
         StatusCode::BAD_REQUEST => "ERROR_CODE_INVALID_MEMBER",
         StatusCode::CONFLICT => "ERROR_CODE_MEMBER_EXISTS",
+        StatusCode::FORBIDDEN => "ERROR_CODE_MEMBER_ACCOUNT_FORBIDDEN",
         _ => "ERROR_CODE_INTERNAL",
     }
 }
@@ -982,6 +1071,7 @@ pub struct HttpAdminOpsStore {
     user_service_url: Url,
     wallet_ledger_url: Option<Url>,
     risk_service_url: Option<Url>,
+    referral_service_url: Option<Url>,
     notification_service_url: Option<Url>,
 }
 
@@ -1005,6 +1095,7 @@ impl HttpAdminOpsStore {
             user_service_url,
             wallet_ledger_url: None,
             risk_service_url: None,
+            referral_service_url: None,
             notification_service_url: None,
         })
     }
@@ -1030,6 +1121,22 @@ impl HttpAdminOpsStore {
             .transpose()
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         Ok(store)
+    }
+
+    /// Adds referral-service for manager orphan-affiliate checks.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the referral-service base URL is invalid.
+    pub fn with_referral_service(
+        mut self,
+        referral_service_url: impl AsRef<str>,
+    ) -> Result<Self, AdminOpsStoreError> {
+        self.referral_service_url = Some(
+            Url::parse(referral_service_url.as_ref())
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        );
+        Ok(self)
     }
 
     /// Adds notification-service as the persisted reminder outbox.
@@ -1063,6 +1170,10 @@ impl HttpAdminOpsStore {
             env::var("WALLET_LEDGER_BASE_URL").ok(),
             env::var("RISK_SERVICE_URL").ok(),
         )?;
+        let store = match env::var("REFERRAL_SERVICE_URL") {
+            Ok(url) => store.with_referral_service(url)?,
+            Err(_) => store,
+        };
         match env::var("NOTIFICATION_SERVICE_URL") {
             Ok(url) => store.with_notification_service(url),
             Err(_) if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") => Err(
@@ -1121,6 +1232,25 @@ impl HttpAdminOpsStore {
         Ok(url)
     }
 
+    fn list_role_accounts_url(
+        &self,
+        query: &RoleAccountListQuery,
+    ) -> Result<Url, AdminOpsStoreError> {
+        let mut url = self.user_members_url("/v1/internal/admin/role-accounts")?;
+        url.query_pairs_mut().append_pair("role", &query.role);
+        Ok(url)
+    }
+
+    fn referral_admin_affiliates_url(&self) -> Result<Option<Url>, AdminOpsStoreError> {
+        self.referral_service_url
+            .as_ref()
+            .map(|url| {
+                url.join("/internal/admin/affiliates")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))
+            })
+            .transpose()
+    }
+
     async fn user_service_json(
         &self,
         request: reqwest::RequestBuilder,
@@ -1150,6 +1280,100 @@ impl HttpAdminOpsStore {
             .json::<Value>()
             .await
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))
+    }
+
+    async fn manager_has_active_affiliates(
+        &self,
+        manager_id: &str,
+        context: &AdminOpsRequestContext,
+    ) -> Result<bool, AdminOpsStoreError> {
+        let Some(url) = self.referral_admin_affiliates_url()? else {
+            return Ok(false);
+        };
+        let response = self
+            .client
+            .get(url)
+            .headers(Self::user_service_actor_headers(context)?)
+            .send()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+            .json::<Value>()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(response.as_array().is_some_and(|affiliates| {
+            affiliates.iter().any(|affiliate| {
+                let owner = affiliate
+                    .get("managingManagerId")
+                    .or_else(|| affiliate.get("managing_manager_id"))
+                    .and_then(Value::as_str);
+                let status = affiliate.get("status").and_then(Value::as_str);
+                owner == Some(manager_id) && status != Some("archived")
+            })
+        }))
+    }
+
+    async fn role_account_is_active_manager(
+        &self,
+        user_id: &str,
+        context: &AdminOpsRequestContext,
+    ) -> Result<bool, AdminOpsStoreError> {
+        let headers = Self::user_service_actor_headers(context)?;
+        let accounts = self
+            .user_service_json(
+                self.client
+                    .get(self.list_role_accounts_url(&RoleAccountListQuery {
+                        role: "manager".to_owned(),
+                    })?)
+                    .headers(headers),
+            )
+            .await?;
+        Ok(accounts
+            .get("accounts")
+            .and_then(Value::as_array)
+            .is_some_and(|accounts| {
+                accounts.iter().any(|account| {
+                    account
+                        .get("user_id")
+                        .or_else(|| account.get("userId"))
+                        .and_then(Value::as_str)
+                        == Some(user_id)
+                        && !account
+                            .get("disabled")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(true)
+                })
+            }))
+    }
+
+    fn user_service_actor_headers(
+        context: &AdminOpsRequestContext,
+    ) -> Result<reqwest::header::HeaderMap, AdminOpsStoreError> {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            "x-actor-id",
+            context
+                .actor_user_id
+                .parse()
+                .map_err(|error| AdminOpsStoreError::new(format!("{error}")))?,
+        );
+        headers.insert(
+            "x-operator-role",
+            context
+                .actor_role
+                .parse()
+                .map_err(|error| AdminOpsStoreError::new(format!("{error}")))?,
+        );
+        if let Some(request_id) = context.request_id.as_deref() {
+            headers.insert(
+                "x-request-id",
+                request_id
+                    .parse()
+                    .map_err(|error| AdminOpsStoreError::new(format!("{error}")))?,
+            );
+        }
+        Ok(headers)
     }
 
     async fn enrich_pending_contacts(
@@ -1530,7 +1754,16 @@ async fn apply_member_action_side_effects(
     }
     if let Some(request) = request {
         upstream
-            .update_member(&record.target_user_id, request)
+            .update_member(
+                &record.target_user_id,
+                request,
+                AdminOpsRequestContext {
+                    actor_user_id: record.actor_user_id.clone(),
+                    actor_role: record.actor_role.clone(),
+                    request_id: Some(record.correlation_id.clone()),
+                    idempotency_key: None,
+                },
+            )
             .await?;
     }
     Ok(())
@@ -1590,24 +1823,41 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         self.upstream.list_members(query).await
     }
 
+    async fn list_role_accounts(
+        &self,
+        query: RoleAccountListQuery,
+        context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError> {
+        self.upstream.list_role_accounts(query, context).await
+    }
+
     async fn member_summary(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
         self.upstream.member_summary(user_id).await
     }
 
-    async fn create_member(&self, request: Value) -> Result<Value, AdminOpsStoreError> {
-        self.upstream.create_member(request).await
+    async fn create_member(
+        &self,
+        request: Value,
+        context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError> {
+        self.upstream.create_member(request, context).await
     }
 
     async fn update_member(
         &self,
         user_id: &str,
         request: Value,
+        context: AdminOpsRequestContext,
     ) -> Result<Value, AdminOpsStoreError> {
-        self.upstream.update_member(user_id, request).await
+        self.upstream.update_member(user_id, request, context).await
     }
 
-    async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
-        self.upstream.delete_member(user_id).await
+    async fn delete_member(
+        &self,
+        user_id: &str,
+        context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError> {
+        self.upstream.delete_member(user_id, context).await
     }
 
     async fn list_member_actions(
@@ -2348,6 +2598,20 @@ impl AdminOpsStore for HttpAdminOpsStore {
             .await
     }
 
+    async fn list_role_accounts(
+        &self,
+        query: RoleAccountListQuery,
+        context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError> {
+        let headers = Self::user_service_actor_headers(&context)?;
+        self.user_service_json(
+            self.client
+                .get(self.list_role_accounts_url(&query)?)
+                .headers(headers),
+        )
+        .await
+    }
+
     async fn member_summary(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
         let path = format!(
             "/v1/internal/admin/members/{}/summary",
@@ -2357,10 +2621,16 @@ impl AdminOpsStore for HttpAdminOpsStore {
             .await
     }
 
-    async fn create_member(&self, request: Value) -> Result<Value, AdminOpsStoreError> {
+    async fn create_member(
+        &self,
+        request: Value,
+        context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError> {
+        let headers = Self::user_service_actor_headers(&context)?;
         self.user_service_json(
             self.client
                 .post(self.user_members_url("/v1/internal/admin/members")?)
+                .headers(headers)
                 .json(&request),
         )
         .await
@@ -2370,7 +2640,9 @@ impl AdminOpsStore for HttpAdminOpsStore {
         &self,
         user_id: &str,
         request: Value,
+        context: AdminOpsRequestContext,
     ) -> Result<Value, AdminOpsStoreError> {
+        let headers = Self::user_service_actor_headers(&context)?;
         let path = format!(
             "/v1/internal/admin/members/{}",
             url_encode_path_segment(user_id)
@@ -2378,18 +2650,41 @@ impl AdminOpsStore for HttpAdminOpsStore {
         self.user_service_json(
             self.client
                 .patch(self.user_members_url(&path)?)
+                .headers(headers)
                 .json(&request),
         )
         .await
     }
 
-    async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
+    async fn delete_member(
+        &self,
+        user_id: &str,
+        context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError> {
+        if self
+            .role_account_is_active_manager(user_id, &context)
+            .await?
+            && self
+                .manager_has_active_affiliates(user_id, &context)
+                .await?
+        {
+            return Err(AdminOpsStoreError::from_upstream(
+                StatusCode::CONFLICT.as_u16(),
+                Some("ERROR_CODE_MANAGER_HAS_AFFILIATES".to_owned()),
+                "manager has active affiliates; reassign them before disabling",
+            ));
+        }
+        let headers = Self::user_service_actor_headers(&context)?;
         let path = format!(
             "/v1/internal/admin/members/{}",
             url_encode_path_segment(user_id)
         );
-        self.user_service_json(self.client.delete(self.user_members_url(&path)?))
-            .await
+        self.user_service_json(
+            self.client
+                .delete(self.user_members_url(&path)?)
+                .headers(headers),
+        )
+        .await
     }
 
     async fn list_member_actions(
@@ -2590,7 +2885,29 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         }))
     }
 
-    async fn create_member(&self, request: Value) -> Result<Value, AdminOpsStoreError> {
+    async fn list_role_accounts(
+        &self,
+        query: RoleAccountListQuery,
+        _context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError> {
+        Ok(json!({
+            "accounts": [{
+                "user_id": "MAN-001",
+                "email": "manager@example.com",
+                "phone": "0912345001",
+                "role": query.role,
+                "affiliate_id": null,
+                "disabled": false
+            }],
+            "source": "api-gateway:admin-ops"
+        }))
+    }
+
+    async fn create_member(
+        &self,
+        request: Value,
+        _context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError> {
         Ok(request)
     }
 
@@ -2598,11 +2915,16 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         &self,
         _user_id: &str,
         request: Value,
+        _context: AdminOpsRequestContext,
     ) -> Result<Value, AdminOpsStoreError> {
         Ok(request)
     }
 
-    async fn delete_member(&self, user_id: &str) -> Result<Value, AdminOpsStoreError> {
+    async fn delete_member(
+        &self,
+        user_id: &str,
+        _context: AdminOpsRequestContext,
+    ) -> Result<Value, AdminOpsStoreError> {
         Ok(json!({ "user_id": user_id }))
     }
 

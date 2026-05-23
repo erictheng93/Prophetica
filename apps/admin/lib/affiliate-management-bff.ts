@@ -41,15 +41,38 @@ export async function fetchAdminAffiliateDetail(
 export async function createAdminAffiliate(
   viewer: SessionPayload,
   payload: AffiliateMutationPayload,
-): Promise<AffiliateMutationResponse | null> {
+): Promise<AffiliateCreateResult | null> {
   if (viewer.role !== "admin" && viewer.role !== "manager") return null;
+  const sagaPayload = affiliateAccountSagaPayload(payload);
+  if (!sagaPayload) return null;
+  const idempotencyKey = crypto.randomUUID();
   const response = await proxyAffiliateGatewayRequest(viewer, {
     method: "POST",
-    adminPath: "/api/internal/admin/affiliates",
-    body: JSON.stringify(payload),
+    adminPath: "/api/internal/admin/affiliate-accounts",
+    body: JSON.stringify(sagaPayload),
+    idempotencyKey,
+  });
+  if (!response) return null;
+  const saga = (await response.json()) as AffiliateAccountSagaResponse;
+  if (response.ok && saga.status === "completed" && saga.affiliate) {
+    return { status: "completed", affiliate: saga.affiliate, saga };
+  }
+  return { status: "repair_required", saga };
+}
+
+export async function fetchAffiliateAccountSaga(
+  viewer: SessionPayload,
+  idempotencyKey: string,
+): Promise<AffiliateAccountSagaResponse | null> {
+  if (viewer.role !== "admin" && viewer.role !== "manager") return null;
+  const key = idempotencyKey.trim();
+  if (!key) return null;
+  const response = await proxyAffiliateGatewayRequest(viewer, {
+    method: "GET",
+    adminPath: `/api/internal/admin/affiliate-account-sagas/${encodeURIComponent(key)}`,
   });
   if (!response?.ok) return null;
-  return (await response.json()) as AffiliateMutationResponse;
+  return (await response.json()) as AffiliateAccountSagaResponse;
 }
 
 export async function updateAdminAffiliate(
@@ -58,13 +81,28 @@ export async function updateAdminAffiliate(
   payload: AffiliateMutationPayload,
 ): Promise<AffiliateMutationResponse | null> {
   if (viewer.role !== "admin" && viewer.role !== "manager") return null;
+  const sanitized = stripManagingManagerIdForManager(viewer, payload);
   const response = await proxyAffiliateGatewayRequest(viewer, {
     method: "PATCH",
     adminPath: `/api/internal/admin/affiliates/${encodeURIComponent(affiliateId)}`,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(sanitized),
   });
   if (!response?.ok) return null;
   return (await response.json()) as AffiliateMutationResponse;
+}
+
+// SPEC-017 §6.3.5.2 / §6.3.5.4: manager 視角的 PATCH payload 不得攜帶
+// `managingManagerId`。server 端採 deny-by-presence（出現即 403），BFF 在
+// 邊界 strip 此欄位避免 manager 表單回填造成誤拒。admin 視角保留欄位以
+// 支援 admin 重指派（apps/admin/app/settings/accounts/actions.ts）。
+export function stripManagingManagerIdForManager(
+  viewer: SessionPayload,
+  payload: AffiliateMutationPayload,
+): AffiliateMutationPayload {
+  if (viewer.role !== "manager") return payload;
+  if (payload.managingManagerId === undefined) return payload;
+  const { managingManagerId: _omit, ...rest } = payload;
+  return rest;
 }
 
 export async function archiveAdminAffiliate(
@@ -129,7 +167,12 @@ const fetchAffiliateDashboardForViewer = cache(
 
 async function proxyAffiliateGatewayRequest(
   viewer: SessionPayload,
-  input: { method: string; adminPath: string; body?: string },
+  input: {
+    method: string;
+    adminPath: string;
+    body?: string;
+    idempotencyKey?: string;
+  },
 ): Promise<Response | null> {
   const gatewayUrl = process.env.API_GATEWAY_URL;
   if (!gatewayUrl) return null;
@@ -147,11 +190,41 @@ async function proxyAffiliateGatewayRequest(
     headers: {
       ...headers,
       "x-request-id": crypto.randomUUID(),
+      ...(input.idempotencyKey ? { "idempotency-key": input.idempotencyKey } : {}),
       ...(body ? { "content-type": "application/json" } : {}),
     },
     body: body || undefined,
     cache: "no-store",
   }).catch(() => null);
+}
+
+function affiliateAccountSagaPayload(
+  payload: AffiliateMutationPayload,
+): AffiliateAccountCreatePayload | null {
+  const affiliateId = payload.affiliateId ?? payload.id;
+  if (
+    !payload.userId ||
+    !affiliateId ||
+    !payload.email ||
+    !payload.phone ||
+    !payload.password ||
+    !payload.displayName
+  ) {
+    return null;
+  }
+  return {
+    userId: payload.userId,
+    affiliateId,
+    email: payload.email,
+    phone: payload.phone,
+    password: payload.password,
+    displayName: payload.displayName,
+    managingManagerId: payload.managingManagerId,
+    commissionRateBps: payload.commissionRateBps,
+    tier: payload.tier,
+    reason: payload.reason,
+    authorizationBasis: payload.authorizationBasis,
+  };
 }
 
 async function proxyAccountGatewayRequest(
@@ -211,3 +284,39 @@ export interface AffiliatePayoutReview {
   requestedAt: string;
   status: string;
 }
+
+interface AffiliateAccountCreatePayload {
+  userId: string;
+  affiliateId: string;
+  email: string;
+  phone: string;
+  password: string;
+  displayName: string;
+  managingManagerId?: string;
+  commissionRateBps?: number;
+  tier?: 1 | 2 | 3;
+  reason: string;
+  authorizationBasis: string;
+}
+
+export interface AffiliateAccountSagaResponse {
+  idempotencyKey: string;
+  status: string;
+  targetUserId: string;
+  affiliateId: string;
+  actorId: string;
+  actorRole: string;
+  lastError: string | null;
+  affiliate: AffiliateMutationResponse | null;
+}
+
+export type AffiliateCreateResult =
+  | {
+      status: "completed";
+      affiliate: AffiliateMutationResponse;
+      saga: AffiliateAccountSagaResponse;
+    }
+  | {
+      status: "repair_required";
+      saga: AffiliateAccountSagaResponse;
+    };

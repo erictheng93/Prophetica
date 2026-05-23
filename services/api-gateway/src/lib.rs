@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     env,
+    fmt::Write as _,
     hash::{Hash, Hasher},
     sync::{Arc, Mutex, OnceLock},
     time::Duration,
@@ -313,6 +314,9 @@ pub struct AppStateWithServices<W, E, R, K> {
     idempotency: IdempotencyStore,
     order_owners: Arc<dyn OrderOwnerRepository>,
     trade_sagas: Arc<dyn TradeFillSagaStore>,
+    affiliate_credentials: Arc<dyn AffiliateCredentialClient>,
+    affiliate_account_sagas: Arc<dyn AffiliateAccountSagaStore>,
+    gateway_denied_audits: Arc<dyn GatewayDeniedAuditStore>,
 }
 
 impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
@@ -364,6 +368,9 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
             position_projection,
             Arc::new(OrderOwnerStore::default()),
             Arc::new(InMemoryTradeFillSagaStore::default()),
+            Arc::new(NoopAffiliateCredentialClient),
+            Arc::new(InMemoryAffiliateAccountSagaStore::default()),
+            Arc::new(InMemoryGatewayDeniedAuditStore::default()),
         )
     }
 
@@ -377,6 +384,9 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
         position_projection: P,
         order_owners: Arc<dyn OrderOwnerRepository>,
         trade_sagas: Arc<dyn TradeFillSagaStore>,
+        affiliate_credentials: Arc<dyn AffiliateCredentialClient>,
+        affiliate_account_sagas: Arc<dyn AffiliateAccountSagaStore>,
+        gateway_denied_audits: Arc<dyn GatewayDeniedAuditStore>,
     ) -> Self
     where
         M: MarketFeeReader + Send + Sync + 'static,
@@ -392,6 +402,9 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
             idempotency: IdempotencyStore::default(),
             order_owners,
             trade_sagas,
+            affiliate_credentials,
+            affiliate_account_sagas,
+            gateway_denied_audits,
         }
     }
 }
@@ -1316,11 +1329,15 @@ pub trait ReferralClient {
         user_id: &str,
     ) -> Result<AffiliateCommissionSummary, ApiError>;
 
-    async fn list_admin_affiliates(&self) -> Result<serde_json::Value, ApiError>;
+    async fn list_admin_affiliates(
+        &self,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError>;
 
     async fn get_admin_affiliate_detail(
         &self,
         affiliate_id: &str,
+        context: AdminProxyContext,
     ) -> Result<serde_json::Value, ApiError>;
 
     async fn create_admin_affiliate(
@@ -1419,6 +1436,455 @@ pub struct AdminProxyContext {
     pub request_id: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateAccountCreateRequest {
+    pub user_id: String,
+    pub affiliate_id: String,
+    pub email: String,
+    pub phone: String,
+    pub password: String,
+    pub display_name: String,
+    pub managing_manager_id: Option<String>,
+    pub commission_rate_bps: Option<i32>,
+    pub tier: Option<i16>,
+    pub reason: String,
+    pub authorization_basis: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateAccountSagaResponse {
+    pub idempotency_key: String,
+    pub status: String,
+    pub target_user_id: String,
+    pub affiliate_id: String,
+    pub actor_id: String,
+    pub actor_role: String,
+    pub last_error: Option<String>,
+    pub affiliate: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AffiliateCredentialCreateRequest {
+    pub user_id: String,
+    pub display_name: String,
+    pub email: String,
+    pub phone: String,
+    pub password: String,
+    pub affiliate_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AffiliateAccountSagaRecord {
+    pub idempotency_key: String,
+    pub request_hash: String,
+    pub actor_id: String,
+    pub actor_role: String,
+    pub target_user_id: String,
+    pub affiliate_id: String,
+    pub status: String,
+    pub last_error: Option<String>,
+    pub affiliate: Option<serde_json::Value>,
+}
+
+#[async_trait]
+pub trait AffiliateCredentialClient: Send + Sync {
+    async fn create_affiliate_credential(
+        &self,
+        request: AffiliateCredentialCreateRequest,
+        context: AdminProxyContext,
+    ) -> Result<(), ApiError>;
+
+    async fn verify_active_manager(
+        &self,
+        manager_id: &str,
+        context: AdminProxyContext,
+    ) -> Result<(), ApiError>;
+}
+
+#[async_trait]
+pub trait AffiliateAccountSagaStore: Send + Sync {
+    async fn get(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<Option<AffiliateAccountSagaRecord>, ApiError>;
+
+    async fn put(&self, record: AffiliateAccountSagaRecord) -> Result<(), ApiError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GatewayDeniedAuditRecord {
+    pub correlation_id: String,
+    pub domain: String,
+    pub target_type: String,
+    pub target_id: Option<String>,
+    pub action: String,
+    pub actor_id: String,
+    pub actor_role: String,
+    pub reason_or_error_code: String,
+    pub attempted_payload: serde_json::Value,
+    pub idempotency_key: Option<String>,
+    pub request_id: Option<String>,
+}
+
+#[async_trait]
+pub trait GatewayDeniedAuditStore: Send + Sync {
+    async fn record_denied(&self, record: GatewayDeniedAuditRecord) -> Result<(), ApiError>;
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NoopAffiliateCredentialClient;
+
+#[async_trait]
+impl AffiliateCredentialClient for NoopAffiliateCredentialClient {
+    async fn create_affiliate_credential(
+        &self,
+        _request: AffiliateCredentialCreateRequest,
+        _context: AdminProxyContext,
+    ) -> Result<(), ApiError> {
+        Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            "user_service_unavailable",
+            "affiliate credential client is not configured",
+        ))
+    }
+
+    async fn verify_active_manager(
+        &self,
+        _manager_id: &str,
+        _context: AdminProxyContext,
+    ) -> Result<(), ApiError> {
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryAffiliateAccountSagaStore {
+    records: Arc<Mutex<HashMap<String, AffiliateAccountSagaRecord>>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryGatewayDeniedAuditStore {
+    records: Arc<Mutex<Vec<GatewayDeniedAuditRecord>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PostgresAffiliateAccountSagaStore {
+    pool: sqlx::PgPool,
+}
+
+#[derive(Debug, Clone)]
+pub struct PostgresGatewayDeniedAuditStore {
+    pool: sqlx::PgPool,
+}
+
+impl PostgresAffiliateAccountSagaStore {
+    const fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+impl PostgresGatewayDeniedAuditStore {
+    const fn new(pool: sqlx::PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl AffiliateAccountSagaStore for InMemoryAffiliateAccountSagaStore {
+    async fn get(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<Option<AffiliateAccountSagaRecord>, ApiError> {
+        self.records
+            .lock()
+            .map_err(|_| ApiError::internal("affiliate saga store lock poisoned"))
+            .map(|records| records.get(idempotency_key).cloned())
+    }
+
+    async fn put(&self, record: AffiliateAccountSagaRecord) -> Result<(), ApiError> {
+        self.records
+            .lock()
+            .map_err(|_| ApiError::internal("affiliate saga store lock poisoned"))?
+            .insert(record.idempotency_key.clone(), record);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl GatewayDeniedAuditStore for InMemoryGatewayDeniedAuditStore {
+    async fn record_denied(&self, record: GatewayDeniedAuditRecord) -> Result<(), ApiError> {
+        self.records
+            .lock()
+            .map_err(|_| ApiError::internal("gateway denied audit store lock poisoned"))?
+            .push(record);
+        Ok(())
+    }
+}
+
+impl InMemoryGatewayDeniedAuditStore {
+    #[cfg(test)]
+    fn records(&self) -> Vec<GatewayDeniedAuditRecord> {
+        self.records
+            .lock()
+            .map_or_else(|_| Vec::new(), |records| records.clone())
+    }
+}
+
+#[async_trait]
+impl AffiliateAccountSagaStore for PostgresAffiliateAccountSagaStore {
+    async fn get(
+        &self,
+        idempotency_key: &str,
+    ) -> Result<Option<AffiliateAccountSagaRecord>, ApiError> {
+        let row = sqlx::query(
+            r"
+            SELECT idempotency_key, request_hash, actor_id, actor_role, target_user_id,
+                   affiliate_id, status, last_error, response_payload
+            FROM api_gateway_affiliate_account_sagas
+            WHERE idempotency_key = $1
+            ",
+        )
+        .bind(idempotency_key)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| ApiError::internal(error.to_string()))?;
+        row.map(|row| {
+            Ok(AffiliateAccountSagaRecord {
+                idempotency_key: row.try_get("idempotency_key").map_err(|error| {
+                    ApiError::internal(format!("decode affiliate saga idempotency_key: {error}"))
+                })?,
+                request_hash: row.try_get("request_hash").map_err(|error| {
+                    ApiError::internal(format!("decode affiliate saga request_hash: {error}"))
+                })?,
+                actor_id: row.try_get("actor_id").map_err(|error| {
+                    ApiError::internal(format!("decode affiliate saga actor_id: {error}"))
+                })?,
+                actor_role: row.try_get("actor_role").map_err(|error| {
+                    ApiError::internal(format!("decode affiliate saga actor_role: {error}"))
+                })?,
+                target_user_id: row.try_get("target_user_id").map_err(|error| {
+                    ApiError::internal(format!("decode affiliate saga target_user_id: {error}"))
+                })?,
+                affiliate_id: row.try_get("affiliate_id").map_err(|error| {
+                    ApiError::internal(format!("decode affiliate saga affiliate_id: {error}"))
+                })?,
+                status: row.try_get("status").map_err(|error| {
+                    ApiError::internal(format!("decode affiliate saga status: {error}"))
+                })?,
+                last_error: row.try_get("last_error").map_err(|error| {
+                    ApiError::internal(format!("decode affiliate saga last_error: {error}"))
+                })?,
+                affiliate: row.try_get("response_payload").map_err(|error| {
+                    ApiError::internal(format!("decode affiliate saga response_payload: {error}"))
+                })?,
+            })
+        })
+        .transpose()
+    }
+
+    async fn put(&self, record: AffiliateAccountSagaRecord) -> Result<(), ApiError> {
+        sqlx::query(
+            r"
+            INSERT INTO api_gateway_affiliate_account_sagas (
+                idempotency_key, request_hash, actor_id, actor_role, target_user_id,
+                affiliate_id, status, last_error, response_payload, attempt_count
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1)
+            ON CONFLICT (idempotency_key) DO UPDATE SET
+                status = EXCLUDED.status,
+                last_error = EXCLUDED.last_error,
+                response_payload = EXCLUDED.response_payload,
+                attempt_count = api_gateway_affiliate_account_sagas.attempt_count + 1,
+                updated_at = now()
+            ",
+        )
+        .bind(record.idempotency_key)
+        .bind(record.request_hash)
+        .bind(record.actor_id)
+        .bind(record.actor_role)
+        .bind(record.target_user_id)
+        .bind(record.affiliate_id)
+        .bind(record.status)
+        .bind(record.last_error)
+        .bind(record.affiliate)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| ApiError::internal(error.to_string()))?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl GatewayDeniedAuditStore for PostgresGatewayDeniedAuditStore {
+    async fn record_denied(&self, record: GatewayDeniedAuditRecord) -> Result<(), ApiError> {
+        sqlx::query(
+            r"
+            INSERT INTO api_gateway_denied_operation_audit_logs (
+                correlation_id, domain, target_type, target_id, action, actor_id,
+                actor_role, reason_or_error_code, attempted_payload, idempotency_key,
+                request_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (correlation_id) DO NOTHING
+            ",
+        )
+        .bind(record.correlation_id)
+        .bind(record.domain)
+        .bind(record.target_type)
+        .bind(record.target_id)
+        .bind(record.action)
+        .bind(record.actor_id)
+        .bind(record.actor_role)
+        .bind(record.reason_or_error_code)
+        .bind(record.attempted_payload)
+        .bind(record.idempotency_key)
+        .bind(record.request_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| ApiError::internal(error.to_string()))?;
+        Ok(())
+    }
+}
+
+impl HttpAffiliateCredentialClient {
+    fn from_env() -> Option<Self> {
+        let url =
+            env::var("USER_SERVICE_URL").unwrap_or_else(|_| "http://127.0.0.1:8084".to_owned());
+        Url::parse(&url).ok().map(|base_url| Self {
+            base_url,
+            client: reqwest::Client::new(),
+        })
+    }
+}
+
+#[async_trait]
+impl AffiliateCredentialClient for HttpAffiliateCredentialClient {
+    async fn create_affiliate_credential(
+        &self,
+        request: AffiliateCredentialCreateRequest,
+        context: AdminProxyContext,
+    ) -> Result<(), ApiError> {
+        let url = self
+            .base_url
+            .join("/v1/internal/admin/members")
+            .map_err(|error| {
+                ApiError::new(
+                    StatusCode::BAD_GATEWAY,
+                    "user_service_unavailable",
+                    error.to_string(),
+                )
+            })?;
+        let body = serde_json::json!({
+            "user_id": request.user_id,
+            "display_name": request.display_name,
+            "email": request.email,
+            "phone": request.phone,
+            "country": "TW",
+            "timezone": "Asia/Taipei",
+            "tier": "Affiliate",
+            "affiliate_id": request.affiliate_id,
+            "role": "affiliate",
+            "password": request.password
+        });
+        self.client
+            .post(url)
+            .headers(admin_proxy_headers(context)?)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| {
+                ApiError::new(
+                    StatusCode::BAD_GATEWAY,
+                    "user_service_unavailable",
+                    error.to_string(),
+                )
+            })?
+            .error_for_status()
+            .map_err(|error| {
+                ApiError::new(
+                    StatusCode::BAD_GATEWAY,
+                    "user_service_unavailable",
+                    error.to_string(),
+                )
+            })?;
+        Ok(())
+    }
+
+    async fn verify_active_manager(
+        &self,
+        manager_id: &str,
+        context: AdminProxyContext,
+    ) -> Result<(), ApiError> {
+        let url = self
+            .base_url
+            .join("/v1/internal/admin/role-accounts?role=manager")
+            .map_err(|error| {
+                ApiError::new(
+                    StatusCode::BAD_GATEWAY,
+                    "user_service_unavailable",
+                    error.to_string(),
+                )
+            })?;
+        let body = self
+            .client
+            .get(url)
+            .headers(admin_proxy_headers(context)?)
+            .send()
+            .await
+            .map_err(|error| {
+                ApiError::new(
+                    StatusCode::BAD_GATEWAY,
+                    "user_service_unavailable",
+                    error.to_string(),
+                )
+            })?
+            .error_for_status()
+            .map_err(|error| {
+                ApiError::new(
+                    StatusCode::BAD_GATEWAY,
+                    "user_service_unavailable",
+                    error.to_string(),
+                )
+            })?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| {
+                ApiError::new(
+                    StatusCode::BAD_GATEWAY,
+                    "user_service_unavailable",
+                    error.to_string(),
+                )
+            })?;
+        let is_active = body
+            .get("accounts")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|accounts| {
+                accounts.iter().any(|account| {
+                    account
+                        .get("userId")
+                        .or_else(|| account.get("user_id"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some(manager_id)
+                        && !account
+                            .get("disabled")
+                            .and_then(serde_json::Value::as_bool)
+                            .unwrap_or(true)
+                })
+            });
+        if is_active {
+            Ok(())
+        } else {
+            Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                "invalid_managing_manager",
+                "managingManagerId must reference an active manager account",
+            ))
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HttpWalletLedgerClient {
     base_url: Url,
@@ -1427,6 +1893,12 @@ pub struct HttpWalletLedgerClient {
 
 #[derive(Debug, Clone)]
 pub struct HttpMatchingEngineClient {
+    base_url: Url,
+    client: reqwest::Client,
+}
+
+#[derive(Debug, Clone)]
+pub struct HttpAffiliateCredentialClient {
     base_url: Url,
     client: reqwest::Client,
 }
@@ -2079,13 +2551,17 @@ impl ReferralClient for HttpReferralClient {
             .map_err(|error| ApiError::referral_service(error.to_string()))
     }
 
-    async fn list_admin_affiliates(&self) -> Result<serde_json::Value, ApiError> {
+    async fn list_admin_affiliates(
+        &self,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError> {
         let url = self
             .base_url
             .join("/internal/admin/affiliates")
             .map_err(|error| ApiError::referral_service(error.to_string()))?;
         self.client
             .get(url)
+            .headers(admin_proxy_headers(context)?)
             .send()
             .await
             .map_err(|error| ApiError::referral_service(error.to_string()))?
@@ -2099,6 +2575,7 @@ impl ReferralClient for HttpReferralClient {
     async fn get_admin_affiliate_detail(
         &self,
         affiliate_id: &str,
+        context: AdminProxyContext,
     ) -> Result<serde_json::Value, ApiError> {
         let url = self
             .base_url
@@ -2106,6 +2583,7 @@ impl ReferralClient for HttpReferralClient {
             .map_err(|error| ApiError::referral_service(error.to_string()))?;
         self.client
             .get(url)
+            .headers(admin_proxy_headers(context)?)
             .send()
             .await
             .map_err(|error| ApiError::referral_service(error.to_string()))?
@@ -3198,6 +3676,9 @@ where
         position_projection,
         Arc::new(OrderOwnerStore::default()),
         Arc::new(InMemoryTradeFillSagaStore::default()),
+        Arc::new(NoopAffiliateCredentialClient),
+        Arc::new(InMemoryAffiliateAccountSagaStore::default()),
+        Arc::new(InMemoryGatewayDeniedAuditStore::default()),
     )
 }
 
@@ -3220,6 +3701,9 @@ fn router_with_services_kyc_payment_flags_market_fees_position_projection_and_tr
     position_projection: P,
     order_owners: Arc<dyn OrderOwnerRepository>,
     trade_sagas: Arc<dyn TradeFillSagaStore>,
+    affiliate_credentials: Arc<dyn AffiliateCredentialClient>,
+    affiliate_account_sagas: Arc<dyn AffiliateAccountSagaStore>,
+    gateway_denied_audits: Arc<dyn GatewayDeniedAuditStore>,
 ) -> Router
 where
     W: WalletLedgerClient + Clone + Send + Sync + 'static,
@@ -3278,6 +3762,14 @@ where
             get(list_admin_affiliates::<W, E, R, K>).post(create_admin_affiliate::<W, E, R, K>),
         )
         .route(
+            "/api/internal/admin/affiliate-accounts",
+            post(create_affiliate_account_saga::<W, E, R, K>),
+        )
+        .route(
+            "/api/internal/admin/affiliate-account-sagas/:idempotency_key",
+            get(get_affiliate_account_saga::<W, E, R, K>),
+        )
+        .route(
             "/api/internal/admin/affiliates/:affiliate_id",
             get(get_admin_affiliate_detail::<W, E, R, K>)
                 .patch(update_admin_affiliate::<W, E, R, K>)
@@ -3301,10 +3793,67 @@ where
                 position_projection,
                 order_owners,
                 trade_sagas,
+                affiliate_credentials,
+                affiliate_account_sagas,
+                gateway_denied_audits,
             ),
         ))
         .merge(rg_router)
         .merge(payments_real_money_router(payment_flags))
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn router_with_services_and_affiliate_account_clients<W, E, R, C, S>(
+    wallet_ledger: W,
+    engine: E,
+    referral: R,
+    affiliate_credentials: C,
+    affiliate_account_sagas: S,
+    gateway_denied_audits: InMemoryGatewayDeniedAuditStore,
+) -> Router
+where
+    W: WalletLedgerClient + Clone + Send + Sync + 'static,
+    E: MatchingEngineClient + Clone + Send + Sync + 'static,
+    R: ReferralClient + Clone + Send + Sync + 'static,
+    C: AffiliateCredentialClient + 'static,
+    S: AffiliateAccountSagaStore + 'static,
+{
+    let rg_router = responsible_gaming::responsible_gaming_router(
+        wallet_ledger.clone(),
+        responsible_gaming::InMemorySelfExclusionStore::default(),
+        responsible_gaming::ResponsibleGamingClock::system(),
+    );
+
+    Router::new()
+        .route(
+            "/api/internal/admin/affiliate-accounts",
+            post(create_affiliate_account_saga::<W, E, R, AllowAllKycTierClient>),
+        )
+        .route(
+            "/api/internal/admin/affiliate-account-sagas/:idempotency_key",
+            get(get_affiliate_account_saga::<W, E, R, AllowAllKycTierClient>),
+        )
+        .route(
+            "/api/internal/admin/affiliates/:affiliate_id",
+            axum::routing::patch(update_admin_affiliate::<W, E, R, AllowAllKycTierClient>),
+        )
+        .with_state(Arc::new(
+            AppStateWithServices::new_with_market_fees_position_projection_and_trade_stores(
+                wallet_ledger,
+                engine,
+                referral,
+                AllowAllKycTierClient,
+                DefaultMarketFeeReader,
+                NoopPositionProjectionClient,
+                Arc::new(OrderOwnerStore::default()),
+                Arc::new(InMemoryTradeFillSagaStore::default()),
+                Arc::new(affiliate_credentials),
+                Arc::new(affiliate_account_sagas),
+                Arc::new(gateway_denied_audits),
+            ),
+        ))
+        .merge(rg_router)
 }
 
 pub fn payments_real_money_router<R>(flags: R) -> Router
@@ -4316,6 +4865,7 @@ where
 
 async fn list_admin_affiliates<W, E, R, K>(
     State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError>
 where
     W: WalletLedgerClient + Send + Sync,
@@ -4323,12 +4873,14 @@ where
     R: ReferralClient + Send + Sync,
     K: KycTierClient + Send + Sync,
 {
-    let affiliates = state.referral.list_admin_affiliates().await?;
+    let context = admin_proxy_context(&headers)?;
+    let affiliates = state.referral.list_admin_affiliates(context).await?;
     Ok(Json(affiliates))
 }
 
 async fn get_admin_affiliate_detail<W, E, R, K>(
     State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
+    headers: HeaderMap,
     Path(affiliate_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError>
 where
@@ -4337,9 +4889,10 @@ where
     R: ReferralClient + Send + Sync,
     K: KycTierClient + Send + Sync,
 {
+    let context = admin_proxy_context(&headers)?;
     let affiliate = state
         .referral
-        .get_admin_affiliate_detail(&affiliate_id)
+        .get_admin_affiliate_detail(&affiliate_id, context)
         .await?;
     Ok(Json(affiliate))
 }
@@ -4376,6 +4929,53 @@ where
     K: KycTierClient + Send + Sync,
 {
     let context = admin_proxy_context(&headers)?;
+    if let Some(manager_id) = request
+        .get("managingManagerId")
+        .or_else(|| request.get("managing_manager_id"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+    {
+        if context.role == "manager" && manager_id != context.actor_id {
+            record_gateway_denied(
+                &state,
+                &context,
+                "affiliate",
+                "manager",
+                Some(manager_id.to_owned()),
+                "update",
+                "manager_cannot_reassign_affiliate",
+                request.clone(),
+                None,
+            )
+            .await?;
+            return Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                "invalid_managing_manager",
+                "manager cannot reassign affiliate ownership",
+            ));
+        }
+        if context.role == "admin" {
+            if let Err(error) = state
+                .affiliate_credentials
+                .verify_active_manager(manager_id, context.clone())
+                .await
+            {
+                record_gateway_denied(
+                    &state,
+                    &context,
+                    "affiliate",
+                    "manager",
+                    Some(manager_id.to_owned()),
+                    "update",
+                    error.error,
+                    request.clone(),
+                    None,
+                )
+                .await?;
+                return Err(error);
+            }
+        }
+    }
     let affiliate = state
         .referral
         .update_admin_affiliate(&affiliate_id, request, context)
@@ -4403,6 +5003,213 @@ where
     Ok(Json(affiliate))
 }
 
+#[allow(clippy::too_many_lines)]
+async fn create_affiliate_account_saga<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
+    headers: HeaderMap,
+    Json(request): Json<AffiliateAccountCreateRequest>,
+) -> Result<(StatusCode, Json<AffiliateAccountSagaResponse>), ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
+{
+    let context = admin_proxy_context(&headers)?;
+    if !matches!(context.role.as_str(), "admin" | "manager") {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "affiliate_account_forbidden",
+            "only admin or manager can create affiliate accounts",
+        ));
+    }
+    let idempotency_key = required_idempotency_key(&headers)?;
+    let request_hash = stable_json_sha256(&request)?;
+    let existing = state.affiliate_account_sagas.get(&idempotency_key).await?;
+    let mut record = if let Some(record) = existing {
+        if record.request_hash != request_hash {
+            record_gateway_denied(
+                &state,
+                &context,
+                "saga",
+                "affiliate_account",
+                Some(request.affiliate_id.clone()),
+                "create",
+                "idempotency_conflict",
+                serde_json::to_value(&request)
+                    .map_err(|error| ApiError::internal(error.to_string()))?,
+                Some(idempotency_key.clone()),
+            )
+            .await?;
+            return Err(ApiError::conflict(
+                "idempotency_conflict",
+                "Idempotency-Key was already used with a different affiliate account payload",
+            ));
+        }
+        if record.status == "completed" {
+            return Ok((StatusCode::OK, Json(saga_response(record))));
+        }
+        record
+    } else {
+        AffiliateAccountSagaRecord {
+            idempotency_key: idempotency_key.clone(),
+            request_hash,
+            actor_id: context.actor_id.clone(),
+            actor_role: context.role.clone(),
+            target_user_id: request.user_id.clone(),
+            affiliate_id: request.affiliate_id.clone(),
+            status: "pending".to_owned(),
+            last_error: None,
+            affiliate: None,
+        }
+    };
+
+    if record.status == "pending" {
+        if context.role == "manager" {
+            if let Some(manager_id) = request.managing_manager_id.as_deref() {
+                if manager_id != context.actor_id {
+                    record_gateway_denied(
+                        &state,
+                        &context,
+                        "affiliate_account",
+                        "manager",
+                        Some(manager_id.to_owned()),
+                        "create",
+                        "manager_cannot_assign_other_manager",
+                        serde_json::to_value(&request)
+                            .map_err(|error| ApiError::internal(error.to_string()))?,
+                        Some(idempotency_key.clone()),
+                    )
+                    .await?;
+                    return Err(ApiError::new(
+                        StatusCode::FORBIDDEN,
+                        "invalid_managing_manager",
+                        "manager can only create affiliates under their own manager account",
+                    ));
+                }
+            }
+        } else if let Some(manager_id) = request.managing_manager_id.as_deref() {
+            if let Err(error) = state
+                .affiliate_credentials
+                .verify_active_manager(manager_id, context.clone())
+                .await
+            {
+                record_gateway_denied(
+                    &state,
+                    &context,
+                    "affiliate_account",
+                    "manager",
+                    Some(manager_id.to_owned()),
+                    "create",
+                    error.error,
+                    serde_json::to_value(&request)
+                        .map_err(|error| ApiError::internal(error.to_string()))?,
+                    Some(idempotency_key.clone()),
+                )
+                .await?;
+                return Err(error);
+            }
+        }
+    }
+
+    if record.status == "pending" {
+        match state
+            .affiliate_credentials
+            .create_affiliate_credential(
+                AffiliateCredentialCreateRequest {
+                    user_id: request.user_id.clone(),
+                    display_name: request.display_name.clone(),
+                    email: request.email.clone(),
+                    phone: request.phone.clone(),
+                    password: request.password.clone(),
+                    affiliate_id: request.affiliate_id.clone(),
+                },
+                context.clone(),
+            )
+            .await
+        {
+            Ok(()) => {
+                "credential_created".clone_into(&mut record.status);
+                record.last_error = None;
+                state.affiliate_account_sagas.put(record.clone()).await?;
+            }
+            Err(error) => {
+                "failed".clone_into(&mut record.status);
+                record.last_error = Some(error.message.clone());
+                state.affiliate_account_sagas.put(record.clone()).await?;
+                return Ok((StatusCode::BAD_GATEWAY, Json(saga_response(record))));
+            }
+        }
+    }
+
+    let profile_request = serde_json::json!({
+        "id": request.affiliate_id,
+        "userId": request.user_id,
+        "email": request.email,
+        "displayName": request.display_name,
+        "managingManagerId": request.managing_manager_id,
+        "commissionRateBps": request.commission_rate_bps,
+        "tier": request.tier,
+        "reason": request.reason,
+        "authorizationBasis": request.authorization_basis
+    });
+    match state
+        .referral
+        .create_admin_affiliate(profile_request, context)
+        .await
+    {
+        Ok(affiliate) => {
+            "completed".clone_into(&mut record.status);
+            record.last_error = None;
+            record.affiliate = Some(affiliate);
+            state.affiliate_account_sagas.put(record.clone()).await?;
+            Ok((StatusCode::CREATED, Json(saga_response(record))))
+        }
+        Err(error) => {
+            "credential_created".clone_into(&mut record.status);
+            record.last_error = Some(error.message.clone());
+            state.affiliate_account_sagas.put(record.clone()).await?;
+            Ok((StatusCode::BAD_GATEWAY, Json(saga_response(record))))
+        }
+    }
+}
+
+async fn get_affiliate_account_saga<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
+    headers: HeaderMap,
+    Path(idempotency_key): Path<String>,
+) -> Result<Json<AffiliateAccountSagaResponse>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
+{
+    let context = admin_proxy_context(&headers)?;
+    if !matches!(context.role.as_str(), "admin" | "manager") {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "affiliate_account_forbidden",
+            "only admin or manager can read affiliate account saga status",
+        ));
+    }
+    let Some(record) = state.affiliate_account_sagas.get(&idempotency_key).await? else {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "affiliate_account_saga_not_found",
+            "affiliate account saga was not found",
+        ));
+    };
+    if context.role != "admin" && record.actor_id != context.actor_id {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "affiliate_account_saga_forbidden",
+            "manager can only read their own affiliate account saga status",
+        ));
+    }
+    Ok(Json(saga_response(record)))
+}
+
 fn admin_proxy_context(headers: &HeaderMap) -> Result<AdminProxyContext, ApiError> {
     let actor_id = header_string(headers, "x-actor-id")
         .ok_or_else(|| ApiError::unauthorized("missing x-actor-id admin context"))?;
@@ -4413,6 +5220,93 @@ fn admin_proxy_context(headers: &HeaderMap) -> Result<AdminProxyContext, ApiErro
         role,
         request_id: header_string(headers, "x-request-id"),
     })
+}
+
+fn required_idempotency_key(headers: &HeaderMap) -> Result<String, ApiError> {
+    let Some(value) = headers.get(&IDEMPOTENCY_KEY_HEADER) else {
+        return Err(ApiError::bad_request(
+            "idempotency_key_required",
+            "Idempotency-Key header is required for affiliate account creation",
+        ));
+    };
+    let key = value
+        .to_str()
+        .map_err(|_| {
+            ApiError::bad_request(
+                "idempotency_key_required",
+                "Idempotency-Key header must be valid ASCII",
+            )
+        })?
+        .trim();
+    if key.is_empty() {
+        return Err(ApiError::bad_request(
+            "idempotency_key_required",
+            "Idempotency-Key header must not be empty",
+        ));
+    }
+    Ok(key.to_owned())
+}
+
+fn stable_json_sha256<T: Serialize>(value: &T) -> Result<String, ApiError> {
+    let bytes = serde_json::to_vec(value)
+        .map_err(|error| ApiError::internal(format!("failed to hash request: {error}")))?;
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(64);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").map_err(|error| {
+            ApiError::internal(format!("failed to encode request hash: {error}"))
+        })?;
+    }
+    Ok(encoded)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn record_gateway_denied<W, E, R, K>(
+    state: &AppStateWithServices<W, E, R, K>,
+    context: &AdminProxyContext,
+    domain: &str,
+    target_type: &str,
+    target_id: Option<String>,
+    action: &str,
+    reason_or_error_code: &'static str,
+    attempted_payload: serde_json::Value,
+    idempotency_key: Option<String>,
+) -> Result<(), ApiError> {
+    let correlation_key = idempotency_key
+        .as_deref()
+        .or(context.request_id.as_deref())
+        .unwrap_or(&context.actor_id);
+    state
+        .gateway_denied_audits
+        .record_denied(GatewayDeniedAuditRecord {
+            correlation_id: format!(
+                "gateway-denied:{domain}:{target_type}:{action}:{reason_or_error_code}:{correlation_key}"
+            ),
+            domain: domain.to_owned(),
+            target_type: target_type.to_owned(),
+            target_id,
+            action: action.to_owned(),
+            actor_id: context.actor_id.clone(),
+            actor_role: context.role.clone(),
+            reason_or_error_code: reason_or_error_code.to_owned(),
+            attempted_payload,
+            idempotency_key,
+            request_id: context.request_id.clone(),
+        })
+        .await
+}
+
+fn saga_response(record: AffiliateAccountSagaRecord) -> AffiliateAccountSagaResponse {
+    AffiliateAccountSagaResponse {
+        idempotency_key: record.idempotency_key,
+        status: record.status,
+        target_user_id: record.target_user_id,
+        affiliate_id: record.affiliate_id,
+        actor_id: record.actor_id,
+        actor_role: record.actor_role,
+        last_error: record.last_error,
+        affiliate: record.affiliate,
+    }
 }
 
 fn header_string(headers: &HeaderMap, name: &'static str) -> Option<String> {
@@ -4453,6 +5347,8 @@ where
 struct ApiGatewayDurabilitySetup {
     order_owners: Arc<dyn OrderOwnerRepository>,
     trade_sagas: Arc<dyn TradeFillSagaStore>,
+    affiliate_account_sagas: Arc<dyn AffiliateAccountSagaStore>,
+    gateway_denied_audits: Arc<dyn GatewayDeniedAuditStore>,
 }
 
 async fn api_gateway_durability_setup_from_env() -> anyhow::Result<ApiGatewayDurabilitySetup> {
@@ -4466,6 +5362,8 @@ async fn api_gateway_durability_setup_from_env() -> anyhow::Result<ApiGatewayDur
         return Ok(ApiGatewayDurabilitySetup {
             order_owners: Arc::new(OrderOwnerStore::default()),
             trade_sagas: Arc::new(InMemoryTradeFillSagaStore::default()),
+            affiliate_account_sagas: Arc::new(InMemoryAffiliateAccountSagaStore::default()),
+            gateway_denied_audits: Arc::new(InMemoryGatewayDeniedAuditStore::default()),
         });
     };
 
@@ -4481,7 +5379,9 @@ async fn api_gateway_durability_setup_from_env() -> anyhow::Result<ApiGatewayDur
 
     Ok(ApiGatewayDurabilitySetup {
         order_owners: Arc::new(PostgresOrderOwnerStore::new(pool.clone())),
-        trade_sagas: Arc::new(PostgresTradeFillSagaStore::new(pool)),
+        trade_sagas: Arc::new(PostgresTradeFillSagaStore::new(pool.clone())),
+        affiliate_account_sagas: Arc::new(PostgresAffiliateAccountSagaStore::new(pool.clone())),
+        gateway_denied_audits: Arc::new(PostgresGatewayDeniedAuditStore::new(pool)),
     })
 }
 
@@ -4548,6 +5448,11 @@ pub async fn run_http() -> anyhow::Result<()> {
     let wallet_ledger = HttpWalletLedgerClient::from_env()?;
     let matching_engine = HttpMatchingEngineClient::from_env()?;
     let referral = HttpReferralClient::from_env()?;
+    let affiliate_credentials: Arc<dyn AffiliateCredentialClient> =
+        HttpAffiliateCredentialClient::from_env().map_or_else(
+            || Arc::new(NoopAffiliateCredentialClient) as Arc<dyn AffiliateCredentialClient>,
+            |client| Arc::new(client) as Arc<dyn AffiliateCredentialClient>,
+        );
     let kyc = HttpKycServiceClient::from_env()?;
     let position_projection: Arc<dyn PositionProjectionClient + Send + Sync> =
         Arc::new(position_service.clone());
@@ -4574,6 +5479,9 @@ pub async fn run_http() -> anyhow::Result<()> {
                 position_service.clone(),
                 durability_setup.order_owners,
                 durability_setup.trade_sagas,
+                affiliate_credentials,
+                durability_setup.affiliate_account_sagas,
+                durability_setup.gateway_denied_audits,
             ),
         )
         .merge(market_router(market_service))
@@ -4750,21 +5658,23 @@ mod tests {
     use tower::ServiceExt;
 
     use super::{
-        AdminProxyContext, AffiliateCommissionSummary, AffiliateDashboardResponse,
-        AffiliateReferralListItem, ApiError, AuthVerifier, BookLevel, BookSnapshotResponse,
-        CaptureReferralRequest, DEFAULT_ORDER_FEE_BPS, InMemoryFeatureFlagStore,
-        InMemoryTradeFillSagaStore, KycTier, KycTierClient, LedgerEntry, LedgerPostResult, Market,
-        MarketListResponse, MarketServiceClient, MatchingEngineClient, OrderActionResponse,
-        OrderFill, OrderOwnerStore, PlaceOrderRequest, Position, PositionFillProjectionRequest,
-        PositionListResponse, PositionProjectionClient, PositionServiceClient, ReferralClient,
-        SERVICE_NAME, TRADE_FILL_SAGA_BATCH_LIMIT, TradeFillSagaStatus, TradeSettlementRequest,
-        WalletBalance, WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
-        X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        drain_due_trade_fill_sagas, market_router, matching_engine_user_id_header_value,
-        observability, positions_router, router, router_with_engine, router_with_engine_and_kyc,
-        router_with_engine_and_kyc_and_market_fees,
+        AdminProxyContext, AffiliateCommissionSummary, AffiliateCredentialClient,
+        AffiliateCredentialCreateRequest, AffiliateDashboardResponse, AffiliateReferralListItem,
+        ApiError, AuthVerifier, BookLevel, BookSnapshotResponse, CaptureReferralRequest,
+        DEFAULT_ORDER_FEE_BPS, InMemoryAffiliateAccountSagaStore, InMemoryFeatureFlagStore,
+        InMemoryGatewayDeniedAuditStore, InMemoryTradeFillSagaStore, KycTier, KycTierClient,
+        LedgerEntry, LedgerPostResult, Market, MarketListResponse, MarketServiceClient,
+        MatchingEngineClient, OrderActionResponse, OrderFill, OrderOwnerStore, PlaceOrderRequest,
+        Position, PositionFillProjectionRequest, PositionListResponse, PositionProjectionClient,
+        PositionServiceClient, ReferralClient, SERVICE_NAME, TRADE_FILL_SAGA_BATCH_LIMIT,
+        TradeFillSagaStatus, TradeSettlementRequest, WalletBalance, WalletLedgerClient,
+        X_USER_ID_TRANSITION_ALLOWLIST, X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+        X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF, drain_due_trade_fill_sagas, market_router,
+        matching_engine_user_id_header_value, observability, positions_router, router,
+        router_with_engine, router_with_engine_and_kyc, router_with_engine_and_kyc_and_market_fees,
         router_with_engine_and_kyc_and_market_fees_and_position_projection,
-        router_with_payment_flags, router_with_services, settle_and_project_order_fills,
+        router_with_payment_flags, router_with_services,
+        router_with_services_and_affiliate_account_clients, settle_and_project_order_fills,
         wallet_spendable_minor_units,
     };
 
@@ -5370,6 +6280,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::expect_used, clippy::too_many_lines)]
     async fn place_order_projects_per_fill_for_taker_and_maker_and_settles_trade() {
         let wallet = InMemoryWalletLedgerClient::default();
         let positions = InMemoryPositionProjectionClient::default();
@@ -5486,6 +6397,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::expect_used)]
     async fn trade_fill_saga_retries_after_settlement_failure() {
         let wallet = InMemoryWalletLedgerClient::with_settlement_failures(1);
         let positions = InMemoryPositionProjectionClient::default();
@@ -6197,10 +7109,272 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn affiliate_account_saga_creates_credential_and_profile_idempotently() {
+        let referral = InMemoryReferralClient::default();
+        let credentials =
+            InMemoryAffiliateCredentialClient::default().with_active_manager("manager-1");
+        let sagas = InMemoryAffiliateAccountSagaStore::default();
+        let denied_audits = InMemoryGatewayDeniedAuditStore::default();
+        let app = router_with_services_and_affiliate_account_clients(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            referral.clone(),
+            credentials.clone(),
+            sagas,
+            denied_audits,
+        );
+        let payload = affiliate_account_payload();
+
+        let created = app
+            .clone()
+            .oneshot(admin_json_request_with_idempotency(
+                "POST",
+                "/api/internal/admin/affiliate-accounts",
+                "affiliate-account-1",
+                &payload,
+            ))
+            .await
+            .expect("create should be handled");
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let body = response_json(created).await;
+        assert_eq!(body["status"], "completed");
+        assert_eq!(credentials.create_requests().len(), 1);
+        assert_eq!(referral.affiliate_create_requests().len(), 1);
+
+        let replayed = app
+            .oneshot(admin_json_request_with_idempotency(
+                "POST",
+                "/api/internal/admin/affiliate-accounts",
+                "affiliate-account-1",
+                &payload,
+            ))
+            .await
+            .expect("replay should be handled");
+        assert_eq!(replayed.status(), StatusCode::OK);
+        assert_eq!(response_json(replayed).await["status"], "completed");
+        assert_eq!(credentials.create_requests().len(), 1);
+        assert_eq!(referral.affiliate_create_requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn affiliate_account_saga_resumes_after_profile_failure() {
+        let referral = InMemoryReferralClient::default().fail_next_affiliate_create();
+        let credentials =
+            InMemoryAffiliateCredentialClient::default().with_active_manager("manager-1");
+        let sagas = InMemoryAffiliateAccountSagaStore::default();
+        let denied_audits = InMemoryGatewayDeniedAuditStore::default();
+        let app = router_with_services_and_affiliate_account_clients(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            referral.clone(),
+            credentials.clone(),
+            sagas,
+            denied_audits,
+        );
+        let payload = affiliate_account_payload();
+
+        let failed = app
+            .clone()
+            .oneshot(admin_json_request_with_idempotency(
+                "POST",
+                "/api/internal/admin/affiliate-accounts",
+                "affiliate-account-retry",
+                &payload,
+            ))
+            .await
+            .expect("failed create should be handled");
+        assert_eq!(failed.status(), StatusCode::BAD_GATEWAY);
+        assert_eq!(response_json(failed).await["status"], "credential_created");
+        assert_eq!(credentials.create_requests().len(), 1);
+        assert_eq!(referral.affiliate_create_requests().len(), 0);
+
+        let resumed = app
+            .oneshot(admin_json_request_with_idempotency(
+                "POST",
+                "/api/internal/admin/affiliate-accounts",
+                "affiliate-account-retry",
+                &payload,
+            ))
+            .await
+            .expect("resume should be handled");
+        assert_eq!(resumed.status(), StatusCode::CREATED);
+        assert_eq!(response_json(resumed).await["status"], "completed");
+        assert_eq!(credentials.create_requests().len(), 1);
+        assert_eq!(referral.affiliate_create_requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn affiliate_account_saga_rejects_idempotency_conflict() {
+        let credentials =
+            InMemoryAffiliateCredentialClient::default().with_active_manager("manager-1");
+        let denied_audits = InMemoryGatewayDeniedAuditStore::default();
+        let app = router_with_services_and_affiliate_account_clients(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            InMemoryReferralClient::default(),
+            credentials,
+            InMemoryAffiliateAccountSagaStore::default(),
+            denied_audits.clone(),
+        );
+        let first_payload = affiliate_account_payload();
+        let mut second_payload = affiliate_account_payload();
+        second_payload["email"] = json!("other-affiliate@example.com");
+
+        let first = app
+            .clone()
+            .oneshot(admin_json_request_with_idempotency(
+                "POST",
+                "/api/internal/admin/affiliate-accounts",
+                "affiliate-account-conflict",
+                &first_payload,
+            ))
+            .await
+            .expect("first create should be handled");
+        assert_eq!(first.status(), StatusCode::CREATED);
+
+        let conflict = app
+            .oneshot(admin_json_request_with_idempotency(
+                "POST",
+                "/api/internal/admin/affiliate-accounts",
+                "affiliate-account-conflict",
+                &second_payload,
+            ))
+            .await
+            .expect("conflict should be handled");
+        assert_eq!(conflict.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            response_json(conflict).await["error"],
+            json!("idempotency_conflict")
+        );
+        assert_eq!(denied_audits.records().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn affiliate_account_saga_rejects_inactive_managing_manager_before_side_effects() {
+        let referral = InMemoryReferralClient::default();
+        let credentials = InMemoryAffiliateCredentialClient::default();
+        let denied_audits = InMemoryGatewayDeniedAuditStore::default();
+        let app = router_with_services_and_affiliate_account_clients(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            referral.clone(),
+            credentials.clone(),
+            InMemoryAffiliateAccountSagaStore::default(),
+            denied_audits.clone(),
+        );
+
+        let rejected = app
+            .oneshot(admin_json_request_with_idempotency(
+                "POST",
+                "/api/internal/admin/affiliate-accounts",
+                "affiliate-account-inactive-manager",
+                &affiliate_account_payload(),
+            ))
+            .await
+            .expect("rejected create should be handled");
+
+        assert_eq!(rejected.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            response_json(rejected).await["error"],
+            json!("invalid_managing_manager")
+        );
+        assert_eq!(credentials.create_requests().len(), 0);
+        assert_eq!(referral.affiliate_create_requests().len(), 0);
+        assert_eq!(
+            denied_audits.records()[0].reason_or_error_code,
+            "invalid_managing_manager"
+        );
+    }
+
+    #[tokio::test]
+    async fn affiliate_reassign_update_prechecks_active_manager_before_referral_call() {
+        let referral = InMemoryReferralClient::default();
+        let denied_audits = InMemoryGatewayDeniedAuditStore::default();
+        let app = router_with_services_and_affiliate_account_clients(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            referral,
+            InMemoryAffiliateCredentialClient::default(),
+            InMemoryAffiliateAccountSagaStore::default(),
+            denied_audits.clone(),
+        );
+
+        let rejected = app
+            .oneshot(admin_json_request(
+                "PATCH",
+                "/api/internal/admin/affiliates/AFF-200",
+                &json!({
+                    "managingManagerId": "inactive-manager",
+                    "reason": "reassign",
+                    "authorizationBasis": "ticket-1"
+                }),
+            ))
+            .await
+            .expect("reassign should be handled");
+
+        assert_eq!(rejected.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            response_json(rejected).await["error"],
+            json!("invalid_managing_manager")
+        );
+        assert_eq!(denied_audits.records().len(), 1);
+        assert_eq!(denied_audits.records()[0].action, "update");
+    }
+
+    #[tokio::test]
+    async fn affiliate_account_saga_status_can_be_queried_for_repair_context() {
+        let referral = InMemoryReferralClient::default().fail_next_affiliate_create();
+        let credentials =
+            InMemoryAffiliateCredentialClient::default().with_active_manager("manager-1");
+        let app = router_with_services_and_affiliate_account_clients(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            referral,
+            credentials,
+            InMemoryAffiliateAccountSagaStore::default(),
+            InMemoryGatewayDeniedAuditStore::default(),
+        );
+        let failed = app
+            .clone()
+            .oneshot(admin_json_request_with_idempotency(
+                "POST",
+                "/api/internal/admin/affiliate-accounts",
+                "affiliate-account-status",
+                &affiliate_account_payload(),
+            ))
+            .await
+            .expect("failed create should be handled");
+        assert_eq!(failed.status(), StatusCode::BAD_GATEWAY);
+
+        let status = app
+            .oneshot(admin_empty_get(
+                "/api/internal/admin/affiliate-account-sagas/affiliate-account-status",
+            ))
+            .await
+            .expect("status should be handled");
+        assert_eq!(status.status(), StatusCode::OK);
+        let body = response_json(status).await;
+        assert_eq!(body["status"], json!("credential_created"));
+        assert_eq!(body["actorId"], json!("admin-1"));
+        assert_eq!(body["affiliateId"], json!("AFF-ACCT1"));
+    }
+
     fn empty_get(uri: &str) -> Request<Body> {
         Request::builder()
             .method("GET")
             .uri(uri)
+            .body(Body::empty())
+            .unwrap_or_else(|error| panic!("request should build: {error}"))
+    }
+
+    fn admin_empty_get(uri: &str) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri(uri)
+            .header("x-actor-id", "admin-1")
+            .header("x-operator-role", "admin")
+            .header("x-request-id", "req-1")
             .body(Body::empty())
             .unwrap_or_else(|error| panic!("request should build: {error}"))
     }
@@ -6215,6 +7389,40 @@ mod tests {
             .header("content-type", "application/json")
             .body(Body::from(body.to_string()))
             .unwrap_or_else(|error| panic!("request should build: {error}"))
+    }
+
+    fn admin_json_request_with_idempotency(
+        method: &str,
+        uri: &str,
+        idempotency_key: &str,
+        body: &Value,
+    ) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("x-actor-id", "admin-1")
+            .header("x-operator-role", "admin")
+            .header("x-request-id", "req-1")
+            .header("idempotency-key", idempotency_key)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap_or_else(|error| panic!("request should build: {error}"))
+    }
+
+    fn affiliate_account_payload() -> Value {
+        json!({
+            "userId": "018f4f75-5c1f-7b61-9d52-0242ac120002",
+            "affiliateId": "AFF-ACCT1",
+            "email": "affiliate-account@example.com",
+            "phone": "0912345009",
+            "password": "correct horse affiliate",
+            "displayName": "Affiliate Account",
+            "managingManagerId": "manager-1",
+            "commissionRateBps": 600,
+            "tier": 1,
+            "reason": "affiliate account onboarding",
+            "authorizationBasis": "SPEC-017 §6.3.5"
+        })
     }
 
     fn order_request_body(quantity: i64) -> Value {
@@ -6479,6 +7687,14 @@ mod tests {
         dashboards: Arc<Mutex<Vec<(String, usize)>>>,
         referral_lists: Arc<Mutex<Vec<(String, usize)>>>,
         summaries: Arc<Mutex<Vec<String>>>,
+        affiliate_creates: Arc<Mutex<Vec<serde_json::Value>>>,
+        fail_affiliate_creates: Arc<Mutex<usize>>,
+    }
+
+    #[derive(Clone, Default)]
+    struct InMemoryAffiliateCredentialClient {
+        creates: Arc<Mutex<Vec<AffiliateCredentialCreateRequest>>>,
+        active_managers: Arc<Mutex<Vec<String>>>,
     }
 
     type PositionListRequests = Arc<Mutex<Vec<(String, Option<String>)>>>;
@@ -6524,6 +7740,39 @@ mod tests {
 
         fn unavailable() -> Self {
             Self { tier: None }
+        }
+    }
+
+    impl InMemoryReferralClient {
+        fn fail_next_affiliate_create(self) -> Self {
+            *self.fail_affiliate_creates.lock().unwrap_or_else(|error| {
+                panic!("referral failure lock should not poison: {error}")
+            }) = 1;
+            self
+        }
+
+        fn affiliate_create_requests(&self) -> Vec<serde_json::Value> {
+            self.affiliate_creates
+                .lock()
+                .unwrap_or_else(|error| panic!("affiliate create lock should not poison: {error}"))
+                .clone()
+        }
+    }
+
+    impl InMemoryAffiliateCredentialClient {
+        fn with_active_manager(self, manager_id: &str) -> Self {
+            self.active_managers
+                .lock()
+                .unwrap_or_else(|error| panic!("active manager lock should not poison: {error}"))
+                .push(manager_id.to_owned());
+            self
+        }
+
+        fn create_requests(&self) -> Vec<AffiliateCredentialCreateRequest> {
+            self.creates
+                .lock()
+                .unwrap_or_else(|error| panic!("credential create lock should not poison: {error}"))
+                .clone()
         }
     }
 
@@ -7065,7 +8314,10 @@ mod tests {
             Ok(sample_affiliate_summary())
         }
 
-        async fn list_admin_affiliates(&self) -> Result<serde_json::Value, ApiError> {
+        async fn list_admin_affiliates(
+            &self,
+            _context: AdminProxyContext,
+        ) -> Result<serde_json::Value, ApiError> {
             Ok(serde_json::json!([{
                 "id": "AFF-001",
                 "displayName": "Crescent Partners"
@@ -7075,6 +8327,7 @@ mod tests {
         async fn get_admin_affiliate_detail(
             &self,
             affiliate_id: &str,
+            _context: AdminProxyContext,
         ) -> Result<serde_json::Value, ApiError> {
             Ok(serde_json::json!({
                 "id": affiliate_id,
@@ -7087,6 +8340,19 @@ mod tests {
             request: serde_json::Value,
             context: AdminProxyContext,
         ) -> Result<serde_json::Value, ApiError> {
+            let mut failures = self
+                .fail_affiliate_creates
+                .lock()
+                .unwrap_or_else(|error| panic!("referral failure lock should not poison: {error}"));
+            if *failures > 0 {
+                *failures -= 1;
+                return Err(ApiError::referral_service("referral create failed"));
+            }
+            drop(failures);
+            self.affiliate_creates
+                .lock()
+                .unwrap_or_else(|error| panic!("affiliate create lock should not poison: {error}"))
+                .push(request.clone());
             Ok(serde_json::json!({
                 "affiliate": request,
                 "auditCorrelationId": format!("audit:affiliate-create:{}", context.actor_id)
@@ -7146,6 +8412,43 @@ mod tests {
                 "requestedAt": "2026-05-14 10:05",
                 "status": "pending"
             }]))
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl AffiliateCredentialClient for InMemoryAffiliateCredentialClient {
+        async fn create_affiliate_credential(
+            &self,
+            request: AffiliateCredentialCreateRequest,
+            _context: AdminProxyContext,
+        ) -> Result<(), ApiError> {
+            self.creates
+                .lock()
+                .unwrap_or_else(|error| panic!("credential create lock should not poison: {error}"))
+                .push(request);
+            Ok(())
+        }
+
+        async fn verify_active_manager(
+            &self,
+            manager_id: &str,
+            _context: AdminProxyContext,
+        ) -> Result<(), ApiError> {
+            let active = self
+                .active_managers
+                .lock()
+                .unwrap_or_else(|error| panic!("active manager lock should not poison: {error}"))
+                .iter()
+                .any(|id| id == manager_id);
+            if active {
+                Ok(())
+            } else {
+                Err(ApiError::new(
+                    StatusCode::FORBIDDEN,
+                    "invalid_managing_manager",
+                    "managingManagerId must reference an active manager account",
+                ))
+            }
         }
     }
 

@@ -93,10 +93,14 @@ export interface AffiliateDetail extends AffiliateSummary {
 export interface AffiliateMutationPayload {
   id?: string;
   userId?: string;
+  affiliateId?: string;
   email?: string;
+  phone?: string;
+  password?: string;
   displayName?: string;
   status?: AffiliateStatus;
   ownerSponsorId?: string;
+  managingManagerId?: string;
   commissionRateBps?: number;
   tier?: 1 | 2 | 3;
   creditRating?: AffiliateCreditRating;
