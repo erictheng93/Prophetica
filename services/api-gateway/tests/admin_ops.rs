@@ -1264,6 +1264,75 @@ async fn compensation_accepts_proposal_and_records_proposer_kind() {
 }
 
 #[tokio::test]
+async fn compensation_lists_and_details_proposals() {
+    let store =
+        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]);
+    let app = internal_admin_router(store);
+
+    let created = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "manager-1",
+            "manager",
+            &json!({
+                "ticket_id": "TICKET-LIST-1",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("create compensation should be handled");
+    assert_eq!(created.status(), StatusCode::OK);
+    let created_body = response_json(created).await;
+    let proposal_id = created_body["proposal"]["proposal_id"]
+        .as_str()
+        .expect("proposal id")
+        .to_owned();
+
+    let list = app
+        .clone()
+        .oneshot(empty_get(
+            "/api/internal/admin/compensation-proposals?status=proposed&proposer_kind=manager&page=1&page_size=10",
+        ))
+        .await
+        .expect("list compensation should be handled");
+    assert_eq!(list.status(), StatusCode::OK);
+    let list_body = response_json(list).await;
+    assert_eq!(list_body["total"], json!(1));
+    assert_eq!(list_body["proposals"][0]["proposal_id"], proposal_id);
+    assert_eq!(list_body["proposals"][0]["status"], json!("proposed"));
+    assert_eq!(list_body["proposals"][0]["proposer_kind"], json!("manager"));
+
+    let all_active = app
+        .clone()
+        .oneshot(empty_get(
+            "/api/internal/admin/compensation-proposals?status=all_active",
+        ))
+        .await
+        .expect("all active list compensation should be handled");
+    assert_eq!(all_active.status(), StatusCode::OK);
+    assert_eq!(response_json(all_active).await["total"], json!(1));
+
+    let detail = app
+        .oneshot(empty_get(&format!(
+            "/api/internal/admin/compensation-proposals/{proposal_id}"
+        )))
+        .await
+        .expect("detail compensation should be handled");
+    assert_eq!(detail.status(), StatusCode::OK);
+    let detail_body = response_json(detail).await;
+    assert_eq!(detail_body["proposal"]["proposal_id"], proposal_id);
+    assert_eq!(detail_body["approvals"], json!([]));
+    assert_eq!(detail_body["posting_attempt_count"], json!(0));
+    assert_eq!(detail_body["last_posting_error"], Value::Null);
+    assert_eq!(
+        detail_body["recent_audit_events"][0]["action"],
+        json!("compensation_proposal_created")
+    );
+}
+
+#[tokio::test]
 async fn compensation_affiliate_guard_enforces_cap_scope_and_fail_closed() {
     let scoped_store = InMemoryAdminOpsStore::default()
         .with_compensation_known_members(vec!["user_123".to_owned(), "user_out".to_owned()])

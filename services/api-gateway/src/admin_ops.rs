@@ -17,7 +17,7 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, QueryBuilder, Row};
 
 #[async_trait]
 pub trait AdminOpsStore {
@@ -82,6 +82,16 @@ pub trait AdminOpsStore {
         request: MemberActionReviewRequest,
         context: AdminOpsRequestContext,
     ) -> Result<MemberActionRecord, AdminOpsStoreError>;
+
+    async fn list_compensation_proposals(
+        &self,
+        query: CompensationProposalListQuery,
+    ) -> Result<CompensationProposalListResponse, AdminOpsStoreError>;
+
+    async fn compensation_proposal_detail(
+        &self,
+        proposal_id: &str,
+    ) -> Result<CompensationProposalDetailResponse, AdminOpsStoreError>;
 
     /// Persists a compensation proposal without posting a ledger transaction.
     ///
@@ -250,6 +260,14 @@ pub struct CompensationProposalRequest {
     pub amount_minor_units: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct CompensationProposalListQuery {
+    pub status: Option<String>,
+    pub proposer_kind: Option<String>,
+    pub page: Option<usize>,
+    pub page_size: Option<usize>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct MemberActionRequest {
     pub target_user_id: String,
@@ -330,6 +348,24 @@ pub struct CompensationProposalResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompensationProposalListResponse {
+    pub proposals: Vec<CompensationProposal>,
+    pub page: usize,
+    pub page_size: usize,
+    pub total: usize,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompensationProposalDetailResponse {
+    pub proposal: CompensationProposal,
+    pub approvals: Vec<CompensationApprovalRequest>,
+    pub recent_audit_events: Vec<CompensationAuditEventSummary>,
+    pub posting_attempt_count: i32,
+    pub last_posting_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CompensationProposal {
     pub proposal_id: String,
     pub user_id: String,
@@ -337,14 +373,24 @@ pub struct CompensationProposal {
     pub reason: String,
     pub amount_minor_units: i64,
     pub status: CompensationProposalStatus,
+    pub proposer_kind: String,
     pub approvals: Vec<CompensationApprovalRequest>,
     pub ledger_transaction_posted: bool,
+    pub posting_attempt_count: i32,
+    pub last_posting_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CompensationProposalStatus {
     Proposed,
+    Approved,
+    Posting,
+    Posted,
+    PostingFailed,
+    PostingUnknown,
+    Rejected,
+    Cancelled,
     PendingApproval,
     ApprovedReadyForLedger,
 }
@@ -358,6 +404,16 @@ pub struct CompensationAuditMetadata {
     pub approval_roles: Vec<String>,
     pub proposer_kind: String,
     pub ledger_transaction_posted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompensationAuditEventSummary {
+    pub action: String,
+    pub actor_user_id: String,
+    pub actor_role: String,
+    pub correlation_id: String,
+    pub metadata: Value,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -456,6 +512,14 @@ where
         .route(
             "/api/internal/admin/members/actions/:action_id/reviews",
             post(review_member_action::<S>),
+        )
+        .route(
+            "/api/internal/admin/compensation-proposals",
+            get(list_compensation_proposals::<S>),
+        )
+        .route(
+            "/api/internal/admin/compensation-proposals/:proposal_id",
+            get(get_compensation_proposal_detail::<S>),
         )
         .route(
             "/api/internal/admin/members/:user_id/compensation-proposals",
@@ -635,6 +699,45 @@ where
         .await
         .map(Json)
         .map_err(|error| review_error(&error))
+}
+
+async fn list_compensation_proposals<S>(
+    State(store): State<S>,
+    Query(query): Query<CompensationProposalListQuery>,
+) -> Result<Json<CompensationProposalListResponse>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    store
+        .list_compensation_proposals(query)
+        .await
+        .map(Json)
+        .map_err(|_| internal_error())
+}
+
+async fn get_compensation_proposal_detail<S>(
+    State(store): State<S>,
+    Path(proposal_id): Path<String>,
+) -> Result<Json<CompensationProposalDetailResponse>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    store
+        .compensation_proposal_detail(&proposal_id)
+        .await
+        .map(Json)
+        .map_err(|error| {
+            if error.message() == "compensation proposal not found" {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse {
+                        error: "ERROR_CODE_COMPENSATION_PROPOSAL_NOT_FOUND",
+                    }),
+                )
+            } else {
+                internal_error()
+            }
+        })
 }
 
 async fn create_compensation_proposal<S>(
@@ -1108,6 +1211,45 @@ fn compensation_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResp
         );
     }
     internal_error()
+}
+
+fn push_compensation_filters(
+    builder: &mut QueryBuilder<'_, sqlx::Postgres>,
+    query: &CompensationProposalListQuery,
+) {
+    let has_status = query
+        .status
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|status| !status.is_empty());
+    let has_proposer_kind = query
+        .proposer_kind
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|proposer_kind| !proposer_kind.is_empty());
+    if has_status || has_proposer_kind {
+        builder.push(" WHERE ");
+    }
+    let mut separated = builder.separated(" AND ");
+    if let Some(status) = query.status.as_deref().map(str::trim).filter(|status| !status.is_empty()) {
+        if status == "all_active" {
+            separated.push(
+                "status IN ('proposed', 'approved', 'posting', 'posting_failed', 'posting_unknown')",
+            );
+        } else {
+            separated.push("status = ");
+            separated.push_bind(status.to_owned());
+        }
+    }
+    if let Some(proposer_kind) = query
+        .proposer_kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|proposer_kind| !proposer_kind.is_empty())
+    {
+        separated.push("proposer_kind = ");
+        separated.push_bind(proposer_kind.to_owned());
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -2023,6 +2165,22 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         Ok(record)
     }
 
+    async fn list_compensation_proposals(
+        &self,
+        query: CompensationProposalListQuery,
+    ) -> Result<CompensationProposalListResponse, AdminOpsStoreError> {
+        self.compensation.list_compensation_proposals(query).await
+    }
+
+    async fn compensation_proposal_detail(
+        &self,
+        proposal_id: &str,
+    ) -> Result<CompensationProposalDetailResponse, AdminOpsStoreError> {
+        self.compensation
+            .compensation_proposal_detail(proposal_id)
+            .await
+    }
+
     async fn create_compensation_proposal(
         &self,
         user_id: &str,
@@ -2071,6 +2229,85 @@ impl PostgresCompensationProposalStore {
         Self { pool }
     }
 
+    async fn list_compensation_proposals(
+        &self,
+        query: CompensationProposalListQuery,
+    ) -> Result<CompensationProposalListResponse, AdminOpsStoreError> {
+        let page = query.page.unwrap_or(1).max(1);
+        let page_size = query.page_size.unwrap_or(25).clamp(1, 100);
+        let offset = page.saturating_sub(1) * page_size;
+
+        let mut count_builder =
+            QueryBuilder::new("SELECT COUNT(*)::BIGINT AS total FROM admin_compensation_proposals");
+        push_compensation_filters(&mut count_builder, &query);
+        let total_row = count_builder
+            .build()
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let total_i64: i64 = total_row
+            .try_get("total")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let total =
+            usize::try_from(total_i64).map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+
+        let mut list_builder = QueryBuilder::new(
+            r"
+            SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
+                   status, proposer_kind, ledger_transaction_posted, posting_attempt_count,
+                   last_posting_error, correlation_id
+            FROM admin_compensation_proposals
+            ",
+        );
+        push_compensation_filters(&mut list_builder, &query);
+        list_builder.push(" ORDER BY created_at DESC LIMIT ");
+        list_builder.push_bind(
+            i64::try_from(page_size).map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        );
+        list_builder.push(" OFFSET ");
+        list_builder.push_bind(
+            i64::try_from(offset).map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+        );
+        let rows = list_builder
+            .build()
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let mut proposals = Vec::with_capacity(rows.len());
+        for row in rows {
+            proposals.push(compensation_response_from_row(&self.pool, &row).await?.proposal);
+        }
+
+        Ok(CompensationProposalListResponse {
+            proposals,
+            page,
+            page_size,
+            total,
+            source: "api-gateway:compensation".to_owned(),
+        })
+    }
+
+    async fn compensation_proposal_detail(
+        &self,
+        proposal_id: &str,
+    ) -> Result<CompensationProposalDetailResponse, AdminOpsStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
+                   status, proposer_kind, ledger_transaction_posted, posting_attempt_count,
+                   last_posting_error, correlation_id
+            FROM admin_compensation_proposals
+            WHERE proposal_id = $1
+            ",
+        )
+        .bind(proposal_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+        .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
+        compensation_detail_from_row(&self.pool, &row).await
+    }
+
     async fn find_compensation_by_idempotency_key(
         &self,
         idempotency_key: &str,
@@ -2079,7 +2316,8 @@ impl PostgresCompensationProposalStore {
         let Some(row) = sqlx::query(
             r"
             SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
-                   status, ledger_transaction_posted, correlation_id, request_hash
+                   status, proposer_kind, ledger_transaction_posted, posting_attempt_count,
+                   last_posting_error, correlation_id, request_hash
             FROM admin_compensation_proposals
             WHERE idempotency_key = $1
             ",
@@ -2515,8 +2753,11 @@ fn compensation_proposal_response(
             reason: parts.reason,
             amount_minor_units: parts.amount_minor_units,
             status: CompensationProposalStatus::Proposed,
+            proposer_kind: parts.proposer_kind.clone(),
             approvals: parts.approvals,
             ledger_transaction_posted: false,
+            posting_attempt_count: 0,
+            last_posting_error: None,
         },
         audit: CompensationAuditMetadata {
             action: "compensation_proposal_created".to_owned(),
@@ -2586,9 +2827,18 @@ async fn compensation_response_from_row(
                 .try_get("amount_minor_units")
                 .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
             status: compensation_status_from_str(&status),
+            proposer_kind: row
+                .try_get("proposer_kind")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
             approvals,
             ledger_transaction_posted: row
                 .try_get("ledger_transaction_posted")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            posting_attempt_count: row
+                .try_get("posting_attempt_count")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            last_posting_error: row
+                .try_get("last_posting_error")
                 .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
         },
         audit: CompensationAuditMetadata {
@@ -2613,11 +2863,106 @@ async fn compensation_response_from_row(
     })
 }
 
+async fn compensation_detail_from_row(
+    pool: &PgPool,
+    row: &sqlx::postgres::PgRow,
+) -> Result<CompensationProposalDetailResponse, AdminOpsStoreError> {
+    let response = compensation_response_from_row(pool, row).await?;
+    let row_id: i64 = row
+        .try_get("id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let audit_rows = sqlx::query(
+        r"
+        SELECT action, actor_user_id, actor_role, correlation_id, metadata, created_at::TEXT AS created_at
+        FROM admin_compensation_audit_events
+        WHERE proposal_id = $1
+        ORDER BY created_at DESC, id DESC
+        LIMIT 10
+        ",
+    )
+    .bind(row_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let recent_audit_events = audit_rows
+        .iter()
+        .map(|row| {
+            Ok(CompensationAuditEventSummary {
+                action: row
+                    .try_get("action")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+                actor_user_id: row
+                    .try_get("actor_user_id")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+                actor_role: row
+                    .try_get("actor_role")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+                correlation_id: row
+                    .try_get("correlation_id")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+                metadata: row
+                    .try_get("metadata")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+                created_at: row
+                    .try_get("created_at")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            })
+        })
+        .collect::<Result<Vec<_>, AdminOpsStoreError>>()?;
+    Ok(CompensationProposalDetailResponse {
+        approvals: response.proposal.approvals.clone(),
+        posting_attempt_count: response.proposal.posting_attempt_count,
+        last_posting_error: response.proposal.last_posting_error.clone(),
+        proposal: response.proposal,
+        recent_audit_events,
+    })
+}
+
 fn compensation_status_from_str(status: &str) -> CompensationProposalStatus {
     match status {
         "proposed" => CompensationProposalStatus::Proposed,
+        "approved" => CompensationProposalStatus::Approved,
+        "posting" => CompensationProposalStatus::Posting,
+        "posted" => CompensationProposalStatus::Posted,
+        "posting_failed" => CompensationProposalStatus::PostingFailed,
+        "posting_unknown" => CompensationProposalStatus::PostingUnknown,
+        "rejected" => CompensationProposalStatus::Rejected,
+        "cancelled" => CompensationProposalStatus::Cancelled,
         "pending_approval" => CompensationProposalStatus::PendingApproval,
         _ => CompensationProposalStatus::ApprovedReadyForLedger,
+    }
+}
+
+fn compensation_status_matches(
+    status: CompensationProposalStatus,
+    filter: Option<&str>,
+) -> bool {
+    match filter.map(str::trim).filter(|filter| !filter.is_empty()) {
+        None => true,
+        Some("all_active") => matches!(
+            status,
+            CompensationProposalStatus::Proposed
+                | CompensationProposalStatus::Approved
+                | CompensationProposalStatus::Posting
+                | CompensationProposalStatus::PostingFailed
+                | CompensationProposalStatus::PostingUnknown
+        ),
+        Some(filter) => compensation_status_name(status) == filter,
+    }
+}
+
+fn compensation_status_name(status: CompensationProposalStatus) -> &'static str {
+    match status {
+        CompensationProposalStatus::Proposed => "proposed",
+        CompensationProposalStatus::Approved => "approved",
+        CompensationProposalStatus::Posting => "posting",
+        CompensationProposalStatus::Posted => "posted",
+        CompensationProposalStatus::PostingFailed => "posting_failed",
+        CompensationProposalStatus::PostingUnknown => "posting_unknown",
+        CompensationProposalStatus::Rejected => "rejected",
+        CompensationProposalStatus::Cancelled => "cancelled",
+        CompensationProposalStatus::PendingApproval => "pending_approval",
+        CompensationProposalStatus::ApprovedReadyForLedger => "approved_ready_for_ledger",
     }
 }
 
@@ -2858,6 +3203,24 @@ impl AdminOpsStore for HttpAdminOpsStore {
         ))
     }
 
+    async fn list_compensation_proposals(
+        &self,
+        _query: CompensationProposalListQuery,
+    ) -> Result<CompensationProposalListResponse, AdminOpsStoreError> {
+        Err(AdminOpsStoreError::new(
+            "compensation proposal production source is not connected",
+        ))
+    }
+
+    async fn compensation_proposal_detail(
+        &self,
+        _proposal_id: &str,
+    ) -> Result<CompensationProposalDetailResponse, AdminOpsStoreError> {
+        Err(AdminOpsStoreError::new(
+            "compensation proposal production source is not connected",
+        ))
+    }
+
     async fn create_compensation_proposal(
         &self,
         _user_id: &str,
@@ -2911,6 +3274,7 @@ pub struct InMemoryAdminOpsStore {
 struct AdminOpsState {
     next_proposal_number: u64,
     next_action_number: u64,
+    compensation_proposals: Vec<CompensationProposal>,
     audit_records: Vec<CompensationAuditMetadata>,
     member_actions: Vec<MemberActionRecord>,
 }
@@ -3140,6 +3504,82 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         })
     }
 
+    async fn list_compensation_proposals(
+        &self,
+        query: CompensationProposalListQuery,
+    ) -> Result<CompensationProposalListResponse, AdminOpsStoreError> {
+        let page = query.page.unwrap_or(1).max(1);
+        let page_size = query.page_size.unwrap_or(25).clamp(1, 100);
+        let state = self
+            .state
+            .lock()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let mut proposals = state
+            .compensation_proposals
+            .iter()
+            .filter(|proposal| compensation_status_matches(proposal.status, query.status.as_deref()))
+            .filter(|proposal| {
+                query
+                    .proposer_kind
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|proposer_kind| !proposer_kind.is_empty())
+                    .is_none_or(|proposer_kind| proposal.proposer_kind == proposer_kind)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        proposals.sort_by(|left, right| right.proposal_id.cmp(&left.proposal_id));
+        let total = proposals.len();
+        let start = page.saturating_sub(1) * page_size;
+        let proposals = proposals.into_iter().skip(start).take(page_size).collect();
+        Ok(CompensationProposalListResponse {
+            proposals,
+            page,
+            page_size,
+            total,
+            source: "api-gateway:compensation".to_owned(),
+        })
+    }
+
+    async fn compensation_proposal_detail(
+        &self,
+        proposal_id: &str,
+    ) -> Result<CompensationProposalDetailResponse, AdminOpsStoreError> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let proposal = state
+            .compensation_proposals
+            .iter()
+            .find(|proposal| proposal.proposal_id == proposal_id)
+            .cloned()
+            .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
+        let recent_audit_events = state
+            .audit_records
+            .iter()
+            .filter(|audit| audit.subject_user_id == proposal.user_id && audit.ticket_id == proposal.ticket_id)
+            .map(|audit| CompensationAuditEventSummary {
+                action: audit.action.clone(),
+                actor_user_id: "admin-ops-test".to_owned(),
+                actor_role: audit.proposer_kind.clone(),
+                correlation_id: audit.correlation_id.clone(),
+                metadata: json!({
+                    "proposer_kind": audit.proposer_kind,
+                    "ticket_id": audit.ticket_id,
+                }),
+                created_at: "test-now".to_owned(),
+            })
+            .collect();
+        Ok(CompensationProposalDetailResponse {
+            approvals: proposal.approvals.clone(),
+            posting_attempt_count: proposal.posting_attempt_count,
+            last_posting_error: proposal.last_posting_error.clone(),
+            proposal,
+            recent_audit_events,
+        })
+    }
+
     async fn create_compensation_proposal(
         &self,
         user_id: &str,
@@ -3212,17 +3652,22 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         };
         state.audit_records.push(audit.clone());
 
-        Ok(CompensationProposalResponse {
-            proposal: CompensationProposal {
+        let proposal = CompensationProposal {
                 proposal_id: format!("cmp-{number:06}", number = state.next_proposal_number),
                 user_id: user_id.to_owned(),
                 ticket_id,
                 reason,
                 amount_minor_units,
                 status: CompensationProposalStatus::Proposed,
+                proposer_kind,
                 approvals: Vec::new(),
                 ledger_transaction_posted: false,
-            },
+                posting_attempt_count: 0,
+                last_posting_error: None,
+            };
+        state.compensation_proposals.push(proposal.clone());
+        Ok(CompensationProposalResponse {
+            proposal,
             audit,
         })
     }
