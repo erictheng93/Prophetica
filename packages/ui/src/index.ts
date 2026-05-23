@@ -3,6 +3,7 @@ export {
   ProphButton,
   ProphLinkButton,
   type ProphButtonProps,
+  type ProphButtonSize,
   type ProphButtonVariant,
   type ProphLinkButtonProps,
 } from "./proph-button";
@@ -11,11 +12,6 @@ export {
   type ProphTileProps,
   type ProphTileSurface,
 } from "./proph-tile";
-export {
-  ProphGlobalNav,
-  type ProphGlobalNavProps,
-  type ProphGlobalNavLink,
-} from "./proph-global-nav";
 export { ProphSubNav, type ProphSubNavProps } from "./proph-sub-nav";
 export {
   ProphFooter,
