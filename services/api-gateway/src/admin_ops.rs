@@ -93,6 +93,13 @@ pub trait AdminOpsStore {
         proposal_id: &str,
     ) -> Result<CompensationProposalDetailResponse, AdminOpsStoreError>;
 
+    async fn review_compensation_proposal(
+        &self,
+        proposal_id: &str,
+        request: CompensationReviewRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<CompensationProposalReviewResponse, AdminOpsStoreError>;
+
     /// Persists a compensation proposal without posting a ledger transaction.
     ///
     /// # Errors
@@ -268,6 +275,12 @@ pub struct CompensationProposalListQuery {
     pub page_size: Option<usize>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct CompensationReviewRequest {
+    pub decision: String,
+    pub note: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct MemberActionRequest {
     pub target_user_id: String,
@@ -342,6 +355,14 @@ pub struct CompensationApprovalRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompensationReviewSummary {
+    pub reviewer_user_id: String,
+    pub reviewer_role: String,
+    pub decision: String,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CompensationProposalResponse {
     pub proposal: CompensationProposal,
     pub audit: CompensationAuditMetadata,
@@ -363,6 +384,13 @@ pub struct CompensationProposalDetailResponse {
     pub recent_audit_events: Vec<CompensationAuditEventSummary>,
     pub posting_attempt_count: i32,
     pub last_posting_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompensationProposalReviewResponse {
+    pub proposal: CompensationProposal,
+    pub review: CompensationReviewSummary,
+    pub replayed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -520,6 +548,10 @@ where
         .route(
             "/api/internal/admin/compensation-proposals/:proposal_id",
             get(get_compensation_proposal_detail::<S>),
+        )
+        .route(
+            "/api/internal/admin/compensation-proposals/:proposal_id/review",
+            post(review_compensation_proposal::<S>),
         )
         .route(
             "/api/internal/admin/members/:user_id/compensation-proposals",
@@ -738,6 +770,24 @@ where
                 internal_error()
             }
         })
+}
+
+async fn review_compensation_proposal<S>(
+    State(store): State<S>,
+    headers: HeaderMap,
+    Path(proposal_id): Path<String>,
+    Json(request): Json<CompensationReviewRequest>,
+) -> Result<Json<CompensationProposalReviewResponse>, (StatusCode, Json<ErrorResponse>)>
+where
+    S: AdminOpsStore,
+{
+    validate_compensation_review(&request)?;
+    let context = request_context(&headers)?;
+    store
+        .review_compensation_proposal(&proposal_id, request, context)
+        .await
+        .map(Json)
+        .map_err(|error| compensation_review_error(&error))
 }
 
 async fn create_compensation_proposal<S>(
@@ -1041,6 +1091,20 @@ fn validate_compensation_proposal(
     Ok(())
 }
 
+fn validate_compensation_review(
+    request: &CompensationReviewRequest,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if !matches!(request.decision.as_str(), "approved" | "rejected") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_INVALID_COMPENSATION_REVIEW",
+            }),
+        ));
+    }
+    Ok(())
+}
+
 fn invalid_proposal() -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
@@ -1211,6 +1275,29 @@ fn compensation_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResp
         );
     }
     internal_error()
+}
+
+fn compensation_review_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>) {
+    let (status, code) = match error.message() {
+        "compensation review forbidden" => (
+            StatusCode::FORBIDDEN,
+            "ERROR_CODE_COMPENSATION_REVIEW_FORBIDDEN",
+        ),
+        "compensation self review" => (
+            StatusCode::FORBIDDEN,
+            "ERROR_CODE_COMPENSATION_SELF_REVIEW",
+        ),
+        "compensation proposal not pending" => (
+            StatusCode::CONFLICT,
+            "ERROR_CODE_COMPENSATION_NOT_PENDING",
+        ),
+        "compensation proposal not found" => (
+            StatusCode::NOT_FOUND,
+            "ERROR_CODE_COMPENSATION_PROPOSAL_NOT_FOUND",
+        ),
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, "ERROR_CODE_INTERNAL"),
+    };
+    (status, Json(ErrorResponse { error: code }))
 }
 
 fn push_compensation_filters(
@@ -2181,6 +2268,17 @@ impl AdminOpsStore for ProductionAdminOpsStore {
             .await
     }
 
+    async fn review_compensation_proposal(
+        &self,
+        proposal_id: &str,
+        request: CompensationReviewRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<CompensationProposalReviewResponse, AdminOpsStoreError> {
+        self.compensation
+            .review_compensation_proposal(proposal_id, request, context)
+            .await
+    }
+
     async fn create_compensation_proposal(
         &self,
         user_id: &str,
@@ -2306,6 +2404,139 @@ impl PostgresCompensationProposalStore {
         .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
         .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
         compensation_detail_from_row(&self.pool, &row).await
+    }
+
+    async fn review_compensation_proposal(
+        &self,
+        proposal_id: &str,
+        request: CompensationReviewRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<CompensationProposalReviewResponse, AdminOpsStoreError> {
+        if !matches!(context.actor_role.as_str(), "manager" | "admin") {
+            return Err(AdminOpsStoreError::new("compensation review forbidden"));
+        }
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let row = sqlx::query(
+            r"
+            SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
+                   status, proposer_kind, ledger_transaction_posted, posting_attempt_count,
+                   last_posting_error, correlation_id, actor_user_id
+            FROM admin_compensation_proposals
+            WHERE proposal_id = $1
+            FOR UPDATE
+            ",
+        )
+        .bind(proposal_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+        .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
+        let row_id: i64 = row
+            .try_get("id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let proposer_user_id: String = row
+            .try_get("actor_user_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        if proposer_user_id == context.actor_user_id {
+            return Err(AdminOpsStoreError::new("compensation self review"));
+        }
+        let status: String = row
+            .try_get("status")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let existing_review = sqlx::query(
+            r"
+            SELECT decision, review_note
+            FROM admin_compensation_proposal_approvals
+            WHERE proposal_id = $1 AND approver_user_id = $2
+            ",
+        )
+        .bind(row_id)
+        .bind(&context.actor_user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        if status != "proposed" {
+            if let Some(review_row) = existing_review {
+                let decision = review_row
+                    .try_get("decision")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+                let note = review_row
+                    .try_get("review_note")
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+                tx.commit()
+                    .await
+                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+                let detail = self.compensation_proposal_detail(proposal_id).await?;
+                return Ok(CompensationProposalReviewResponse {
+                    proposal: detail.proposal,
+                    review: CompensationReviewSummary {
+                        reviewer_user_id: context.actor_user_id,
+                        reviewer_role: context.actor_role,
+                        decision,
+                        note,
+                    },
+                    replayed: true,
+                });
+            }
+            return Err(AdminOpsStoreError::new("compensation proposal not pending"));
+        }
+        if existing_review.is_some() {
+            return Err(AdminOpsStoreError::new("compensation proposal not pending"));
+        }
+
+        sqlx::query(
+            r"
+            INSERT INTO admin_compensation_proposal_approvals (
+                proposal_id, approver_user_id, role, decision, review_note
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            ",
+        )
+        .bind(row_id)
+        .bind(&context.actor_user_id)
+        .bind(&context.actor_role)
+        .bind(&request.decision)
+        .bind(request.note.as_deref())
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let next_status = if request.decision == "approved" {
+            "approved"
+        } else {
+            "rejected"
+        };
+        sqlx::query(
+            r"
+            UPDATE admin_compensation_proposals
+            SET status = $2,
+                approved_at = CASE WHEN $2 = 'approved' THEN now() ELSE approved_at END
+            WHERE id = $1
+            ",
+        )
+        .bind(row_id)
+        .bind(next_status)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        insert_compensation_review_audit_event(&mut tx, row_id, &row, &request, &context).await?;
+        tx.commit()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let detail = self.compensation_proposal_detail(proposal_id).await?;
+        Ok(CompensationProposalReviewResponse {
+            proposal: detail.proposal,
+            review: CompensationReviewSummary {
+                reviewer_user_id: context.actor_user_id,
+                reviewer_role: context.actor_role,
+                decision: request.decision,
+                note: request.note,
+            },
+            replayed: false,
+        })
     }
 
     async fn find_compensation_by_idempotency_key(
@@ -2724,6 +2955,57 @@ async fn insert_compensation_audit_event(
     .bind(ticket_id)
     .bind(correlation_id)
     .bind(metadata)
+    .execute(&mut **tx)
+    .await
+    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    Ok(())
+}
+
+async fn insert_compensation_review_audit_event(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    proposal_row_id: i64,
+    proposal_row: &sqlx::postgres::PgRow,
+    request: &CompensationReviewRequest,
+    context: &AdminOpsRequestContext,
+) -> Result<(), AdminOpsStoreError> {
+    let action = if request.decision == "approved" {
+        "compensation_proposal_approved"
+    } else {
+        "compensation_proposal_rejected"
+    };
+    let subject_user_id: String = proposal_row
+        .try_get("subject_user_id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let ticket_id: String = proposal_row
+        .try_get("ticket_id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let correlation_id: String = proposal_row
+        .try_get("correlation_id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let proposer_kind: String = proposal_row
+        .try_get("proposer_kind")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    sqlx::query(
+        r"
+        INSERT INTO admin_compensation_audit_events (
+            proposal_id, action, actor_user_id, actor_role, subject_user_id,
+            ticket_id, correlation_id, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ",
+    )
+    .bind(proposal_row_id)
+    .bind(action)
+    .bind(&context.actor_user_id)
+    .bind(&context.actor_role)
+    .bind(&subject_user_id)
+    .bind(&ticket_id)
+    .bind(&correlation_id)
+    .bind(json!({
+        "proposer_kind": proposer_kind,
+        "decision": request.decision,
+        "note": request.note,
+    }))
     .execute(&mut **tx)
     .await
     .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
@@ -3221,6 +3503,17 @@ impl AdminOpsStore for HttpAdminOpsStore {
         ))
     }
 
+    async fn review_compensation_proposal(
+        &self,
+        _proposal_id: &str,
+        _request: CompensationReviewRequest,
+        _context: AdminOpsRequestContext,
+    ) -> Result<CompensationProposalReviewResponse, AdminOpsStoreError> {
+        Err(AdminOpsStoreError::new(
+            "compensation proposal production source is not connected",
+        ))
+    }
+
     async fn create_compensation_proposal(
         &self,
         _user_id: &str,
@@ -3275,6 +3568,7 @@ struct AdminOpsState {
     next_proposal_number: u64,
     next_action_number: u64,
     compensation_proposals: Vec<CompensationProposal>,
+    compensation_proposal_actors: Vec<(String, String)>,
     audit_records: Vec<CompensationAuditMetadata>,
     member_actions: Vec<MemberActionRecord>,
 }
@@ -3580,6 +3874,88 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         })
     }
 
+    async fn review_compensation_proposal(
+        &self,
+        proposal_id: &str,
+        request: CompensationReviewRequest,
+        context: AdminOpsRequestContext,
+    ) -> Result<CompensationProposalReviewResponse, AdminOpsStoreError> {
+        if !matches!(context.actor_role.as_str(), "manager" | "admin") {
+            return Err(AdminOpsStoreError::new("compensation review forbidden"));
+        }
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let proposer_user_id = state
+            .compensation_proposal_actors
+            .iter()
+            .find_map(|(stored_proposal_id, actor_user_id)| {
+                (stored_proposal_id == proposal_id).then(|| actor_user_id.clone())
+            })
+            .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
+        if proposer_user_id == context.actor_user_id {
+            return Err(AdminOpsStoreError::new("compensation self review"));
+        }
+        let proposal = state
+            .compensation_proposals
+            .iter_mut()
+            .find(|proposal| proposal.proposal_id == proposal_id)
+            .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
+        if proposal.status != CompensationProposalStatus::Proposed {
+            if proposal
+                .approvals
+                .iter()
+                .any(|approval| approval.approver_user_id == context.actor_user_id)
+            {
+                return Ok(CompensationProposalReviewResponse {
+                    proposal: proposal.clone(),
+                    review: CompensationReviewSummary {
+                        reviewer_user_id: context.actor_user_id,
+                        reviewer_role: context.actor_role,
+                        decision: request.decision,
+                        note: request.note,
+                    },
+                    replayed: true,
+                });
+            }
+            return Err(AdminOpsStoreError::new("compensation proposal not pending"));
+        }
+        proposal.status = if request.decision == "approved" {
+            CompensationProposalStatus::Approved
+        } else {
+            CompensationProposalStatus::Rejected
+        };
+        proposal.approvals.push(CompensationApprovalRequest {
+            approver_user_id: context.actor_user_id.clone(),
+            role: context.actor_role.clone(),
+        });
+        let proposal = proposal.clone();
+        state.audit_records.push(CompensationAuditMetadata {
+            action: if request.decision == "approved" {
+                "compensation_proposal_approved".to_owned()
+            } else {
+                "compensation_proposal_rejected".to_owned()
+            },
+            subject_user_id: proposal.user_id.clone(),
+            ticket_id: proposal.ticket_id.clone(),
+            correlation_id: format!("{}:review", proposal.proposal_id),
+            approval_roles: vec![context.actor_role.clone()],
+            proposer_kind: proposal.proposer_kind.clone(),
+            ledger_transaction_posted: false,
+        });
+        Ok(CompensationProposalReviewResponse {
+            proposal,
+            review: CompensationReviewSummary {
+                reviewer_user_id: context.actor_user_id,
+                reviewer_role: context.actor_role,
+                decision: request.decision,
+                note: request.note,
+            },
+            replayed: false,
+        })
+    }
+
     async fn create_compensation_proposal(
         &self,
         user_id: &str,
@@ -3665,6 +4041,9 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
                 posting_attempt_count: 0,
                 last_posting_error: None,
             };
+        state
+            .compensation_proposal_actors
+            .push((proposal.proposal_id.clone(), context.actor_user_id.clone()));
         state.compensation_proposals.push(proposal.clone());
         Ok(CompensationProposalResponse {
             proposal,

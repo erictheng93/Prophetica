@@ -1333,6 +1333,174 @@ async fn compensation_lists_and_details_proposals() {
 }
 
 #[tokio::test]
+async fn compensation_review_approves_rejects_and_replays() {
+    let store =
+        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]);
+    let app = internal_admin_router(store.clone());
+
+    let created = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "manager-1",
+            "manager",
+            &json!({
+                "ticket_id": "TICKET-REVIEW-1",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("create compensation should be handled");
+    let proposal_id = response_json(created).await["proposal"]["proposal_id"]
+        .as_str()
+        .expect("proposal id")
+        .to_owned();
+
+    let approved = app
+        .clone()
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{proposal_id}/review"),
+            "admin-1",
+            "admin",
+            &json!({
+                "decision": "approved",
+                "note": "approved after support review"
+            }),
+        ))
+        .await
+        .expect("approval should be handled");
+    assert_eq!(approved.status(), StatusCode::OK);
+    let approved_body = response_json(approved).await;
+    assert_eq!(approved_body["proposal"]["status"], json!("approved"));
+    assert_eq!(approved_body["review"]["decision"], json!("approved"));
+    assert_eq!(approved_body["replayed"], json!(false));
+
+    let replayed = app
+        .clone()
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{proposal_id}/review"),
+            "admin-1",
+            "admin",
+            &json!({
+                "decision": "approved",
+                "note": "approved after support review"
+            }),
+        ))
+        .await
+        .expect("approval replay should be handled");
+    assert_eq!(replayed.status(), StatusCode::OK);
+    assert_eq!(response_json(replayed).await["replayed"], json!(true));
+
+    let rejected_create = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "manager-2",
+            "manager",
+            &json!({
+                "ticket_id": "TICKET-REVIEW-2",
+                "reason": "duplicate credit request",
+                "amount_minor_units": 3000
+            }),
+        ))
+        .await
+        .expect("create compensation should be handled");
+    let rejected_proposal_id = response_json(rejected_create).await["proposal"]["proposal_id"]
+        .as_str()
+        .expect("proposal id")
+        .to_owned();
+    let rejected = app
+        .clone()
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{rejected_proposal_id}/review"),
+            "admin-1",
+            "admin",
+            &json!({
+                "decision": "rejected",
+                "note": "duplicate"
+            }),
+        ))
+        .await
+        .expect("rejection should be handled");
+    assert_eq!(rejected.status(), StatusCode::OK);
+    assert_eq!(response_json(rejected).await["proposal"]["status"], json!("rejected"));
+
+    let records = store.audit_records();
+    assert!(
+        records
+            .iter()
+            .any(|record| record.action == "compensation_proposal_approved")
+    );
+    assert!(
+        records
+            .iter()
+            .any(|record| record.action == "compensation_proposal_rejected")
+    );
+}
+
+#[tokio::test]
+async fn compensation_review_blocks_self_review_and_non_review_role() {
+    let store =
+        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]);
+    let app = internal_admin_router(store);
+
+    let created = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "manager-1",
+            "manager",
+            &json!({
+                "ticket_id": "TICKET-SELF-REVIEW",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("create compensation should be handled");
+    let proposal_id = response_json(created).await["proposal"]["proposal_id"]
+        .as_str()
+        .expect("proposal id")
+        .to_owned();
+
+    let self_review = app
+        .clone()
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{proposal_id}/review"),
+            "manager-1",
+            "manager",
+            &json!({
+                "decision": "approved"
+            }),
+        ))
+        .await
+        .expect("self review should be handled");
+    assert_eq!(self_review.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        response_json(self_review).await["error"],
+        json!("ERROR_CODE_COMPENSATION_SELF_REVIEW")
+    );
+
+    let affiliate_review = app
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{proposal_id}/review"),
+            "AFF-001",
+            "affiliate",
+            &json!({
+                "decision": "approved"
+            }),
+        ))
+        .await
+        .expect("affiliate review should be handled");
+    assert_eq!(affiliate_review.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        response_json(affiliate_review).await["error"],
+        json!("ERROR_CODE_COMPENSATION_REVIEW_FORBIDDEN")
+    );
+}
+
+#[tokio::test]
 async fn compensation_affiliate_guard_enforces_cap_scope_and_fail_closed() {
     let scoped_store = InMemoryAdminOpsStore::default()
         .with_compensation_known_members(vec!["user_123".to_owned(), "user_out".to_owned()])
