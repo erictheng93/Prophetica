@@ -1,7 +1,7 @@
 use std::{
     env,
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use async_trait::async_trait;
@@ -404,8 +404,33 @@ pub struct CompensationProposal {
     pub proposer_kind: String,
     pub approvals: Vec<CompensationApprovalRequest>,
     pub ledger_transaction_posted: bool,
+    pub ledger_idempotency_key: Option<String>,
+    pub ledger_transaction_id: Option<i64>,
     pub posting_attempt_count: i32,
     pub last_posting_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CompensationPostingDraft {
+    proposal_id: String,
+    subject_user_id: String,
+    ticket_id: String,
+    amount_minor_units: i64,
+    correlation_id: String,
+    ledger_idempotency_key: String,
+    posting_attempt_count: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CompensationLedgerPostOutcome {
+    Posted { txn_id: i64 },
+    Failed { error_class: String, message: String },
+    Unknown { error_class: String, message: String },
+}
+
+#[derive(Debug, Deserialize)]
+struct LedgerPostResponse {
+    txn_id: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -777,7 +802,7 @@ async fn review_compensation_proposal<S>(
     headers: HeaderMap,
     Path(proposal_id): Path<String>,
     Json(request): Json<CompensationReviewRequest>,
-) -> Result<Json<CompensationProposalReviewResponse>, (StatusCode, Json<ErrorResponse>)>
+) -> Result<(StatusCode, Json<CompensationProposalReviewResponse>), (StatusCode, Json<ErrorResponse>)>
 where
     S: AdminOpsStore,
 {
@@ -786,7 +811,17 @@ where
     store
         .review_compensation_proposal(&proposal_id, request, context)
         .await
-        .map(Json)
+        .map(|response| {
+            let status = if matches!(
+                response.proposal.status,
+                CompensationProposalStatus::PostingFailed | CompensationProposalStatus::PostingUnknown
+            ) {
+                StatusCode::ACCEPTED
+            } else {
+                StatusCode::OK
+            };
+            (status, Json(response))
+        })
         .map_err(|error| compensation_review_error(&error))
 }
 
@@ -1544,6 +1579,97 @@ impl HttpAdminOpsStore {
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))
     }
 
+    async fn post_compensation_ledger_transaction(
+        &self,
+        draft: &CompensationPostingDraft,
+    ) -> CompensationLedgerPostOutcome {
+        let Some(wallet_ledger_url) = &self.wallet_ledger_url else {
+            return CompensationLedgerPostOutcome::Unknown {
+                error_class: "network".to_owned(),
+                message: "wallet ledger url is not configured".to_owned(),
+            };
+        };
+        let transaction_url = match wallet_ledger_url.join("/internal/ledger/transactions") {
+            Ok(url) => url,
+            Err(error) => {
+                return CompensationLedgerPostOutcome::Unknown {
+                    error_class: "network".to_owned(),
+                    message: error.to_string(),
+                };
+            }
+        };
+        let body = json!({
+            "txn_type": "cs_compensation",
+            "idempotency_key": draft.ledger_idempotency_key,
+            "correlation_id": draft.correlation_id,
+            "description": format!("customer support compensation {} for {}", draft.ticket_id, draft.subject_user_id),
+            "metadata": {
+                "proposal_id": draft.proposal_id,
+                "ticket_id": draft.ticket_id,
+                "subject_user_id": draft.subject_user_id,
+                "ledger_idempotency_key": draft.ledger_idempotency_key,
+                "posting_attempt_count": draft.posting_attempt_count,
+            },
+            "entries": [
+                {
+                    "account_code": "Expense.CustomerSupportCompensation",
+                    "direction": "debit",
+                    "amount_minor_units": draft.amount_minor_units
+                },
+                {
+                    "account_code": format!("Player.Wallet.{}", draft.subject_user_id),
+                    "direction": "credit",
+                    "amount_minor_units": draft.amount_minor_units
+                }
+            ]
+        });
+        let response = self
+            .client
+            .post(transaction_url)
+            .timeout(Duration::from_secs(5))
+            .header("Idempotency-Key", &draft.ledger_idempotency_key)
+            .json(&body)
+            .send()
+            .await;
+        let response = match response {
+            Ok(response) => response,
+            Err(error) => {
+                return CompensationLedgerPostOutcome::Unknown {
+                    error_class: if error.is_timeout() {
+                        "ledger_timeout".to_owned()
+                    } else {
+                        "network".to_owned()
+                    },
+                    message: error.to_string(),
+                };
+            }
+        };
+        let status = response.status();
+        if status.is_success() {
+            return match response.json::<LedgerPostResponse>().await {
+                Ok(posted) => CompensationLedgerPostOutcome::Posted {
+                    txn_id: posted.txn_id,
+                },
+                Err(error) => CompensationLedgerPostOutcome::Unknown {
+                    error_class: "network".to_owned(),
+                    message: error.to_string(),
+                },
+            };
+        }
+        let message = response.text().await.unwrap_or_default();
+        if status.is_client_error() {
+            CompensationLedgerPostOutcome::Failed {
+                error_class: "ledger_4xx".to_owned(),
+                message,
+            }
+        } else {
+            CompensationLedgerPostOutcome::Unknown {
+                error_class: "ledger_5xx".to_owned(),
+                message,
+            }
+        }
+    }
+
     async fn referral_subject_scope(
         &self,
         affiliate_id: &str,
@@ -2274,9 +2400,26 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         request: CompensationReviewRequest,
         context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalReviewResponse, AdminOpsStoreError> {
-        self.compensation
+        let response = self
+            .compensation
             .review_compensation_proposal(proposal_id, request, context)
-            .await
+            .await?;
+        if response.proposal.status != CompensationProposalStatus::Approved || response.replayed {
+            return Ok(response);
+        }
+        let draft = self.compensation.start_compensation_posting(proposal_id).await?;
+        let outcome = self
+            .upstream
+            .post_compensation_ledger_transaction(&draft)
+            .await;
+        let proposal = self
+            .compensation
+            .finish_compensation_posting(proposal_id, outcome)
+            .await?;
+        Ok(CompensationProposalReviewResponse {
+            proposal,
+            ..response
+        })
     }
 
     async fn create_compensation_proposal(
@@ -2352,8 +2495,8 @@ impl PostgresCompensationProposalStore {
         let mut list_builder = QueryBuilder::new(
             r"
             SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
-                   status, proposer_kind, ledger_transaction_posted, posting_attempt_count,
-                   last_posting_error, correlation_id
+                   status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
+                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id
             FROM admin_compensation_proposals
             ",
         );
@@ -2392,8 +2535,8 @@ impl PostgresCompensationProposalStore {
         let row = sqlx::query(
             r"
             SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
-                   status, proposer_kind, ledger_transaction_posted, posting_attempt_count,
-                   last_posting_error, correlation_id
+                   status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
+                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id
             FROM admin_compensation_proposals
             WHERE proposal_id = $1
             ",
@@ -2423,8 +2566,8 @@ impl PostgresCompensationProposalStore {
         let row = sqlx::query(
             r"
             SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
-                   status, proposer_kind, ledger_transaction_posted, posting_attempt_count,
-                   last_posting_error, correlation_id, actor_user_id
+                   status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
+                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id, actor_user_id
             FROM admin_compensation_proposals
             WHERE proposal_id = $1
             FOR UPDATE
@@ -2539,6 +2682,208 @@ impl PostgresCompensationProposalStore {
         })
     }
 
+    async fn start_compensation_posting(
+        &self,
+        proposal_id: &str,
+    ) -> Result<CompensationPostingDraft, AdminOpsStoreError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let ledger_idempotency_key = format!("cs-cmp-{proposal_id}");
+        let row = sqlx::query(
+            r"
+            UPDATE admin_compensation_proposals
+            SET status = 'posting',
+                ledger_idempotency_key = COALESCE(ledger_idempotency_key, $2),
+                posting_attempt_count = posting_attempt_count + 1,
+                last_posting_error = NULL
+            WHERE proposal_id = $1
+              AND status = 'approved'
+            RETURNING id, proposal_id, subject_user_id, ticket_id, amount_minor_units,
+                      correlation_id, ledger_idempotency_key, posting_attempt_count,
+                      proposer_kind, actor_user_id, actor_role
+            ",
+        )
+        .bind(proposal_id)
+        .bind(&ledger_idempotency_key)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?
+        .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not pending"))?;
+        let row_id: i64 = row
+            .try_get("id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let subject_user_id: String = row
+            .try_get("subject_user_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let ticket_id: String = row
+            .try_get("ticket_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let amount_minor_units: i64 = row
+            .try_get("amount_minor_units")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let correlation_id: String = row
+            .try_get("correlation_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let stored_ledger_idempotency_key: String = row
+            .try_get("ledger_idempotency_key")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let posting_attempt_count: i32 = row
+            .try_get("posting_attempt_count")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let actor_user_id: String = row
+            .try_get("actor_user_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let actor_role: String = row
+            .try_get("actor_role")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let proposer_kind: String = row
+            .try_get("proposer_kind")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        insert_compensation_posting_audit_event(
+            &mut tx,
+            row_id,
+            "compensation_posting_attempt_started",
+            &actor_user_id,
+            &actor_role,
+            &subject_user_id,
+            &ticket_id,
+            &correlation_id,
+            json!({
+                "proposer_kind": proposer_kind,
+                "ledger_idempotency_key": stored_ledger_idempotency_key,
+                "attempt": posting_attempt_count,
+            }),
+        )
+        .await?;
+        tx.commit()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(CompensationPostingDraft {
+            proposal_id: proposal_id.to_owned(),
+            subject_user_id,
+            ticket_id,
+            amount_minor_units,
+            correlation_id,
+            ledger_idempotency_key: stored_ledger_idempotency_key,
+            posting_attempt_count,
+        })
+    }
+
+    async fn finish_compensation_posting(
+        &self,
+        proposal_id: &str,
+        outcome: CompensationLedgerPostOutcome,
+    ) -> Result<CompensationProposal, AdminOpsStoreError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let (next_status, ledger_transaction_id, last_error, action, error_class) = match &outcome {
+            CompensationLedgerPostOutcome::Posted { txn_id } => (
+                "posted",
+                Some(*txn_id),
+                None,
+                "compensation_ledger_transaction_posted",
+                None,
+            ),
+            CompensationLedgerPostOutcome::Failed {
+                error_class,
+                message,
+            } => (
+                "posting_failed",
+                None,
+                Some(format!("{error_class}: {message}")),
+                "compensation_posting_attempt_failed",
+                Some(error_class.clone()),
+            ),
+            CompensationLedgerPostOutcome::Unknown {
+                error_class,
+                message,
+            } => (
+                "posting_unknown",
+                None,
+                Some(format!("{error_class}: {message}")),
+                "compensation_posting_attempt_failed",
+                Some(error_class.clone()),
+            ),
+        };
+        let row = sqlx::query(
+            r"
+            UPDATE admin_compensation_proposals
+            SET status = $2,
+                posted_at = CASE WHEN $2 = 'posted' THEN now() ELSE posted_at END,
+                ledger_transaction_posted = CASE WHEN $2 = 'posted' THEN TRUE ELSE ledger_transaction_posted END,
+                ledger_transaction_id = COALESCE($3, ledger_transaction_id),
+                last_posting_error = $4
+            WHERE proposal_id = $1
+            RETURNING id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
+                      status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
+                      ledger_idempotency_key, posting_attempt_count, last_posting_error,
+                      correlation_id, actor_user_id, actor_role
+            ",
+        )
+        .bind(proposal_id)
+        .bind(next_status)
+        .bind(ledger_transaction_id)
+        .bind(last_error.as_deref())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let row_id: i64 = row
+            .try_get("id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let subject_user_id: String = row
+            .try_get("subject_user_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let ticket_id: String = row
+            .try_get("ticket_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let correlation_id: String = row
+            .try_get("correlation_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let actor_user_id: String = row
+            .try_get("actor_user_id")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let actor_role: String = row
+            .try_get("actor_role")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let proposer_kind: String = row
+            .try_get("proposer_kind")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let ledger_idempotency_key: Option<String> = row
+            .try_get("ledger_idempotency_key")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let posting_attempt_count: i32 = row
+            .try_get("posting_attempt_count")
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        insert_compensation_posting_audit_event(
+            &mut tx,
+            row_id,
+            action,
+            &actor_user_id,
+            &actor_role,
+            &subject_user_id,
+            &ticket_id,
+            &correlation_id,
+            json!({
+                "proposer_kind": proposer_kind,
+                "ledger_idempotency_key": ledger_idempotency_key,
+                "ledger_transaction_id": ledger_transaction_id,
+                "attempt": posting_attempt_count,
+                "error_class": error_class,
+            }),
+        )
+        .await?;
+        tx.commit()
+            .await
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        Ok(compensation_response_from_row(&self.pool, &row).await?.proposal)
+    }
+
     async fn find_compensation_by_idempotency_key(
         &self,
         idempotency_key: &str,
@@ -2547,8 +2892,8 @@ impl PostgresCompensationProposalStore {
         let Some(row) = sqlx::query(
             r"
             SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
-                   status, proposer_kind, ledger_transaction_posted, posting_attempt_count,
-                   last_posting_error, correlation_id, request_hash
+                   status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
+                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id, request_hash
             FROM admin_compensation_proposals
             WHERE idempotency_key = $1
             ",
@@ -3012,6 +3357,40 @@ async fn insert_compensation_review_audit_event(
     Ok(())
 }
 
+async fn insert_compensation_posting_audit_event(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    proposal_row_id: i64,
+    action: &str,
+    actor_user_id: &str,
+    actor_role: &str,
+    subject_user_id: &str,
+    ticket_id: &str,
+    correlation_id: &str,
+    metadata: Value,
+) -> Result<(), AdminOpsStoreError> {
+    sqlx::query(
+        r"
+        INSERT INTO admin_compensation_audit_events (
+            proposal_id, action, actor_user_id, actor_role, subject_user_id,
+            ticket_id, correlation_id, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ",
+    )
+    .bind(proposal_row_id)
+    .bind(action)
+    .bind(actor_user_id)
+    .bind(actor_role)
+    .bind(subject_user_id)
+    .bind(ticket_id)
+    .bind(correlation_id)
+    .bind(metadata)
+    .execute(&mut **tx)
+    .await
+    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    Ok(())
+}
+
 struct CompensationProposalResponseParts {
     proposal_id: String,
     user_id: String,
@@ -3038,6 +3417,8 @@ fn compensation_proposal_response(
             proposer_kind: parts.proposer_kind.clone(),
             approvals: parts.approvals,
             ledger_transaction_posted: false,
+            ledger_idempotency_key: None,
+            ledger_transaction_id: None,
             posting_attempt_count: 0,
             last_posting_error: None,
         },
@@ -3115,6 +3496,12 @@ async fn compensation_response_from_row(
             approvals,
             ledger_transaction_posted: row
                 .try_get("ledger_transaction_posted")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            ledger_idempotency_key: row
+                .try_get("ledger_idempotency_key")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            ledger_transaction_id: row
+                .try_get("ledger_transaction_id")
                 .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
             posting_attempt_count: row
                 .try_get("posting_attempt_count")
@@ -3561,6 +3948,7 @@ pub struct InMemoryAdminOpsStore {
     compensation_known_members: Vec<String>,
     compensation_affiliate_scope_subjects: Vec<String>,
     compensation_referral_scope_unavailable: bool,
+    compensation_ledger_outcome: Option<CompensationLedgerPostOutcome>,
 }
 
 #[derive(Debug, Default)]
@@ -3610,6 +3998,39 @@ impl InMemoryAdminOpsStore {
     #[must_use]
     pub const fn with_compensation_referral_scope_unavailable(mut self) -> Self {
         self.compensation_referral_scope_unavailable = true;
+        self
+    }
+
+    #[must_use]
+    pub fn with_compensation_ledger_success(mut self, txn_id: i64) -> Self {
+        self.compensation_ledger_outcome = Some(CompensationLedgerPostOutcome::Posted { txn_id });
+        self
+    }
+
+    #[must_use]
+    pub fn with_compensation_ledger_4xx(mut self) -> Self {
+        self.compensation_ledger_outcome = Some(CompensationLedgerPostOutcome::Failed {
+            error_class: "ledger_4xx".to_owned(),
+            message: "ledger rejected compensation".to_owned(),
+        });
+        self
+    }
+
+    #[must_use]
+    pub fn with_compensation_ledger_5xx(mut self) -> Self {
+        self.compensation_ledger_outcome = Some(CompensationLedgerPostOutcome::Unknown {
+            error_class: "ledger_5xx".to_owned(),
+            message: "ledger unavailable".to_owned(),
+        });
+        self
+    }
+
+    #[must_use]
+    pub fn with_compensation_ledger_timeout(mut self) -> Self {
+        self.compensation_ledger_outcome = Some(CompensationLedgerPostOutcome::Unknown {
+            error_class: "ledger_timeout".to_owned(),
+            message: "ledger request timed out".to_owned(),
+        });
         self
     }
 }
@@ -3944,6 +4365,82 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
             proposer_kind: proposal.proposer_kind.clone(),
             ledger_transaction_posted: false,
         });
+        let mut proposal = proposal;
+        if request.decision == "approved" {
+            let ledger_idempotency_key = format!("cs-cmp-{proposal_id}");
+            proposal.status = CompensationProposalStatus::Posting;
+            proposal.ledger_idempotency_key = Some(ledger_idempotency_key.clone());
+            proposal.posting_attempt_count += 1;
+            state.audit_records.push(CompensationAuditMetadata {
+                action: "compensation_posting_attempt_started".to_owned(),
+                subject_user_id: proposal.user_id.clone(),
+                ticket_id: proposal.ticket_id.clone(),
+                correlation_id: format!("{}:posting", proposal.proposal_id),
+                approval_roles: vec![context.actor_role.clone()],
+                proposer_kind: proposal.proposer_kind.clone(),
+                ledger_transaction_posted: false,
+            });
+            match self
+                .compensation_ledger_outcome
+                .clone()
+                .unwrap_or(CompensationLedgerPostOutcome::Posted { txn_id: 9001 })
+            {
+                CompensationLedgerPostOutcome::Posted { txn_id } => {
+                    proposal.status = CompensationProposalStatus::Posted;
+                    proposal.ledger_transaction_posted = true;
+                    proposal.ledger_transaction_id = Some(txn_id);
+                    proposal.last_posting_error = None;
+                    state.audit_records.push(CompensationAuditMetadata {
+                        action: "compensation_ledger_transaction_posted".to_owned(),
+                        subject_user_id: proposal.user_id.clone(),
+                        ticket_id: proposal.ticket_id.clone(),
+                        correlation_id: format!("{}:posted", proposal.proposal_id),
+                        approval_roles: vec![context.actor_role.clone()],
+                        proposer_kind: proposal.proposer_kind.clone(),
+                        ledger_transaction_posted: true,
+                    });
+                }
+                CompensationLedgerPostOutcome::Failed {
+                    error_class,
+                    message,
+                } => {
+                    proposal.status = CompensationProposalStatus::PostingFailed;
+                    proposal.last_posting_error = Some(format!("{error_class}: {message}"));
+                    state.audit_records.push(CompensationAuditMetadata {
+                        action: "compensation_posting_attempt_failed".to_owned(),
+                        subject_user_id: proposal.user_id.clone(),
+                        ticket_id: proposal.ticket_id.clone(),
+                        correlation_id: format!("{}:posting-failed", proposal.proposal_id),
+                        approval_roles: vec![context.actor_role.clone()],
+                        proposer_kind: proposal.proposer_kind.clone(),
+                        ledger_transaction_posted: false,
+                    });
+                }
+                CompensationLedgerPostOutcome::Unknown {
+                    error_class,
+                    message,
+                } => {
+                    proposal.status = CompensationProposalStatus::PostingUnknown;
+                    proposal.last_posting_error = Some(format!("{error_class}: {message}"));
+                    state.audit_records.push(CompensationAuditMetadata {
+                        action: "compensation_posting_attempt_failed".to_owned(),
+                        subject_user_id: proposal.user_id.clone(),
+                        ticket_id: proposal.ticket_id.clone(),
+                        correlation_id: format!("{}:posting-unknown", proposal.proposal_id),
+                        approval_roles: vec![context.actor_role.clone()],
+                        proposer_kind: proposal.proposer_kind.clone(),
+                        ledger_transaction_posted: false,
+                    });
+                }
+            }
+            if let Some(stored) = state
+                .compensation_proposals
+                .iter_mut()
+                .find(|stored| stored.proposal_id == proposal.proposal_id)
+            {
+                *stored = proposal.clone();
+            }
+        }
         Ok(CompensationProposalReviewResponse {
             proposal,
             review: CompensationReviewSummary {
@@ -4038,6 +4535,8 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
                 proposer_kind,
                 approvals: Vec::new(),
                 ledger_transaction_posted: false,
+                ledger_idempotency_key: None,
+                ledger_transaction_id: None,
                 posting_attempt_count: 0,
                 last_posting_error: None,
             };

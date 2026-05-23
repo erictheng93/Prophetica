@@ -1372,7 +1372,13 @@ async fn compensation_review_approves_rejects_and_replays() {
         .expect("approval should be handled");
     assert_eq!(approved.status(), StatusCode::OK);
     let approved_body = response_json(approved).await;
-    assert_eq!(approved_body["proposal"]["status"], json!("approved"));
+    assert_eq!(approved_body["proposal"]["status"], json!("posted"));
+    assert_eq!(
+        approved_body["proposal"]["ledger_idempotency_key"],
+        json!(format!("cs-cmp-{proposal_id}"))
+    );
+    assert_eq!(approved_body["proposal"]["ledger_transaction_id"], json!(9001));
+    assert_eq!(approved_body["proposal"]["posting_attempt_count"], json!(1));
     assert_eq!(approved_body["review"]["decision"], json!("approved"));
     assert_eq!(approved_body["replayed"], json!(false));
 
@@ -1435,7 +1441,106 @@ async fn compensation_review_approves_rejects_and_replays() {
     assert!(
         records
             .iter()
+            .any(|record| record.action == "compensation_posting_attempt_started")
+    );
+    assert!(
+        records
+            .iter()
+            .any(|record| record.action == "compensation_ledger_transaction_posted")
+    );
+    assert!(
+        records
+            .iter()
             .any(|record| record.action == "compensation_proposal_rejected")
+    );
+}
+
+#[tokio::test]
+async fn compensation_review_classifies_ledger_failures_without_reversing_approval() {
+    let failed_store = InMemoryAdminOpsStore::default()
+        .with_compensation_known_members(vec!["user_123".to_owned()])
+        .with_compensation_ledger_4xx();
+    let failed_app = internal_admin_router(failed_store);
+    let failed_created = failed_app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "manager-1",
+            "manager",
+            &json!({
+                "ticket_id": "TICKET-LEDGER-4XX",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("create compensation should be handled");
+    let failed_proposal_id = response_json(failed_created).await["proposal"]["proposal_id"]
+        .as_str()
+        .expect("proposal id")
+        .to_owned();
+    let failed = failed_app
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{failed_proposal_id}/review"),
+            "admin-1",
+            "admin",
+            &json!({ "decision": "approved" }),
+        ))
+        .await
+        .expect("approval with 4xx should be handled");
+    assert_eq!(failed.status(), StatusCode::ACCEPTED);
+    let failed_body = response_json(failed).await;
+    assert_eq!(failed_body["proposal"]["status"], json!("posting_failed"));
+    assert_eq!(
+        failed_body["proposal"]["last_posting_error"],
+        json!("ledger_4xx: ledger rejected compensation")
+    );
+    assert_eq!(
+        failed_body["proposal"]["ledger_idempotency_key"],
+        json!(format!("cs-cmp-{failed_proposal_id}"))
+    );
+
+    let unknown_store = InMemoryAdminOpsStore::default()
+        .with_compensation_known_members(vec!["user_123".to_owned()])
+        .with_compensation_ledger_timeout();
+    let unknown_app = internal_admin_router(unknown_store);
+    let unknown_created = unknown_app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "manager-1",
+            "manager",
+            &json!({
+                "ticket_id": "TICKET-LEDGER-TIMEOUT",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("create compensation should be handled");
+    let unknown_proposal_id = response_json(unknown_created).await["proposal"]["proposal_id"]
+        .as_str()
+        .expect("proposal id")
+        .to_owned();
+    let unknown = unknown_app
+        .oneshot(json_post_as(
+            &format!("/api/internal/admin/compensation-proposals/{unknown_proposal_id}/review"),
+            "admin-1",
+            "admin",
+            &json!({ "decision": "approved" }),
+        ))
+        .await
+        .expect("approval with timeout should be handled");
+    assert_eq!(unknown.status(), StatusCode::ACCEPTED);
+    let unknown_body = response_json(unknown).await;
+    assert_eq!(unknown_body["proposal"]["status"], json!("posting_unknown"));
+    assert_eq!(
+        unknown_body["proposal"]["last_posting_error"],
+        json!("ledger_timeout: ledger request timed out")
+    );
+    assert_eq!(
+        unknown_body["proposal"]["ledger_idempotency_key"],
+        json!(format!("cs-cmp-{unknown_proposal_id}"))
     );
 }
 
