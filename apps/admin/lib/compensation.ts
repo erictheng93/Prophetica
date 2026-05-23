@@ -42,12 +42,14 @@ export interface CompensationProposal {
   amount_minor_units: number;
   status: CompensationProposalStatus;
   proposer_kind: CompensationProposerKind;
+  proposer_user_id: string;
   approvals: CompensationApprovalRequest[];
   ledger_transaction_posted: boolean;
   ledger_idempotency_key: string | null;
   ledger_transaction_id: number | null;
   posting_attempt_count: number;
   last_posting_error: string | null;
+  approved_at: string | null;
 }
 
 export interface CompensationAuditMetadata {

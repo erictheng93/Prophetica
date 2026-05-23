@@ -414,12 +414,14 @@ pub struct CompensationProposal {
     pub amount_minor_units: i64,
     pub status: CompensationProposalStatus,
     pub proposer_kind: String,
+    pub proposer_user_id: String,
     pub approvals: Vec<CompensationApprovalRequest>,
     pub ledger_transaction_posted: bool,
     pub ledger_idempotency_key: Option<String>,
     pub ledger_transaction_id: Option<i64>,
     pub posting_attempt_count: i32,
     pub last_posting_error: Option<String>,
+    pub approved_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -435,9 +437,17 @@ struct CompensationPostingDraft {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CompensationLedgerPostOutcome {
-    Posted { txn_id: i64 },
-    Failed { error_class: String, message: String },
-    Unknown { error_class: String, message: String },
+    Posted {
+        txn_id: i64,
+    },
+    Failed {
+        error_class: String,
+        message: String,
+    },
+    Unknown {
+        error_class: String,
+        message: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -835,7 +845,8 @@ where
         .map(|response| {
             let status = if matches!(
                 response.proposal.status,
-                CompensationProposalStatus::PostingFailed | CompensationProposalStatus::PostingUnknown
+                CompensationProposalStatus::PostingFailed
+                    | CompensationProposalStatus::PostingUnknown
             ) {
                 StatusCode::ACCEPTED
             } else {
@@ -1355,14 +1366,12 @@ fn compensation_review_error(error: &AdminOpsStoreError) -> (StatusCode, Json<Er
             StatusCode::FORBIDDEN,
             "ERROR_CODE_COMPENSATION_REVIEW_FORBIDDEN",
         ),
-        "compensation self review" => (
-            StatusCode::FORBIDDEN,
-            "ERROR_CODE_COMPENSATION_SELF_REVIEW",
-        ),
-        "compensation proposal not pending" => (
-            StatusCode::CONFLICT,
-            "ERROR_CODE_COMPENSATION_NOT_PENDING",
-        ),
+        "compensation self review" => {
+            (StatusCode::FORBIDDEN, "ERROR_CODE_COMPENSATION_SELF_REVIEW")
+        }
+        "compensation proposal not pending" => {
+            (StatusCode::CONFLICT, "ERROR_CODE_COMPENSATION_NOT_PENDING")
+        }
         "compensation proposal not found" => (
             StatusCode::NOT_FOUND,
             "ERROR_CODE_COMPENSATION_PROPOSAL_NOT_FOUND",
@@ -1409,7 +1418,12 @@ fn push_compensation_filters(
         builder.push(" WHERE ");
     }
     let mut separated = builder.separated(" AND ");
-    if let Some(status) = query.status.as_deref().map(str::trim).filter(|status| !status.is_empty()) {
+    if let Some(status) = query
+        .status
+        .as_deref()
+        .map(str::trim)
+        .filter(|status| !status.is_empty())
+    {
         if status == "all_active" {
             separated.push(
                 "status IN ('proposed', 'approved', 'posting', 'posting_failed', 'posting_unknown')",
@@ -1783,7 +1797,10 @@ impl HttpAdminOpsStore {
             .get(url)
             .header("x-actor-id", "api-gateway")
             .header("x-operator-role", "service")
-            .header("x-correlation-id", format!("referral-scope-{affiliate_id}-{subject_user_id}"))
+            .header(
+                "x-correlation-id",
+                format!("referral-scope-{affiliate_id}-{subject_user_id}"),
+            )
             .header("x-internal-call-timestamp", timestamp.to_string())
             .header("x-internal-call-signature", signature)
             .send()
@@ -2496,7 +2513,10 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         if response.proposal.status != CompensationProposalStatus::Approved || response.replayed {
             return Ok(response);
         }
-        let draft = self.compensation.start_compensation_posting(proposal_id).await?;
+        let draft = self
+            .compensation
+            .start_compensation_posting(proposal_id)
+            .await?;
         let outcome = self
             .upstream
             .post_compensation_ledger_transaction(&draft)
@@ -2622,14 +2642,15 @@ impl PostgresCompensationProposalStore {
         let total_i64: i64 = total_row
             .try_get("total")
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let total =
-            usize::try_from(total_i64).map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        let total = usize::try_from(total_i64)
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
 
         let mut list_builder = QueryBuilder::new(
             r"
             SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
                    status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
-                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id
+                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id,
+                   actor_user_id, approved_at::TEXT AS approved_at
             FROM admin_compensation_proposals
             ",
         );
@@ -2649,7 +2670,11 @@ impl PostgresCompensationProposalStore {
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         let mut proposals = Vec::with_capacity(rows.len());
         for row in rows {
-            proposals.push(compensation_response_from_row(&self.pool, &row).await?.proposal);
+            proposals.push(
+                compensation_response_from_row(&self.pool, &row)
+                    .await?
+                    .proposal,
+            );
         }
 
         Ok(CompensationProposalListResponse {
@@ -2669,7 +2694,8 @@ impl PostgresCompensationProposalStore {
             r"
             SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
                    status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
-                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id
+                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id,
+                   actor_user_id, approved_at::TEXT AS approved_at
             FROM admin_compensation_proposals
             WHERE proposal_id = $1
             ",
@@ -2700,7 +2726,8 @@ impl PostgresCompensationProposalStore {
             r"
             SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
                    status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
-                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id, actor_user_id
+                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id,
+                   actor_user_id, approved_at::TEXT AS approved_at
             FROM admin_compensation_proposals
             WHERE proposal_id = $1
             FOR UPDATE
@@ -2956,7 +2983,7 @@ impl PostgresCompensationProposalStore {
             RETURNING id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
                       status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
                       ledger_idempotency_key, posting_attempt_count, last_posting_error,
-                      correlation_id, actor_user_id, actor_role
+                      correlation_id, actor_user_id, actor_role, approved_at::TEXT AS approved_at
             ",
         )
         .bind(proposal_id)
@@ -3014,7 +3041,9 @@ impl PostgresCompensationProposalStore {
         tx.commit()
             .await
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        Ok(compensation_response_from_row(&self.pool, &row).await?.proposal)
+        Ok(compensation_response_from_row(&self.pool, &row)
+            .await?
+            .proposal)
     }
 
     /// Compensation reconcile algorithm shared by v1 manual retry and the deferred
@@ -3236,7 +3265,7 @@ impl PostgresCompensationProposalStore {
             RETURNING id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
                       status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
                       ledger_idempotency_key, posting_attempt_count, last_posting_error,
-                      correlation_id, actor_user_id, actor_role
+                      correlation_id, actor_user_id, actor_role, approved_at::TEXT AS approved_at
             ",
         )
         .bind(proposal_id)
@@ -3287,7 +3316,9 @@ impl PostgresCompensationProposalStore {
         tx.commit()
             .await
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        Ok(compensation_response_from_row(&self.pool, &row).await?.proposal)
+        Ok(compensation_response_from_row(&self.pool, &row)
+            .await?
+            .proposal)
     }
 
     async fn find_compensation_by_idempotency_key(
@@ -3299,7 +3330,8 @@ impl PostgresCompensationProposalStore {
             r"
             SELECT id, proposal_id, subject_user_id, ticket_id, reason, amount_minor_units,
                    status, proposer_kind, ledger_transaction_posted, ledger_transaction_id,
-                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id, request_hash
+                   ledger_idempotency_key, posting_attempt_count, last_posting_error, correlation_id,
+                   request_hash, actor_user_id, approved_at::TEXT AS approved_at
             FROM admin_compensation_proposals
             WHERE idempotency_key = $1
             ",
@@ -3446,6 +3478,7 @@ impl PostgresCompensationProposalStore {
                 correlation_id,
                 approval_roles: Vec::new(),
                 proposer_kind,
+                proposer_user_id: context.actor_user_id,
             },
         ))
     }
@@ -3807,6 +3840,7 @@ struct CompensationProposalResponseParts {
     correlation_id: String,
     approval_roles: Vec<String>,
     proposer_kind: String,
+    proposer_user_id: String,
 }
 
 fn compensation_proposal_response(
@@ -3821,12 +3855,14 @@ fn compensation_proposal_response(
             amount_minor_units: parts.amount_minor_units,
             status: CompensationProposalStatus::Proposed,
             proposer_kind: parts.proposer_kind.clone(),
+            proposer_user_id: parts.proposer_user_id,
             approvals: parts.approvals,
             ledger_transaction_posted: false,
             ledger_idempotency_key: None,
             ledger_transaction_id: None,
             posting_attempt_count: 0,
             last_posting_error: None,
+            approved_at: None,
         },
         audit: CompensationAuditMetadata {
             action: "compensation_proposal_created".to_owned(),
@@ -3899,6 +3935,9 @@ async fn compensation_response_from_row(
             proposer_kind: row
                 .try_get("proposer_kind")
                 .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            proposer_user_id: row
+                .try_get("actor_user_id")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
             approvals,
             ledger_transaction_posted: row
                 .try_get("ledger_transaction_posted")
@@ -3914,6 +3953,9 @@ async fn compensation_response_from_row(
                 .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
             last_posting_error: row
                 .try_get("last_posting_error")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
+            approved_at: row
+                .try_get("approved_at")
                 .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
         },
         audit: CompensationAuditMetadata {
@@ -4008,10 +4050,7 @@ fn compensation_status_from_str(status: &str) -> CompensationProposalStatus {
     }
 }
 
-fn compensation_status_matches(
-    status: CompensationProposalStatus,
-    filter: Option<&str>,
-) -> bool {
+fn compensation_status_matches(status: CompensationProposalStatus, filter: Option<&str>) -> bool {
     match filter.map(str::trim).filter(|filter| !filter.is_empty()) {
         None => true,
         Some("all_active") => matches!(
@@ -4655,7 +4694,9 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         let mut proposals = state
             .compensation_proposals
             .iter()
-            .filter(|proposal| compensation_status_matches(proposal.status, query.status.as_deref()))
+            .filter(|proposal| {
+                compensation_status_matches(proposal.status, query.status.as_deref())
+            })
             .filter(|proposal| {
                 query
                     .proposer_kind
@@ -4696,7 +4737,9 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         let recent_audit_events = state
             .audit_records
             .iter()
-            .filter(|audit| audit.subject_user_id == proposal.user_id && audit.ticket_id == proposal.ticket_id)
+            .filter(|audit| {
+                audit.subject_user_id == proposal.user_id && audit.ticket_id == proposal.ticket_id
+            })
             .map(|audit| CompensationAuditEventSummary {
                 action: audit.action.clone(),
                 actor_user_id: "admin-ops-test".to_owned(),
@@ -4770,6 +4813,9 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         } else {
             CompensationProposalStatus::Rejected
         };
+        if request.decision == "approved" {
+            proposal.approved_at = Some("now".to_owned());
+        }
         proposal.approvals.push(CompensationApprovalRequest {
             approver_user_id: context.actor_user_id.clone(),
             role: context.actor_role.clone(),
@@ -5063,28 +5109,27 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         state.audit_records.push(audit.clone());
 
         let proposal = CompensationProposal {
-                proposal_id: format!("cmp-{number:06}", number = state.next_proposal_number),
-                user_id: user_id.to_owned(),
-                ticket_id,
-                reason,
-                amount_minor_units,
-                status: CompensationProposalStatus::Proposed,
-                proposer_kind,
-                approvals: Vec::new(),
-                ledger_transaction_posted: false,
-                ledger_idempotency_key: None,
-                ledger_transaction_id: None,
-                posting_attempt_count: 0,
-                last_posting_error: None,
-            };
+            proposal_id: format!("cmp-{number:06}", number = state.next_proposal_number),
+            user_id: user_id.to_owned(),
+            ticket_id,
+            reason,
+            amount_minor_units,
+            status: CompensationProposalStatus::Proposed,
+            proposer_kind,
+            proposer_user_id: context.actor_user_id.clone(),
+            approvals: Vec::new(),
+            ledger_transaction_posted: false,
+            ledger_idempotency_key: None,
+            ledger_transaction_id: None,
+            posting_attempt_count: 0,
+            last_posting_error: None,
+            approved_at: None,
+        };
         state
             .compensation_proposal_actors
             .push((proposal.proposal_id.clone(), context.actor_user_id.clone()));
         state.compensation_proposals.push(proposal.clone());
-        Ok(CompensationProposalResponse {
-            proposal,
-            audit,
-        })
+        Ok(CompensationProposalResponse { proposal, audit })
     }
 
     async fn create_member_action(
