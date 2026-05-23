@@ -1142,11 +1142,7 @@ async fn compensation_rejects_missing_or_invalid_amount() {
             "/api/internal/admin/members/user_123/compensation-proposals",
             &json!({
                 "ticket_id": "TICKET-1",
-                "reason": "manual adjustment review",
-                "approvals": [
-                    { "approver_user_id": "ops-1", "role": "ops_manager" },
-                    { "approver_user_id": "compliance-1", "role": "compliance" }
-                ]
+                "reason": "manual adjustment review"
             }),
         ))
         .await
@@ -1164,11 +1160,7 @@ async fn compensation_rejects_missing_or_invalid_amount() {
             &json!({
                 "ticket_id": "TICKET-1",
                 "reason": "manual adjustment review",
-                "amount_minor_units": 0,
-                "approvals": [
-                    { "approver_user_id": "ops-1", "role": "ops_manager" },
-                    { "approver_user_id": "compliance-1", "role": "compliance" }
-                ]
+                "amount_minor_units": 0
             }),
         ))
         .await
@@ -1182,35 +1174,55 @@ async fn compensation_rejects_missing_or_invalid_amount() {
 }
 
 #[tokio::test]
-async fn compensation_rejects_same_approver_twice() {
-    let app = internal_admin_router(InMemoryAdminOpsStore::default());
+async fn compensation_rejects_missing_member_by_proposer_kind() {
+    let app = internal_admin_router(
+        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]),
+    );
 
-    let response = app
+    let admin_response = app
+        .clone()
         .oneshot(json_post(
-            "/api/internal/admin/members/user_123/compensation-proposals",
+            "/api/internal/admin/members/missing_user/compensation-proposals",
             &json!({
                 "ticket_id": "TICKET-2",
                 "reason": "service incident credit",
-                "amount_minor_units": 5000,
-                "approvals": [
-                    { "approver_user_id": "ops-1", "role": "ops_manager" },
-                    { "approver_user_id": "ops-1", "role": "compliance" }
-                ]
+                "amount_minor_units": 5000
             }),
         ))
         .await
-        .expect("duplicate approver request should be handled");
+        .expect("admin missing member request should be handled");
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(admin_response.status(), StatusCode::NOT_FOUND);
     assert_eq!(
-        response_json(response).await["error"],
-        json!("ERROR_CODE_INVALID_COMPENSATION_PROPOSAL")
+        response_json(admin_response).await["error"],
+        json!("ERROR_CODE_MEMBER_NOT_FOUND")
+    );
+
+    let affiliate_response = app
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/missing_user/compensation-proposals",
+            "AFF-001",
+            "affiliate",
+            &json!({
+                "ticket_id": "TICKET-2",
+                "reason": "service incident credit",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("affiliate missing member request should be handled");
+
+    assert_eq!(affiliate_response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        response_json(affiliate_response).await["error"],
+        json!("ERROR_CODE_COMPENSATION_SUBJECT_OUT_OF_SCOPE")
     );
 }
 
 #[tokio::test]
-async fn compensation_accepts_two_distinct_approvals_and_records_audit_metadata() {
-    let store = InMemoryAdminOpsStore::default();
+async fn compensation_accepts_proposal_and_records_proposer_kind() {
+    let store =
+        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]);
     let app = internal_admin_router(store.clone());
 
     let response = app
@@ -1219,11 +1231,7 @@ async fn compensation_accepts_two_distinct_approvals_and_records_audit_metadata(
             &json!({
                 "ticket_id": "TICKET-3",
                 "reason": "service incident credit",
-                "amount_minor_units": 5000,
-                "approvals": [
-                    { "approver_user_id": "ops-1", "role": "ops_manager" },
-                    { "approver_user_id": "compliance-1", "role": "compliance" }
-                ]
+                "amount_minor_units": 5000
             }),
         ))
         .await
@@ -1232,16 +1240,15 @@ async fn compensation_accepts_two_distinct_approvals_and_records_audit_metadata(
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_json(response).await;
     assert_eq!(body["proposal"]["proposal_id"], json!("cmp-000001"));
-    assert_eq!(
-        body["proposal"]["status"],
-        json!("approved_ready_for_ledger")
-    );
+    assert_eq!(body["proposal"]["status"], json!("proposed"));
+    assert_eq!(body["proposal"]["approvals"], json!([]));
     assert_eq!(body["proposal"]["amount_minor_units"], json!(5000));
     assert_eq!(body["proposal"]["ledger_transaction_posted"], json!(false));
     assert_eq!(
         body["audit"]["action"],
         json!("compensation_proposal_created")
     );
+    assert_eq!(body["audit"]["proposer_kind"], json!("admin"));
     assert_eq!(body["audit"]["subject_user_id"], json!("user_123"));
     assert_eq!(
         body["audit"]["correlation_id"],
@@ -1253,6 +1260,98 @@ async fn compensation_accepts_two_distinct_approvals_and_records_audit_metadata(
     assert_eq!(records[0].action, "compensation_proposal_created");
     assert_eq!(records[0].subject_user_id, "user_123");
     assert_eq!(records[0].correlation_id, "admin-compensation-TICKET-3-1");
+    assert_eq!(records[0].proposer_kind, "admin");
+}
+
+#[tokio::test]
+async fn compensation_affiliate_guard_enforces_cap_scope_and_fail_closed() {
+    let scoped_store = InMemoryAdminOpsStore::default()
+        .with_compensation_known_members(vec!["user_123".to_owned(), "user_out".to_owned()])
+        .with_compensation_affiliate_scope_subjects(vec!["user_123".to_owned()]);
+    let app = internal_admin_router(scoped_store);
+
+    let accepted = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "AFF-001",
+            "affiliate",
+            &json!({
+                "ticket_id": "TICKET-AFF-1",
+                "reason": "affiliate scoped compensation",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("affiliate scoped request should be handled");
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let accepted_body = response_json(accepted).await;
+    assert_eq!(accepted_body["proposal"]["status"], json!("proposed"));
+    assert_eq!(accepted_body["audit"]["proposer_kind"], json!("affiliate"));
+
+    let out_of_scope = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_out/compensation-proposals",
+            "AFF-001",
+            "affiliate",
+            &json!({
+                "ticket_id": "TICKET-AFF-2",
+                "reason": "affiliate scoped compensation",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("affiliate out of scope request should be handled");
+    assert_eq!(out_of_scope.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        response_json(out_of_scope).await["error"],
+        json!("ERROR_CODE_COMPENSATION_SUBJECT_OUT_OF_SCOPE")
+    );
+
+    let over_limit = app
+        .clone()
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "AFF-001",
+            "affiliate",
+            &json!({
+                "ticket_id": "TICKET-AFF-3",
+                "reason": "affiliate scoped compensation",
+                "amount_minor_units": i64::MAX
+            }),
+        ))
+        .await
+        .expect("affiliate over limit request should be handled");
+    assert_eq!(over_limit.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        response_json(over_limit).await["error"],
+        json!("ERROR_CODE_COMPENSATION_AMOUNT_OVER_LIMIT")
+    );
+
+    let unavailable_app = internal_admin_router(
+        InMemoryAdminOpsStore::default()
+            .with_compensation_known_members(vec!["user_123".to_owned()])
+            .with_compensation_referral_scope_unavailable(),
+    );
+    let unavailable = unavailable_app
+        .oneshot(json_post_as(
+            "/api/internal/admin/members/user_123/compensation-proposals",
+            "AFF-001",
+            "affiliate",
+            &json!({
+                "ticket_id": "TICKET-AFF-4",
+                "reason": "affiliate scoped compensation",
+                "amount_minor_units": 5000
+            }),
+        ))
+        .await
+        .expect("affiliate unavailable scope request should be handled");
+    assert_eq!(unavailable.status(), StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        response_json(unavailable).await["error"],
+        json!("ERROR_CODE_REFERRAL_SCOPE_UNAVAILABLE")
+    );
 }
 
 #[tokio::test]

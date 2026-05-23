@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     env,
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
@@ -117,6 +116,7 @@ pub struct AdminOpsRequestContext {
     pub actor_role: String,
     pub request_id: Option<String>,
     pub idempotency_key: Option<String>,
+    pub compensation_referral_relationship: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -248,7 +248,6 @@ pub struct CompensationProposalRequest {
     pub ticket_id: Option<String>,
     pub reason: Option<String>,
     pub amount_minor_units: Option<i64>,
-    pub approvals: Option<Vec<CompensationApprovalRequest>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -345,6 +344,7 @@ pub struct CompensationProposal {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CompensationProposalStatus {
+    Proposed,
     PendingApproval,
     ApprovedReadyForLedger,
 }
@@ -356,7 +356,14 @@ pub struct CompensationAuditMetadata {
     pub ticket_id: String,
     pub correlation_id: String,
     pub approval_roles: Vec<String>,
+    pub proposer_kind: String,
     pub ledger_transaction_posted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ReferralScopeResponse {
+    in_scope: bool,
+    relationship: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -645,7 +652,7 @@ where
         .create_compensation_proposal(&user_id, request, context)
         .await
         .map(Json)
-        .map_err(|_| internal_error())
+        .map_err(|error| compensation_error(&error))
 }
 
 /// Proxies a KYC document list request to kyc-service, after verifying the
@@ -756,6 +763,14 @@ fn verify_kyc_proxy_auth_with_secret(
     crate::internal_call_auth::verify_internal_call(headers, method, path, b"", secret, now)
         .map(|_actor| ())
         .map_err(|_| kyc_proxy_error(StatusCode::UNAUTHORIZED, "kyc_proxy_unauthorized"))
+}
+
+fn current_epoch_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            i64::try_from(duration.as_secs()).unwrap_or(i64::MAX)
+        })
 }
 
 /// Resolves the KYC-service base URL and a reqwest client for the proxy.
@@ -880,6 +895,7 @@ fn request_context(
         actor_role,
         request_id: optional_header(headers, "x-request-id"),
         idempotency_key: optional_header(headers, "idempotency-key"),
+        compensation_referral_relationship: None,
     })
 }
 
@@ -916,25 +932,9 @@ fn validate_compensation_proposal(
             .as_deref()
             .is_none_or(|reason| reason.trim().is_empty())
         || request.amount_minor_units.is_none_or(|amount| amount <= 0)
-        || request
-            .approvals
-            .as_ref()
-            .is_none_or(|approvals| approvals.len() != 2)
     {
         return Err(invalid_proposal());
     }
-
-    let mut approver_ids = HashSet::new();
-    let approvals = request.approvals.as_ref().ok_or_else(invalid_proposal)?;
-    for approval in approvals {
-        if approval.approver_user_id.trim().is_empty()
-            || approval.role.trim().is_empty()
-            || !approver_ids.insert(approval.approver_user_id.clone())
-        {
-            return Err(invalid_proposal());
-        }
-    }
-
     Ok(())
 }
 
@@ -1062,6 +1062,52 @@ fn review_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>)
         _ => (StatusCode::INTERNAL_SERVER_ERROR, "ERROR_CODE_INTERNAL"),
     };
     (status, Json(ErrorResponse { error: code }))
+}
+
+fn compensation_error(error: &AdminOpsStoreError) -> (StatusCode, Json<ErrorResponse>) {
+    match error.message() {
+        "compensation subject out of scope" => {
+            return forbidden_error("ERROR_CODE_COMPENSATION_SUBJECT_OUT_OF_SCOPE");
+        }
+        "referral scope unavailable" => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "ERROR_CODE_REFERRAL_SCOPE_UNAVAILABLE",
+                }),
+            );
+        }
+        "compensation amount over affiliate limit" => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(ErrorResponse {
+                    error: "ERROR_CODE_COMPENSATION_AMOUNT_OVER_LIMIT",
+                }),
+            );
+        }
+        _ => {}
+    }
+    if let Some(upstream_status) = error.upstream_status() {
+        let status =
+            StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        if status == StatusCode::NOT_FOUND {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "ERROR_CODE_MEMBER_NOT_FOUND",
+                }),
+            );
+        }
+    }
+    if is_transport_error(error) {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "ERROR_CODE_USER_SERVICE_UNAVAILABLE",
+            }),
+        );
+    }
+    internal_error()
 }
 
 #[derive(Debug, Clone)]
@@ -1249,6 +1295,66 @@ impl HttpAdminOpsStore {
                     .map_err(|error| AdminOpsStoreError::new(error.to_string()))
             })
             .transpose()
+    }
+
+    fn referral_subject_scope_url(
+        &self,
+        affiliate_id: &str,
+        subject_user_id: &str,
+    ) -> Result<Url, AdminOpsStoreError> {
+        let Some(base_url) = &self.referral_service_url else {
+            return Err(AdminOpsStoreError::new("referral scope unavailable"));
+        };
+        let path = format!(
+            "/internal/referrals/affiliates/{}/subjects/{}/scope",
+            url_encode_path_segment(affiliate_id),
+            url_encode_path_segment(subject_user_id)
+        );
+        base_url
+            .join(&path)
+            .map_err(|error| AdminOpsStoreError::new(error.to_string()))
+    }
+
+    async fn referral_subject_scope(
+        &self,
+        affiliate_id: &str,
+        subject_user_id: &str,
+    ) -> Result<ReferralScopeResponse, AdminOpsStoreError> {
+        let url = self.referral_subject_scope_url(affiliate_id, subject_user_id)?;
+        let path = url.path().to_owned();
+        let timestamp = current_epoch_seconds();
+        let secret = env::var("ADMIN_INTERNAL_CALL_SECRET")
+            .map_err(|_| AdminOpsStoreError::new("referral scope unavailable"))?;
+        let signature = crate::internal_call_auth::sign_internal_call(
+            "GET",
+            &path,
+            b"",
+            timestamp,
+            "api-gateway",
+            "service",
+            &secret,
+        );
+        let response = self
+            .client
+            .get(url)
+            .header("x-actor-id", "api-gateway")
+            .header("x-operator-role", "service")
+            .header("x-correlation-id", format!("referral-scope-{affiliate_id}-{subject_user_id}"))
+            .header("x-internal-call-timestamp", timestamp.to_string())
+            .header("x-internal-call-signature", signature)
+            .send()
+            .await
+            .map_err(|_| AdminOpsStoreError::new("referral scope unavailable"))?;
+        if response.status().is_server_error() {
+            return Err(AdminOpsStoreError::new("referral scope unavailable"));
+        }
+        if !response.status().is_success() {
+            return Err(AdminOpsStoreError::new("compensation subject out of scope"));
+        }
+        response
+            .json::<ReferralScopeResponse>()
+            .await
+            .map_err(|_| AdminOpsStoreError::new("referral scope unavailable"))
     }
 
     async fn user_service_json(
@@ -1721,6 +1827,22 @@ fn action_side_effects(action_type: &str) -> Vec<String> {
     }
 }
 
+fn proposer_kind_from_role(role: &str) -> &'static str {
+    match role {
+        "affiliate" => "affiliate",
+        "manager" => "manager",
+        "cs_system" => "cs_system",
+        _ => "admin",
+    }
+}
+
+fn affiliate_compensation_max_minor_units() -> i64 {
+    env::var("AFFILIATE_COMPENSATION_MAX_MINOR_UNITS")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(10_000_000)
+}
+
 async fn apply_member_action_side_effects(
     upstream: &HttpAdminOpsStore,
     record: &MemberActionRecord,
@@ -1762,6 +1884,7 @@ async fn apply_member_action_side_effects(
                     actor_role: record.actor_role.clone(),
                     request_id: Some(record.correlation_id.clone()),
                     idempotency_key: None,
+                    compensation_referral_relationship: None,
                 },
             )
             .await?;
@@ -1904,8 +2027,33 @@ impl AdminOpsStore for ProductionAdminOpsStore {
         &self,
         user_id: &str,
         request: CompensationProposalRequest,
-        context: AdminOpsRequestContext,
+        mut context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
+        let proposer_kind = proposer_kind_from_role(&context.actor_role);
+        if let Err(error) = self.upstream.member_summary(user_id).await {
+            if proposer_kind == "affiliate" && error.upstream_status() == Some(404) {
+                return Err(AdminOpsStoreError::new("compensation subject out of scope"));
+            }
+            return Err(error);
+        }
+        if proposer_kind == "affiliate" {
+            let amount_minor_units = request
+                .amount_minor_units
+                .ok_or_else(|| AdminOpsStoreError::new("validated amount is missing"))?;
+            if amount_minor_units > affiliate_compensation_max_minor_units() {
+                return Err(AdminOpsStoreError::new(
+                    "compensation amount over affiliate limit",
+                ));
+            }
+            let scope = self
+                .upstream
+                .referral_subject_scope(&context.actor_user_id, user_id)
+                .await?;
+            if !scope.in_scope {
+                return Err(AdminOpsStoreError::new("compensation subject out of scope"));
+            }
+            context.compensation_referral_relationship = scope.relationship;
+        }
         self.compensation
             .create_compensation_proposal(user_id, request, context)
             .await
@@ -2008,9 +2156,7 @@ impl PostgresCompensationProposalStore {
         let amount_minor_units = request
             .amount_minor_units
             .ok_or_else(|| AdminOpsStoreError::new("validated amount is missing"))?;
-        let approvals = request
-            .approvals
-            .ok_or_else(|| AdminOpsStoreError::new("validated approvals are missing"))?;
+        let proposer_kind = proposer_kind_from_role(&context.actor_role).to_owned();
         let mut tx = self
             .pool
             .begin()
@@ -2026,10 +2172,10 @@ impl PostgresCompensationProposalStore {
             r"
             INSERT INTO admin_compensation_proposals (
                 id, subject_user_id, ticket_id, reason, amount_minor_units, status,
-                ledger_transaction_posted, correlation_id, actor_user_id, actor_role,
+                proposer_kind, ledger_transaction_posted, correlation_id, actor_user_id, actor_role,
                 idempotency_key, request_hash
             )
-            VALUES ($1, $2, $3, $4, $5, 'approved_ready_for_ledger', FALSE, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, 'proposed', $6, FALSE, $7, $8, $9, $10, $11)
             RETURNING id, proposal_id
             ",
         )
@@ -2038,6 +2184,7 @@ impl PostgresCompensationProposalStore {
         .bind(&ticket_id)
         .bind(&reason)
         .bind(amount_minor_units)
+        .bind(&proposer_kind)
         .bind(&correlation_id)
         .bind(&context.actor_user_id)
         .bind(&context.actor_role)
@@ -2053,18 +2200,14 @@ impl PostgresCompensationProposalStore {
             .try_get("proposal_id")
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
 
-        let approval_roles = approvals
-            .iter()
-            .map(|approval| approval.role.clone())
-            .collect::<Vec<_>>();
-        insert_compensation_approvals(&mut tx, row_id, &approvals).await?;
         insert_compensation_audit_event(
             &mut tx,
             row_id,
             user_id,
             &ticket_id,
             &correlation_id,
-            &approval_roles,
+            amount_minor_units,
+            &proposer_kind,
             &context,
         )
         .await?;
@@ -2079,9 +2222,10 @@ impl PostgresCompensationProposalStore {
                 ticket_id,
                 reason,
                 amount_minor_units,
-                approvals,
+                approvals: Vec::new(),
                 correlation_id,
-                approval_roles,
+                approval_roles: Vec::new(),
+                proposer_kind,
             },
         ))
     }
@@ -2311,9 +2455,18 @@ async fn insert_compensation_audit_event(
     user_id: &str,
     ticket_id: &str,
     correlation_id: &str,
-    approval_roles: &[String],
+    amount_minor_units: i64,
+    proposer_kind: &str,
     context: &AdminOpsRequestContext,
 ) -> Result<(), AdminOpsStoreError> {
+    let mut metadata = json!({
+        "proposer_kind": proposer_kind,
+        "amount_minor_units": amount_minor_units,
+        "ticket_id": ticket_id,
+    });
+    if let Some(relationship) = context.compensation_referral_relationship.as_deref() {
+        metadata["relationship"] = json!(relationship);
+    }
     sqlx::query(
         r"
         INSERT INTO admin_compensation_audit_events (
@@ -2332,7 +2485,7 @@ async fn insert_compensation_audit_event(
     .bind(user_id)
     .bind(ticket_id)
     .bind(correlation_id)
-    .bind(json!({ "approval_roles": approval_roles }))
+    .bind(metadata)
     .execute(&mut **tx)
     .await
     .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
@@ -2348,6 +2501,7 @@ struct CompensationProposalResponseParts {
     approvals: Vec<CompensationApprovalRequest>,
     correlation_id: String,
     approval_roles: Vec<String>,
+    proposer_kind: String,
 }
 
 fn compensation_proposal_response(
@@ -2360,7 +2514,7 @@ fn compensation_proposal_response(
             ticket_id: parts.ticket_id.clone(),
             reason: parts.reason,
             amount_minor_units: parts.amount_minor_units,
-            status: CompensationProposalStatus::ApprovedReadyForLedger,
+            status: CompensationProposalStatus::Proposed,
             approvals: parts.approvals,
             ledger_transaction_posted: false,
         },
@@ -2370,6 +2524,7 @@ fn compensation_proposal_response(
             ticket_id: parts.ticket_id,
             correlation_id: parts.correlation_id,
             approval_roles: parts.approval_roles,
+            proposer_kind: parts.proposer_kind,
             ledger_transaction_posted: false,
         },
     }
@@ -2387,7 +2542,7 @@ async fn compensation_response_from_row(
         SELECT approver_user_id, role
         FROM admin_compensation_proposal_approvals
         WHERE proposal_id = $1
-        ORDER BY ordinal
+        ORDER BY ordinal NULLS LAST, reviewed_at
         ",
     )
     .bind(row_id)
@@ -2430,11 +2585,7 @@ async fn compensation_response_from_row(
             amount_minor_units: row
                 .try_get("amount_minor_units")
                 .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
-            status: if status == "pending_approval" {
-                CompensationProposalStatus::PendingApproval
-            } else {
-                CompensationProposalStatus::ApprovedReadyForLedger
-            },
+            status: compensation_status_from_str(&status),
             approvals,
             ledger_transaction_posted: row
                 .try_get("ledger_transaction_posted")
@@ -2452,11 +2603,22 @@ async fn compensation_response_from_row(
                 .try_get("correlation_id")
                 .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
             approval_roles,
+            proposer_kind: row
+                .try_get("proposer_kind")
+                .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
             ledger_transaction_posted: row
                 .try_get("ledger_transaction_posted")
                 .map_err(|error| AdminOpsStoreError::new(error.to_string()))?,
         },
     })
+}
+
+fn compensation_status_from_str(status: &str) -> CompensationProposalStatus {
+    match status {
+        "proposed" => CompensationProposalStatus::Proposed,
+        "pending_approval" => CompensationProposalStatus::PendingApproval,
+        _ => CompensationProposalStatus::ApprovedReadyForLedger,
+    }
 }
 
 fn member_action_response_from_row(
@@ -2740,6 +2902,9 @@ pub struct InMemoryAdminOpsStore {
     kyc_secret_override: Option<String>,
     /// Test-only: override for `KYC_SERVICE_URL`.
     kyc_url_override: Option<String>,
+    compensation_known_members: Vec<String>,
+    compensation_affiliate_scope_subjects: Vec<String>,
+    compensation_referral_scope_unavailable: bool,
 }
 
 #[derive(Debug, Default)]
@@ -2769,6 +2934,24 @@ impl InMemoryAdminOpsStore {
     ) -> Self {
         self.kyc_secret_override = Some(secret.into());
         self.kyc_url_override = Some(kyc_service_url.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_compensation_known_members(mut self, members: Vec<String>) -> Self {
+        self.compensation_known_members = members;
+        self
+    }
+
+    #[must_use]
+    pub fn with_compensation_affiliate_scope_subjects(mut self, subjects: Vec<String>) -> Self {
+        self.compensation_affiliate_scope_subjects = subjects;
+        self
+    }
+
+    #[must_use]
+    pub const fn with_compensation_referral_scope_unavailable(mut self) -> Self {
+        self.compensation_referral_scope_unavailable = true;
         self
     }
 }
@@ -2961,8 +3144,45 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         &self,
         user_id: &str,
         request: CompensationProposalRequest,
-        _context: AdminOpsRequestContext,
+        mut context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
+        let proposer_kind = proposer_kind_from_role(&context.actor_role).to_owned();
+        if !self.compensation_known_members.is_empty()
+            && !self
+                .compensation_known_members
+                .iter()
+                .any(|known_user_id| known_user_id == user_id)
+        {
+            if proposer_kind == "affiliate" {
+                return Err(AdminOpsStoreError::new("compensation subject out of scope"));
+            }
+            return Err(AdminOpsStoreError::from_upstream(
+                StatusCode::NOT_FOUND.as_u16(),
+                Some("ERROR_CODE_MEMBER_NOT_FOUND".to_owned()),
+                "member not found",
+            ));
+        }
+        if proposer_kind == "affiliate" {
+            let amount_minor_units = request
+                .amount_minor_units
+                .ok_or_else(|| AdminOpsStoreError::new("validated amount is missing"))?;
+            if amount_minor_units > affiliate_compensation_max_minor_units() {
+                return Err(AdminOpsStoreError::new(
+                    "compensation amount over affiliate limit",
+                ));
+            }
+            if self.compensation_referral_scope_unavailable {
+                return Err(AdminOpsStoreError::new("referral scope unavailable"));
+            }
+            if !self
+                .compensation_affiliate_scope_subjects
+                .iter()
+                .any(|subject| subject == user_id)
+            {
+                return Err(AdminOpsStoreError::new("compensation subject out of scope"));
+            }
+            context.compensation_referral_relationship = Some("direct_referral".to_owned());
+        }
         let mut state = self
             .state
             .lock()
@@ -2977,9 +3197,6 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         let amount_minor_units = request
             .amount_minor_units
             .ok_or_else(|| AdminOpsStoreError::new("validated amount is missing"))?;
-        let approvals = request
-            .approvals
-            .ok_or_else(|| AdminOpsStoreError::new("validated approvals are missing"))?;
         let correlation_id = format!(
             "admin-compensation-{ticket_id}-{}",
             state.next_proposal_number
@@ -2989,10 +3206,8 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
             subject_user_id: user_id.to_owned(),
             ticket_id: ticket_id.clone(),
             correlation_id,
-            approval_roles: approvals
-                .iter()
-                .map(|approval| approval.role.clone())
-                .collect(),
+            approval_roles: Vec::new(),
+            proposer_kind: proposer_kind.clone(),
             ledger_transaction_posted: false,
         };
         state.audit_records.push(audit.clone());
@@ -3004,8 +3219,8 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
                 ticket_id,
                 reason,
                 amount_minor_units,
-                status: CompensationProposalStatus::ApprovedReadyForLedger,
-                approvals,
+                status: CompensationProposalStatus::Proposed,
+                approvals: Vec::new(),
                 ledger_transaction_posted: false,
             },
             audit,
