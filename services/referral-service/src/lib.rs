@@ -9,19 +9,23 @@ use std::{
 
 use async_trait::async_trait;
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
+use hmac::{Hmac, Mac};
 use sdk::{
     ledger::{LedgerAmount, LedgerEntryDraft, LedgerTransactionDraft},
     referral::code::ReferralCodeError,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use thiserror::Error;
 use uuid::Uuid;
+
+type HmacSha256 = Hmac<Sha256>;
 
 const QUALIFICATION_DEPOSIT_MINOR_UNITS: i64 = 50_000;
 const QUALIFICATION_MIN_KYC_TIER: u8 = 1;
@@ -36,6 +40,7 @@ const MONTHLY_SUCCESSFUL_REFERRAL_CAP: u32 = 20;
 const LIFETIME_SUCCESSFUL_REFERRAL_CAP: u32 = 200;
 const MONTHLY_TRADE_COMMISSION_CAP_MINOR_UNITS: i64 = 5_000_000;
 const DAYS_PER_CAP_MONTH: i64 = 30;
+const INTERNAL_CALL_TIMESTAMP_SKEW_SECS: i64 = 300;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReferralStatus {
@@ -70,15 +75,14 @@ impl ReferralRecord {
     ///
     /// Returns [`ReferralError::SelfReferral`] when both user ids are equal, or
     /// [`ReferralError::InvalidReferralCode`] when the captured code is empty.
-    #[allow(clippy::similar_names)]
     pub fn pending(
-        sponsor_user_id: impl Into<String>,
-        new_user_id: impl Into<String>,
+        referrer_user_id: impl Into<String>,
+        referred_member_id: impl Into<String>,
         referral_code: impl Into<String>,
         referred_at_day: i64,
     ) -> Result<Self, ReferralError> {
-        let referrer_id = sponsor_user_id.into();
-        let referred_id = new_user_id.into();
+        let referrer_id = referrer_user_id.into();
+        let referred_id = referred_member_id.into();
         let referral_code = referral_code.into();
 
         if referrer_id == referred_id {
@@ -376,6 +380,57 @@ pub struct DueCommissionPayoutReferrer {
     pub total_commission_minor_units: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferralScopeRequest {
+    pub affiliate_id: String,
+    pub subject_user_id: String,
+    pub actor_service_principal: String,
+    pub caller_role: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReferralScopeResponse {
+    pub affiliate_id: String,
+    pub affiliate_user_id: Option<String>,
+    pub subject_user_id: String,
+    pub in_scope: bool,
+    pub relationship: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReferralScopeAuditLog {
+    pub actor_service_principal: String,
+    pub caller_role: String,
+    pub affiliate_id: String,
+    pub subject_user_id: String,
+    pub correlation_id: String,
+    pub in_scope: bool,
+    pub relationship: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InternalScopeAuthConfig {
+    pub secret: String,
+    pub allowed_service_principals: Vec<String>,
+}
+
+impl InternalScopeAuthConfig {
+    #[must_use]
+    pub fn deny_all() -> Self {
+        Self {
+            secret: String::new(),
+            allowed_service_principals: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedServicePrincipal {
+    pub actor_id: String,
+    pub role: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AffiliateSummary {
@@ -663,12 +718,19 @@ pub trait AffiliateDashboardStore {
     ) -> Result<Vec<AffiliateCommissionAdjustmentReview>, ReferralStoreError>;
 
     async fn list_payout_reviews(&self) -> Result<Vec<AffiliatePayoutReview>, ReferralStoreError>;
+
+    async fn referral_subject_scope(
+        &self,
+        request: ReferralScopeRequest,
+    ) -> Result<ReferralScopeResponse, ReferralStoreError>;
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ReferralStoreError {
     #[error("affiliate data not found")]
     NotFound,
+    #[error("unauthorized internal referral request: {0}")]
+    Unauthorized(String),
     #[error("invalid affiliate request: {0}")]
     Invalid(String),
     #[error("affiliate request is forbidden: {0}")]
@@ -944,6 +1006,7 @@ pub struct InMemoryAffiliateDashboardStore {
     affiliate_operation_audit_logs: Arc<tokio::sync::Mutex<Vec<AffiliateOperationAuditLog>>>,
     affiliate_denied_operation_audit_logs:
         Arc<tokio::sync::Mutex<Vec<AffiliateDeniedOperationAuditLog>>>,
+    referral_scope_audit_logs: Arc<tokio::sync::Mutex<Vec<ReferralScopeAuditLog>>>,
 }
 
 impl InMemoryAffiliateDashboardStore {
@@ -965,6 +1028,7 @@ impl InMemoryAffiliateDashboardStore {
             admin_affiliates: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             affiliate_operation_audit_logs: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             affiliate_denied_operation_audit_logs: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            referral_scope_audit_logs: Arc::new(tokio::sync::Mutex::new(Vec::new())),
         }
     }
 
@@ -1001,6 +1065,10 @@ impl InMemoryAffiliateDashboardStore {
             .lock()
             .await
             .clone()
+    }
+
+    pub async fn referral_scope_audit_logs(&self) -> Vec<ReferralScopeAuditLog> {
+        self.referral_scope_audit_logs.lock().await.clone()
     }
 
     async fn audit_affiliate_operation(
@@ -1616,6 +1684,47 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
     async fn list_payout_reviews(&self) -> Result<Vec<AffiliatePayoutReview>, ReferralStoreError> {
         Ok(self.payout_reviews.clone())
     }
+
+    async fn referral_subject_scope(
+        &self,
+        request: ReferralScopeRequest,
+    ) -> Result<ReferralScopeResponse, ReferralStoreError> {
+        let affiliate_user_id = self
+            .referral_codes_by_user
+            .iter()
+            .find_map(|(user_id, affiliate_id)| {
+                (affiliate_id == &request.affiliate_id).then(|| user_id.clone())
+            });
+        let is_direct_referral = if let Some(affiliate_user_id) = affiliate_user_id.as_deref() {
+            self.captured_referrals_by_referred
+                .lock()
+                .await
+                .get(&request.subject_user_id)
+                .is_some_and(|record| record.referrer_id == affiliate_user_id)
+        } else {
+            false
+        };
+        let response = ReferralScopeResponse {
+            affiliate_id: request.affiliate_id.clone(),
+            affiliate_user_id: is_direct_referral.then_some(affiliate_user_id).flatten(),
+            subject_user_id: request.subject_user_id.clone(),
+            in_scope: is_direct_referral,
+            relationship: is_direct_referral.then(|| "direct_referral".to_owned()),
+        };
+        self.referral_scope_audit_logs
+            .lock()
+            .await
+            .push(ReferralScopeAuditLog {
+                actor_service_principal: request.actor_service_principal,
+                caller_role: request.caller_role,
+                affiliate_id: request.affiliate_id,
+                subject_user_id: request.subject_user_id,
+                correlation_id: request.correlation_id,
+                in_scope: response.in_scope,
+                relationship: response.relationship.clone(),
+            });
+        Ok(response)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1703,9 +1812,20 @@ pub fn router<S>(store: S) -> Router
 where
     S: AffiliateDashboardStore + Clone + Send + Sync + 'static,
 {
+    router_with_internal_scope_auth(store, InternalScopeAuthConfig::deny_all())
+}
+
+pub fn router_with_internal_scope_auth<S>(store: S, scope_auth: InternalScopeAuthConfig) -> Router
+where
+    S: AffiliateDashboardStore + Clone + Send + Sync + 'static,
+{
     let state = Arc::new(store);
     Router::new()
         .route("/internal/referrals/capture", post(capture_referral::<S>))
+        .route(
+            "/internal/referrals/affiliates/:affiliate_id/subjects/:subject_user_id/scope",
+            get(get_referral_subject_scope::<S>),
+        )
         .route(
             "/internal/referrals/qualification-evaluate",
             post(evaluate_referral_qualification::<S>),
@@ -1768,6 +1888,7 @@ where
             "/internal/admin/affiliate-payouts",
             get(list_payout_reviews::<S>),
         )
+        .layer(Extension(Arc::new(scope_auth)))
         .with_state(state)
 }
 
@@ -1791,6 +1912,41 @@ where
         status,
         Json(CaptureReferralResponse::from_record(record, captured)),
     ))
+}
+
+async fn get_referral_subject_scope<S>(
+    State(store): State<Arc<S>>,
+    Extension(scope_auth): Extension<Arc<InternalScopeAuthConfig>>,
+    headers: HeaderMap,
+    Path((affiliate_id, subject_user_id)): Path<(String, String)>,
+) -> Result<Json<ReferralScopeResponse>, (StatusCode, Json<ApiErrorResponse>)>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let path =
+        format!("/internal/referrals/affiliates/{affiliate_id}/subjects/{subject_user_id}/scope");
+    let principal = verify_internal_scope_call(
+        &headers,
+        "GET",
+        &path,
+        &[],
+        &scope_auth,
+        current_unix_timestamp(),
+    )
+    .map_err(|error| api_error(&error))?;
+    let correlation_id =
+        header_value(&headers, "x-correlation-id").unwrap_or_else(|| new_uuid_v7_string());
+    let response = store
+        .referral_subject_scope(ReferralScopeRequest {
+            affiliate_id,
+            subject_user_id,
+            actor_service_principal: principal.actor_id,
+            caller_role: principal.role,
+            correlation_id,
+        })
+        .await
+        .map_err(|error| api_error(&error))?;
+    Ok(Json(response))
 }
 
 async fn evaluate_referral_qualification<S>(
@@ -2085,6 +2241,13 @@ fn api_error(error: &ReferralStoreError) -> (StatusCode, Json<ApiErrorResponse>)
                 message: error.to_string(),
             }),
         ),
+        ReferralStoreError::Unauthorized(_) => (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiErrorResponse {
+                error: "referral_internal_unauthorized",
+                message: error.to_string(),
+            }),
+        ),
         ReferralStoreError::Invalid(_) => (
             StatusCode::BAD_REQUEST,
             Json(ApiErrorResponse {
@@ -2132,6 +2295,94 @@ fn header_value(headers: &HeaderMap, name: &'static str) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
+}
+
+fn verify_internal_scope_call(
+    headers: &HeaderMap,
+    method: &str,
+    path: &str,
+    body: &[u8],
+    config: &InternalScopeAuthConfig,
+    now: i64,
+) -> Result<VerifiedServicePrincipal, ReferralStoreError> {
+    let actor_id = header_value(headers, "x-actor-id")
+        .ok_or_else(|| ReferralStoreError::Unauthorized("missing service principal".to_owned()))?;
+    let role = header_value(headers, "x-operator-role")
+        .ok_or_else(|| ReferralStoreError::Unauthorized("missing caller role".to_owned()))?;
+    if !config
+        .allowed_service_principals
+        .iter()
+        .any(|allowed| allowed == &actor_id)
+    {
+        return Err(ReferralStoreError::Forbidden(
+            "service principal is not allowed".to_owned(),
+        ));
+    }
+    let timestamp = header_value(headers, "x-internal-call-timestamp")
+        .and_then(|value| value.parse::<i64>().ok())
+        .ok_or_else(|| ReferralStoreError::Unauthorized("missing call timestamp".to_owned()))?;
+    if (now - timestamp).abs() > INTERNAL_CALL_TIMESTAMP_SKEW_SECS {
+        return Err(ReferralStoreError::Unauthorized(
+            "internal call timestamp outside allowed skew".to_owned(),
+        ));
+    }
+    let signature = header_value(headers, "x-internal-call-signature")
+        .ok_or_else(|| ReferralStoreError::Unauthorized("missing call signature".to_owned()))?;
+    let expected =
+        sign_internal_scope_call(method, path, body, timestamp, &actor_id, &role, &config.secret);
+    if !constant_time_eq(signature.as_bytes(), expected.as_bytes()) {
+        return Err(ReferralStoreError::Unauthorized(
+            "invalid call signature".to_owned(),
+        ));
+    }
+    Ok(VerifiedServicePrincipal { actor_id, role })
+}
+
+#[must_use]
+pub fn sign_internal_scope_call(
+    method: &str,
+    path: &str,
+    body: &[u8],
+    timestamp: i64,
+    actor_id: &str,
+    role: &str,
+    secret: &str,
+) -> String {
+    let body_hash = hex_lower(&Sha256::digest(body));
+    let canonical = format!("{method}\n{path}\n{body_hash}\n{timestamp}\n{actor_id}\n{role}");
+    let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+        Ok(mac) => mac,
+        Err(error) => panic!("invalid HMAC key for internal scope call signing: {error}"),
+    };
+    mac.update(canonical.as_bytes());
+    hex_lower(&mac.finalize().into_bytes())
+}
+
+fn current_unix_timestamp() -> i64 {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_secs()).unwrap_or(i64::MAX),
+        Err(_) => 0,
+    }
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut acc, byte| {
+            let _ = write!(acc, "{byte:02x}");
+            acc
+        })
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    left.iter()
+        .zip(right)
+        .fold(0_u8, |acc, (left, right)| acc | (left ^ right))
+        == 0
 }
 
 fn validate_admin_affiliate_mutation(
@@ -2734,6 +2985,7 @@ fn denied_audit_reason(error: &ReferralStoreError) -> String {
     match error {
         ReferralStoreError::Invalid(message) => format!("invalid:{message}"),
         ReferralStoreError::Forbidden(message) => format!("forbidden:{message}"),
+        ReferralStoreError::Unauthorized(message) => format!("unauthorized:{message}"),
         ReferralStoreError::NotFound => "not_found".to_owned(),
         ReferralStoreError::Unavailable(message) => format!("unavailable:{message}"),
     }
@@ -3856,6 +4108,61 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
 
         rows.iter().map(payout_review_from_row).collect()
     }
+
+    async fn referral_subject_scope(
+        &self,
+        request: ReferralScopeRequest,
+    ) -> Result<ReferralScopeResponse, ReferralStoreError> {
+        let row = sqlx::query(
+            r"
+            SELECT ap.user_id AS affiliate_user_id
+            FROM affiliate_profiles ap
+            JOIN referrals r
+              ON r.referrer_id = ap.user_id
+            WHERE ap.affiliate_id = $1
+              AND r.referred_id = $2
+            LIMIT 1
+            ",
+        )
+        .bind(&request.affiliate_id)
+        .bind(&request.subject_user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        let affiliate_user_id = row
+            .as_ref()
+            .map(|row| row.try_get("affiliate_user_id"))
+            .transpose()
+            .map_err(sqlx_error)?;
+        let in_scope = affiliate_user_id.is_some();
+        let relationship = in_scope.then(|| "direct_referral".to_owned());
+        sqlx::query(
+            r"
+            INSERT INTO referral_scope_audit_logs (
+                actor_service_principal, caller_role, affiliate_id, subject_user_id,
+                correlation_id, in_scope, relationship
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ",
+        )
+        .bind(&request.actor_service_principal)
+        .bind(&request.caller_role)
+        .bind(&request.affiliate_id)
+        .bind(&request.subject_user_id)
+        .bind(&request.correlation_id)
+        .bind(in_scope)
+        .bind(relationship.as_deref())
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_error)?;
+        Ok(ReferralScopeResponse {
+            affiliate_id: request.affiliate_id,
+            affiliate_user_id,
+            subject_user_id: request.subject_user_id,
+            in_scope,
+            relationship,
+        })
+    }
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -4560,15 +4867,17 @@ impl AffiliateCommissionEngine {
         ]))
     }
 
-    #[allow(clippy::similar_names)]
-    fn signup_bonus_draft(referrer_id: &str, referred_id: &str) -> LedgerTransactionDraft {
+    fn signup_bonus_draft(
+        inviter_player_id: &str,
+        invited_player_id: &str,
+    ) -> LedgerTransactionDraft {
         LedgerTransactionDraft::new([
             LedgerEntryDraft::new(
                 "Expense.AffiliateCommission",
                 LedgerAmount::from_minor_units(QUALIFICATION_BONUS_MINOR_UNITS),
             ),
             LedgerEntryDraft::new(
-                format!("Player.Wallet.{referrer_id}"),
+                format!("Player.Wallet.{inviter_player_id}"),
                 LedgerAmount::from_minor_units(-QUALIFICATION_BONUS_MINOR_UNITS),
             ),
             LedgerEntryDraft::new(
@@ -4576,7 +4885,7 @@ impl AffiliateCommissionEngine {
                 LedgerAmount::from_minor_units(REFERRED_SIGNUP_BONUS_MINOR_UNITS),
             ),
             LedgerEntryDraft::new(
-                format!("Player.Wallet.{referred_id}"),
+                format!("Player.Wallet.{invited_player_id}"),
                 LedgerAmount::from_minor_units(-REFERRED_SIGNUP_BONUS_MINOR_UNITS),
             ),
         ])

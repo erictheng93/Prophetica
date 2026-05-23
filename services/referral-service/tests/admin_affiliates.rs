@@ -1,6 +1,9 @@
 #![allow(clippy::expect_used)]
 
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use async_trait::async_trait;
 use axum::{
@@ -10,9 +13,10 @@ use axum::{
 use http_body_util::BodyExt;
 use referral_service::{
     AffiliateCreditProfile, AffiliateDetail, AffiliateSummary, CommissionPayoutLedgerDraftResponse,
-    DueQualificationReferral, InMemoryAffiliateDashboardStore, QualificationEvent,
-    QualificationInputProvider, ReferralDailyWorker, ReferralLedgerPoster, ReferralStoreError,
-    SignupBonusLedgerDraftResponse, router,
+    DueQualificationReferral, InMemoryAffiliateDashboardStore, InternalScopeAuthConfig,
+    QualificationEvent, QualificationInputProvider, ReferralDailyWorker, ReferralLedgerPoster,
+    ReferralStoreError, SignupBonusLedgerDraftResponse, router, router_with_internal_scope_auth,
+    sign_internal_scope_call,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -92,6 +96,138 @@ async fn capture_referral_rejects_self_referral() {
         response_json(response).await["error"],
         "invalid_affiliate_request"
     );
+}
+
+#[tokio::test]
+async fn scope_endpoint_returns_direct_referral_and_writes_audit() {
+    let store = InMemoryAffiliateDashboardStore::new(
+        [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
+        HashMap::default(),
+        HashMap::default(),
+    );
+    let audit_store = store.clone();
+    let app = router_with_internal_scope_auth(store, scope_auth());
+
+    let captured = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/internal/referrals/capture",
+            &json!({
+                "referral_code": "AFF-100",
+                "referred_user_id": "user_new_1",
+                "referred_at_day": 20_000
+            }),
+        ))
+        .await
+        .expect("capture should be handled");
+    assert_eq!(captured.status(), StatusCode::CREATED);
+
+    let response = app
+        .oneshot(signed_scope_request(
+            "/internal/referrals/affiliates/AFF-100/subjects/user_new_1/scope",
+            "api-gateway",
+        ))
+        .await
+        .expect("scope should be handled");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["affiliate_id"], "AFF-100");
+    assert_eq!(body["affiliate_user_id"], "user_aff_100");
+    assert_eq!(body["subject_user_id"], "user_new_1");
+    assert_eq!(body["in_scope"], true);
+    assert_eq!(body["relationship"], "direct_referral");
+
+    let audits = audit_store.referral_scope_audit_logs().await;
+    assert_eq!(audits.len(), 1);
+    assert_eq!(audits[0].actor_service_principal, "api-gateway");
+    assert_eq!(audits[0].caller_role, "service");
+    assert_eq!(audits[0].correlation_id, "corr-scope-1");
+    assert_eq!(audits[0].affiliate_id, "AFF-100");
+    assert_eq!(audits[0].subject_user_id, "user_new_1");
+    assert!(audits[0].in_scope);
+    assert_eq!(audits[0].relationship.as_deref(), Some("direct_referral"));
+}
+
+#[tokio::test]
+async fn scope_endpoint_false_cases_are_indistinguishable() {
+    let store = InMemoryAffiliateDashboardStore::new(
+        [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
+        HashMap::default(),
+        HashMap::default(),
+    );
+    let app = router_with_internal_scope_auth(store, scope_auth());
+
+    let no_relation = app
+        .clone()
+        .oneshot(signed_scope_request(
+            "/internal/referrals/affiliates/AFF-100/subjects/user_missing/scope",
+            "api-gateway",
+        ))
+        .await
+        .expect("scope should be handled");
+    let missing_affiliate = app
+        .clone()
+        .oneshot(signed_scope_request(
+            "/internal/referrals/affiliates/AFF-MISSING/subjects/user_missing/scope",
+            "api-gateway",
+        ))
+        .await
+        .expect("scope should be handled");
+    let missing_subject = app
+        .oneshot(signed_scope_request(
+            "/internal/referrals/affiliates/AFF-100/subjects/user_absent/scope",
+            "api-gateway",
+        ))
+        .await
+        .expect("scope should be handled");
+
+    assert_eq!(no_relation.status(), StatusCode::OK);
+    assert_eq!(missing_affiliate.status(), StatusCode::OK);
+    assert_eq!(missing_subject.status(), StatusCode::OK);
+    let no_relation_body = false_scope_shape(response_json(no_relation).await);
+    let missing_affiliate_body = false_scope_shape(response_json(missing_affiliate).await);
+    let missing_subject_body = false_scope_shape(response_json(missing_subject).await);
+    assert_eq!(no_relation_body, missing_affiliate_body);
+    assert_eq!(no_relation_body, missing_subject_body);
+}
+
+#[tokio::test]
+async fn scope_endpoint_rejects_bad_signature() {
+    let app =
+        router_with_internal_scope_auth(InMemoryAffiliateDashboardStore::default(), scope_auth());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/internal/referrals/affiliates/AFF-100/subjects/user_new_1/scope")
+                .header("x-actor-id", "api-gateway")
+                .header("x-operator-role", "service")
+                .header("x-internal-call-timestamp", current_unix_timestamp().to_string())
+                .header("x-internal-call-signature", "not-a-valid-signature")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("scope should be handled");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn scope_endpoint_rejects_untrusted_signed_caller() {
+    let app =
+        router_with_internal_scope_auth(InMemoryAffiliateDashboardStore::default(), scope_auth());
+    let response = app
+        .oneshot(signed_scope_request(
+            "/internal/referrals/affiliates/AFF-100/subjects/user_new_1/scope",
+            "untrusted-service",
+        ))
+        .await
+        .expect("scope should be handled");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -1242,6 +1378,52 @@ async fn capture_qualified_referral(app: &axum::Router) {
         .await
         .expect("evaluation should be handled");
     assert_eq!(response_json(evaluated).await["status"], "qualified");
+}
+
+fn scope_auth() -> InternalScopeAuthConfig {
+    InternalScopeAuthConfig {
+        secret: "scope-test-secret".to_owned(),
+        allowed_service_principals: vec!["api-gateway".to_owned()],
+    }
+}
+
+fn signed_scope_request(uri: &str, actor_id: &str) -> Request<Body> {
+    let timestamp = current_unix_timestamp();
+    let signature = sign_internal_scope_call(
+        "GET",
+        uri,
+        &[],
+        timestamp,
+        actor_id,
+        "service",
+        "scope-test-secret",
+    );
+    Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header("x-actor-id", actor_id)
+        .header("x-operator-role", "service")
+        .header("x-correlation-id", "corr-scope-1")
+        .header("x-internal-call-timestamp", timestamp.to_string())
+        .header("x-internal-call-signature", signature)
+        .body(Body::empty())
+        .expect("request builds")
+}
+
+fn current_unix_timestamp() -> i64 {
+    i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_secs(),
+    )
+    .expect("timestamp fits i64")
+}
+
+fn false_scope_shape(mut body: Value) -> Value {
+    body["affiliate_id"] = Value::String("<redacted>".to_owned());
+    body["subject_user_id"] = Value::String("<redacted>".to_owned());
+    body
 }
 
 fn qualification_event_json() -> Value {
