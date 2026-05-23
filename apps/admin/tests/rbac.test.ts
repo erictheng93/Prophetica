@@ -102,6 +102,18 @@ test("analytics BFF routes are limited to admin and manager sessions", () => {
   }
 });
 
+test("compensation BFF routes are limited to admin and manager sessions", () => {
+  for (const path of [
+    "/api/compensation",
+    "/api/compensation/cmp-001/review",
+    "/api/compensation/cmp-001/retry-posting",
+  ]) {
+    assert.equal(canAccess(path, "admin"), true, `admin -> ${path}`);
+    assert.equal(canAccess(path, "manager"), true, `manager -> ${path}`);
+    assert.equal(canAccess(path, "affiliate"), false, `affiliate -> ${path}`);
+  }
+});
+
 test("admin and manager can reach /affiliate/[id] detail; affiliate cannot", () => {
   for (const path of [
     "/affiliate/AFF-001",
@@ -131,9 +143,9 @@ test("public routes are reachable by every role", () => {
   }
 });
 
-test("canApprove only true for admin", () => {
+test("canApprove allows admin and manager compensation review approval", () => {
   assert.equal(canApprove("admin", "compensation-reviews"), true);
-  assert.equal(canApprove("manager", "compensation-reviews"), false);
+  assert.equal(canApprove("manager", "compensation-reviews"), true);
   assert.equal(canApprove("affiliate", "compensation-reviews"), false);
 });
 

@@ -33,6 +33,7 @@ const routeRules: readonly RouteRule[] = [
   { path: "/api/manager-accounts", isPrefix: true, allow: ["admin"] },
   { path: "/api/login-events", allow: ["admin", "manager"] },
   { path: "/api/analytics", isPrefix: true, allow: ["admin", "manager"] },
+  { path: "/api/compensation", isPrefix: true, allow: ["admin", "manager"] },
   { path: "/api/faq/catalog", allow: ["admin", "manager"] },
   { path: "/", allow: ["admin", "manager"] },
   { path: "/dashboard", allow: ["admin", "manager"] },
@@ -97,7 +98,7 @@ const domainCapabilityByRole: Record<
     "points-exceptions": "propose",
     "affiliate-review": "view",
     "kyc-risk-events": "view",
-    "compensation-reviews": "propose",
+    "compensation-reviews": "approve",
     "manual-approvals": "propose",
   },
   affiliate: {
