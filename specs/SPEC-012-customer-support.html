@@ -25,9 +25,10 @@
 <h1>SPEC-012 — 客服與爭議升級</h1>
 <blockquote>
 <p>優先級：<strong>P1</strong>
-版本：v0.1.1 · 最後更新：2026-05-09
+版本：v0.1.2 · 最後更新：2026-05-23
 依賴：SPEC-004
 被依賴：SPEC-000 Public Beta Launch Gate</p>
+<p><strong>v0.1.2 變更</strong>：§11「客服系統與帳本整合」修訂——將原「需 4-eye 簽核（T3 + Compliance）」改為「需 <code>manager</code> 或 <code>admin</code> <strong>單人核准</strong>，且核准者 <code>user_id</code> 不得等於提案者」，因 T3 / Compliance 非 admin app 角色，且職責分離已由 proposer ≠ approver 保證；新增 <code>proposer_kind</code> 稽核欄位（<code>cs_system</code> / <code>admin</code> / <code>manager</code> / <code>affiliate</code>）；分錄細節 cross-ref <a href="./SPEC-002-funds-safety.html">SPEC-002 §4.4.6</a>。§10 T3 角色描述同步移除「需 4-eye」字樣；§12 驗收條件「4-eye 測試」改為「單人核准 + proposer ≠ approver 測試」。完整 RBAC / 工作流契約見 <a href="./SPEC-017-monorepo-bootstrap.html">SPEC-017 §6.3.1.1</a>，實作細節見 <a href="../docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md"><code>docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md</code></a>。</p>
 <p><strong>v0.1.1 變更</strong>：公開 Beta 前最低客服能力上移至 P1 launch gate；未完成客服入口、SLA 告警、KYC / 支付 / 結算爭議分流與帳本影響操作留痕時，不得開放真實入金 / 真實下單。</p>
 </blockquote>
 <hr />
@@ -160,7 +161,7 @@
 </tr>
 <tr>
 <td>T3</td>
-<td>帳本調整提案（需 4-eye）、代表平台對外溝通、SAR 提交</td>
+<td>帳本調整提案（提案需經 <code>manager</code> 或 <code>admin</code> 單人核准，且核准者 ≠ 提案者；見 §11）、代表平台對外溝通、SAR 提交</td>
 </tr>
 <tr>
 <td>Admin</td>
@@ -326,12 +327,15 @@
 </tbody>
 </table>
 <h2>11. 客服系統與帳本整合</h2>
-<p>當客服執行影響帳本的操作（如：退款、補償、扣回）：</p>
+<p>當客服 / manager / admin / affiliate 執行影響帳本的補償操作（退款、補償；扣回 / reversal 為將來獨立 plan）：</p>
 <ul>
 <li>不直接寫入帳本</li>
-<li>透過 <code>compensation</code> API 提案，需 4-eye 簽核（T3 + Compliance）</li>
-<li>帳本變動寫入 <code>Txn type = 'cs_compensation'</code>，附工單 id 為 correlation</li>
+<li>透過 <code>compensation</code> API 提案，提案落為 <code>proposed</code> 狀態</li>
+<li>需 <code>manager</code> 或 <code>admin</code> <strong>單人核准</strong>，且核准者 <code>user_id</code> <strong>不得</strong>等於提案者 <code>user_id</code>（取代原 4-eye T3 + Compliance 設計；T3 / Compliance 非 admin app 角色，職責分離已由 proposer ≠ approver 保證）</li>
+<li>每筆 compensation audit event 必含 <code>proposer_kind</code> 欄位（<code>cs_system</code> / <code>admin</code> / <code>manager</code> / <code>affiliate</code>）以便事後切分；affiliate 案另含 referral-service 回傳的 <code>relationship</code></li>
+<li>核准後帳本變動寫入 <code>Txn type = 'cs_compensation'</code>，附工單 id 為 <code>correlation_id</code>；分錄為 <code>DR Expense.CustomerSupportCompensation / CR Player.Wallet.{user_id}</code>（呼應 <a href="./SPEC-002-funds-safety.html">SPEC-002 §4.4.6</a>）</li>
 </ul>
+<p><strong>Cross-ref</strong>：完整 RBAC、proposer_kind 分類、affiliate 三道守門（金額上限、subject-scope check、referral-service fail-closed）、不存在 member 回應分流（防枚舉）等 contract 層規則見 <a href="./SPEC-017-monorepo-bootstrap.html">SPEC-017 §6.3.1.1</a>。實作細節（狀態機 <code>proposed → approved → posting → posted</code>、reconcile 演算法、ledger idempotency 不變式、cancel 狀態 reserved 等）集中於 <a href="../docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md"><code>docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md</code></a>。</p>
 <h2>12. 驗收條件</h2>
 <ul>
 <li>[ ] Zendesk / Freshdesk 整合 SSO</li>
@@ -339,7 +343,7 @@
 <li>[ ] 操作 audit_logs 完整記錄</li>
 <li>[ ] SLA 監控告警上線</li>
 <li>[ ] Compliance 客服培訓完成</li>
-<li>[ ] 客服系統與帳本整合通過 4-eye 測試</li>
+<li>[ ] 客服系統與帳本整合通過<strong>單人核准 + proposer ≠ approver</strong> 測試（含 affiliate scope 守門、referral-service fail-closed、不存在 member 回應分流）</li>
 </ul>
 <h2>13. Open Questions</h2>
 <ol>

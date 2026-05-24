@@ -25,9 +25,10 @@
 <h1>SPEC-017 — Monorepo Bootstrap &amp; Local Dev Environment</h1>
 <blockquote>
 <p>優先級：<strong>P0（必須在第一行業務 code 之前完成）</strong>
-版本：v0.2.9 · 最後更新：2026-05-22
+版本：v0.2.10 · 最後更新：2026-05-23
 依賴：SPEC-014（架構定義）
 被依賴：所有 SPEC（實作載體）</p>
+<p><strong>v0.2.10 變更</strong>：§6.3.1 矩陣 <code>/compensation 補償審批</code> 列修訂：<code>admin</code> 由「✅ 終審」改「✅ 提案 / 審核」、<code>manager</code> 由「✅ 提案」改「✅ 提案 / 審核」（v1 起 manager 亦可審核，配合單人核准模型）；<code>affiliate</code> 維持 <code>403</code>（affiliate 不進 <code>/compensation</code> 工作區；其 backend 提案路徑為 scoped API only，admin app UI 由獨立 v1.1 plan 接入 <code>/me/affiliate</code> 子頁）。新增 §6.3.1.1「補償 domain 工作流規則」明定 proposer/approver/scope 契約（兩步流程、提案者 ≠ 審核者、不存在 member 回應分流防枚舉、affiliate scope 守門、referral-service fail-closed）。實作細節（狀態機、reconcile、idempotency、入帳分錄）抽離至 <a href="../docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md"><code>docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md</code></a>——spec 只負責 contract，plan 負責 implementation。同步調整 SPEC-012 §11（4-eye → 單人核准）與 SPEC-002 §4.4（新增 <code>Expense.CustomerSupportCompensation</code> 科目）為 sibling spec PR。</p>
 <p><strong>v0.2.9 變更</strong>：§6.3 新增 §6.3.5「角色帳號生命週期管理（分權 CRUD）」，明定自上而下的帳號管理鏈 <code>admin → manager → affiliate（代理）</code>：admin 對<strong>全部</strong> manager 帳號可增刪改查、manager 僅對<strong>自己旗下</strong>（<code>managing_manager_id</code> = 本人）的 affiliate 帳號可增刪改查，且禁止任何反向／橫向管理（affiliate 不得管理任何人、manager 不得管理 admin 或其他 manager、不得自我提權或竄改歸屬）。新增 <code>affiliate_profiles.managing_manager_id</code> 作為 RBAC 歸屬欄位，與既有 <code>owner_sponsor_id</code>（推薦人掛靠）<strong>語意分離</strong>。本節為「行政管理權委派」，與 SPEC-011 §2.1 禁止的「多層抽佣下線金字塔」屬不同概念，規格明文切割以通過 MLM 紅線審查；刪除採軟刪除（停用／封存）以符 SPEC-018 稽核留存。並明定（§6.3.5.4.1）manager 於範圍內可調整自己旗下代理的 <code>commission_rate_bps</code>（單層佣金率，非多層分潤），但不得改信用控制 <code>credit_*</code>、<code>role</code> 與 <code>managing_manager_id</code>。<code>managing_manager_id</code> 由 manager 修改採 <strong>deny-by-presence</strong>（payload 出現即 403，不比對現值），BFF 在 manager 視角須 strip 此欄位。</p>
 <p><strong>v0.2.8 變更</strong>：§6.3 新增 §6.3.4「Admin app 後端錯誤呈現」，明定 admin app 必須依 gateway 回應的 HTTP 狀態碼與 error code（SPEC-014 §6.1.1）呈現可辨識的使用者訊息，不得一律顯示籠統錯誤；BFF 層須透傳狀態碼與 error code、不得重新對映。首個落地對象為 KYC 審核會員查詢（<code>/members/kyc-review</code>）對不存在會員顯示「查無此會員」而非一般錯誤。</p>
 <p><strong>v0.2.7 變更</strong>：§6.3 新增 §6.3.3「Nav 資訊架構（IA）」，明示左側 nav 群組僅影響導覽呈現、不新增/移除路由、不改變 §6.3.1 路由 RBAC：決策支援（<code>/dashboard</code>）與分析報表（<code>/analytics</code>）合併為可展開的「數據與報表」群組；帳戶點數例外（<code>/points</code>）改以 <code>OpsRoute.navHidden</code> 自 top-level 收起、列入「會員管理」子導覽。連帶 erratum：§6.3.1 矩陣 <code>/points</code> 標籤由「帳戶銅幣例外」更正為「帳戶點數例外」，與 admin app UI（<code>apps/admin/lib/ops-facade.ts</code>）一致。另：「代理管理區」群組更名為「代理管理」；nav 排序將 FAQ 管理移至各操作領域之後（§6.3.3）。</p>
@@ -485,12 +486,39 @@
 <tr><td><code>/points</code> 帳戶點數例外</td><td>✅</td><td>✅ 提案</td><td>403</td></tr>
 <tr><td><code>/affiliate</code> 代理抽佣審查</td><td>✅</td><td>✅ 範圍內可寫（資料列授權見 §6.3.5）</td><td>403</td></tr>
 <tr><td><code>/kyc-risk</code></td><td>✅</td><td>✅</td><td>403</td></tr>
-<tr><td><code>/compensation</code> 補償審批</td><td>✅ 終審</td><td>✅ 提案</td><td>403</td></tr>
+<tr><td><code>/compensation</code> 補償審批</td><td>✅ 提案 / 審核</td><td>✅ 提案 / 審核</td><td>403（見 §6.3.1.1）</td></tr>
 <tr><td><code>/approvals</code> 工單審批</td><td>✅ 終審</td><td>✅ 一審</td><td>403</td></tr>
 <tr><td><code>/me/affiliate*</code></td><td>403</td><td>403</td><td>✅ 代理 portal；含任意會員餘額查詢與 grant-only 調點</td></tr>
 </tbody>
 </table>
 <p>「✅ 範圍內可寫」「✅ 唯讀」「✅ 提案」與 admin 共用同一頁面 component，差異由 RBAC 在 server-side 過濾 CTA、mutation 權限與 server fetch 範圍實現，<strong>不</strong>另開分支路由。</p>
+<h4>6.3.1.1 補償 domain 工作流規則（新增 2026-05-23）</h4>
+<p>§6.3.1 矩陣定義 <code>/compensation</code> 之路由層級 RBAC；本節補述跨路由的領域<strong>工作流契約</strong>。實作層次決定（狀態機、reconcile 演算法、入帳冪等規則、failure 分類、cancel 狀態 reserved 等）<strong>不入 spec</strong>，集中於 <a href="../docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md"><code>docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md</code></a>。</p>
+<ul>
+<li><strong>兩步流程</strong>：補償走「提案 → 審核」二步；同一筆提案的提案者 <code>user_id</code> <strong>不得</strong>等於審核者 <code>user_id</code>（單人核准下的職責分離保證；handler 守門 + 測試覆蓋，跨表 DB CHECK 不可行）。</li>
+<li><strong>提案者類別（<code>proposer_kind</code>，gateway 由 signed call 之 actor_role 推導）</strong>：
+<ul>
+<li><code>admin</code> / <code>manager</code>：經 admin app <code>/compensation</code> 表單提案，亦在同頁面審核他人提案。</li>
+<li><code>cs_system</code>：客服系統經 gateway compensation API 提案（machine-to-machine signed internal call）。</li>
+<li><code>affiliate</code>：v1 為 scoped API only；admin app UI 由獨立 v1.1 plan 接入 <code>/me/affiliate</code> 子頁。affiliate 不進 <code>/compensation</code>，故矩陣維持 <code>403</code>。</li>
+</ul>
+</li>
+<li><strong>審核者類別</strong>：限 <code>admin</code> 或 <code>manager</code>，單人核准即可（取代原 SPEC-012 §11 「4-eye T3 + Compliance」設計；T3/Compliance 非 admin app 角色，且職責分離已由 proposer ≠ approver 保證）。</li>
+<li><strong>Affiliate 提案守門</strong>（gateway 強制，三道俱足才得提案）：
+<ul>
+<li>金額上限：超過 env <code>AFFILIATE_COMPENSATION_MAX_MINOR_UNITS</code> 即拒（<code>422 ERROR_CODE_COMPENSATION_AMOUNT_OVER_LIMIT</code>）。</li>
+<li>Subject-scope check：subject 必須與該 affiliate 有 <strong>direct referral</strong> 關係，呼叫 referral-service 內部端點 <code>GET /internal/referrals/affiliates/{aff_id}/subjects/{subj_id}/scope</code> 驗證（cross-ref SPEC-011 flat-list 推薦模型；v1 僅認 direct，不預留多層語意）。</li>
+<li>Fail closed：referral-service 不可達 / 5xx → gateway 回 <code>502 ERROR_CODE_REFERRAL_SCOPE_UNAVAILABLE</code>，<strong>不</strong>放行未驗證的 affiliate 提案。</li>
+</ul>
+</li>
+<li><strong>不存在 member 的回應分流</strong>（防止補償提案端點被當作 member 枚舉工具）：
+<ul>
+<li><code>admin</code> / <code>manager</code> / <code>cs_system</code> 提案 → <code>404 ERROR_CODE_MEMBER_NOT_FOUND</code>（語意明確，配合 SPEC-017 §6.3.4 錯誤呈現規則）。</li>
+<li><code>affiliate</code> 提案 → <code>403 ERROR_CODE_COMPENSATION_SUBJECT_OUT_OF_SCOPE</code>（與 out-of-scope 同碼，不洩漏「member 存在 vs 不存在」之差別）。</li>
+</ul>
+</li>
+<li><strong>稽核必含</strong>：每筆 compensation audit event 必含 <code>proposer_kind</code>；affiliate 案另含 referral-service 回傳之 <code>relationship</code>。referral-service <code>/scope</code> 端點每次呼叫亦寫一筆內部 audit log（service-level，與 compensation audit 分離）。對齊 SPEC-018 evidence lookup（<code>compensation.proposals.by_ticket</code>）。</li>
+</ul>
 <h4>6.3.2 與 SPEC-010 §9.3.3 銜接</h4>
 <ul>
 <li>本節僅規範「進入 UI 之前」的 authn / authz；multi-sig 簽核與 hardware MFA step-up 仍依 SPEC-010 §9.3.3 集中 component。</li>

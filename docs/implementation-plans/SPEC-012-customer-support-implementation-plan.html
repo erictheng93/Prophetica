@@ -108,7 +108,7 @@ CREATE TABLE support_ticket_events (
 /api/internal/support/tickets/{id}/message
 /api/internal/support/sla/violations</code></pre>
     <div class="warn">
-      工程師不應允許客服直接寫入帳本；帳本動作一律走 `compensation` 提案 API 與 4-eye 流程。
+      工程師不應允許客服直接寫入帳本；帳本動作一律走 `compensation` 提案 API → `manager` 或 `admin` <strong>單人核准</strong>（且核准者 ≠ 提案者）→ 寫入 `Txn type = 'cs_compensation'`。完整工作流契約見 SPEC-017 §6.3.1.1；實作細節（狀態機、reconcile、idempotency）見 docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md。
     </div>
   </section>
 
@@ -129,7 +129,7 @@ CREATE TABLE support_ticket_events (
       <li>實作分派與狀態機轉換（NEW/ASSIGNED/IN_PROGRESS/...）。</li>
       <li>實作 SLA worker：24h 首回覆告警、72h 未解決升級。</li>
       <li>整合 Zendesk/Freshdesk adapter 與本地資料對應表。</li>
-      <li>補齊 compensation 提案與 4-eye 簽核串接，綁定 `Txn type = 'cs_compensation'`。</li>
+      <li>補齊 compensation 提案 → `manager`/`admin` 單人核准 → outbox 入帳（綁定 `Txn type = 'cs_compensation'`，含 affiliate scope 守門與 reconcile）串接；詳見 docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md。</li>
     </ol>
   </section>
 
