@@ -200,19 +200,34 @@ test("override option short-circuits sdk token resolution", () => {
   });
 });
 
-test("iProov providers are explicit not_implemented stubs", async () => {
-  for (const provider of [createIproovMockProvider(), createRealIproovProvider()]) {
-    assert.equal(provider.name, "iproov");
-    await assert.rejects(
-      () =>
-        provider.mount(fakeTarget(), {
-          sdkToken: "iproov_real_xyz",
-          targetTier: "TIER_3",
-          locale: "en",
-          country: "TW",
-        }),
-      (err: unknown) =>
-        err instanceof KycSdkError && err.code === "not_implemented",
-    );
-  }
+test("real iProov provider mount throws not_implemented", async () => {
+  const realProvider = createRealIproovProvider();
+  assert.equal(realProvider.name, "iproov");
+  await assert.rejects(
+    () =>
+      realProvider.mount(fakeTarget(), {
+        sdkToken: "iproov_real_xyz",
+        targetTier: "TIER_3",
+        locale: "en",
+        country: "TW",
+      }),
+    (err: unknown) =>
+      err instanceof KycSdkError && err.code === "not_implemented",
+  );
+});
+
+test("iProov mock provider emits ready and submitted", async () => {
+  const provider = createIproovMockProvider();
+  const handle = await provider.mount(fakeTarget(), {
+    sdkToken: "iproov_mock_xyz",
+    targetTier: "TIER_3",
+    locale: "en",
+    country: "TW",
+  });
+  const events: KycSessionEvent[] = [];
+  handle.subscribe((event) => events.push(event));
+  await wait(15);
+  assert.equal(events[0]?.kind, "ready");
+  assert.ok(events.some((e) => e.kind === "submitted"));
+  handle.unmount();
 });
