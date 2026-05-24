@@ -3,11 +3,15 @@
 //! Provides [`SumsubDocumentClient`] for listing applicant documents and
 //! fetching document image bytes as a streaming [`reqwest::Response`].
 //!
-//! The real `SumSub` API requires HMAC-signed requests; this client targets the
-//! internal mock server and uses a simple `X-App-Token` header for now.
-//! Request signing is stubbed in [`sign_request`] for future wiring.
+//! The real `SumSub` API requires HMAC-signed requests. This client keeps
+//! compatibility with mock routes while adding the same canonical signature
+//! headers (`X-App-Access-Sig`, `X-App-Access-Ts`) used by `SumSub` production.
 
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
+
+type HmacSha256 = Hmac<Sha256>;
 
 /// A single document record returned by the `SumSub` documents endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,8 +73,11 @@ impl SumsubDocumentClient {
             &self.base_url,
             &["mock", "sumsub", "applicants", applicant_id, "documents"],
         )?;
-        let request = self.http.get(url).header("X-App-Token", &self.app_token);
-        let request = sign_request(request, &self.secret_key);
+        let request = self
+            .http
+            .get(url.clone())
+            .header("X-App-Token", &self.app_token);
+        let request = sign_request(request, "GET", url.as_str(), "", &self.secret_key);
         let response = request
             .send()
             .await
@@ -121,8 +128,11 @@ impl SumsubDocumentClient {
                 "image",
             ],
         )?;
-        let request = self.http.get(url).header("X-App-Token", &self.app_token);
-        let request = sign_request(request, &self.secret_key);
+        let request = self
+            .http
+            .get(url.clone())
+            .header("X-App-Token", &self.app_token);
+        let request = sign_request(request, "GET", url.as_str(), "", &self.secret_key);
         let response = request
             .send()
             .await
@@ -166,14 +176,43 @@ fn build_url(base: &str, segments: &[&str]) -> Result<reqwest::Url, SumsubDocume
     Ok(url)
 }
 
-/// Stub for per-request HMAC signing required by the real `SumSub` API.
-///
-/// For the mock server this is a no-op; wire real signing logic here when
-/// targeting the live `SumSub` API.
-fn sign_request(builder: reqwest::RequestBuilder, _secret_key: &str) -> reqwest::RequestBuilder {
-    // TODO: compute `X-App-Access-Sig` and `X-App-Access-Ts` headers when
-    // targeting the production SumSub API.
+fn sign_request(
+    mut builder: reqwest::RequestBuilder,
+    method: &str,
+    request_url: &str,
+    body: &str,
+    secret_key: &str,
+) -> reqwest::RequestBuilder {
+    let Ok(url) = reqwest::Url::parse(request_url) else {
+        return builder;
+    };
+    let path = if let Some(query) = url.query() {
+        format!("{}?{query}", url.path())
+    } else {
+        url.path().to_owned()
+    };
+    let path = if path.is_empty() {
+        "/".to_owned()
+    } else {
+        path
+    };
+    let timestamp = current_unix_timestamp_secs();
+    let Ok(mut mac) = HmacSha256::new_from_slice(secret_key.as_bytes()) else {
+        return builder;
+    };
+    let canonical = format!("{timestamp}{method}{path}{body}");
+    mac.update(canonical.as_bytes());
+    let signature = hex::encode(mac.finalize().into_bytes());
+    builder = builder
+        .header("X-App-Access-Sig", signature)
+        .header("X-App-Access-Ts", timestamp.to_string());
     builder
+}
+
+fn current_unix_timestamp_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
 }
 
 /// Errors returned by [`SumsubDocumentClient`].

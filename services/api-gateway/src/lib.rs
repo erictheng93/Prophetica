@@ -433,13 +433,12 @@ struct IdempotencyRecord {
     response: OrderActionResponse,
 }
 
-#[allow(clippy::struct_field_names)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OrderOwnerRecord {
-    order_id: String,
-    user_id: String,
-    market_id: String,
-    matching_user_id: String,
+    order: String,
+    user: String,
+    market: String,
+    matching_user: String,
 }
 
 #[async_trait]
@@ -2946,7 +2945,7 @@ impl OrderOwnerRepository for OrderOwnerStore {
         self.owners
             .lock()
             .map_err(|_| ApiError::internal("order owner store lock poisoned"))?
-            .insert(owner.order_id, owner.user_id);
+            .insert(owner.order, owner.user);
         Ok(())
     }
 
@@ -2973,10 +2972,10 @@ impl OrderOwnerRepository for PostgresOrderOwnerStore {
                 updated_at = now()
             ",
         )
-        .bind(owner.order_id)
-        .bind(owner.user_id)
-        .bind(owner.market_id)
-        .bind(owner.matching_user_id)
+        .bind(owner.order)
+        .bind(owner.user)
+        .bind(owner.market)
+        .bind(owner.matching_user)
         .execute(&self.pool)
         .await
         .map_err(|error| ApiError::internal(format!("order owner persistence failed: {error}")))?;
@@ -4526,10 +4525,10 @@ where
     state
         .order_owners
         .record_owner(OrderOwnerRecord {
-            order_id: response.order_id.clone(),
-            user_id: auth.user_id.clone(),
-            market_id: market_id.clone(),
-            matching_user_id: matching_engine_user_id_header_value(&auth.user_id),
+            order: response.order_id.clone(),
+            user: auth.user_id.clone(),
+            market: market_id.clone(),
+            matching_user: matching_engine_user_id_header_value(&auth.user_id),
         })
         .await?;
     settle_and_project_order_fills(
@@ -4715,10 +4714,10 @@ where
     state
         .order_owners
         .record_owner(OrderOwnerRecord {
-            order_id: response.order_id.clone(),
-            user_id: auth.user_id.clone(),
-            market_id: market_id.clone(),
-            matching_user_id: matching_engine_user_id_header_value(&auth.user_id),
+            order: response.order_id.clone(),
+            user: auth.user_id.clone(),
+            market: market_id.clone(),
+            matching_user: matching_engine_user_id_header_value(&auth.user_id),
         })
         .await?;
     settle_and_project_order_fills(

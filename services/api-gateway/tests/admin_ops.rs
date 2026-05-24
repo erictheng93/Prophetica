@@ -1176,7 +1176,8 @@ async fn compensation_rejects_missing_or_invalid_amount() {
 #[tokio::test]
 async fn compensation_rejects_missing_member_by_proposer_kind() {
     let app = internal_admin_router(
-        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]),
+        InMemoryAdminOpsStore::default()
+            .with_compensation_known_members(vec!["user_123".to_owned()]),
     );
 
     let admin_response = app
@@ -1221,8 +1222,8 @@ async fn compensation_rejects_missing_member_by_proposer_kind() {
 
 #[tokio::test]
 async fn compensation_accepts_proposal_and_records_proposer_kind() {
-    let store =
-        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]);
+    let store = InMemoryAdminOpsStore::default()
+        .with_compensation_known_members(vec!["user_123".to_owned()]);
     let app = internal_admin_router(store.clone());
 
     let response = app
@@ -1265,8 +1266,8 @@ async fn compensation_accepts_proposal_and_records_proposer_kind() {
 
 #[tokio::test]
 async fn compensation_lists_and_details_proposals() {
-    let store =
-        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]);
+    let store = InMemoryAdminOpsStore::default()
+        .with_compensation_known_members(vec!["user_123".to_owned()]);
     let app = internal_admin_router(store);
 
     let created = app
@@ -1334,8 +1335,8 @@ async fn compensation_lists_and_details_proposals() {
 
 #[tokio::test]
 async fn compensation_review_approves_rejects_and_replays() {
-    let store =
-        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]);
+    let store = InMemoryAdminOpsStore::default()
+        .with_compensation_known_members(vec!["user_123".to_owned()]);
     let app = internal_admin_router(store.clone());
 
     let created = app
@@ -1377,7 +1378,10 @@ async fn compensation_review_approves_rejects_and_replays() {
         approved_body["proposal"]["ledger_idempotency_key"],
         json!(format!("cs-cmp-{proposal_id}"))
     );
-    assert_eq!(approved_body["proposal"]["ledger_transaction_id"], json!(9001));
+    assert_eq!(
+        approved_body["proposal"]["ledger_transaction_id"],
+        json!(9001)
+    );
     assert_eq!(approved_body["proposal"]["posting_attempt_count"], json!(1));
     assert_eq!(approved_body["review"]["decision"], json!("approved"));
     assert_eq!(approved_body["replayed"], json!(false));
@@ -1430,7 +1434,10 @@ async fn compensation_review_approves_rejects_and_replays() {
         .await
         .expect("rejection should be handled");
     assert_eq!(rejected.status(), StatusCode::OK);
-    assert_eq!(response_json(rejected).await["proposal"]["status"], json!("rejected"));
+    assert_eq!(
+        response_json(rejected).await["proposal"]["status"],
+        json!("rejected")
+    );
 
     let records = store.audit_records();
     assert!(
@@ -1578,7 +1585,10 @@ async fn compensation_retry_reposts_failed_with_existing_key() {
         ))
         .await
         .expect("approval should be handled");
-    assert_eq!(response_json(approved).await["proposal"]["status"], json!("posting_failed"));
+    assert_eq!(
+        response_json(approved).await["proposal"]["status"],
+        json!("posting_failed")
+    );
 
     let retry = app
         .oneshot(json_post_as(
@@ -1636,7 +1646,10 @@ async fn compensation_retry_marks_unknown_committed_without_reposting() {
         .await
         .expect("approval should be handled");
     let approved_body = response_json(approved).await;
-    assert_eq!(approved_body["proposal"]["status"], json!("posting_unknown"));
+    assert_eq!(
+        approved_body["proposal"]["status"],
+        json!("posting_unknown")
+    );
     assert_eq!(approved_body["proposal"]["posting_attempt_count"], json!(1));
 
     let retry = app
@@ -1672,8 +1685,8 @@ async fn compensation_retry_marks_unknown_committed_without_reposting() {
 
 #[tokio::test]
 async fn compensation_review_blocks_self_review_and_non_review_role() {
-    let store =
-        InMemoryAdminOpsStore::default().with_compensation_known_members(vec!["user_123".to_owned()]);
+    let store = InMemoryAdminOpsStore::default()
+        .with_compensation_known_members(vec!["user_123".to_owned()]);
     let app = internal_admin_router(store);
 
     let created = app

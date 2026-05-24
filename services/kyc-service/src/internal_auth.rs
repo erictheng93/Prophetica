@@ -61,7 +61,10 @@ pub fn verify_internal_call(
 
 /// Computes the canonical HMAC-SHA256 signature for an internal call.
 #[must_use]
-#[allow(clippy::missing_panics_doc)]
+/// # Panics
+///
+/// Panics only if the provided secret is malformed for the configured
+/// HMAC implementation and no signature can be produced.
 pub fn sign_internal_call(
     method: &str,
     path: &str,
@@ -71,9 +74,10 @@ pub fn sign_internal_call(
 ) -> String {
     let body_hash = sha256_hex(body);
     let canonical = format!("{method}\n{path}\n{body_hash}\n{timestamp}");
-    #[allow(clippy::expect_used)]
-    let mut mac =
-        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts a key of any length");
+    let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
+        Ok(mac) => mac,
+        Err(error) => panic!("invalid HMAC key for internal call signing: {error}"),
+    };
     mac.update(canonical.as_bytes());
     hex_lower(&mac.finalize().into_bytes())
 }

@@ -1,10 +1,6 @@
 export { cn } from "./cn";
 export {
-  ProphButton,
   ProphLinkButton,
-  type ProphButtonProps,
-  type ProphButtonSize,
-  type ProphButtonVariant,
   type ProphLinkButtonProps,
 } from "./proph-button";
 export {

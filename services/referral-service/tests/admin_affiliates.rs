@@ -204,7 +204,10 @@ async fn scope_endpoint_rejects_bad_signature() {
                 .uri("/internal/referrals/affiliates/AFF-100/subjects/user_new_1/scope")
                 .header("x-actor-id", "api-gateway")
                 .header("x-operator-role", "service")
-                .header("x-internal-call-timestamp", current_unix_timestamp().to_string())
+                .header(
+                    "x-internal-call-timestamp",
+                    current_unix_timestamp().to_string(),
+                )
                 .header("x-internal-call-signature", "not-a-valid-signature")
                 .body(Body::empty())
                 .expect("request builds"),
