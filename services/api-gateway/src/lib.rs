@@ -4050,11 +4050,11 @@ where
         return Err(ApiError::kyc_tier_insufficient(tier));
     }
 
-    let fee_bps_cap = if matches!(side, OrderSide::Bid) {
-        market_fees.fee_bps_cap(market_id).await?
-    } else {
-        DEFAULT_TAKER_FEE_CURVE_BPS
-    };
+    // fee_bps_cap 是市場屬性，不依 side 變化。`required_minor_units` 在 ASK 時
+    // 會自行回 0（賣方不預扣餘額），但同一個值會作為 saga.fee_curve_bps 傳給
+    // matching engine 與 ledger，因此 ASK 也必須拿 per-market 值，否則跨側成交
+    // 之 taker 收費會與市場設定脫鉤（曾因 BID-only short-circuit 漏費）。
+    let fee_bps_cap = market_fees.fee_bps_cap(market_id).await?;
     let required_minor_units = required_minor_units(
         order_kind,
         side,
@@ -6632,6 +6632,41 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(market_service.detail_requests(), vec!["mkt-election"]);
+        assert_eq!(engine.place_requests().len(), 1);
+        assert_eq!(engine.place_requests()[0].2.fee_curve_bps, Some(700));
+    }
+
+    /// Regression: ASK orders 也必須帶 per-market fee_curve_bps。先前 gateway 對 ASK
+    /// short-circuit 回 DEFAULT_TAKER_FEE_CURVE_BPS，導致跨側成交時若 taker 落在 ASK
+    /// 端會以 default 而非 market 設定收費（market.fee_bps > DEFAULT 時漏費）。
+    #[tokio::test]
+    async fn place_order_passes_market_fee_curve_to_matching_engine_on_ask_side() {
+        let wallet = InMemoryWalletLedgerClient::with_available_minor_units(1_000);
+        let engine = InMemoryMatchingEngineClient::default();
+        let market_service = InMemoryMarketServiceClient::with_fee_bps(700);
+        let app = router_with_engine_and_kyc_and_market_fees(
+            wallet,
+            engine.clone(),
+            InMemoryKycTierClient::with_tier(KycTier::Tier1),
+            market_service.clone(),
+        );
+
+        let response = app
+            .oneshot(order_post(
+                "idem-market-fee-bps-forward-ask",
+                &json!({
+                    "side": "sell",
+                    "outcome": "YES",
+                    "type": "LIMIT",
+                    "price_pts": 65,
+                    "quantity": 10,
+                    "time_in_force": "GTC"
+                }),
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(engine.place_requests().len(), 1);
         assert_eq!(engine.place_requests()[0].2.fee_curve_bps, Some(700));
     }
