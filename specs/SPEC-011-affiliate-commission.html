@@ -34,12 +34,16 @@
 <h1>SPEC-011 — 代理分潤體系</h1>
 <blockquote>
 <p>優先級：<strong>P2</strong>
-版本：v0.2.4 · 最後更新：2026-05-12
-依賴：SPEC-002, SPEC-005, SPEC-010, SPEC-016
+版本：v0.2.5 · 最後更新：2026-05-24
+依賴：SPEC-002, SPEC-003, SPEC-005, SPEC-010, SPEC-016
 被依賴：—</p>
 </blockquote>
 <section class="changelog">
 <div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>v0.2.5 變更（適配 taker-only 曲線費率）</h3>
+    <p>§4.2 交易佣金公式 <code>maker_fee × % + taker_fee × %</code> 不變，但補 baseline 說明：SPEC-002 §4.4.3 / SPEC-003 §14.2 v1 落地以 <code>maker_fee_bps = 0</code> 之 taker-only 曲線，故 commission v1 實質只來自 taker_fee；maker 項保留為恆等式以利 SPEC-009 DMM 階段引入 maker rebate（含 negative bps 處理規則）。referral-service 之 <code>maker_fee_minor_units + taker_fee_minor_units</code> 加總邏輯與本公式一致。</p>
+  </article>
   <article class="changelog-entry">
     <h3>v0.2.4 變更（代理信用評級與信用帳戶管控）</h3>
     <ul>
@@ -188,6 +192,9 @@
 </ul>
 <pre><code>maker_fee × 佣金百分比 → referrer
 taker_fee × 佣金百分比 → referrer</code></pre>
+<blockquote>
+<p><strong>v1 maker_fee = 0 之效應</strong>：SPEC-002 §4.4.3 / SPEC-003 §14.2 baseline 以 <code>maker_fee_bps = 0</code> 落地（taker-only 曲線），故 v1 之 commission 實際只來自 <code>taker_fee</code> 項；<code>maker_fee × 佣金百分比 = 0</code> 為恆等式，但<strong>公式保留</strong>以利 SPEC-009 DMM 階段引入 maker rebate（含 negative bps 之處理：rebate 不入 referrer 佣金基數，referrer 只能分到 platform 之正收入）。referral-service 之計算實作以「每筆 fill 之 <code>maker_fee_minor_units + taker_fee_minor_units</code> 加總後乘以佣金率」執行，與此處公式一致。</p>
+</blockquote>
 <h4>4.2.1 帳本流（與 trade transaction <strong>嚴格分離</strong>）</h4>
 <blockquote>
 <p><strong>G-4 釘死</strong>：交易佣金與 trade hot path 帳本分離，交易主帳本仍維持既有規則，commission 僅以每日批次方式入帳。</p>
