@@ -100,5 +100,6 @@ fn place_order_request() -> PlaceOrderRequest {
         tif: TimeInForce::Gtc.into(),
         post_only: false,
         client_order_id: "client-maker".to_string(),
+        fee_curve_bps: 0,
     }
 }

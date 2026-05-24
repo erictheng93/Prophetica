@@ -845,7 +845,7 @@ fn seed_markets() -> Vec<Market> {
         yes_price_cents: 38,
         yes_bid_cents: 37,
         yes_ask_cents: 39,
-        fee_bps: 200,
+        fee_bps: 400,
         volume_24h_points: 184_500,
         volume_total_points: 2_840_300,
         opened_at: "2026-04-02T00:00:00+08:00".to_owned(),

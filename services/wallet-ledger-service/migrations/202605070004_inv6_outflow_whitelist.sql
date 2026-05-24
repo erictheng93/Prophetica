@@ -8,7 +8,7 @@
 --   - Player.Locked.{user_id}     鎖倉
 --   - Player.Frozen.{user_id}     凍結（自我排除 / Compliance / EDD）
 --   - Revenue.TradingFee          交易手續費
---   - Revenue.SettlementFee       結算手續費
+--   - Revenue.SettlementFee       reserved only; production writes are rejected in SDK validation
 --   - Player.Wallet.{other_user_id}  限 trade settlement（呼應 SPEC-002 §4.4.4）
 --   - Expense.ManualPointsGrant   限 manual_points_adjustment deduct 且 actor_role=admin/manager
 --

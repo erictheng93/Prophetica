@@ -261,7 +261,7 @@
       <p><strong>驗收</strong></p>
       <ul>
         <li><strong>D-4 KYC tier endpoint</strong>：kyc-service 新增 <code>GET /internal/kyc/users/:user_id/tier</code>，回應 <code>{ "tier": "TIER_0" | "TIER_1" | "TIER_2" | "TIER_3" }</code>；既有 <code>/api/v1/kyc/users/:user_id/status</code>（<code>services/kyc-service/src/api.rs:218</code>）不動。新 endpoint 之 <code>cargo nextest run -p kyc-service</code> 通過。</li>
-        <li><strong>D-5 訂單成本公式</strong>：把 §11 D-5 之公式抽到 <code>services/api-gateway/src/order_precheck.rs</code>（新檔），含 <code>required_minor_units(order_kind, side, price_pts, qty, fee_bps_cap) -&gt; i64</code> 純函式 + 單元測試（涵蓋 LIMIT BUY、MARKET BUY、SELL skip 三種）。<code>fee_bps_cap</code> 從 market-service 取 <code>max(default_fee_bps_200, market.fee_bps)</code>。</li>
+        <li><strong>D-5 訂單成本公式</strong>：把 §11 D-5 之公式抽到 <code>services/api-gateway/src/order_precheck.rs</code>（新檔），含 <code>required_minor_units(order_kind, side, price_pts, qty, fee_bps_cap) -&gt; i64</code> 純函式 + 單元測試（涵蓋 LIMIT BUY、MARKET BUY、SELL skip 三種）。<code>fee_bps_cap</code> 從 market-service 取 <code>max(default_fee_curve_bps_400, market.fee_bps)</code>。</li>
         <li><strong>D-6 LG-2 flag</strong>：在 <code>feature_flags</code> table（<code>crates/sdk/src/feature_flags.rs</code>）新增常數 <code>PAYMENTS_REAL_MONEY_ENABLED_FLAG = "payments.real_money_enabled"</code>；新增 migration 插入該 row 預設 <code>enabled = FALSE</code>；新增 <code>PaymentsRealMoneyFlagReader</code> trait + Pg / InMemory 兩個 impl，mirror 既有 <code>EngineHaltFlagReader</code> 模式。gateway 新增 <code>GET /v1/payments/real-money-status</code>（公開唯讀 allowlist）。</li>
         <li><strong>D-7 E2E runner</strong>：新增 <code>apps/web/playwright.journey.config.ts</code>（mirror 既有 <code>playwright.signup-referral.config.ts</code>）；<code>apps/web/package.json</code> 之 <code>scripts</code> 新增 <code>"test:e2e:journey": "playwright test --config playwright.journey.config.ts tests/e2e/journey-*.spec.ts"</code>；新增空殼 <code>apps/web/tests/e2e/journey-happy-path.spec.ts</code> 以驗證 config bootstraps（Phase 4 再補真實場景）。</li>
       </ul>
@@ -618,15 +618,15 @@ rtk pnpm --filter @prophetica/web test:e2e:journey</code></pre>
 
     <h3>D-5 訂單成本前置公式</h3>
     <p><strong>結論</strong>：採 SPEC-003 §14.2 之公式，gateway 前置只對 <strong>BUY-side</strong>（Bid）做檢查；SELL-side 委由撮合引擎 + ledger lock 處理。BUY 之保守上界：</p>
-    <pre><code>// SPEC-003 §14.2 已定：trade_value = price_pts × qty；fee = trade_value × fee_bps / 10_000
+    <pre><code>// SPEC-003 §14.2 已定：taker-only curve fee
 // 單位皆為 internal copper minor units（100 = 1 銅幣）
 let max_trade_value = match (order.kind, order.side) {
     (Limit,  Bid)  =&gt; order.price_pts * order.qty,    // BUY LIMIT: 出價即上界
     (Market, Bid)  =&gt; 100_i64 * order.qty,            // BUY MARKET: 最壞全成於 100
     (_,      Ask)  =&gt; 0,                              // SELL: 不在 gateway 前置
 };
-let fee_bps_cap: u32 = market.fee_bps.max(200);       // SPEC-003 default = 200；取較高者保守
-let max_fee = max_trade_value.saturating_mul(fee_bps_cap as i64) / 10_000;
+let fee_bps_cap: u32 = market.fee_bps.max(400);       // SPEC-003 default curve coefficient = 400；取較高者保守
+let max_fee = max_curve_taker_fee(order.kind, order.price_pts, order.qty, fee_bps_cap);
 let required_minor_units = max_trade_value.saturating_add(max_fee);</code></pre>
     <p><strong>拒絕回應 body</strong>：</p>
     <pre><code>{

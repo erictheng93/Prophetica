@@ -10,6 +10,7 @@ use proto::proph::v1::{
     PlaceOrderRequest, PlaceOrderResponse, Side as ProtoSide, TimeInForce, Trade, TradeId, UserId,
     engine_service_server::EngineService,
 };
+use sdk::ledger::DEFAULT_TAKER_FEE_CURVE_BPS;
 use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tonic::{Request, Response, Status};
 use ulid::Ulid;
@@ -68,6 +69,7 @@ struct PlacedOrderContext {
     order_type: OrderType,
     price: Price,
     quantity: Quantity,
+    fee_curve_bps: u32,
     client_order_id: String,
 }
 
@@ -86,6 +88,10 @@ impl EngineService for InMemoryEngineService {
         let order_type = map_order_type(request.r#type, request.post_only)?;
         let price = checked_price(request.price_pts)?;
         let quantity = checked_quantity(request.quantity)?;
+        let fee_curve_bps = u32::try_from(request.fee_curve_bps)
+            .ok()
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_TAKER_FEE_CURVE_BPS);
         let order_ulid = Ulid::new();
         let order_id_bytes = order_ulid.to_bytes().to_vec();
         let internal_order_id = OrderId::new(order_ulid.to_string());
@@ -133,6 +139,7 @@ impl EngineService for InMemoryEngineService {
                 order_type,
                 price,
                 quantity,
+                fee_curve_bps,
                 client_order_id: request.client_order_id,
             },
         )))
@@ -605,18 +612,18 @@ fn place_order_response(
         filled_qty: i64::try_from(filled_qty).unwrap_or(i64::MAX),
         avg_price_pts,
         fee: Some(Money {
-            amount: 0,
+            amount: total_taker_fee_minor_units(&result.trades, context.fee_curve_bps),
             currency: "PTS".to_string(),
         }),
         fills: result
             .trades
             .iter()
-            .map(|trade| trade_response(trade, &market_id))
+            .map(|trade| trade_response(trade, &market_id, context.fee_curve_bps))
             .collect(),
     }
 }
 
-fn trade_response(trade: &TradeEvent, market_id: &str) -> Trade {
+fn trade_response(trade: &TradeEvent, market_id: &str, fee_curve_bps: u32) -> Trade {
     Trade {
         seq_no: trade.sequence,
         id: Some(TradeId {
@@ -635,10 +642,32 @@ fn trade_response(trade: &TradeEvent, market_id: &str) -> Trade {
         maker_user: Some(UserId {
             value: trade.maker_user_id,
         }),
-        taker_fee_bps: 0,
+        taker_fee_bps: i32::try_from(curve_taker_fee_bps(trade.price, fee_curve_bps))
+            .unwrap_or(i32::MAX),
         maker_fee_bps: 0,
         ts: None,
     }
+}
+
+fn total_taker_fee_minor_units(trades: &[TradeEvent], fee_curve_bps: u32) -> i64 {
+    trades
+        .iter()
+        .map(|trade| curve_taker_fee_minor_units(trade.price, trade.quantity, fee_curve_bps))
+        .sum()
+}
+
+fn curve_taker_fee_bps(price: Price, fee_curve_bps: u32) -> u32 {
+    let price = price.min(100) as u128;
+    let complement = 100_u128.saturating_sub(price);
+    let numerator = u128::from(fee_curve_bps)
+        .saturating_mul(price)
+        .saturating_mul(complement);
+    ((numerator + 5_000) / 10_000) as u32
+}
+
+fn curve_taker_fee_minor_units(price: Price, quantity: Quantity, fee_curve_bps: u32) -> i64 {
+    let trade_value = i64::try_from(price.saturating_mul(quantity)).unwrap_or(i64::MAX);
+    trade_value.saturating_mul(i64::from(curve_taker_fee_bps(price, fee_curve_bps))) / 10_000
 }
 
 fn book_snapshot_response(snapshot: OrderBookSnapshot, depth: usize) -> BookSnapshot {

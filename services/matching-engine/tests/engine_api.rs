@@ -242,6 +242,7 @@ async fn book_websocket_sends_initial_snapshot() {
             tif: TimeInForce::Gtc.into(),
             post_only: false,
             client_order_id: "maker".to_string(),
+            fee_curve_bps: 0,
         }))
         .await
         .expect("resting order should be accepted");
@@ -415,6 +416,7 @@ fn place_order_proto(
         tif: TimeInForce::Gtc.into(),
         post_only: false,
         client_order_id: client_order_id.to_string(),
+        fee_curve_bps: 0,
     }
 }
 

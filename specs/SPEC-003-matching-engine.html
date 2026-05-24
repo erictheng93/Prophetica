@@ -27,10 +27,18 @@
 <body>
 <h1>SPEC-003 — 撮合引擎詳規（Matching Engine）</h1>
 <blockquote>
-<p>優先級：<strong>P0</strong><br>版本：v0.2.3 · 最後更新：2026-05-07<br>依賴：SPEC-002<br>被依賴：SPEC-004, SPEC-007, SPEC-009</p>
+<p>優先級：<strong>P0</strong><br>版本：v0.2.4 · 最後更新：2026-05-24<br>依賴：SPEC-002<br>被依賴：SPEC-004, SPEC-007, SPEC-009</p>
 </blockquote>
 <section class="changelog">
   <h2>變更紀錄</h2>
+  <article>
+    <h3>v0.2.4 變更（taker-only 曲線費率落地 + ground truth 釐清）</h3>
+    <ul>
+      <li>§3.1 <code>Market.fee_bps</code> 註解改為「taker fee 曲線係數 bps，預設 400（50¢ peak = 1.0% notional）」；對齊 Polymarket(0.75%) / Kalshi(1.75%) 中段定位。</li>
+      <li>§12 餘額充足公式由 <code>price * qty + fee</code> 改為 <code>price × qty + max_taker_fee_buffer</code>，明示 BID 才預檢、ASK 跳過，且 fee buffer 為 application 層預檢，<strong>不</strong>寫入 <code>Player.Locked.*</code>（呼應 SPEC-002 §4.4.2 補充說明與 <code>order_precheck</code> 模組）。</li>
+      <li>§14.2 公式改為 taker-only 曲線 <code>round_half_up(fee_bps × p × (1-p))</code>；<code>maker_fee_bps = 0</code>、<code>settlement_fee = 0</code> 為 v1 baseline。新增 ground-truth 註記：matching engine 與 gateway 之 <code>taker_fee_bps</code> 必須來自同一份 <code>Market.fee_bps</code>，下游 fee 數據以 ledger 為準。</li>
+    </ul>
+  </article>
   <article>
     <h3>v0.2.3 變更</h3>
     <ul>
@@ -93,7 +101,7 @@ pub struct Market {
     pub min_tick_pts:      i64,               // 最小價格單位（內部單位百分點），預設 1 = 0.01 銅幣
     pub min_lot:           i64,               // 最小股數，預設 1
     pub max_order_qty:     i64,               // 單筆最大股數，防作弊
-    pub fee_bps:           u32,               // 手續費 basis points，預設 200 (=2%)
+    pub fee_bps:           u32,               // taker fee 曲線係數 bps，預設 400（50¢ peak = 1.0% notional）
 }</code></pre>
 <h3>3.2 結果腿（Outcome）</h3>
 <pre><code class="language-rust">#[repr(u8)]
@@ -491,7 +499,7 @@ Response 200:
 <tr><th>檢查</th><th>條件</th><th>失敗回應</th></tr>
 </thead>
 <tbody>
-<tr><td>餘額充足</td><td><code>wallet.available ≥ price * qty + fee</code></td><td>INSUFFICIENT_FUNDS</td></tr>
+<tr><td>餘額充足</td><td>BID：<code>wallet.available ≥ price × qty + max_taker_fee_buffer</code>；ASK：不檢查（賣方資產為已持倉，無需預扣）。<br><code>max_taker_fee_buffer = max(curve_taker_fee(p, qty, fee_curve_bps) for p in 0..=price)</code>（曲線在 p ≈ 66.7¢ 取極大，predicate 以整數 price 掃描即可）；<strong>ledger 鎖入金額僅 <code>price × qty</code></strong>，fee buffer 為 application 層預檢，不寫入 <code>Player.Locked.*</code>。詳見 §14.2。</td><td>INSUFFICIENT_FUNDS</td></tr>
 <tr><td>持倉上限</td><td><code>position.qty + new_qty ≤ market.MaxPositionPerUser</code></td><td>POSITION_LIMIT_EXCEEDED</td></tr>
 <tr><td>單筆上限</td><td><code>qty ≤ market.MaxOrderQty</code></td><td>ORDER_QTY_TOO_LARGE</td></tr>
 <tr><td>自我成交</td><td><code>taker.userID != maker.userID</code>（找對手前驗）</td><td>SELF_TRADE_PREVENTED</td></tr>
@@ -700,8 +708,15 @@ rg -n -e 'PLATFORM_SYSTEM_USER_IDS' --type rust services/dmm-gateway/ \
 // 例: 65 × 100 = 6500 internal copper units = 65.00 點
 let trade_value: i64 = i64::from(price_pts) * qty;
 
-// fee = trade_value * fee_bps / 10000
-let fee: i64 = trade_value * i64::from(fee_bps) / 10_000;</code></pre>
+// taker-only 曲線費率：effective_taker_bps = round_half_up(fee_bps * p * (1 - p))
+// p = price_pts / 100；maker_fee_bps = 0；settlement_fee = 0
+// 收尾語意：本平台採 round-half-up（與 Kalshi 之 ceil 不同；經過業主決議，較利交易者）
+let effective_taker_bps: i64 =
+    (i64::from(fee_bps) * i64::from(price_pts) * i64::from(100 - price_pts) + 5_000) / 10_000;
+let taker_fee: i64 = trade_value * effective_taker_bps / 10_000;</code></pre>
+<blockquote>
+<p><strong>Per-market <code>fee_bps</code> 為唯一真相來源</strong>：撮合引擎產生 Trade event 與 gateway 寫入 ledger 之 <code>taker_fee_bps</code> 必須來自同一份 <code>Market.fee_bps</code>（不可在 matching engine 與 gateway 各持 hardcoded default）。若兩處出現分歧，以 gateway 寫入 ledger 之金額為準（ledger = ground truth），matching engine 之 Trade event 僅供下游 informational 用途，<strong>不得</strong>被 referral / position / analytics 服務直接拿來作金額重算。下游若需 fee 數據，必須 join ledger 取得，呼應 SPEC-002 §4.4.3。</p>
+</blockquote>
 <h3>14.3 NO 腿價格驗證</h3>
 <p>NO 訂單轉換為 YES 時：<code>yes_price = 100 - no_price</code>。轉換後價格必須仍在 (0, 100) 區間。</p>
 <h3>14.4 市場關閉時刻的訂單</h3>

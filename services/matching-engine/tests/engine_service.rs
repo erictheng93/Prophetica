@@ -44,7 +44,29 @@ fn place_order_request(
         tif: TimeInForce::Gtc.into(),
         post_only: order_type == OrderType::PostOnly,
         client_order_id: client_order_id.to_string(),
+        fee_curve_bps: 0,
     }
+}
+
+fn place_order_request_with_fee_curve_bps(
+    user_id: u64,
+    side: Side,
+    order_type: OrderType,
+    price_pts: i32,
+    quantity: i64,
+    client_order_id: &str,
+    fee_curve_bps: i32,
+) -> PlaceOrderRequest {
+    let mut request = place_order_request(
+        user_id,
+        side,
+        order_type,
+        price_pts,
+        quantity,
+        client_order_id,
+    );
+    request.fee_curve_bps = fee_curve_bps;
+    request
 }
 
 #[tokio::test]
@@ -82,6 +104,43 @@ async fn place_order_and_get_book_snapshot_flow_through_engine_service() {
     assert_eq!(snapshot.asks.len(), 1);
     assert_eq!(snapshot.asks[0].price_pts, 55);
     assert_eq!(snapshot.asks[0].qty, 3);
+}
+
+#[tokio::test]
+async fn service_uses_request_fee_curve_for_trade_events() {
+    let service = InMemoryEngineService::default();
+
+    service
+        .place_order(tonic::Request::new(place_order_request_with_fee_curve_bps(
+            10,
+            Side::Ask,
+            OrderType::Limit,
+            55,
+            3,
+            "client-maker-custom-fee",
+            700,
+        )))
+        .await
+        .expect("maker order should rest");
+
+    let taker = service
+        .place_order(tonic::Request::new(place_order_request_with_fee_curve_bps(
+            20,
+            Side::Bid,
+            OrderType::Limit,
+            55,
+            2,
+            "client-taker-custom-fee",
+            700,
+        )))
+        .await
+        .expect("taker order should fill")
+        .into_inner();
+
+    let fill = taker.fills.first().expect("fill should exist");
+    assert_eq!(fill.taker_fee_bps, 173);
+    assert_eq!(fill.maker_fee_bps, 0);
+    assert_eq!(taker.fee.as_ref().map(|fee| fee.amount), Some(1));
 }
 
 #[tokio::test]
@@ -344,6 +403,9 @@ async fn service_exposes_and_persists_per_fill_trade_events() {
     assert_eq!(fill.maker_user, Some(UserId { value: 10 }));
     assert_eq!(fill.taker_user, Some(UserId { value: 20 }));
     assert_eq!(fill.maker_order, Some(maker));
+    assert_eq!(fill.taker_fee_bps, 99);
+    assert_eq!(fill.maker_fee_bps, 0);
+    assert_eq!(taker.fee.as_ref().map(|fee| fee.amount), Some(1));
 
     let durable_trades = service
         .read_market_trade_events("mkt-election")

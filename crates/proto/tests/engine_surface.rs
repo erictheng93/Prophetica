@@ -49,6 +49,7 @@ fn engine_proto_surface_exposes_matching_engine_messages() {
         tif: 1,
         post_only: false,
         client_order_id: "client-1".to_string(),
+        fee_curve_bps: 0,
     };
 
     assert_eq!(request.price_pts, 55);

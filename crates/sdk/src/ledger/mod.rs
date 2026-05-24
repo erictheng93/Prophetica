@@ -1,4 +1,9 @@
 pub const LEDGER_BOOTSTRAP_SCOPE: &str = "stub-only";
+/// Default taker fee curve coefficient in basis points.
+///
+/// Effective taker fee bps is `round(DEFAULT_TAKER_FEE_CURVE_BPS * p * (1-p))`,
+/// so the default peak fee at 50 cents is 100 bps = 1.0% of notional.
+pub const DEFAULT_TAKER_FEE_CURVE_BPS: u32 = 400;
 
 use thiserror::Error;
 
@@ -198,6 +203,7 @@ impl LedgerTransactionDraft {
     /// Propagates the first invariant violation encountered.
     pub fn validate(&self) -> Result<(), LedgerValidationError> {
         self.validate_balanced()?;
+        self.validate_reserved_revenue_accounts()?;
         self.validate_player_wallet_outflow_whitelist()?;
         Ok(())
     }
@@ -213,6 +219,15 @@ impl LedgerTransactionDraft {
     #[must_use]
     pub const fn txn_kind(&self) -> LedgerTxnKind {
         self.txn_kind
+    }
+
+    fn validate_reserved_revenue_accounts(&self) -> Result<(), LedgerValidationError> {
+        for entry in &self.entries {
+            if entry.account_code() == "Revenue.SettlementFee" && entry.amount().minor_units() < 0 {
+                return Err(LedgerValidationError::ReservedSettlementFeeRevenue);
+            }
+        }
+        Ok(())
     }
 
     fn is_inv6_whitelisted_target(&self, code: &str) -> bool {
@@ -305,6 +320,10 @@ pub enum LedgerValidationError {
         /// Account code that is not in the INV-6 whitelist.
         account_code: String,
     },
+    /// `Revenue.SettlementFee` is kept as a reserved chart-of-accounts code,
+    /// but production settlement fees are permanently disabled.
+    #[error("Revenue.SettlementFee is reserved and must not receive production fee revenue")]
+    ReservedSettlementFeeRevenue,
 }
 
 #[cfg(test)]
@@ -450,6 +469,27 @@ mod tests {
         .with_kind(LedgerTxnKind::Fee);
 
         assert!(transaction.validate().is_ok());
+    }
+
+    #[test]
+    fn settlement_fee_revenue_is_reserved_and_rejected() {
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new("Player.Wallet.user_42", LedgerAmount::from_minor_units(130)),
+            LedgerEntryDraft::new(
+                "Revenue.SettlementFee",
+                LedgerAmount::from_minor_units(-130),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::Fee);
+
+        let Err(error) = transaction.validate() else {
+            panic!("settlement fee revenue should be reserved and rejected");
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "Revenue.SettlementFee is reserved and must not receive production fee revenue"
+        );
     }
 
     #[test]

@@ -59,6 +59,8 @@ struct PlaceOrderHttpRequest {
     price_pts: i32,
     quantity: i64,
     time_in_force: String,
+    #[serde(default)]
+    fee_curve_bps: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -265,6 +267,7 @@ async fn place_order_http(
                 .and_then(|value| value.to_str().ok())
                 .unwrap_or_default()
                 .to_string(),
+            fee_curve_bps: payload.fee_curve_bps.unwrap_or_default(),
         }))
         .await
         .map_err(|error| http_error(&error))?;

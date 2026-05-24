@@ -608,6 +608,8 @@ pub struct PlaceOrderRequest {
     pub post_only: bool,
     #[prost(string, tag="11")]
     pub client_order_id: ::prost::alloc::string::String,
+    #[prost(int32, tag="12")]
+    pub fee_curve_bps: i32,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PlaceOrderResponse {
@@ -1183,7 +1185,7 @@ pub struct GetWalletBalanceRequest {
 /// 三個子科目對應 SPEC-002 §4.2.1：
 ///    Player.Wallet.{user_id}  → available
 ///    Player.Locked.{user_id}  → locked   （訂單鎖定中）
-///    Player.Frozen.{user_id}  → frozen   （RG 自我排除 / 合規凍結）
+///    Player.Frozen.{user_id}  → frozen   （RG 解除賬號 / 合規凍結）
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetWalletBalanceResponse {
     /// echo for client convenience

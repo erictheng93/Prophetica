@@ -31,10 +31,18 @@
 <body>
 <h1>SPEC-002 — 資金安全與虛擬銅幣帳本</h1>
 <blockquote>
-<p>優先級：<strong>P0</strong><br>版本：v0.1.9 · 最後更新：2026-05-11<br>依賴：無<br>被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011</p>
+<p>優先級：<strong>P0</strong><br>版本：v0.1.11 · 最後更新：2026-05-24<br>依賴：無<br>被依賴：SPEC-003, SPEC-004, SPEC-005, SPEC-011, SPEC-012</p>
 </blockquote>
 <section class="changelog">
   <h2>變更紀錄</h2>
+  <article class="changelog-item">
+    <h3>v0.1.11</h3>
+    <p>對齊 SPEC-003 v0.2.4 taker-only 曲線費率落地：§4.4.2 補「ledger 鎖入金額 = <code>price × qty</code>，<strong>不</strong>含 fee buffer；gateway 額外驗 <code>wallet.available ≥ price × qty + max_taker_fee_buffer</code> 但不寫帳本」之釐清；§4.4.3 trade 範例改用 taker-only 曲線（<code>fee_bps = 400</code> → 65¢ 之 <code>effective_taker_bps = 91</code>，taker A 扣 0.59 點、maker B 不扣費），並標 ⚠️ TODO：<code>services/api-gateway/src/lib.rs::trade_settlement_entries</code> 目前對所有 fill 額外發 <code>DR Player.Locked.{buyer} / CR Player.Wallet.{seller}</code>（=立即轉移 escrow），與本 SPEC「鎖倉留至結算才釋出」之 Kalshi-symmetric 目標模型不符（pre-existing，需獨立 plan 決定修 code 或改 SPEC）。§5 INV-6 註記 <code>Revenue.SettlementFee</code> 雖列於 DB TRIGGER 白名單但 SDK <code>validate</code> 自 v0.1.10 起拒寫 credit，呼應 §4.2 「reserved；結算費永久 0」與 SPEC-004 §7.2。</p>
+  </article>
+  <article class="changelog-item">
+    <h3>v0.1.10</h3>
+    <p>§4.2 Chart of Accounts 新增 <code>Expense.CustomerSupportCompensation</code>（客服補償成本科目，與 <code>Expense.ManualPointsGrant</code> <strong>分離</strong>以利稽核切分「營運贈點 / 合作方贈點 / 客服補償」三類成本）；§4.4 新增 §4.4.6「客服補償（<code>cs_compensation</code>）」分錄範例。v1 為 grant-only（<code>DR Expense.CustomerSupportCompensation / CR Player.Wallet</code>），<strong>不</strong>觸發 INV-6（player wallet 為 inflow）。Reversal（沖回）為將來獨立 plan，落地時需先於 <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006</a> 追認 INV-6 加 (g) <code>Expense.CustomerSupportCompensation</code>（<strong>僅限</strong> <code>txn_type = cs_compensation_reversal</code> 且帶 <code>parent_txn_id</code>）carve-out，並新增 proto enum <code>TXN_TYPE_CS_COMPENSATION_REVERSAL</code>。對應 SPEC-012 §11 與 <a href="./SPEC-017-monorepo-bootstrap.html">SPEC-017 §6.3.1.1</a>「補償 domain 工作流規則」（後者為 contract 層之單一事實來源）。實作細節見 <a href="../docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md"><code>docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md</code></a>。</p>
+  </article>
   <article class="changelog-item">
     <h3>v0.1.9</h3>
     <p>MVP 階段尚未啟用真實儲值時，新增 <code>manual_points_adjustment</code> 帳本交易作為授權後台 / 合作方入點路徑。admin / manager 可對會員銅幣執行查詢、增加與扣除；affiliate 可查詢任意會員餘額以核對贈點結果與避免 dispute，但僅可增加會員銅幣，且不得扣除銅幣。所有操作均為 delta-only（增加 Y 銅幣 / 扣除 Y 銅幣），禁止直接設定絕對餘額、禁止 UPDATE / DELETE 舊分錄，並必須寫入 <code>audit_logs</code>。§4.2 補 <code>Expense.ManualPointsGrant</code>，§4.4.5 補手動調點分錄，§5 INV-6 加入僅限 admin / manager 扣點之 contra-expense carve-out；ADR-0006 v1.0.2 已同步追認此 carve-out。</p>
@@ -148,7 +156,7 @@
 </tr>
 <tr>
 <td>手續費 basis points</td>
-<td><code>1 bp = 0.01%</code>，計算 <code>fee = trade_value_internal × fee_bps / 10000</code>（呼應 SPEC-003 §14.2）</td>
+<td><code>1 bp = 0.01%</code>；交易手續費採 taker-only 曲線，<code>effective_taker_bps = round(fee_bps × p × (1-p))</code>，<code>fee = trade_value_internal × effective_taker_bps / 10000</code>（呼應 SPEC-003 §14.2）</td>
 </tr>
 <tr>
 <td>禁區</td>
@@ -221,12 +229,13 @@
 
 收入（Revenue）
   └─ Revenue.TradingFee          交易手續費收入
-  └─ Revenue.SettlementFee       結算手續費收入
+  └─ Revenue.SettlementFee       reserved；結算費永久 0，production 不得入帳
 
 費用（Expenses）
   └─ Expense.PaymentGatewayFee   支付通路手續費
   └─ Expense.AffiliateCommission 玩家介紹獎勵 / 交易佣金（發放至 Player.Wallet 銅幣，呼應 SPEC-011 §4.1 / §4.2）
   └─ Expense.ManualPointsGrant   MVP / 營運 / 合作方手動發點成本；扣點時作為 contra-expense 沖回
+  └─ Expense.CustomerSupportCompensation 客服補償成本（cs_compensation；ticket 驅動、proposer≠approver 單人核准；與 ManualPointsGrant 分離以利稽核切分；呼應 SPEC-012 §11 與 SPEC-017 §6.3.1.1）
   └─ Expense.AffiliatePartnerFee B2B 業務合約外部資產酬勞（對手方為 Liability.AccountsPayable.*，呼應 SPEC-011 §6.4）
   └─ Expense.LiquiditySubsidy    DMM 流動性補貼
 
@@ -290,6 +299,9 @@
   Entry 1: Player.Wallet.42                     +50,000  (鎖倉等同於玩家可用負債轉移)
   Entry 2: Player.Locked.42                     -50,000
 </code></pre>
+<blockquote>
+<p><strong>鎖倉金額 vs 餘額預檢</strong>：ledger 鎖入金額 = <code>price × qty</code>（本例 500 點），<strong>不</strong>含手續費 buffer。但 API gateway 於下單時額外驗 <code>Player.Wallet.available ≥ price × qty + max_taker_fee_buffer</code>（呼應 SPEC-003 §12），確保撮合成交後扣費不會把 wallet 推負。<code>max_taker_fee_buffer</code> 為 curve fee 在 <code>[0, order_price]</code> 區間之最大值（曲線在 ≈ 66.7¢ 取極大），由 <code>order_precheck::required_minor_units</code> 計算，不寫入帳本。</p>
+</blockquote>
 <h4>4.4.3 兩玩家成交（A 買 <a href="mailto:YES@0.65">YES@0.65</a> × 100，B 買 <a href="mailto:NO@0.35">NO@0.35</a> × 100，opening trade）</h4>
 <blockquote>
 <p>本範例採 Kalshi 對稱 escrow 模型，與 §4.4.4 結算範例的<strong>前置狀態 100% 對齊</strong>。
@@ -300,19 +312,19 @@ A 與 B 各自從掛單階段（§4.4.2 等同邏輯）已鎖入各自的 max lo
 <li>A 在掛單階段 <code>Player.Locked.A</code> 鎖入 <code>0.65 × 100 × 100 = 6,500</code>（A 的 max loss = 0.65 × 100 股）</li>
 <li>B 在掛單階段 <code>Player.Locked.B</code> 鎖入 <code>0.35 × 100 × 100 = 3,500</code>（B 的 max loss = 0.35 × 100 股）</li>
 <li>撮合成交時 trade_value = <code>price × qty = 65 × 100 = 6,500</code>（內部單位）</li>
-<li>平台手續費 2%，雙邊各 <code>6,500 × 200 / 10000 = 130</code>（= 1.3 點）</li>
-<li>手續費<strong>從各自 wallet 扣</strong>（不動 escrow）</li>
+<li>平台手續費採 taker-only 曲線；預設 <code>fee_bps = 400</code> 時，65¢ 成交之 <code>effective_taker_bps = round(400 × 0.65 × 0.35) = 91</code></li>
+<li>若 A 為 taker，手續費 <code>6,500 × 91 / 10000 = 59</code>（= 0.59 點）從 A wallet 扣；maker 不扣費</li>
 </ul>
-<pre><code class="language-text">Txn: trade, idempotency_key=&#39;trade-001&#39;, metadata: {trade_value: 6500, fee_bps: 200}
+<pre><code class="language-text">Txn: trade, idempotency_key=&#39;trade-001&#39;, metadata: {trade_value: 6500, fee_bps: 400, taker_fee_bps: 91, maker_fee_bps: 0}
 
-  Entry 1: Player.Wallet.A    +130     (從 A 可用餘額扣 1.3 點手續費 → 負債減少)
-  Entry 2: Revenue.TradingFee -130     (平台 fee 收入增加)
+  Entry 1: Player.Wallet.A    +59      (從 taker A 可用餘額扣 0.59 點手續費 → 負債減少)
+  Entry 2: Revenue.TradingFee -59      (平台 fee 收入增加)
 
-  Entry 3: Player.Wallet.B    +130
-  Entry 4: Revenue.TradingFee -130
-
-  借貸代數和：130 + (-130) + 130 + (-130) = 0 ✓
+  借貸代數和：59 + (-59) = 0 ✓
 </code></pre>
+<blockquote>
+<p><strong>⚠️ TODO（待業主決議）</strong>：上述「鎖倉留至結算才釋出」為 Kalshi-symmetric escrow 目標模型。目前 <code>services/api-gateway/src/lib.rs::trade_settlement_entries</code> 對<strong>所有</strong> trade fill 額外發出 <code>DR Player.Locked.{buyer} / CR Player.Wallet.{seller}</code>（=轉移 escrow 至賣方 wallet），等同 CFDx 立即結算模型，與本範例不符。此分歧自 fee 曲線改動前即存在，需獨立 plan 決定：(a) 修 code 對齊 SPEC（opening trade 不轉移、僅 closing trade 轉移，需引入 open/close 判定）；或 (b) 改 SPEC 對齊 code（接受 immediate-pay 模型，重寫 §4.4.4 結算邏輯）。不在 fee-curve 變更 scope 內。</p>
+</blockquote>
 <blockquote>
 <p>同時由 application 層產生 Position 紀錄（呼應 SPEC-015 outcomes / position 表）：</p>
 <ul>
@@ -435,6 +447,37 @@ metadata: {
 <li>每筆操作必須先寫或同 transaction 寫入 <code>audit_logs</code>，並將 <code>audit_log_id</code> 放入 ledger transaction metadata；audit log metadata 至少包含 actor、role、target、delta、direction、reason、idempotency_key、correlation_id、來源 IP / User-Agent。</li>
 <li>affiliate 增加銅幣屬「合作方手動贈點」，不可與 SPEC-011 之 B2B 外部資產酬勞混同；該銅幣仍不可回兌外部資產。</li>
 </ul>
+<h4>4.4.6 客服補償（cs_compensation）</h4>
+<blockquote>
+<p>本節定義客服 / manager / admin / affiliate 經補償工作流核准後寫入帳本之分錄。<strong>v1 僅 grant（補入會員銅幣）；reversal（沖回）為將來獨立 plan，需新增 proto enum <code>TXN_TYPE_CS_COMPENSATION_REVERSAL</code> 與 ADR-0006 追認 INV-6 carve-out。</strong>提案、審核、scope 守門、不存在 member 分流等工作流契約見 <a href="./SPEC-017-monorepo-bootstrap.html">SPEC-017 §6.3.1.1</a>；實作細節（狀態機、reconcile 演算法、idempotency 不變式）見 <a href="../docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md"><code>docs/implementation-plans/2026-05-19-compensation-review-chain-plan.md</code></a>。</p>
+</blockquote>
+<p>核准後入帳（grant）：</p>
+<pre><code class="language-text">Txn: cs_compensation, idempotency_key='cs-cmp-{proposal_id}'
+correlation_id: 補償提案的 correlation_id（內嵌 ticket_id，呼應 SPEC-012 §11）
+metadata: {
+  proposal_id,
+  ticket_id,
+  proposer_user_id,
+  proposer_kind: 'cs_system' | 'admin' | 'manager' | 'affiliate',
+  approver_user_id,
+  approver_role: 'admin' | 'manager',
+  amount_minor_units: Y,
+  relationship?,              // proposer_kind = affiliate 時必填（'direct_referral'）
+  audit_log_id
+}
+
+  Entry 1: Expense.CustomerSupportCompensation  +Y   (客服補償成本，獨立科目)
+  Entry 2: Player.Wallet.{subject_user_id}      -Y   (會員銅幣增加；平台負債增加)
+
+  借貸代數和：Y + (-Y) = 0 ✓
+</code></pre>
+<ul>
+<li><code>cs_compensation</code> <strong>不得</strong>與 <code>manual_points_adjustment</code> 混用科目—— <code>Expense.CustomerSupportCompensation</code> 與 <code>Expense.ManualPointsGrant</code> 分離，目的是讓稽核可清楚切分「營運贈點 / 合作方贈點 / 客服補償」三類成本。</li>
+<li><code>cs_compensation</code> <strong>不得</strong>連到 <code>Bank.TrustAccount.*</code>、<code>Bank.OperatingAccount.*</code>、<code>Liability.AccountsPayable.*</code>、<code>Expense.AffiliatePartnerFee</code> 或任何外部錢包 / 支付通路科目。</li>
+<li><strong>v1 grant-only</strong>：本 txn_type 在 v1 僅出現 grant 方向（Player.Wallet 為 <strong>inflow</strong>），<strong>不</strong>觸發 INV-6。將來 reversal 落地時需先於 <a href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006</a> 追認 INV-6 加 (g) <code>Expense.CustomerSupportCompensation</code>（<strong>僅限</strong> <code>txn_type = cs_compensation_reversal</code> 且帶 <code>parent_txn_id</code>、累計 reversal 不得超過原 <code>cs_compensation</code> 餘額）carve-out。</li>
+<li>單一 <code>proposal_id</code> 經 <code>ledger_idempotency_key = 'cs-cmp-{proposal_id}'</code> 確保跨 gateway / worker / 手動 retry 路徑皆只入帳一次；任何路徑<strong>必須</strong>先以既有 idempotency_key 查 ledger 再決定重送或標 posted（plan-level 不變式，見 plan 檔）。</li>
+<li>每筆 <code>cs_compensation</code> 入帳必須與對應 <code>admin_compensation_audit_events</code> 之 <code>compensation_ledger_transaction_posted</code> 事件以 <code>ledger_transaction_id</code> 雙向綁定，滿足 SPEC-018 evidence lookup（<code>compensation.proposals.by_ticket</code>）。</li>
+</ul>
 <h2>5. 不變式（Invariants）</h2>
 <blockquote>
 <p><strong>單一真相來源</strong>：以下不變式<strong>編號與內容</strong>對齊 <a href="../docs/architecture/decisions/ADR-0003-double-entry-ledger.md">ADR-0003 §5</a>。任何修改 INV 編號或語意必須先寫一份新 ADR，並標記 ADR-0003 為 Superseded。</p>
@@ -481,7 +524,7 @@ metadata: {
 </tr>
 <tr>
 <td>INV-6</td>
-<td><code>Player.Wallet.{user_id}</code> 之 outflow 目的地白名單，僅限：(a) <code>Player.Locked.{user_id}</code>、(b) <code>Player.Frozen.{user_id}</code>、(c) <code>Revenue.TradingFee</code> / <code>Revenue.SettlementFee</code>、(d) <code>Player.Wallet.{other_user_id}</code>（<strong>僅限</strong> <code>txn_type ∈ {trade, settle}</code>）、(e) <code>Bank.TrustAccount.*</code>（<strong>僅限</strong> <code>txn_type = chargeback</code>，呼應 §8.1 deposit 反向沖正；非「銅幣變現」路徑，玩家不取得外部資產）、(f) <code>Expense.ManualPointsGrant</code>（<strong>僅限</strong> <code>txn_type = manual_points_adjustment</code> 且 <code>metadata.adjustment_direction = 'deduct'</code> 且 <code>metadata.actor_role ∈ {'admin','manager'}</code>；此為手動發點成本沖回，非對外付款）。<strong>禁止</strong>流向 <code>Liability.AccountsPayable.*</code> / <code>Bank.OperatingAccount.*</code> / <code>Expense.AffiliatePartnerFee</code> / 任何其他銀行 / 支付通路 / 外部錢包科目</td>
+<td><code>Player.Wallet.{user_id}</code> 之 outflow 目的地白名單，僅限：(a) <code>Player.Locked.{user_id}</code>、(b) <code>Player.Frozen.{user_id}</code>、(c) <code>Revenue.TradingFee</code>（<code>Revenue.SettlementFee</code> 雖列於 DB CONSTRAINT TRIGGER 白名單以保留 reversal / refund 之向下相容路徑，但 SDK <code>LedgerTransactionDraft::validate</code> 於 v0.1.10 起拒絕任何對其的 credit，呼應 §4.2「<code>Revenue.SettlementFee</code> reserved；結算費永久 0」與 SPEC-004 §7.2）、(d) <code>Player.Wallet.{other_user_id}</code>（<strong>僅限</strong> <code>txn_type ∈ {trade, settle}</code>）、(e) <code>Bank.TrustAccount.*</code>（<strong>僅限</strong> <code>txn_type = chargeback</code>，呼應 §8.1 deposit 反向沖正；非「銅幣變現」路徑，玩家不取得外部資產）、(f) <code>Expense.ManualPointsGrant</code>（<strong>僅限</strong> <code>txn_type = manual_points_adjustment</code> 且 <code>metadata.adjustment_direction = 'deduct'</code> 且 <code>metadata.actor_role ∈ {'admin','manager'}</code>；此為手動發點成本沖回，非對外付款）。<strong>禁止</strong>流向 <code>Liability.AccountsPayable.*</code> / <code>Bank.OperatingAccount.*</code> / <code>Expense.AffiliatePartnerFee</code> / 任何其他銀行 / 支付通路 / 外部錢包科目</td>
 <td>每筆 commit</td>
 <td>該筆交易拒絕提交，需符合 governance 流程才可加入例外</td>
 </tr>

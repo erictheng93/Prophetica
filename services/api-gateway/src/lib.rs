@@ -19,12 +19,16 @@ use ed25519_dalek::{Verifier, VerifyingKey};
 use internal_kyc_auth::{
     INTERNAL_CALL_SIGNATURE_HEADER, INTERNAL_CALL_TIMESTAMP_HEADER, sign_internal_call_for_kyc,
 };
-use order_precheck::{OrderKind, OrderSide, required_minor_units};
+use order_precheck::{
+    OrderKind, OrderSide, buy_order_lock_minor_units, curve_taker_fee_bps,
+    curve_taker_fee_minor_units, required_minor_units,
+};
 use prometheus::{IntCounter, IntCounterVec, Opts};
 use reqwest::Url;
 use sdk::{
     config::ServiceConfig,
     feature_flags::{InMemoryFeatureFlagStore, PaymentsRealMoneyFlagReader, PgFeatureFlagStore},
+    ledger::DEFAULT_TAKER_FEE_CURVE_BPS,
     observability,
     postgres_migrations::{API_GATEWAY_MIGRATION_TABLE, run_postgres_migrations},
     service_stub,
@@ -49,7 +53,6 @@ pub mod responsible_gaming;
 const USER_ID_HEADER: HeaderName = HeaderName::from_static("x-user-id");
 const TRANSITION_CALLER_HEADER: HeaderName = HeaderName::from_static("x-transition-caller");
 const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-key");
-const DEFAULT_ORDER_FEE_BPS: u32 = 200;
 const DEFAULT_KYC_SERVICE_BASE_URL: &str = "http://127.0.0.1:8085";
 const DEFAULT_POSITION_SERVICE_BASE_URL: &str = "http://127.0.0.1:8089";
 const DEFAULT_TRADE_FILL_SAGA_RETRY_INTERVAL: Duration = Duration::from_secs(5);
@@ -492,6 +495,7 @@ struct TradeFillSaga {
     outcome: String,
     price_pts: i32,
     quantity: i64,
+    fee_curve_bps: u32,
     reservation_txn_id: Option<i64>,
     ledger_txn_id: Option<i64>,
     settlement_idempotency_key: String,
@@ -1039,6 +1043,16 @@ pub struct PlaceOrderRequest {
     pub price_pts: i32,
     pub quantity: i64,
     pub time_in_force: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_curve_bps: Option<u32>,
+}
+
+impl PlaceOrderRequest {
+    fn with_fee_curve_bps(&self, fee_curve_bps: u32) -> Self {
+        let mut request = self.clone();
+        request.fee_curve_bps = Some(fee_curve_bps);
+        request
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1081,8 +1095,14 @@ pub struct TradeSettlementRequest {
     pub fill_id: String,
     pub buyer_user_id: String,
     pub seller_user_id: String,
+    pub taker_user_id: String,
+    pub maker_user_id: String,
     pub price_pts: i32,
     pub quantity: i64,
+    pub taker_fee_bps: u32,
+    pub maker_fee_bps: u32,
+    pub taker_fee_minor_units: i64,
+    pub maker_fee_minor_units: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1102,6 +1122,8 @@ pub struct PositionFillProjectionRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderPrecheckOutcome {
     pub required_minor_units: i64,
+    pub lock_minor_units: i64,
+    pub fee_curve_bps: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1419,7 +1441,7 @@ pub struct DefaultMarketFeeReader;
 #[async_trait]
 impl MarketFeeReader for DefaultMarketFeeReader {
     async fn fee_bps_cap(&self, _market_id: &str) -> Result<u32, ApiError> {
-        Ok(DEFAULT_ORDER_FEE_BPS)
+        Ok(DEFAULT_TAKER_FEE_CURVE_BPS)
     }
 }
 
@@ -2315,20 +2337,15 @@ impl WalletLedgerClient for HttpWalletLedgerClient {
                 "fill_id": request.fill_id,
                 "buyer_user_id": request.buyer_user_id,
                 "seller_user_id": request.seller_user_id,
+                "taker_user_id": request.taker_user_id,
+                "maker_user_id": request.maker_user_id,
+                "taker_fee_bps": request.taker_fee_bps,
+                "maker_fee_bps": request.maker_fee_bps,
+                "taker_fee_minor_units": request.taker_fee_minor_units,
+                "maker_fee_minor_units": request.maker_fee_minor_units,
                 "reason": "trade_fill",
             }),
-            entries: vec![
-                PostLedgerEntry {
-                    account_code: format!("Player.Locked.{}", request.buyer_user_id),
-                    direction: "debit",
-                    amount_minor_units,
-                },
-                PostLedgerEntry {
-                    account_code: format!("Player.Wallet.{}", request.seller_user_id),
-                    direction: "credit",
-                    amount_minor_units,
-                },
-            ],
+            entries: trade_settlement_entries(request, amount_minor_units),
         };
 
         self.post_ledger_transaction(idempotency_key, &body)
@@ -2351,6 +2368,62 @@ struct PostLedgerEntry {
     account_code: String,
     direction: &'static str,
     amount_minor_units: i64,
+}
+
+fn trade_settlement_entries(
+    request: &TradeSettlementRequest,
+    amount_minor_units: i64,
+) -> Vec<PostLedgerEntry> {
+    let mut entries = vec![
+        PostLedgerEntry {
+            account_code: format!("Player.Locked.{}", request.buyer_user_id),
+            direction: "debit",
+            amount_minor_units,
+        },
+        PostLedgerEntry {
+            account_code: format!("Player.Wallet.{}", request.seller_user_id),
+            direction: "credit",
+            amount_minor_units,
+        },
+    ];
+    push_trade_fee_entries(
+        &mut entries,
+        request,
+        &request.taker_user_id,
+        request.taker_fee_minor_units,
+    );
+    push_trade_fee_entries(
+        &mut entries,
+        request,
+        &request.maker_user_id,
+        request.maker_fee_minor_units,
+    );
+    entries
+}
+
+fn push_trade_fee_entries(
+    entries: &mut Vec<PostLedgerEntry>,
+    request: &TradeSettlementRequest,
+    user_id: &str,
+    fee_minor_units: i64,
+) {
+    if fee_minor_units <= 0 {
+        return;
+    }
+    entries.push(PostLedgerEntry {
+        account_code: format!("Player.Wallet.{user_id}"),
+        direction: "debit",
+        amount_minor_units: fee_minor_units,
+    });
+    entries.push(PostLedgerEntry {
+        account_code: "Revenue.TradingFee".to_owned(),
+        direction: "credit",
+        amount_minor_units: fee_minor_units,
+    });
+    debug_assert!(
+        user_id == request.buyer_user_id || user_id == request.seller_user_id,
+        "trade fee user must be one side of the fill"
+    );
 }
 
 #[derive(Debug, Deserialize)]
@@ -2819,8 +2892,8 @@ where
         let market = self.get_market(market_id).await?;
         Ok(market
             .fee_bps
-            .unwrap_or(DEFAULT_ORDER_FEE_BPS)
-            .max(DEFAULT_ORDER_FEE_BPS))
+            .unwrap_or(DEFAULT_TAKER_FEE_CURVE_BPS)
+            .max(DEFAULT_TAKER_FEE_CURVE_BPS))
     }
 }
 
@@ -3091,7 +3164,7 @@ impl TradeFillSagaStore for PostgresTradeFillSagaStore {
             INSERT INTO api_gateway_trade_fill_sagas (
                 fill_key, market_id, fill_id, taker_user_id, maker_user_id,
                 buyer_user_id, seller_user_id, taker_order_id, maker_order_id,
-                taker_side, maker_side, outcome, price_pts, quantity,
+                taker_side, maker_side, outcome, price_pts, quantity, fee_curve_bps,
                 reservation_txn_id, ledger_txn_id, settlement_idempotency_key,
                 taker_projection_idempotency_key, maker_projection_idempotency_key,
                 status, attempts
@@ -3099,10 +3172,10 @@ impl TradeFillSagaStore for PostgresTradeFillSagaStore {
             VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7, $8, $9,
-                $10, $11, $12, $13, $14,
-                $15, $16, $17,
-                $18, $19,
-                $20, $21
+                $10, $11, $12, $13, $14, $15,
+                $16, $17, $18,
+                $19, $20,
+                $21, $22
             )
             ON CONFLICT (fill_key) DO NOTHING
             ",
@@ -3121,6 +3194,7 @@ impl TradeFillSagaStore for PostgresTradeFillSagaStore {
         .bind(saga.outcome)
         .bind(saga.price_pts)
         .bind(saga.quantity)
+        .bind(i32::try_from(saga.fee_curve_bps).unwrap_or(i32::MAX))
         .bind(saga.reservation_txn_id)
         .bind(saga.ledger_txn_id)
         .bind(saga.settlement_idempotency_key)
@@ -3329,6 +3403,12 @@ fn trade_fill_saga_from_row(row: &sqlx::postgres::PgRow) -> Result<TradeFillSaga
         quantity: row.try_get("quantity").map_err(|error| {
             ApiError::internal(format!("trade fill saga quantity decode failed: {error}"))
         })?,
+        fee_curve_bps: row
+            .try_get::<i32, _>("fee_curve_bps")
+            .map(|value| u32::try_from(value).unwrap_or(DEFAULT_TAKER_FEE_CURVE_BPS))
+            .map_err(|error| {
+                ApiError::internal(format!("trade fill saga fee curve decode failed: {error}"))
+            })?,
         reservation_txn_id: row.try_get("reservation_txn_id").map_err(|error| {
             ApiError::internal(format!(
                 "trade fill saga reservation decode failed: {error}"
@@ -3973,7 +4053,7 @@ where
     let fee_bps_cap = if matches!(side, OrderSide::Bid) {
         market_fees.fee_bps_cap(market_id).await?
     } else {
-        DEFAULT_ORDER_FEE_BPS
+        DEFAULT_TAKER_FEE_CURVE_BPS
     };
     let required_minor_units = required_minor_units(
         order_kind,
@@ -3982,9 +4062,16 @@ where
         request.quantity,
         fee_bps_cap,
     );
+    let lock_minor_units = if matches!(side, OrderSide::Bid) {
+        buy_order_lock_minor_units(order_kind, i64::from(request.price_pts), request.quantity)
+    } else {
+        0
+    };
     if required_minor_units <= 0 {
         return Ok(OrderPrecheckOutcome {
             required_minor_units: 0,
+            lock_minor_units: 0,
+            fee_curve_bps: fee_bps_cap,
         });
     }
 
@@ -4000,6 +4087,8 @@ where
 
     Ok(OrderPrecheckOutcome {
         required_minor_units,
+        lock_minor_units,
+        fee_curve_bps: fee_bps_cap,
     })
 }
 
@@ -4025,6 +4114,7 @@ async fn settle_and_project_order_fills<W, P>(
     market_id: &str,
     request: &PlaceOrderRequest,
     response: &OrderActionResponse,
+    fee_curve_bps: u32,
     reservation: Option<&LedgerPostResult>,
 ) -> Result<(), ApiError>
 where
@@ -4055,6 +4145,7 @@ where
             market_id,
             request,
             fill,
+            fee_curve_bps,
             reservation_txn_id,
         )
         .await?;
@@ -4081,6 +4172,7 @@ async fn build_trade_fill_saga(
     market_id: &str,
     request: &PlaceOrderRequest,
     fill: &OrderFill,
+    fee_curve_bps: u32,
     reservation_txn_id: Option<i64>,
 ) -> Result<TradeFillSaga, ApiError> {
     let maker_user_id = order_owners
@@ -4112,6 +4204,7 @@ async fn build_trade_fill_saga(
         outcome: outcome.to_owned(),
         price_pts: fill.price_pts,
         quantity: fill.quantity,
+        fee_curve_bps,
         reservation_txn_id,
         ledger_txn_id: None,
         settlement_idempotency_key: fill_key,
@@ -4178,8 +4271,18 @@ where
                     fill_id: saga.fill_id.clone(),
                     buyer_user_id: saga.buyer_user_id.clone(),
                     seller_user_id: saga.seller_user_id.clone(),
+                    taker_user_id: saga.taker_user_id.clone(),
+                    maker_user_id: saga.maker_user_id.clone(),
                     price_pts: saga.price_pts,
                     quantity: saga.quantity,
+                    taker_fee_bps: curve_taker_fee_bps(saga.price_pts, saga.fee_curve_bps),
+                    maker_fee_bps: 0,
+                    taker_fee_minor_units: curve_taker_fee_minor_units(
+                        saga.price_pts,
+                        saga.quantity,
+                        saga.fee_curve_bps,
+                    ),
+                    maker_fee_minor_units: 0,
                 },
                 &saga.settlement_idempotency_key,
             )
@@ -4498,14 +4601,15 @@ where
         .reserve_order_funds(
             &auth.user_id,
             &market_id,
-            precheck.required_minor_units,
+            precheck.lock_minor_units,
             &reservation_key,
         )
         .await?;
 
+    let engine_request = request.with_fee_curve_bps(precheck.fee_curve_bps);
     let response = match state
         .engine
-        .place_order(&auth.user_id, &market_id, &request)
+        .place_order(&auth.user_id, &market_id, &engine_request)
         .await
     {
         Ok(response) => response,
@@ -4515,7 +4619,7 @@ where
                 .release_order_funds(
                     &auth.user_id,
                     &market_id,
-                    precheck.required_minor_units,
+                    precheck.lock_minor_units,
                     &release_key,
                 )
                 .await?;
@@ -4538,8 +4642,9 @@ where
         state.trade_sagas.as_ref(),
         &auth.user_id,
         &market_id,
-        &request,
+        &engine_request,
         &response,
+        precheck.fee_curve_bps,
         reservation.as_ref(),
     )
     .await?;
@@ -4687,14 +4792,15 @@ where
         .reserve_order_funds(
             &auth.user_id,
             &market_id,
-            precheck.required_minor_units,
+            precheck.lock_minor_units,
             &reservation_key,
         )
         .await?;
 
+    let engine_request = request.with_fee_curve_bps(precheck.fee_curve_bps);
     let response = match state
         .engine
-        .place_order(&auth.user_id, &market_id, &request)
+        .place_order(&auth.user_id, &market_id, &engine_request)
         .await
     {
         Ok(response) => response,
@@ -4704,7 +4810,7 @@ where
                 .release_order_funds(
                     &auth.user_id,
                     &market_id,
-                    precheck.required_minor_units,
+                    precheck.lock_minor_units,
                     &release_key,
                 )
                 .await?;
@@ -4727,8 +4833,9 @@ where
         state.trade_sagas.as_ref(),
         &auth.user_id,
         &market_id,
-        &request,
+        &engine_request,
         &response,
+        precheck.fee_curve_bps,
         reservation.as_ref(),
     )
     .await?;
@@ -5660,7 +5767,7 @@ mod tests {
         AdminProxyContext, AffiliateCommissionSummary, AffiliateCredentialClient,
         AffiliateCredentialCreateRequest, AffiliateDashboardResponse, AffiliateReferralListItem,
         ApiError, AuthVerifier, BookLevel, BookSnapshotResponse, CaptureReferralRequest,
-        DEFAULT_ORDER_FEE_BPS, InMemoryAffiliateAccountSagaStore, InMemoryFeatureFlagStore,
+        DEFAULT_TAKER_FEE_CURVE_BPS, InMemoryAffiliateAccountSagaStore, InMemoryFeatureFlagStore,
         InMemoryGatewayDeniedAuditStore, InMemoryTradeFillSagaStore, KycTier, KycTierClient,
         LedgerEntry, LedgerPostResult, Market, MarketListResponse, MarketServiceClient,
         MatchingEngineClient, OrderActionResponse, OrderFill, OrderOwnerStore, PlaceOrderRequest,
@@ -6136,7 +6243,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::PAYMENT_REQUIRED);
         let body = response_json(response).await;
         assert_eq!(body["error"], json!("ERROR_CODE_INSUFFICIENT_FUNDS"));
-        assert_eq!(body["required_minor_units"], json!(663));
+        assert_eq!(body["required_minor_units"], json!(655));
         assert_eq!(body["available_minor_units"], json!(100));
         assert_eq!(body["redirect_to"], json!("/topup"));
         assert_eq!(engine.place_requests(), Vec::new());
@@ -6177,7 +6284,7 @@ mod tests {
             vec![(
                 "10".to_owned(),
                 "mkt-election".to_owned(),
-                663,
+                650,
                 "order-lock:10:mkt-election:idem-ledger-liability-sign".to_owned()
             )]
         );
@@ -6215,7 +6322,7 @@ mod tests {
             vec![(
                 "10".to_owned(),
                 "mkt-election".to_owned(),
-                663,
+                650,
                 "order-unlock:10:mkt-election:idem-release-on-engine-fail".to_owned()
             )]
         );
@@ -6295,6 +6402,7 @@ mod tests {
             price_pts: 55,
             quantity: 2,
             time_in_force: "GTC".to_owned(),
+            fee_curve_bps: None,
         };
         let response = OrderActionResponse {
             order_id: "ord_taker_01".to_owned(),
@@ -6328,6 +6436,7 @@ mod tests {
             "mkt-election",
             &request,
             &response,
+            DEFAULT_TAKER_FEE_CURVE_BPS,
             Some(&LedgerPostResult {
                 txn_id: 42,
                 replayed: false,
@@ -6344,8 +6453,14 @@ mod tests {
                     fill_id: "mkt-election:trade:7".to_owned(),
                     buyer_user_id: "10".to_owned(),
                     seller_user_id: "11".to_owned(),
+                    taker_user_id: "10".to_owned(),
+                    maker_user_id: "11".to_owned(),
                     price_pts: 55,
                     quantity: 2,
+                    taker_fee_bps: 99,
+                    maker_fee_bps: 0,
+                    taker_fee_minor_units: 1,
+                    maker_fee_minor_units: 0,
                 },
                 "trade-fill:mkt-election:mkt-election:trade:7".to_owned()
             )]
@@ -6412,6 +6527,7 @@ mod tests {
             price_pts: 55,
             quantity: 2,
             time_in_force: "GTC".to_owned(),
+            fee_curve_bps: None,
         };
         let response = OrderActionResponse {
             order_id: "ord_taker_retry".to_owned(),
@@ -6445,6 +6561,7 @@ mod tests {
             "mkt-election",
             &request,
             &response,
+            DEFAULT_TAKER_FEE_CURVE_BPS,
             Some(&LedgerPostResult {
                 txn_id: 42,
                 replayed: false,
@@ -6487,10 +6604,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn place_order_passes_market_fee_curve_to_matching_engine() {
+        let wallet = InMemoryWalletLedgerClient::with_available_minor_units(1_000);
+        let engine = InMemoryMatchingEngineClient::default();
+        let market_service = InMemoryMarketServiceClient::with_fee_bps(700);
+        let app = router_with_engine_and_kyc_and_market_fees(
+            wallet,
+            engine.clone(),
+            InMemoryKycTierClient::with_tier(KycTier::Tier1),
+            market_service.clone(),
+        );
+
+        let response = app
+            .oneshot(order_post(
+                "idem-market-fee-bps-forward",
+                &json!({
+                    "side": "buy",
+                    "outcome": "YES",
+                    "type": "LIMIT",
+                    "price_pts": 65,
+                    "quantity": 10,
+                    "time_in_force": "GTC"
+                }),
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(market_service.detail_requests(), vec!["mkt-election"]);
+        assert_eq!(engine.place_requests().len(), 1);
+        assert_eq!(engine.place_requests()[0].2.fee_curve_bps, Some(700));
+    }
+
+    #[tokio::test]
     async fn place_order_uses_market_fee_bps_cap_for_buy_balance_precheck() {
         let wallet = InMemoryWalletLedgerClient::with_available_minor_units(665);
         let engine = InMemoryMatchingEngineClient::default();
-        let market_service = InMemoryMarketServiceClient::with_fee_bps(300);
+        let market_service = InMemoryMarketServiceClient::with_fee_bps(1300);
         let app = router_with_engine_and_kyc_and_market_fees(
             wallet,
             engine.clone(),
@@ -6616,6 +6766,7 @@ mod tests {
                     price_pts: 55,
                     quantity: 3,
                     time_in_force: "GTC".to_owned(),
+                    fee_curve_bps: Some(DEFAULT_TAKER_FEE_CURVE_BPS),
                 },
             )]
         );
@@ -6788,6 +6939,7 @@ mod tests {
                     price_pts: 55,
                     quantity: 3,
                     time_in_force: "GTC".to_owned(),
+                    fee_curve_bps: Some(DEFAULT_TAKER_FEE_CURVE_BPS),
                 },
             )]
         );
@@ -8022,7 +8174,7 @@ mod tests {
     impl InMemoryMarketServiceClient {
         fn market(&self) -> Market {
             Market {
-                fee_bps: Some(self.fee_bps.unwrap_or(DEFAULT_ORDER_FEE_BPS)),
+                fee_bps: Some(self.fee_bps.unwrap_or(DEFAULT_TAKER_FEE_CURVE_BPS)),
                 ..test_market()
             }
         }

@@ -237,8 +237,8 @@
 </ol>
 <h3>7.2 結算手續費</h3>
 <ul>
-<li>預設不收結算費（手續費已在交易階段收取）</li>
-<li>例外：平台公告之大型賽事可加收 0.5%「結算手續費」（必須事前公告）</li>
+<li>永久不收結算費；贏方合約依結算結果付足，不再二次扣費。</li>
+<li><code>Revenue.SettlementFee</code> 僅作為 reserved 帳本科目保留，不得由 production ledger write credit 入帳。</li>
 </ul>
 <h3>7.3 結算原子性</h3>
 <p>整個結算 transaction 必須在<strong>單一資料庫 transaction</strong> 內完成。若中途失敗：</p>
@@ -390,7 +390,7 @@
 <li>是否提供 API 給第三方 Oracle（Chainlink / UMA Optimistic Oracle）？目前為純人工，但成熟後可考慮自動化。</li>
 <li>申訴窗口固定 24 小時，還是依市場類型可變？短期市場（&lt; 1 小時）是否縮短至 1 小時？</li>
 <li>「平局退款」的計算基準是否使用 VWAP（成交量加權平均價）而非每位玩家自身建倉均價？</li>
-<li>結算手續費是否預設為 0，或保留 0.5% 上限？</li>
+<li><del>結算手續費是否預設為 0，或保留 0.5% 上限？</del> ✅ Resolved：永久 0；<code>Revenue.SettlementFee</code> 僅 reserved，不得 production 入帳。</li>
 <li>大額中獎玩家的 EDD 強制門檻如何訂定？依執照地法規。</li>
 </ol>
 

@@ -37,6 +37,7 @@ message PlaceOrderRequest {
   TimeInForce tif = 9;
   bool post_only = 10;
   string client_order_id = 11;
+  int32 fee_curve_bps = 12;
 }
 
 message PlaceOrderResponse {
