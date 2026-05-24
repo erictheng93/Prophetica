@@ -11,7 +11,7 @@ import { analyticsServerFetchOptions } from "@/lib/analytics-server-fetch";
 export default function DecisionSupportDashboardPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {(viewer) => (
+      {() => (
         <AdminShell
           eyebrow={adminCopy.dashboard.eyebrow}
           title={adminCopy.dashboard.title}

@@ -15,7 +15,7 @@ const categoryLabel: Record<ReportTemplate["category"], string> = {
 export default function AnalyticsTemplatesPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {async (viewer) => {
+      {async () => {
         let templates: ReportTemplate[];
         try {
           templates = await fetchTemplates(await analyticsServerFetchOptions());

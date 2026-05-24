@@ -9,7 +9,7 @@ import { analyticsServerFetchOptions } from "@/lib/analytics-server-fetch";
 export default function AnalyticsJobsPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {async (viewer) => {
+      {async () => {
         const reports = await fetchJobs(
           undefined,
           await analyticsServerFetchOptions(),

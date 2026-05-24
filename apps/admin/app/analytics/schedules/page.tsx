@@ -8,7 +8,7 @@ import { analyticsServerFetchOptions } from "@/lib/analytics-server-fetch";
 export default function AnalyticsSchedulesPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {async (viewer) => {
+      {async () => {
         const schedules = await fetchSchedules(
           await analyticsServerFetchOptions(),
         );

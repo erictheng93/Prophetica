@@ -92,11 +92,9 @@ function GoldGhostLink({
 function BlackGoldTileMedia({
   label,
   details,
-  variant = "sigil",
 }: {
   label: string;
   details: string[];
-  variant?: "sigil" | "platform" | "wallet" | "responsible";
 }) {
   return (
     <div
@@ -197,7 +195,6 @@ export default async function LandingSportsPage() {
             <BlackGoldTileMedia
               details={mediaTags.platform}
               label={t("neutral.media")}
-              variant="platform"
             />
           }
         />
@@ -221,7 +218,6 @@ export default async function LandingSportsPage() {
             <BlackGoldTileMedia
               details={mediaTags.wallet}
               label={t("points.media")}
-              variant="wallet"
             />
           }
         />
@@ -245,7 +241,6 @@ export default async function LandingSportsPage() {
             <BlackGoldTileMedia
               details={mediaTags.responsible}
               label={t("responsibleGaming.media")}
-              variant="responsible"
             />
           }
         />

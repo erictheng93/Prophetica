@@ -7,7 +7,7 @@ export default function KycRiskPage() {
 
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {(viewer) => (
+      {() => (
         <AdminShell
           title={route.label}
           description={route.summary}

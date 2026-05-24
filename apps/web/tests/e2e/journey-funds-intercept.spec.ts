@@ -4,7 +4,6 @@ import {
   closeJourneyMocks,
   freshJourneyState,
   JOURNEY_MARKET_ID,
-  pathToRegExp,
   setupJourneyMocks,
   signInFromMarketTrade,
   submitTrade,

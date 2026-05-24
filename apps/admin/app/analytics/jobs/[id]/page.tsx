@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminShell } from "@/components/admin-shell";
 import { RoleGate } from "@/components/role-gate";
-import { StatusPill } from "@/components/status-pill";
 import { adminCopy } from "@/lib/admin-copy";
 import { analyticsServerFetchOptions } from "@/lib/analytics-server-fetch";
 import {
@@ -10,7 +9,6 @@ import {
   type ReportFormat,
   type ReportJob,
 } from "@/lib/analytics-reporting";
-import type { Role } from "@/lib/rbac";
 
 interface JobPageProps {
   params: Promise<{ id: string }>;
@@ -27,7 +25,7 @@ export default async function AnalyticsJobDetailPage({ params }: JobPageProps) {
 
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {async (viewer) => {
+      {async () => {
         const detail = await fetchJobDetail(
           id,
           await analyticsServerFetchOptions(),
@@ -56,7 +54,7 @@ export default async function AnalyticsJobDetailPage({ params }: JobPageProps) {
               <ParamsCard job={job} />
               <RowsPreviewCard job={job} />
               <DownloadCard job={job} />
-              <RevealCard job={job} viewerRole={viewer.role} />
+              <RevealCard job={job} />
               <RerunCard />
               <AuditCard audit={audit} />
             </div>
@@ -188,7 +186,7 @@ function DownloadCard({ job }: { job: ReportJob }) {
   );
 }
 
-function RevealCard({ job, viewerRole }: { job: ReportJob; viewerRole: Role }) {
+function RevealCard({ job }: { job: ReportJob }) {
   const hasSensitive = job.params.columns.some(
     (column) => column.endsWith("_email") || column.endsWith("_id"),
   );

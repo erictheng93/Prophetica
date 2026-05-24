@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { toAdminRole } from "@/lib/admin-auth";
-import { defaultLandingFor, type Role } from "@/lib/rbac";
+import { defaultLandingFor } from "@/lib/rbac";
 import { setSessionCookie } from "@/lib/session";
 import { setUpstreamSessionCookie } from "@/lib/upstream-session";
 

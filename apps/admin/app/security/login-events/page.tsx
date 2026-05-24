@@ -14,7 +14,7 @@ export default function AdminLoginEventsPage({
 }) {
   return (
     <RoleGate allow={["admin", "manager"]}>
-      {async (viewer) => {
+      {async () => {
         const params = await searchParams;
         const upstreamSessionToken = await getUpstreamSessionToken();
         const events = upstreamSessionToken

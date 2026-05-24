@@ -1,5 +1,4 @@
 import { RoleGate } from "@/components/role-gate";
-import { adminCopy } from "@/lib/admin-copy";
 import { fetchAffiliateDashboard } from "@/lib/affiliate-management-bff";
 import { formatMinor } from "@/lib/affiliates";
 

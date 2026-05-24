@@ -1,14 +1,12 @@
 import { AdminShell } from "@/components/admin-shell";
 import { MemberManagement } from "@/components/member-management";
 import { RoleGate } from "@/components/role-gate";
-import { getOpsRoute } from "@/lib/ops-facade";
 
 export default async function MembersKycReviewPage({
   searchParams,
 }: {
   searchParams?: Promise<{ query?: string }>;
 }) {
-  const route = getOpsRoute("member-management");
   const params = await searchParams;
 
   return (
