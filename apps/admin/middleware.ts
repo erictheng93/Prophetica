@@ -1,14 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requiresCloudflareAccess } from "@/lib/cloudflare-access-policy";
 import { canAccess, defaultLandingFor } from "@/lib/rbac";
-import { verifySession } from "@/lib/session-crypto";
+import {
+  resolveSessionSecret,
+  verifySession,
+} from "@/lib/session-crypto";
 
 const SESSION_COOKIE_NAME = "proph_admin_session";
-const DEV_SECRET = "dev-only-admin-session-secret-do-not-use-in-prod";
-
-function getSecret(): string {
-  return process.env.ADMIN_SESSION_SECRET ?? DEV_SECRET;
-}
 
 /*
  * SPEC-017 §6.3 (amended 2026-05-10) — admin middleware enforces:
@@ -67,7 +65,9 @@ export async function middleware(req: NextRequest) {
   }
 
   const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-  const session = token ? await verifySession(token, getSecret()) : null;
+  const session = token
+    ? await verifySession(token, resolveSessionSecret()).catch(() => null)
+    : null;
 
   if (!session) {
     const loginUrl = req.nextUrl.clone();
