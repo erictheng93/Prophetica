@@ -236,6 +236,21 @@ pub struct AppStateWithEngine<W, E, K> {
     trade_sagas: Arc<dyn TradeFillSagaStore>,
 }
 
+#[derive(Clone)]
+struct TradeFillStores {
+    order_owners: Arc<dyn OrderOwnerRepository>,
+    trade_sagas: Arc<dyn TradeFillSagaStore>,
+}
+
+impl TradeFillStores {
+    fn in_memory() -> Self {
+        Self {
+            order_owners: Arc::new(OrderOwnerStore::default()),
+            trade_sagas: Arc::new(InMemoryTradeFillSagaStore::default()),
+        }
+    }
+}
+
 impl<W, E, K> AppStateWithEngine<W, E, K> {
     #[must_use]
     pub fn new(wallet_ledger: W, engine: E, kyc: K) -> Self {
@@ -274,20 +289,17 @@ impl<W, E, K> AppStateWithEngine<W, E, K> {
             kyc,
             market_fees,
             position_projection,
-            Arc::new(OrderOwnerStore::default()),
-            Arc::new(InMemoryTradeFillSagaStore::default()),
+            TradeFillStores::in_memory(),
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn new_with_market_fees_position_projection_and_trade_stores<M, P>(
         wallet_ledger: W,
         engine: E,
         kyc: K,
         market_fees: M,
         position_projection: P,
-        order_owners: Arc<dyn OrderOwnerRepository>,
-        trade_sagas: Arc<dyn TradeFillSagaStore>,
+        trade_stores: TradeFillStores,
     ) -> Self
     where
         M: MarketFeeReader + Send + Sync + 'static,
@@ -300,8 +312,8 @@ impl<W, E, K> AppStateWithEngine<W, E, K> {
             market_fees: Arc::new(market_fees),
             position_projection: Arc::new(position_projection),
             idempotency: IdempotencyStore::default(),
-            order_owners,
-            trade_sagas,
+            order_owners: trade_stores.order_owners,
+            trade_sagas: trade_stores.trade_sagas,
         }
     }
 }
@@ -320,6 +332,38 @@ pub struct AppStateWithServices<W, E, R, K> {
     affiliate_credentials: Arc<dyn AffiliateCredentialClient>,
     affiliate_account_sagas: Arc<dyn AffiliateAccountSagaStore>,
     gateway_denied_audits: Arc<dyn GatewayDeniedAuditStore>,
+}
+
+#[derive(Clone)]
+struct AffiliateAdminStores {
+    affiliate_credentials: Arc<dyn AffiliateCredentialClient>,
+    affiliate_account_sagas: Arc<dyn AffiliateAccountSagaStore>,
+    gateway_denied_audits: Arc<dyn GatewayDeniedAuditStore>,
+}
+
+impl AffiliateAdminStores {
+    fn in_memory_noop() -> Self {
+        Self {
+            affiliate_credentials: Arc::new(NoopAffiliateCredentialClient),
+            affiliate_account_sagas: Arc::new(InMemoryAffiliateAccountSagaStore::default()),
+            gateway_denied_audits: Arc::new(InMemoryGatewayDeniedAuditStore::default()),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct GatewayStateStores {
+    trade: TradeFillStores,
+    affiliate_admin: AffiliateAdminStores,
+}
+
+impl GatewayStateStores {
+    fn in_memory_noop() -> Self {
+        Self {
+            trade: TradeFillStores::in_memory(),
+            affiliate_admin: AffiliateAdminStores::in_memory_noop(),
+        }
+    }
 }
 
 impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
@@ -369,15 +413,10 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
             kyc,
             market_fees,
             position_projection,
-            Arc::new(OrderOwnerStore::default()),
-            Arc::new(InMemoryTradeFillSagaStore::default()),
-            Arc::new(NoopAffiliateCredentialClient),
-            Arc::new(InMemoryAffiliateAccountSagaStore::default()),
-            Arc::new(InMemoryGatewayDeniedAuditStore::default()),
+            GatewayStateStores::in_memory_noop(),
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn new_with_market_fees_position_projection_and_trade_stores<M, P>(
         wallet_ledger: W,
         engine: E,
@@ -385,11 +424,7 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
         kyc: K,
         market_fees: M,
         position_projection: P,
-        order_owners: Arc<dyn OrderOwnerRepository>,
-        trade_sagas: Arc<dyn TradeFillSagaStore>,
-        affiliate_credentials: Arc<dyn AffiliateCredentialClient>,
-        affiliate_account_sagas: Arc<dyn AffiliateAccountSagaStore>,
-        gateway_denied_audits: Arc<dyn GatewayDeniedAuditStore>,
+        stores: GatewayStateStores,
     ) -> Self
     where
         M: MarketFeeReader + Send + Sync + 'static,
@@ -403,11 +438,11 @@ impl<W, E, R, K> AppStateWithServices<W, E, R, K> {
             market_fees: Arc::new(market_fees),
             position_projection: Arc::new(position_projection),
             idempotency: IdempotencyStore::default(),
-            order_owners,
-            trade_sagas,
-            affiliate_credentials,
-            affiliate_account_sagas,
-            gateway_denied_audits,
+            order_owners: stores.trade.order_owners,
+            trade_sagas: stores.trade.trade_sagas,
+            affiliate_credentials: stores.affiliate_admin.affiliate_credentials,
+            affiliate_account_sagas: stores.affiliate_admin.affiliate_account_sagas,
+            gateway_denied_audits: stores.affiliate_admin.gateway_denied_audits,
         }
     }
 }
@@ -3579,8 +3614,7 @@ where
         kyc,
         market_fees,
         position_projection,
-        Arc::new(OrderOwnerStore::default()),
-        Arc::new(InMemoryTradeFillSagaStore::default()),
+        TradeFillStores::in_memory(),
     )
 }
 
@@ -3590,8 +3624,7 @@ fn router_with_engine_and_kyc_market_fees_position_projection_and_trade_stores<W
     kyc: K,
     market_fees: M,
     position_projection: P,
-    order_owners: Arc<dyn OrderOwnerRepository>,
-    trade_sagas: Arc<dyn TradeFillSagaStore>,
+    trade_stores: TradeFillStores,
 ) -> Router
 where
     W: WalletLedgerClient + Clone + Send + Sync + 'static,
@@ -3625,8 +3658,7 @@ where
                 kyc,
                 market_fees,
                 position_projection,
-                order_owners,
-                trade_sagas,
+                trade_stores,
             ),
         ))
         .merge(payments_real_money_router(
@@ -3753,15 +3785,10 @@ where
         payment_flags,
         market_fees,
         position_projection,
-        Arc::new(OrderOwnerStore::default()),
-        Arc::new(InMemoryTradeFillSagaStore::default()),
-        Arc::new(NoopAffiliateCredentialClient),
-        Arc::new(InMemoryAffiliateAccountSagaStore::default()),
-        Arc::new(InMemoryGatewayDeniedAuditStore::default()),
+        GatewayStateStores::in_memory_noop(),
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn router_with_services_kyc_payment_flags_market_fees_position_projection_and_trade_stores<
     W,
     E,
@@ -3778,11 +3805,7 @@ fn router_with_services_kyc_payment_flags_market_fees_position_projection_and_tr
     payment_flags: F,
     market_fees: M,
     position_projection: P,
-    order_owners: Arc<dyn OrderOwnerRepository>,
-    trade_sagas: Arc<dyn TradeFillSagaStore>,
-    affiliate_credentials: Arc<dyn AffiliateCredentialClient>,
-    affiliate_account_sagas: Arc<dyn AffiliateAccountSagaStore>,
-    gateway_denied_audits: Arc<dyn GatewayDeniedAuditStore>,
+    stores: GatewayStateStores,
 ) -> Router
 where
     W: WalletLedgerClient + Clone + Send + Sync + 'static,
@@ -3870,11 +3893,7 @@ where
                 kyc,
                 market_fees,
                 position_projection,
-                order_owners,
-                trade_sagas,
-                affiliate_credentials,
-                affiliate_account_sagas,
-                gateway_denied_audits,
+                stores,
             ),
         ))
         .merge(rg_router)
@@ -3925,11 +3944,14 @@ where
                 AllowAllKycTierClient,
                 DefaultMarketFeeReader,
                 NoopPositionProjectionClient,
-                Arc::new(OrderOwnerStore::default()),
-                Arc::new(InMemoryTradeFillSagaStore::default()),
-                Arc::new(affiliate_credentials),
-                Arc::new(affiliate_account_sagas),
-                Arc::new(gateway_denied_audits),
+                GatewayStateStores {
+                    trade: TradeFillStores::in_memory(),
+                    affiliate_admin: AffiliateAdminStores {
+                        affiliate_credentials: Arc::new(affiliate_credentials),
+                        affiliate_account_sagas: Arc::new(affiliate_account_sagas),
+                        gateway_denied_audits: Arc::new(gateway_denied_audits),
+                    },
+                },
             ),
         ))
         .merge(rg_router)
@@ -4104,48 +4126,51 @@ fn order_chain_idempotency_key(
     format!("{prefix}:{}:{market_id}:{}", scope.user_id, scope.key)
 }
 
-#[allow(clippy::too_many_arguments)]
+struct OrderFillSettlement<'a> {
+    user_id: &'a str,
+    market_id: &'a str,
+    request: &'a PlaceOrderRequest,
+    response: &'a OrderActionResponse,
+    fee_curve_bps: u32,
+    reservation: Option<&'a LedgerPostResult>,
+}
+
 async fn settle_and_project_order_fills<W, P>(
     wallet_ledger: &W,
     position_projection: &P,
     order_owners: &dyn OrderOwnerRepository,
     trade_sagas: &dyn TradeFillSagaStore,
-    user_id: &str,
-    market_id: &str,
-    request: &PlaceOrderRequest,
-    response: &OrderActionResponse,
-    fee_curve_bps: u32,
-    reservation: Option<&LedgerPostResult>,
+    settlement: OrderFillSettlement<'_>,
 ) -> Result<(), ApiError>
 where
     W: WalletLedgerClient + Sync + ?Sized,
     P: PositionProjectionClient + ?Sized,
 {
-    if response.filled_qty <= 0 {
+    if settlement.response.filled_qty <= 0 {
         return Ok(());
     }
 
-    if response.fills.is_empty() {
+    if settlement.response.fills.is_empty() {
         return project_aggregate_taker_fill(
             position_projection,
-            user_id,
-            market_id,
-            request,
-            response,
-            reservation,
+            settlement.user_id,
+            settlement.market_id,
+            settlement.request,
+            settlement.response,
+            settlement.reservation,
         )
         .await;
     }
 
-    let reservation_txn_id = reservation.map(|result| result.txn_id);
-    for fill in &response.fills {
+    let reservation_txn_id = settlement.reservation.map(|result| result.txn_id);
+    for fill in &settlement.response.fills {
         let saga = build_trade_fill_saga(
             order_owners,
-            user_id,
-            market_id,
-            request,
+            settlement.user_id,
+            settlement.market_id,
+            settlement.request,
             fill,
-            fee_curve_bps,
+            settlement.fee_curve_bps,
             reservation_txn_id,
         )
         .await?;
@@ -4160,7 +4185,10 @@ where
     )
     .await?;
     if claimed == 0 {
-        tracing::debug!(market_id, "no due trade fill sagas claimed after enqueue");
+        tracing::debug!(
+            market_id = settlement.market_id,
+            "no due trade fill sagas claimed after enqueue"
+        );
     }
 
     Ok(())
@@ -4640,12 +4668,14 @@ where
         state.position_projection.as_ref(),
         state.order_owners.as_ref(),
         state.trade_sagas.as_ref(),
-        &auth.user_id,
-        &market_id,
-        &engine_request,
-        &response,
-        precheck.fee_curve_bps,
-        reservation.as_ref(),
+        OrderFillSettlement {
+            user_id: &auth.user_id,
+            market_id: &market_id,
+            request: &engine_request,
+            response: &response,
+            fee_curve_bps: precheck.fee_curve_bps,
+            reservation: reservation.as_ref(),
+        },
     )
     .await?;
     state.idempotency.insert(
@@ -4831,12 +4861,14 @@ where
         state.position_projection.as_ref(),
         state.order_owners.as_ref(),
         state.trade_sagas.as_ref(),
-        &auth.user_id,
-        &market_id,
-        &engine_request,
-        &response,
-        precheck.fee_curve_bps,
-        reservation.as_ref(),
+        OrderFillSettlement {
+            user_id: &auth.user_id,
+            market_id: &market_id,
+            request: &engine_request,
+            response: &response,
+            fee_curve_bps: precheck.fee_curve_bps,
+            reservation: reservation.as_ref(),
+        },
     )
     .await?;
     state.idempotency.insert(
@@ -5045,13 +5077,15 @@ where
             record_gateway_denied(
                 &state,
                 &context,
-                "affiliate",
-                "manager",
-                Some(manager_id.to_owned()),
-                "update",
-                "manager_cannot_reassign_affiliate",
-                request.clone(),
-                None,
+                GatewayDeniedEvent {
+                    domain: "affiliate",
+                    target_type: "manager",
+                    target_id: Some(manager_id.to_owned()),
+                    action: "update",
+                    reason_or_error_code: "manager_cannot_reassign_affiliate",
+                    attempted_payload: request.clone(),
+                    idempotency_key: None,
+                },
             )
             .await?;
             return Err(ApiError::new(
@@ -5069,13 +5103,15 @@ where
                 record_gateway_denied(
                     &state,
                     &context,
-                    "affiliate",
-                    "manager",
-                    Some(manager_id.to_owned()),
-                    "update",
-                    error.error,
-                    request.clone(),
-                    None,
+                    GatewayDeniedEvent {
+                        domain: "affiliate",
+                        target_type: "manager",
+                        target_id: Some(manager_id.to_owned()),
+                        action: "update",
+                        reason_or_error_code: error.error,
+                        attempted_payload: request.clone(),
+                        idempotency_key: None,
+                    },
                 )
                 .await?;
                 return Err(error);
@@ -5109,7 +5145,6 @@ where
     Ok(Json(affiliate))
 }
 
-#[allow(clippy::too_many_lines)]
 async fn create_affiliate_account_saga<W, E, R, K>(
     State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
     headers: HeaderMap,
@@ -5137,14 +5172,16 @@ where
             record_gateway_denied(
                 &state,
                 &context,
-                "saga",
-                "affiliate_account",
-                Some(request.affiliate_id.clone()),
-                "create",
-                "idempotency_conflict",
-                serde_json::to_value(&request)
-                    .map_err(|error| ApiError::internal(error.to_string()))?,
-                Some(idempotency_key.clone()),
+                GatewayDeniedEvent {
+                    domain: "saga",
+                    target_type: "affiliate_account",
+                    target_id: Some(request.affiliate_id.clone()),
+                    action: "create",
+                    reason_or_error_code: "idempotency_conflict",
+                    attempted_payload: serde_json::to_value(&request)
+                        .map_err(|error| ApiError::internal(error.to_string()))?,
+                    idempotency_key: Some(idempotency_key.clone()),
+                },
             )
             .await?;
             return Err(ApiError::conflict(
@@ -5171,51 +5208,8 @@ where
     };
 
     if record.status == "pending" {
-        if context.role == "manager" {
-            if let Some(manager_id) = request.managing_manager_id.as_deref() {
-                if manager_id != context.actor_id {
-                    record_gateway_denied(
-                        &state,
-                        &context,
-                        "affiliate_account",
-                        "manager",
-                        Some(manager_id.to_owned()),
-                        "create",
-                        "manager_cannot_assign_other_manager",
-                        serde_json::to_value(&request)
-                            .map_err(|error| ApiError::internal(error.to_string()))?,
-                        Some(idempotency_key.clone()),
-                    )
-                    .await?;
-                    return Err(ApiError::new(
-                        StatusCode::FORBIDDEN,
-                        "invalid_managing_manager",
-                        "manager can only create affiliates under their own manager account",
-                    ));
-                }
-            }
-        } else if let Some(manager_id) = request.managing_manager_id.as_deref() {
-            if let Err(error) = state
-                .affiliate_credentials
-                .verify_active_manager(manager_id, context.clone())
-                .await
-            {
-                record_gateway_denied(
-                    &state,
-                    &context,
-                    "affiliate_account",
-                    "manager",
-                    Some(manager_id.to_owned()),
-                    "create",
-                    error.error,
-                    serde_json::to_value(&request)
-                        .map_err(|error| ApiError::internal(error.to_string()))?,
-                    Some(idempotency_key.clone()),
-                )
-                .await?;
-                return Err(error);
-            }
-        }
+        verify_affiliate_account_manager_assignment(&state, &context, &request, &idempotency_key)
+            .await?;
     }
 
     if record.status == "pending" {
@@ -5278,6 +5272,72 @@ where
             Ok((StatusCode::BAD_GATEWAY, Json(saga_response(record))))
         }
     }
+}
+
+async fn verify_affiliate_account_manager_assignment<W, E, R, K>(
+    state: &AppStateWithServices<W, E, R, K>,
+    context: &AdminProxyContext,
+    request: &AffiliateAccountCreateRequest,
+    idempotency_key: &str,
+) -> Result<(), ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
+{
+    let Some(manager_id) = request.managing_manager_id.as_deref() else {
+        return Ok(());
+    };
+    if context.role == "manager" {
+        if manager_id == context.actor_id {
+            return Ok(());
+        }
+        record_gateway_denied(
+            state,
+            context,
+            GatewayDeniedEvent {
+                domain: "affiliate_account",
+                target_type: "manager",
+                target_id: Some(manager_id.to_owned()),
+                action: "create",
+                reason_or_error_code: "manager_cannot_assign_other_manager",
+                attempted_payload: serde_json::to_value(request)
+                    .map_err(|error| ApiError::internal(error.to_string()))?,
+                idempotency_key: Some(idempotency_key.to_owned()),
+            },
+        )
+        .await?;
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "invalid_managing_manager",
+            "manager can only create affiliates under their own manager account",
+        ));
+    }
+
+    if let Err(error) = state
+        .affiliate_credentials
+        .verify_active_manager(manager_id, context.clone())
+        .await
+    {
+        record_gateway_denied(
+            state,
+            context,
+            GatewayDeniedEvent {
+                domain: "affiliate_account",
+                target_type: "manager",
+                target_id: Some(manager_id.to_owned()),
+                action: "create",
+                reason_or_error_code: error.error,
+                attempted_payload: serde_json::to_value(request)
+                    .map_err(|error| ApiError::internal(error.to_string()))?,
+                idempotency_key: Some(idempotency_key.to_owned()),
+            },
+        )
+        .await?;
+        return Err(error);
+    }
+    Ok(())
 }
 
 async fn get_affiliate_account_saga<W, E, R, K>(
@@ -5366,19 +5426,23 @@ fn stable_json_sha256<T: Serialize>(value: &T) -> Result<String, ApiError> {
     Ok(encoded)
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn record_gateway_denied<W, E, R, K>(
-    state: &AppStateWithServices<W, E, R, K>,
-    context: &AdminProxyContext,
-    domain: &str,
-    target_type: &str,
+struct GatewayDeniedEvent {
+    domain: &'static str,
+    target_type: &'static str,
     target_id: Option<String>,
-    action: &str,
+    action: &'static str,
     reason_or_error_code: &'static str,
     attempted_payload: serde_json::Value,
     idempotency_key: Option<String>,
+}
+
+async fn record_gateway_denied<W, E, R, K>(
+    state: &AppStateWithServices<W, E, R, K>,
+    context: &AdminProxyContext,
+    event: GatewayDeniedEvent,
 ) -> Result<(), ApiError> {
-    let correlation_key = idempotency_key
+    let correlation_key = event
+        .idempotency_key
         .as_deref()
         .or(context.request_id.as_deref())
         .unwrap_or(&context.actor_id);
@@ -5386,17 +5450,18 @@ async fn record_gateway_denied<W, E, R, K>(
         .gateway_denied_audits
         .record_denied(GatewayDeniedAuditRecord {
             correlation_id: format!(
-                "gateway-denied:{domain}:{target_type}:{action}:{reason_or_error_code}:{correlation_key}"
+                "gateway-denied:{}:{}:{}:{}:{correlation_key}",
+                event.domain, event.target_type, event.action, event.reason_or_error_code
             ),
-            domain: domain.to_owned(),
-            target_type: target_type.to_owned(),
-            target_id,
-            action: action.to_owned(),
+            domain: event.domain.to_owned(),
+            target_type: event.target_type.to_owned(),
+            target_id: event.target_id,
+            action: event.action.to_owned(),
             actor_id: context.actor_id.clone(),
             actor_role: context.role.clone(),
-            reason_or_error_code: reason_or_error_code.to_owned(),
-            attempted_payload,
-            idempotency_key,
+            reason_or_error_code: event.reason_or_error_code.to_owned(),
+            attempted_payload: event.attempted_payload,
+            idempotency_key: event.idempotency_key,
             request_id: context.request_id.clone(),
         })
         .await
@@ -5583,11 +5648,17 @@ pub async fn run_http() -> anyhow::Result<()> {
                 payment_flags,
                 market_service.clone(),
                 position_service.clone(),
-                durability_setup.order_owners,
-                durability_setup.trade_sagas,
-                affiliate_credentials,
-                durability_setup.affiliate_account_sagas,
-                durability_setup.gateway_denied_audits,
+                GatewayStateStores {
+                    trade: TradeFillStores {
+                        order_owners: durability_setup.order_owners,
+                        trade_sagas: durability_setup.trade_sagas,
+                    },
+                    affiliate_admin: AffiliateAdminStores {
+                        affiliate_credentials,
+                        affiliate_account_sagas: durability_setup.affiliate_account_sagas,
+                        gateway_denied_audits: durability_setup.gateway_denied_audits,
+                    },
+                },
             ),
         )
         .merge(market_router(market_service))
@@ -6432,15 +6503,17 @@ mod tests {
             &positions,
             &order_owners,
             &trade_sagas,
-            "10",
-            "mkt-election",
-            &request,
-            &response,
-            DEFAULT_TAKER_FEE_CURVE_BPS,
-            Some(&LedgerPostResult {
-                txn_id: 42,
-                replayed: false,
-            }),
+            OrderFillSettlement {
+                user_id: "10",
+                market_id: "mkt-election",
+                request: &request,
+                response: &response,
+                fee_curve_bps: DEFAULT_TAKER_FEE_CURVE_BPS,
+                reservation: Some(&LedgerPostResult {
+                    txn_id: 42,
+                    replayed: false,
+                }),
+            },
         )
         .await
         .expect("per-fill settlement and projection should succeed");
@@ -6557,15 +6630,17 @@ mod tests {
             &positions,
             &order_owners,
             &trade_sagas,
-            "10",
-            "mkt-election",
-            &request,
-            &response,
-            DEFAULT_TAKER_FEE_CURVE_BPS,
-            Some(&LedgerPostResult {
-                txn_id: 42,
-                replayed: false,
-            }),
+            OrderFillSettlement {
+                user_id: "10",
+                market_id: "mkt-election",
+                request: &request,
+                response: &response,
+                fee_curve_bps: DEFAULT_TAKER_FEE_CURVE_BPS,
+                reservation: Some(&LedgerPostResult {
+                    txn_id: 42,
+                    replayed: false,
+                }),
+            },
         )
         .await
         .expect("failed settlement should leave retryable saga, not fail order path");
