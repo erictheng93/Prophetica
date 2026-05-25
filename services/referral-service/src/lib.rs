@@ -82,10 +82,10 @@ impl ReferralRecord {
         referred_at_day: i64,
     ) -> Result<Self, ReferralError> {
         let referrer_id = referrer_user_id.into();
-        let referred_id = referred_member_id.into();
+        let member_id = referred_member_id.into();
         let referral_code = referral_code.into();
 
-        if referrer_id == referred_id {
+        if referrer_id == member_id {
             return Err(ReferralError::SelfReferral);
         }
         if referral_code.trim().is_empty() {
@@ -94,7 +94,7 @@ impl ReferralRecord {
 
         Ok(Self {
             referrer_id,
-            referred_id,
+            referred_id: member_id,
             referral_code,
             referred_at_day,
             observation_window_ends_at_day: referred_at_day + QUALIFICATION_WINDOW_DAYS,
@@ -128,13 +128,30 @@ impl ReferralRecord {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct AntiAbuseFlags {
+    #[serde(flatten)]
+    pub identity: AntiAbuseIdentityFlags,
+    #[serde(flatten)]
+    pub trading: AntiAbuseTradingFlags,
+    #[serde(flatten)]
+    pub account: AntiAbuseAccountFlags,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AntiAbuseIdentityFlags {
     pub same_ip: bool,
     pub same_device_fingerprint: bool,
     pub same_kyc_identity: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AntiAbuseTradingFlags {
     pub referred_self_trade: bool,
     pub chargeback_or_void: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AntiAbuseAccountFlags {
     pub referrer_account_abnormal: bool,
     pub referred_permanently_banned: bool,
 }
@@ -142,24 +159,43 @@ pub struct AntiAbuseFlags {
 impl AntiAbuseFlags {
     #[must_use]
     pub const fn is_blocked(self) -> bool {
-        self.same_ip
-            || self.same_device_fingerprint
-            || self.same_kyc_identity
-            || self.referred_self_trade
-            || self.chargeback_or_void
-            || self.referrer_account_abnormal
-            || self.referred_permanently_banned
+        self.identity.same_ip
+            || self.identity.same_device_fingerprint
+            || self.identity.same_kyc_identity
+            || self.trading.referred_self_trade
+            || self.trading.chargeback_or_void
+            || self.account.referrer_account_abnormal
+            || self.account.referred_permanently_banned
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct AffiliateKinshipSignals {
+    pub identity: KinshipIdentitySignals,
+    pub address: KinshipAddressSignals,
+    pub network: KinshipNetworkSignals,
+    pub financial: KinshipFinancialSignals,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KinshipIdentitySignals {
     pub same_admin_division: bool,
     pub same_last_name: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KinshipAddressSignals {
     pub near_full_address: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KinshipNetworkSignals {
     pub ip_overlap_30d: bool,
     pub shared_device_fingerprint: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KinshipFinancialSignals {
     pub same_bank_account_holder_name: bool,
 }
 
@@ -167,22 +203,22 @@ impl AffiliateKinshipSignals {
     #[must_use]
     pub const fn score(self) -> u16 {
         let mut score = 0_u16;
-        if self.same_admin_division {
+        if self.identity.same_admin_division {
             score += 30;
         }
-        if self.same_last_name {
+        if self.identity.same_last_name {
             score += 20;
         }
-        if self.near_full_address {
+        if self.address.near_full_address {
             score += 25;
         }
-        if self.ip_overlap_30d {
+        if self.network.ip_overlap_30d {
             score += 20;
         }
-        if self.shared_device_fingerprint {
+        if self.network.shared_device_fingerprint {
             score += 30;
         }
-        if self.same_bank_account_holder_name {
+        if self.financial.same_bank_account_holder_name {
             score += 40;
         }
         score
@@ -737,6 +773,12 @@ pub enum ReferralStoreError {
     Forbidden(String),
     #[error("affiliate store unavailable: {0}")]
     Unavailable(String),
+}
+
+impl From<sqlx::Error> for ReferralStoreError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Unavailable(error.to_string())
+    }
 }
 
 #[async_trait]
@@ -1758,10 +1800,10 @@ impl PostgresAffiliateStore {
         .bind(DAYS_PER_CAP_MONTH)
         .fetch_one(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         let current_month_total: i64 = cap_row
             .try_get("current_month_total")
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         ensure_referrer_monthly_trade_cap(
             current_month_total,
             accrual.commission_amount_minor_units,
@@ -1797,10 +1839,10 @@ impl PostgresAffiliateStore {
         .bind(DAYS_PER_CAP_MONTH)
         .fetch_one(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         let current_group_month_total: i64 = group_cap_row
             .try_get("current_month_total")
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         ensure_monthly_trade_cap(
             current_group_month_total,
             next_commission_minor_units,
@@ -1936,7 +1978,7 @@ where
     )
     .map_err(|error| api_error(&error))?;
     let correlation_id =
-        header_value(&headers, "x-correlation-id").unwrap_or_else(|| new_uuid_v7_string());
+        header_value(&headers, "x-correlation-id").unwrap_or_else(new_uuid_v7_string);
     let response = store
         .referral_subject_scope(ReferralScopeRequest {
             affiliate_id,
@@ -2346,6 +2388,10 @@ fn verify_internal_scope_call(
     Ok(VerifiedServicePrincipal { actor_id, role })
 }
 
+/// # Panics
+///
+/// Panics only if the HMAC implementation rejects the provided key bytes. HMAC-SHA256 accepts
+/// arbitrary key lengths, so this is not expected for runtime configuration values.
 #[must_use]
 pub fn sign_internal_scope_call(
     method: &str,
@@ -3063,7 +3109,7 @@ async fn insert_affiliate_audit(
     .bind(actor.user_agent.as_deref())
     .execute(pool)
     .await
-    .map_err(|error| sqlx_error(error))?;
+    .map_err(ReferralStoreError::from)?;
     Ok(())
 }
 
@@ -3099,7 +3145,7 @@ async fn insert_affiliate_denied_audit(
     .bind(actor.user_agent.as_deref())
     .execute(pool)
     .await
-    .map_err(|error| sqlx_error(error))?;
+    .map_err(ReferralStoreError::from)?;
     Ok(())
 }
 
@@ -3118,11 +3164,11 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&referral_code)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?
+        .map_err(ReferralStoreError::from)?
         .ok_or(ReferralStoreError::NotFound)?;
         let affiliate_user_id: String = referrer_row
             .try_get("user_id")
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         let pending = ReferralRecord::pending(
             affiliate_user_id,
             referred_id.clone(),
@@ -3157,7 +3203,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(QUALIFICATION_WINDOW_DAYS)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
 
         if let Some(row) = inserted {
             return Ok((referral_record_from_row(&row)?, true));
@@ -3178,7 +3224,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&referred_id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         Ok((referral_record_from_row(&row)?, false))
     }
 
@@ -3202,7 +3248,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&event.referred_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?
+        .map_err(ReferralStoreError::from)?
         .ok_or(ReferralStoreError::NotFound)?;
         let mut record = referral_record_from_row(&row)?;
         let observed_month_start_day =
@@ -3225,13 +3271,13 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(DAYS_PER_CAP_MONTH)
         .fetch_one(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         let monthly_qualified_count: i64 = cap_row
             .try_get("monthly_qualified_count")
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         let lifetime_qualified_count: i64 = cap_row
             .try_get("lifetime_qualified_count")
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         let response = evaluate_referral_record(
             &mut record,
             &event,
@@ -3267,7 +3313,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         }))
         .execute(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         Ok(response)
     }
 
@@ -3296,26 +3342,26 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         rows.into_iter()
             .map(|row| {
                 Ok(DueQualificationReferral {
                     referrer_id: row
                         .try_get("referrer_id")
-                        .map_err(|error| sqlx_error(error))?,
+                        .map_err(ReferralStoreError::from)?,
                     referred_id: row
                         .try_get("referred_id")
-                        .map_err(|error| sqlx_error(error))?,
+                        .map_err(ReferralStoreError::from)?,
                     referral_code: row
                         .try_get("referral_code")
-                        .map_err(|error| sqlx_error(error))?,
+                        .map_err(ReferralStoreError::from)?,
                     referred_at_day: row
                         .try_get("referred_at_day")
-                        .map_err(|error| sqlx_error(error))?,
+                        .map_err(ReferralStoreError::from)?,
                     observation_window_ends_at_day: row
                         .try_get("observation_window_ends_at_day")
-                        .map_err(|error| sqlx_error(error))?,
-                    status: row.try_get("status").map_err(|error| sqlx_error(error))?,
+                        .map_err(ReferralStoreError::from)?,
+                    status: row.try_get("status").map_err(ReferralStoreError::from)?,
                 })
             })
             .collect()
@@ -3346,7 +3392,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&request.referred_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?
+        .map_err(ReferralStoreError::from)?
         .ok_or(ReferralStoreError::NotFound)?;
         let mut record = referral_record_from_row(&row)?;
         if record.status != ReferralStatus::Qualified {
@@ -3379,7 +3425,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         }))
         .execute(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         record.signup_bonus_txn_id = Some(request.signup_bonus_txn_id);
         Ok(signup_bonus_ledger_response(&record, false))
     }
@@ -3403,7 +3449,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(referred_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?
+        .map_err(ReferralStoreError::from)?
         .ok_or(ReferralStoreError::NotFound)?;
         let record = referral_record_from_row(&row)?;
         signup_bonus_ledger_draft_response(&record)
@@ -3426,7 +3472,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&event.trade_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?
+        .map_err(ReferralStoreError::from)?
         {
             return commission_accrual_from_row(&row);
         }
@@ -3446,7 +3492,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&event.referred_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?
+        .map_err(ReferralStoreError::from)?
         .ok_or(ReferralStoreError::NotFound)?;
         let record = referral_record_from_row(&row)?;
         let accrual = commission_accrual_from_event(&record, &event)?;
@@ -3469,7 +3515,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(accrual.accrued_at_day)
         .execute(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         Ok(accrual)
     }
 
@@ -3495,10 +3541,10 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(request.paid_out_txn_id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         let already_count: i64 = already_paid
             .try_get("accrual_count")
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         if already_count > 0 {
             return Ok(CommissionPayoutResponse {
                 referrer_id,
@@ -3508,7 +3554,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
                     .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
                 total_commission_minor_units: already_paid
                     .try_get("total_commission_minor_units")
-                    .map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
             });
         }
 
@@ -3523,10 +3569,10 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&referrer_id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         let pending_count: i64 = pending
             .try_get("accrual_count")
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         if pending_count == 0 {
             return Err(ReferralStoreError::NotFound);
         }
@@ -3543,7 +3589,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(request.paid_out_at_day)
         .execute(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         Ok(CommissionPayoutResponse {
             referrer_id,
             paid_out_txn_id: request.paid_out_txn_id,
@@ -3552,7 +3598,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
                 .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
             total_commission_minor_units: pending
                 .try_get("total_commission_minor_units")
-                .map_err(|error| sqlx_error(error))?,
+                .map_err(ReferralStoreError::from)?,
         })
     }
 
@@ -3577,7 +3623,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&referrer_id)
         .fetch_all(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         let accruals = rows
             .iter()
             .map(commission_accrual_from_row)
@@ -3607,21 +3653,21 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         rows.into_iter()
             .map(|row| {
                 let accrual_count: i64 = row
                     .try_get("accrual_count")
-                    .map_err(|error| sqlx_error(error))?;
+                    .map_err(ReferralStoreError::from)?;
                 Ok(DueCommissionPayoutReferrer {
                     referrer_id: row
                         .try_get("referrer_id")
-                        .map_err(|error| sqlx_error(error))?,
+                        .map_err(ReferralStoreError::from)?,
                     accrual_count: usize::try_from(accrual_count)
                         .map_err(|error| ReferralStoreError::Unavailable(error.to_string()))?,
                     total_commission_minor_units: row
                         .try_get("total_commission_minor_units")
-                        .map_err(|error| sqlx_error(error))?,
+                        .map_err(ReferralStoreError::from)?,
                 })
             })
             .collect()
@@ -3632,10 +3678,10 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         row.map(|row| row.try_get("affiliate_id"))
             .transpose()
-            .map_err(|error| sqlx_error(error))?
+            .map_err(ReferralStoreError::from)?
             .ok_or(ReferralStoreError::NotFound)
     }
 
@@ -3668,7 +3714,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
 
         rows.iter().map(referral_item_from_row).collect()
     }
@@ -3692,13 +3738,13 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(referrer_id)
         .fetch_one(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         let successful_referrals_count: i32 = row
             .try_get("successful_referrals_count")
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         let trade_commission_minor_units = row
             .try_get("trade_commission_minor_units")
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         let signup_bonus_minor_units =
             i64::from(successful_referrals_count) * QUALIFICATION_BONUS_MINOR_UNITS;
         Ok(AffiliateCommissionSummary {
@@ -3709,10 +3755,10 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
             total_rewards_minor_units: signup_bonus_minor_units + trade_commission_minor_units,
             last_30d_commission_minor_units: row
                 .try_get("last_30d_commission_minor_units")
-                .map_err(|error| sqlx_error(error))?,
+                .map_err(ReferralStoreError::from)?,
             last_12m_commission_minor_units: row
                 .try_get("last_12m_commission_minor_units")
-                .map_err(|error| sqlx_error(error))?,
+                .map_err(ReferralStoreError::from)?,
         })
     }
 
@@ -3728,7 +3774,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
             .bind(&actor.actor_id)
             .fetch_all(&self.pool)
             .await
-            .map_err(|error| sqlx_error(error))?
+            .map_err(ReferralStoreError::from)?
         } else {
             sqlx::query(&admin_affiliate_summary_sql(
                 "",
@@ -3736,7 +3782,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
             ))
             .fetch_all(&self.pool)
             .await
-            .map_err(|error| sqlx_error(error))?
+            .map_err(ReferralStoreError::from)?
         };
         rows.iter().map(affiliate_summary_from_row).collect()
     }
@@ -3755,7 +3801,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
             .bind(&actor.actor_id)
             .fetch_optional(&self.pool)
             .await
-            .map_err(|error| sqlx_error(error))?
+            .map_err(ReferralStoreError::from)?
             .ok_or_else(|| {
                 ReferralStoreError::Forbidden("affiliate is outside manager scope".to_owned())
             })?
@@ -3767,7 +3813,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
             .bind(affiliate_id)
             .fetch_optional(&self.pool)
             .await
-            .map_err(|error| sqlx_error(error))?
+            .map_err(ReferralStoreError::from)?
             .ok_or(ReferralStoreError::NotFound)?
         };
         let summary = affiliate_summary_from_row(&row)?;
@@ -3881,7 +3927,6 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         })
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn update_admin_affiliate(
         &self,
         affiliate_id: &str,
@@ -3935,73 +3980,15 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
             return Err(error);
         }
         let audit_correlation_id = audit_correlation_id("affiliate-update", affiliate_id, &actor);
-        let email_masked = request.email.as_deref().and_then(mask_email);
-        sqlx::query(
-            r"
-            UPDATE affiliate_profiles
-            SET display_name = COALESCE($2, display_name),
-                email_masked = COALESCE($3, email_masked),
-                status = COALESCE($4, status),
-                owner_sponsor_id = COALESCE($5, owner_sponsor_id),
-                managing_manager_id = CASE WHEN $6::TEXT IS NULL THEN managing_manager_id ELSE $6 END,
-                commission_rate_bps = COALESCE($7, commission_rate_bps),
-                tier = COALESCE($8, tier),
-                credit_rating = COALESCE($9, credit_rating),
-                credit_status = COALESCE($10, credit_status),
-                max_active_credit_accounts = COALESCE($11, max_active_credit_accounts),
-                total_credit_limit_minor_units = COALESCE($12, total_credit_limit_minor_units),
-                per_account_limit_minor_units = COALESCE($13, per_account_limit_minor_units),
-                credit_review_expires_at = COALESCE($14::DATE, credit_review_expires_at),
-                credit_last_changed_by = $15,
-                credit_last_changed_at = now(),
-                credit_audit_correlation_ids = array_append(credit_audit_correlation_ids, $16),
-                updated_at = now()
-            WHERE affiliate_id = $1
-            ",
+        update_affiliate_profile_row(
+            &self.pool,
+            affiliate_id,
+            &request,
+            &actor,
+            &audit_correlation_id,
         )
-        .bind(affiliate_id)
-        .bind(request.display_name.as_deref())
-        .bind(email_masked.as_deref())
-        .bind(request.status.as_deref())
-        .bind(request.owner_sponsor_id.as_deref())
-        .bind(request.managing_manager_id.as_deref())
-        .bind(request.commission_rate_bps)
-        .bind(request.tier)
-        .bind(request.credit_rating.as_deref())
-        .bind(request.credit_status.as_deref())
-        .bind(request.max_active_credit_accounts)
-        .bind(request.total_credit_limit_minor_units)
-        .bind(request.per_account_limit_minor_units)
-        .bind(request.credit_review_expires_at.as_deref())
-        .bind(&actor.actor_id)
-        .bind(&audit_correlation_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|error| sqlx_error(error))?;
-        if request
-            .commission_rate_bps
-            .is_some_and(|next_bps| next_bps != before.summary.commission_rate_bps)
-        {
-            let next_bps = request.commission_rate_bps.ok_or_else(|| {
-                ReferralStoreError::Unavailable("missing commission rate".to_owned())
-            })?;
-            sqlx::query(
-                r"
-                INSERT INTO affiliate_rate_changes
-                    (affiliate_id, effective_at, previous_bps, next_bps, changed_by, reason)
-                VALUES ($1, COALESCE($2::DATE, CURRENT_DATE), $3, $4, $5, $6)
-                ",
-            )
-            .bind(affiliate_id)
-            .bind(request.effective_at.as_deref())
-            .bind(before.summary.commission_rate_bps)
-            .bind(next_bps)
-            .bind(&actor.actor_id)
-            .bind(&request.reason)
-            .execute(&self.pool)
-            .await
-            .map_err(|error| sqlx_error(error))?;
-        }
+        .await?;
+        record_rate_change_if_needed(&self.pool, affiliate_id, &request, &actor, &before).await?;
         insert_affiliate_audit(
             &self.pool,
             "update",
@@ -4076,7 +4063,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&audit_correlation_id)
         .execute(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         insert_affiliate_audit(
             &self.pool,
             "archive",
@@ -4111,7 +4098,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
 
         rows.iter().map(commission_adjustment_from_row).collect()
     }
@@ -4130,7 +4117,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
 
         rows.iter().map(payout_review_from_row).collect()
     }
@@ -4154,12 +4141,12 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(&request.subject_user_id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         let affiliate_user_id = row
             .as_ref()
             .map(|row| row.try_get("affiliate_user_id"))
             .transpose()
-            .map_err(|error| sqlx_error(error))?;
+            .map_err(ReferralStoreError::from)?;
         let in_scope = affiliate_user_id.is_some();
         let relationship = in_scope.then(|| "direct_referral".to_owned());
         sqlx::query(
@@ -4180,7 +4167,7 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .bind(relationship.as_deref())
         .execute(&self.pool)
         .await
-        .map_err(|error| sqlx_error(error))?;
+        .map_err(ReferralStoreError::from)?;
         Ok(ReferralScopeResponse {
             affiliate_id: request.affiliate_id,
             affiliate_user_id,
@@ -4191,8 +4178,90 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
     }
 }
 
-fn sqlx_error(error: sqlx::Error) -> ReferralStoreError {
-    ReferralStoreError::Unavailable(error.to_string())
+async fn update_affiliate_profile_row(
+    pool: &PgPool,
+    affiliate_id: &str,
+    request: &AdminAffiliateMutationRequest,
+    actor: &AdminAffiliateActor,
+    audit_correlation_id: &str,
+) -> Result<(), ReferralStoreError> {
+    let email_masked = request.email.as_deref().and_then(mask_email);
+    sqlx::query(
+        r"
+            UPDATE affiliate_profiles
+            SET display_name = COALESCE($2, display_name),
+                email_masked = COALESCE($3, email_masked),
+                status = COALESCE($4, status),
+                owner_sponsor_id = COALESCE($5, owner_sponsor_id),
+                managing_manager_id = CASE WHEN $6::TEXT IS NULL THEN managing_manager_id ELSE $6 END,
+                commission_rate_bps = COALESCE($7, commission_rate_bps),
+                tier = COALESCE($8, tier),
+                credit_rating = COALESCE($9, credit_rating),
+                credit_status = COALESCE($10, credit_status),
+                max_active_credit_accounts = COALESCE($11, max_active_credit_accounts),
+                total_credit_limit_minor_units = COALESCE($12, total_credit_limit_minor_units),
+                per_account_limit_minor_units = COALESCE($13, per_account_limit_minor_units),
+                credit_review_expires_at = COALESCE($14::DATE, credit_review_expires_at),
+                credit_last_changed_by = $15,
+                credit_last_changed_at = now(),
+                credit_audit_correlation_ids = array_append(credit_audit_correlation_ids, $16),
+                updated_at = now()
+            WHERE affiliate_id = $1
+            ",
+    )
+    .bind(affiliate_id)
+    .bind(request.display_name.as_deref())
+    .bind(email_masked.as_deref())
+    .bind(request.status.as_deref())
+    .bind(request.owner_sponsor_id.as_deref())
+    .bind(request.managing_manager_id.as_deref())
+    .bind(request.commission_rate_bps)
+    .bind(request.tier)
+    .bind(request.credit_rating.as_deref())
+    .bind(request.credit_status.as_deref())
+    .bind(request.max_active_credit_accounts)
+    .bind(request.total_credit_limit_minor_units)
+    .bind(request.per_account_limit_minor_units)
+    .bind(request.credit_review_expires_at.as_deref())
+    .bind(&actor.actor_id)
+    .bind(audit_correlation_id)
+    .execute(pool)
+    .await
+    .map_err(ReferralStoreError::from)?;
+    Ok(())
+}
+
+async fn record_rate_change_if_needed(
+    pool: &PgPool,
+    affiliate_id: &str,
+    request: &AdminAffiliateMutationRequest,
+    actor: &AdminAffiliateActor,
+    before: &AffiliateDetail,
+) -> Result<(), ReferralStoreError> {
+    let Some(next_bps) = request
+        .commission_rate_bps
+        .filter(|next_bps| *next_bps != before.summary.commission_rate_bps)
+    else {
+        return Ok(());
+    };
+
+    sqlx::query(
+        r"
+            INSERT INTO affiliate_rate_changes
+                (affiliate_id, effective_at, previous_bps, next_bps, changed_by, reason)
+            VALUES ($1, COALESCE($2::DATE, CURRENT_DATE), $3, $4, $5, $6)
+            ",
+    )
+    .bind(affiliate_id)
+    .bind(request.effective_at.as_deref())
+    .bind(before.summary.commission_rate_bps)
+    .bind(next_bps)
+    .bind(&actor.actor_id)
+    .bind(&request.reason)
+    .execute(pool)
+    .await
+    .map_err(ReferralStoreError::from)?;
+    Ok(())
 }
 
 fn admin_affiliate_summary_sql(pre_group: &str, post_group: &str) -> String {
@@ -4231,43 +4300,43 @@ fn affiliate_summary_from_row(
     Ok(AffiliateSummary {
         id: row
             .try_get("affiliate_id")
-            .map_err(|error| sqlx_error(error))?,
-        user_id: row.try_get("user_id").map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
+        user_id: row.try_get("user_id").map_err(ReferralStoreError::from)?,
         display_name: row
             .try_get("display_name")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         email_masked: row
             .try_get("email_masked")
-            .map_err(|error| sqlx_error(error))?,
-        status: row.try_get("status").map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
+        status: row.try_get("status").map_err(ReferralStoreError::from)?,
         owner_sponsor_id: row
             .try_get("owner_sponsor_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         managing_manager_id: row
             .try_get("managing_manager_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         commission_rate_bps: row
             .try_get("commission_rate_bps")
-            .map_err(|error| sqlx_error(error))?,
-        tier: row.try_get("tier").map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
+        tier: row.try_get("tier").map_err(ReferralStoreError::from)?,
         sub_tree_size: row
             .try_get("sub_tree_size")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         active_sub_count: row
             .try_get("active_sub_count")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         pending_payout_minor: row
             .try_get("pending_payout_minor")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         pending_payout_currency: row
             .try_get("pending_payout_currency")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         last_activity_at: row
             .try_get("last_activity_at")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         risk_flags: row
             .try_get("risk_flags")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
     })
 }
 
@@ -4277,25 +4346,25 @@ fn commission_adjustment_from_row(
     Ok(AffiliateCommissionAdjustmentReview {
         id: row
             .try_get("adjustment_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         affiliate_id: row
             .try_get("affiliate_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         adjustment_type: row
             .try_get("adjustment_type")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         amount_minor: row
             .try_get("amount_minor")
-            .map_err(|error| sqlx_error(error))?,
-        currency: row.try_get("currency").map_err(|error| sqlx_error(error))?,
-        reason: row.try_get("reason").map_err(|error| sqlx_error(error))?,
-        status: row.try_get("status").map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
+        currency: row.try_get("currency").map_err(ReferralStoreError::from)?,
+        reason: row.try_get("reason").map_err(ReferralStoreError::from)?,
+        status: row.try_get("status").map_err(ReferralStoreError::from)?,
         requested_by: row
             .try_get("requested_by")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         requested_at: row
             .try_get("requested_at")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
     })
 }
 
@@ -4303,20 +4372,18 @@ fn payout_review_from_row(
     row: &sqlx::postgres::PgRow,
 ) -> Result<AffiliatePayoutReview, ReferralStoreError> {
     Ok(AffiliatePayoutReview {
-        id: row
-            .try_get("payout_id")
-            .map_err(|error| sqlx_error(error))?,
+        id: row.try_get("payout_id").map_err(ReferralStoreError::from)?,
         affiliate_id: row
             .try_get("affiliate_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         amount_minor: row
             .try_get("amount_minor")
-            .map_err(|error| sqlx_error(error))?,
-        currency: row.try_get("currency").map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
+        currency: row.try_get("currency").map_err(ReferralStoreError::from)?,
         requested_at: row
             .try_get("requested_at")
-            .map_err(|error| sqlx_error(error))?,
-        status: row.try_get("status").map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
+        status: row.try_get("status").map_err(ReferralStoreError::from)?,
     })
 }
 
@@ -4326,29 +4393,29 @@ fn commission_accrual_from_row(
     Ok(CommissionAccrual {
         referrer_id: row
             .try_get("referrer_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         referrer_group_id: row
             .try_get("referrer_group_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         referred_id: row
             .try_get("referred_id")
-            .map_err(|error| sqlx_error(error))?,
-        trade_id: row.try_get("trade_id").map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
+        trade_id: row.try_get("trade_id").map_err(ReferralStoreError::from)?,
         fee_amount_minor_units: row
             .try_get("fee_amount")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         commission_amount_minor_units: row
             .try_get("commission_amount")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         accrued_at_day: row
             .try_get("accrued_at_day")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         paid_out_txn_id: row
             .try_get("paid_out_txn_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         paid_out_at_day: row
             .try_get("paid_out_at_day")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
     })
 }
 
@@ -4358,50 +4425,50 @@ fn referral_item_from_row(
     Ok(AffiliateReferralListItem {
         referred_id: row
             .try_get("referred_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         masked_username: row
             .try_get("masked_username")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         referred_at_day: row
             .try_get("referred_at_day")
-            .map_err(|error| sqlx_error(error))?,
-        status: row.try_get("status").map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
+        status: row.try_get("status").map_err(ReferralStoreError::from)?,
         cumulative_commission_minor_units: row
             .try_get("cumulative_commission_minor_units")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
     })
 }
 
 fn referral_record_from_row(
     row: &sqlx::postgres::PgRow,
 ) -> Result<ReferralRecord, ReferralStoreError> {
-    let metadata: serde_json::Value = row.try_get("metadata").map_err(|error| sqlx_error(error))?;
-    let status: String = row.try_get("status").map_err(|error| sqlx_error(error))?;
+    let metadata: serde_json::Value = row.try_get("metadata").map_err(ReferralStoreError::from)?;
+    let status: String = row.try_get("status").map_err(ReferralStoreError::from)?;
     Ok(ReferralRecord {
         referrer_id: row
             .try_get("referrer_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         referred_id: row
             .try_get("referred_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         referral_code: row
             .try_get("referral_code")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         referred_at_day: row
             .try_get("referred_at_day")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         observation_window_ends_at_day: row
             .try_get("observation_window_ends_at_day")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         qualification_evaluated_at_day: row
             .try_get("qualification_evaluated_at_day")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         qualified_at_day: row
             .try_get("qualified_at_day")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         signup_bonus_txn_id: row
             .try_get("signup_bonus_txn_id")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         kinship_flagged: metadata
             .get("kinship_flagged")
             .and_then(serde_json::Value::as_bool)
@@ -4454,18 +4521,18 @@ async fn fetch_sub_tree_breakdown(
     .bind(affiliate_id)
     .fetch_all(pool)
     .await
-    .map_err(|error| sqlx_error(error))?;
+    .map_err(ReferralStoreError::from)?;
     rows.into_iter()
         .map(|row| {
             Ok(AffiliateSubTreeBreakdown {
-                tier: row.try_get("tier").map_err(|error| sqlx_error(error))?,
-                count: row.try_get("count").map_err(|error| sqlx_error(error))?,
+                tier: row.try_get("tier").map_err(ReferralStoreError::from)?,
+                count: row.try_get("count").map_err(ReferralStoreError::from)?,
                 active_count: row
                     .try_get("active_count")
-                    .map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
                 mtd_contribution_minor: row
                     .try_get("mtd_contribution_minor")
-                    .map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
             })
         })
         .collect()
@@ -4487,21 +4554,19 @@ async fn fetch_affiliate_payouts(
     .bind(affiliate_id)
     .fetch_all(pool)
     .await
-    .map_err(|error| sqlx_error(error))?;
+    .map_err(ReferralStoreError::from)?;
     rows.into_iter()
         .map(|row| {
             Ok(AffiliatePayoutRow {
-                id: row
-                    .try_get("payout_id")
-                    .map_err(|error| sqlx_error(error))?,
+                id: row.try_get("payout_id").map_err(ReferralStoreError::from)?,
                 amount_minor: row
                     .try_get("amount_minor")
-                    .map_err(|error| sqlx_error(error))?,
-                currency: row.try_get("currency").map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
+                currency: row.try_get("currency").map_err(ReferralStoreError::from)?,
                 settled_at: row
                     .try_get("settled_at")
-                    .map_err(|error| sqlx_error(error))?,
-                status: row.try_get("status").map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
+                status: row.try_get("status").map_err(ReferralStoreError::from)?,
             })
         })
         .collect()
@@ -4523,21 +4588,21 @@ async fn fetch_rate_history(
     .bind(affiliate_id)
     .fetch_all(pool)
     .await
-    .map_err(|error| sqlx_error(error))?;
+    .map_err(ReferralStoreError::from)?;
     rows.into_iter()
         .map(|row| {
             Ok(AffiliateRateChange {
                 effective_at: row
                     .try_get("effective_at")
-                    .map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
                 previous_bps: row
                     .try_get("previous_bps")
-                    .map_err(|error| sqlx_error(error))?,
-                next_bps: row.try_get("next_bps").map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
+                next_bps: row.try_get("next_bps").map_err(ReferralStoreError::from)?,
                 changed_by: row
                     .try_get("changed_by")
-                    .map_err(|error| sqlx_error(error))?,
-                reason: row.try_get("reason").map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
+                reason: row.try_get("reason").map_err(ReferralStoreError::from)?,
             })
         })
         .collect()
@@ -4563,39 +4628,39 @@ async fn fetch_credit_profile(
     .bind(affiliate_id)
     .fetch_one(pool)
     .await
-    .map_err(|error| sqlx_error(error))?;
+    .map_err(ReferralStoreError::from)?;
     let accounts = fetch_credit_accounts(pool, affiliate_id).await?;
     Ok(AffiliateCreditProfile {
         rating: row
             .try_get("credit_rating")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         status: row
             .try_get("credit_status")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         max_active_credit_accounts: row
             .try_get("max_active_credit_accounts")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         active_credit_accounts: row
             .try_get("active_credit_accounts")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         total_credit_limit_minor_units: row
             .try_get("total_credit_limit_minor_units")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         per_account_limit_minor_units: row
             .try_get("per_account_limit_minor_units")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         review_expires_at: row
             .try_get("review_expires_at")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         last_changed_by: row
             .try_get("credit_last_changed_by")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         last_changed_at: row
             .try_get("last_changed_at")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         audit_correlation_ids: row
             .try_get("credit_audit_correlation_ids")
-            .map_err(|error| sqlx_error(error))?,
+            .map_err(ReferralStoreError::from)?,
         accounts,
     })
 }
@@ -4616,23 +4681,23 @@ async fn fetch_credit_accounts(
     .bind(affiliate_id)
     .fetch_all(pool)
     .await
-    .map_err(|error| sqlx_error(error))?;
+    .map_err(ReferralStoreError::from)?;
     rows.into_iter()
         .map(|row| {
             Ok(AffiliateCreditAccountSummary {
                 id: row
                     .try_get("account_id")
-                    .map_err(|error| sqlx_error(error))?,
-                status: row.try_get("status").map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
+                status: row.try_get("status").map_err(ReferralStoreError::from)?,
                 credit_limit_minor_units: row
                     .try_get("credit_limit_minor_units")
-                    .map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
                 used_minor_units: row
                     .try_get("used_minor_units")
-                    .map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
                 expires_at: row
                     .try_get("expires_at")
-                    .map_err(|error| sqlx_error(error))?,
+                    .map_err(ReferralStoreError::from)?,
             })
         })
         .collect()
@@ -5002,10 +5067,7 @@ impl AffiliateCommissionEngine {
         ]))
     }
 
-    fn signup_bonus_draft(
-        inviter_player_id: &str,
-        invited_player_id: &str,
-    ) -> LedgerTransactionDraft {
+    fn signup_bonus_draft(inviter_player_id: &str, new_player_id: &str) -> LedgerTransactionDraft {
         LedgerTransactionDraft::new([
             LedgerEntryDraft::new(
                 "Expense.AffiliateCommission",
@@ -5020,7 +5082,7 @@ impl AffiliateCommissionEngine {
                 LedgerAmount::from_minor_units(REFERRED_SIGNUP_BONUS_MINOR_UNITS),
             ),
             LedgerEntryDraft::new(
-                format!("Player.Wallet.{invited_player_id}"),
+                format!("Player.Wallet.{new_player_id}"),
                 LedgerAmount::from_minor_units(-REFERRED_SIGNUP_BONUS_MINOR_UNITS),
             ),
         ])
@@ -5183,7 +5245,8 @@ mod tests {
     use super::{
         AffiliateCommissionAdjustmentReview, AffiliateCommissionEngine, AffiliateCommissionSummary,
         AffiliateKinshipSignals, AffiliatePayoutReview, AffiliateReferralListItem, AntiAbuseFlags,
-        CommissionEvent, InMemoryAffiliateDashboardStore, QualificationEvent, ReferralError,
+        AntiAbuseIdentityFlags, AntiAbuseTradingFlags, CommissionEvent,
+        InMemoryAffiliateDashboardStore, KinshipIdentitySignals, QualificationEvent, ReferralError,
         ReferralRecord, ReferralStatus, router,
     };
     use axum::{
@@ -5378,8 +5441,10 @@ mod tests {
             .flag_affiliate_kinship_link(
                 "user_referred",
                 AffiliateKinshipSignals {
-                    same_admin_division: true,
-                    same_last_name: true,
+                    identity: KinshipIdentitySignals {
+                        same_admin_division: true,
+                        same_last_name: true,
+                    },
                     ..AffiliateKinshipSignals::default()
                 },
             )
@@ -5437,7 +5502,10 @@ mod tests {
             kyc_tier: 1,
             completed_trade_count: 5,
             anti_abuse: AntiAbuseFlags {
-                same_ip: true,
+                identity: AntiAbuseIdentityFlags {
+                    same_ip: true,
+                    ..AntiAbuseIdentityFlags::default()
+                },
                 ..AntiAbuseFlags::default()
             },
             kinship_review_passed: false,
@@ -5455,7 +5523,10 @@ mod tests {
             maker_fee_minor_units: 1_000,
             taker_fee_minor_units: 2_000,
             anti_abuse: AntiAbuseFlags {
-                referred_self_trade: true,
+                trading: AntiAbuseTradingFlags {
+                    referred_self_trade: true,
+                    ..AntiAbuseTradingFlags::default()
+                },
                 ..AntiAbuseFlags::default()
             },
             referrer_group_id: None,
