@@ -1,20 +1,20 @@
-import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, type AnchorHTMLAttributes, type ReactNode } from "react";
 import { cn } from "./cn";
 
-export type ProphButtonVariant =
-  | "primary"               // DESIGN.md §Buttons — Action Blue pill, the brand action
-  | "secondary-pill"        // ghost pill: transparent fill, blue border + text (light surfaces)
+type ProphLinkButtonVariant =
+  | "primary" // DESIGN.md §Buttons — Action Blue pill, the brand action
+  | "secondary-pill" // ghost pill: transparent fill, blue border + text (light surfaces)
   | "secondary-pill-on-dark" // ghost pill for dark tiles — primary-on-dark Sky Blue
-  | "dark-utility"          // ink rect, 8px radius — for use against light/parchment, NOT against surface-black
-  | "pearl-capsule"         // surface-pearl, 11px radius — secondary on cards
-  | "store-hero"            // larger primary, weight 300 (the rare 300)
-  | "icon-circular";        // 44x44 translucent chip over photography
+  | "dark-utility" // ink rect, 8px radius — for use against light/parchment, NOT against surface-black
+  | "pearl-capsule" // surface-pearl, 11px radius — secondary on cards
+  | "store-hero" // larger primary, weight 300 (the rare 300)
+  | "icon-circular"; // 44x44 translucent chip over photography
 
-export type ProphButtonSize = "default" | "lg";
+type ProphLinkButtonSize = "default" | "lg";
 
-interface ProphButtonBaseProps {
-  variant?: ProphButtonVariant;
-  size?: ProphButtonSize;
+interface ProphLinkButtonBaseProps {
+  variant?: ProphLinkButtonVariant;
+  size?: ProphLinkButtonSize;
   className?: string;
   children?: ReactNode;
 }
@@ -30,7 +30,7 @@ interface ProphButtonBaseProps {
  * black, prefer ProphLinkButton with the primary-on-dark accent or a plain
  * text link.
  */
-const variantClasses: Record<ProphButtonVariant, string> = {
+const variantClasses: Record<ProphLinkButtonVariant, string> = {
   primary: cn(
     "bg-proph-primary text-proph-on-primary",
     "rounded-proph-pill px-[22px] py-[11px]",
@@ -81,38 +81,34 @@ const baseClasses = cn(
   "focus-visible:outline-proph-primary-focus",
 );
 
-const buttonOnlyClasses = "disabled:cursor-not-allowed disabled:text-proph-ink-muted-48 disabled:opacity-100";
-
-function resolveClasses(variant: ProphButtonVariant, size: ProphButtonSize, className?: string) {
-  const sizeOverride = size === "lg" && variant === "primary" ? "px-[28px] py-[14px] text-[18px] font-light" : "";
+function resolveClasses(
+  variant: ProphLinkButtonVariant,
+  size: ProphLinkButtonSize,
+  className?: string,
+) {
+  const sizeOverride =
+    size === "lg" && variant === "primary"
+      ? "px-[28px] py-[14px] text-[18px] font-light"
+      : "";
   return cn(baseClasses, variantClasses[variant], sizeOverride, className);
 }
-
-export type ProphButtonProps = ProphButtonBaseProps & ButtonHTMLAttributes<HTMLButtonElement>;
-
-export const ProphButton = forwardRef<HTMLButtonElement, ProphButtonProps>(
-  ({ variant = "primary", size = "default", className, type, ...props }, ref) => (
-    <button
-      ref={ref}
-      type={type ?? "button"}
-      className={cn(resolveClasses(variant, size, className), buttonOnlyClasses)}
-      {...props}
-    />
-  ),
-);
-ProphButton.displayName = "ProphButton";
 
 /*
  * Anchor counterpart — same visual language, but for navigation. Use whenever
  * the action's effect is "go somewhere"; nesting <a> inside <button> (or vice
  * versa) is invalid HTML and breaks focus / right-click semantics.
  */
-export type ProphLinkButtonProps = ProphButtonBaseProps &
+export type ProphLinkButtonProps = ProphLinkButtonBaseProps &
   AnchorHTMLAttributes<HTMLAnchorElement> & { href: string };
 
-export const ProphLinkButton = forwardRef<HTMLAnchorElement, ProphLinkButtonProps>(
-  ({ variant = "primary", size = "default", className, ...props }, ref) => (
-    <a ref={ref} className={resolveClasses(variant, size, className)} {...props} />
-  ),
-);
+export const ProphLinkButton = forwardRef<
+  HTMLAnchorElement,
+  ProphLinkButtonProps
+>(({ variant = "primary", size = "default", className, ...props }, ref) => (
+  <a
+    ref={ref}
+    className={resolveClasses(variant, size, className)}
+    {...props}
+  />
+));
 ProphLinkButton.displayName = "ProphLinkButton";

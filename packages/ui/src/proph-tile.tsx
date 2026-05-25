@@ -15,7 +15,7 @@ export interface ProphTileProps extends HTMLAttributes<HTMLElement> {
   headline: ReactNode;
   /** One-line tagline at typography.lead (28px / 400). */
   tagline?: ReactNode;
-  /** Pair of CTAs — typically two ProphButtons rendered as a horizontal row. */
+  /** Pair of CTAs rendered as a horizontal row. */
   actions?: ReactNode;
   /** Product render / hero media — the only legal site for var(--proph-shadow-product). */
   media?: ReactNode;

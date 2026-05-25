@@ -3675,33 +3675,6 @@ impl PostgresCompensationProposalStore {
     }
 }
 
-async fn insert_compensation_approvals(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    proposal_row_id: i64,
-    approvals: &[CompensationApprovalRequest],
-) -> Result<(), AdminOpsStoreError> {
-    for (index, approval) in approvals.iter().enumerate() {
-        let ordinal =
-            i16::try_from(index + 1).map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        sqlx::query(
-            r"
-            INSERT INTO admin_compensation_proposal_approvals (
-                proposal_id, approver_user_id, role, ordinal
-            )
-            VALUES ($1, $2, $3, $4)
-            ",
-        )
-        .bind(proposal_row_id)
-        .bind(&approval.approver_user_id)
-        .bind(&approval.role)
-        .bind(ordinal)
-        .execute(&mut **tx)
-        .await
-        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-    }
-    Ok(())
-}
-
 async fn insert_compensation_audit_event(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     proposal_row_id: i64,
@@ -4563,7 +4536,7 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
                 user_id: user_id.to_owned(),
                 display_name: format!("Member {user_id}"),
                 email_masked: "not_connected".to_owned(),
-                status: "placeholder".to_owned(),
+                status: "not_connected".to_owned(),
             },
             wallet: WalletOpsSummary {
                 balance: WalletBalanceSummary {

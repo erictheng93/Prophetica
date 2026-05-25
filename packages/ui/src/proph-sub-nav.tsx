@@ -6,7 +6,7 @@ export interface ProphSubNavProps {
   category: ReactNode;
   /** Inline category nav links, hidden on small viewports. */
   links?: ReactNode;
-  /** Persistent right-aligned CTA (typically a ProphButton variant="primary"). */
+  /** Persistent right-aligned CTA (typically a ProphLinkButton variant="primary"). */
   cta?: ReactNode;
   className?: string;
 }
