@@ -173,19 +173,121 @@ test("selectKycProvider throws KycSdkError on unknown prefix", () => {
   );
 });
 
-test("real SumSub provider mount throws not_implemented", async () => {
+test("real SumSub provider loads WebSDK, launches into target, and maps messages", async () => {
+  const dom = installSumsubWebSdkStub();
+  try {
+    const provider = createRealSumsubProvider({
+      scriptUrl: "https://static.sumsub.test/sdk.js",
+      tokenRefresh: async () => "sumsub_real_refreshed",
+    });
+    const target = dom.createTarget("sumsub-container");
+    const handle = await provider.mount(target, {
+      sdkToken: "sumsub_real_xyz",
+      targetTier: "TIER_2",
+      locale: "zh-TW",
+      country: "TW",
+    });
+
+    const events: KycSessionEvent[] = [];
+    handle.subscribe((event) => events.push(event));
+
+    assert.equal(
+      dom.appendedScripts[0]?.src,
+      "https://static.sumsub.test/sdk.js",
+    );
+    assert.equal(dom.initCalls[0]?.accessToken, "sumsub_real_xyz");
+    assert.equal(
+      await dom.initCalls[0]?.tokenRefresh(),
+      "sumsub_real_refreshed",
+    );
+    assert.deepEqual(dom.configs[0], {
+      lang: "zh-TW",
+      country: "TW",
+    });
+    assert.deepEqual(dom.options[0], {
+      addViewportTag: false,
+      adaptIframeHeight: true,
+    });
+    assert.equal(dom.launchTargets[0], "#sumsub-container");
+
+    dom.emit("idCheck.onReady", {});
+    dom.emit("idCheck.onApplicantSubmitted", {});
+    dom.emit("idCheck.onApplicantVerificationCompleted", {
+      reviewResult: { reviewAnswer: "GREEN" },
+    });
+
+    assert.deepEqual(events, [
+      { kind: "ready" },
+      { kind: "submitted" },
+      { kind: "completed", outcome: "approved" },
+    ]);
+
+    handle.unmount();
+    assert.equal(dom.destroyCallCount, 1);
+  } finally {
+    dom.cleanup();
+  }
+});
+
+test("real SumSub provider maps WebSDK errors", async () => {
+  const dom = installSumsubWebSdkStub();
+  try {
+    const provider = createRealSumsubProvider({
+      scriptUrl: "https://static.sumsub.test/sdk.js",
+    });
+    const handle = await provider.mount(dom.createTarget("sumsub-error"), {
+      sdkToken: "sumsub_real_xyz",
+      targetTier: "TIER_2",
+      locale: "en",
+      country: "TW",
+    });
+    const events: KycSessionEvent[] = [];
+    handle.subscribe((event) => events.push(event));
+
+    dom.emit("idCheck.onError", { code: "invalid-token" });
+    dom.emit("idCheck.onError", {
+      code: "camera-error",
+      reason: "permissionsDenied",
+    });
+    dom.emit("idCheck.onError", { code: "initialization-error" });
+
+    assert.deepEqual(events, [
+      { kind: "error", code: "sdk_token_expired", recoverable: true },
+      { kind: "error", code: "permission_denied", recoverable: true },
+      { kind: "error", code: "sdk_load_failed", recoverable: true },
+    ]);
+    handle.unmount();
+  } finally {
+    dom.cleanup();
+  }
+});
+
+test("real SumSub provider rejects outside browser runtime", async () => {
+  const previousDocument = (globalThis as { document?: unknown }).document;
+  const previousSdk = (globalThis as { snsWebSdk?: unknown }).snsWebSdk;
+  delete (globalThis as { document?: unknown }).document;
+  delete (globalThis as { snsWebSdk?: unknown }).snsWebSdk;
   const provider = createRealSumsubProvider();
-  await assert.rejects(
-    () =>
-      provider.mount(fakeTarget(), {
-        sdkToken: "sumsub_real_xyz",
-        targetTier: "TIER_2",
-        locale: "en",
-        country: "TW",
-      }),
-    (err: unknown) =>
-      err instanceof KycSdkError && err.code === "not_implemented",
-  );
+  try {
+    await assert.rejects(
+      () =>
+        provider.mount(fakeTarget(), {
+          sdkToken: "sumsub_real_xyz",
+          targetTier: "TIER_2",
+          locale: "en",
+          country: "TW",
+        }),
+      (err: unknown) =>
+        err instanceof KycSdkError && err.code === "browser_unsupported",
+    );
+  } finally {
+    if (previousDocument !== undefined) {
+      (globalThis as { document?: unknown }).document = previousDocument;
+    }
+    if (previousSdk !== undefined) {
+      (globalThis as { snsWebSdk?: unknown }).snsWebSdk = previousSdk;
+    }
+  }
 });
 
 test("override option short-circuits sdk token resolution", () => {
@@ -231,3 +333,139 @@ test("iProov mock provider emits ready and submitted", async () => {
   assert.ok(events.some((e) => e.kind === "submitted"));
   handle.unmount();
 });
+
+interface ScriptStub {
+  src: string;
+  async: boolean;
+  onload: (() => void) | null;
+  onerror: (() => void) | null;
+}
+
+interface TargetStub {
+  id: string;
+  replaceChildren(): void;
+}
+
+type SumsubMessageHandler = (type: string, payload: unknown) => void;
+
+function installSumsubWebSdkStub(): {
+  appendedScripts: ScriptStub[];
+  configs: unknown[];
+  options: unknown[];
+  initCalls: Array<{
+    accessToken: string;
+    tokenRefresh: () => Promise<string>;
+  }>;
+  launchTargets: unknown[];
+  get destroyCallCount(): number;
+  cleanup: () => void;
+  createTarget: (id: string) => HTMLElement;
+  emit: (type: string, payload: unknown) => void;
+} {
+  const host = globalThis as {
+    document?: unknown;
+    snsWebSdk?: unknown;
+  };
+  const previousDocument = host.document;
+  const previousSdk = host.snsWebSdk;
+  const appendedScripts: ScriptStub[] = [];
+  const configs: unknown[] = [];
+  const options: unknown[] = [];
+  const initCalls: Array<{
+    accessToken: string;
+    tokenRefresh: () => Promise<string>;
+  }> = [];
+  const launchTargets: unknown[] = [];
+  const handlers: SumsubMessageHandler[] = [];
+  let destroyCallCount = 0;
+
+  const sdk = {
+    init(accessToken: string, tokenRefresh: () => Promise<string>) {
+      initCalls.push({ accessToken, tokenRefresh });
+      return {
+        withConf(config: unknown) {
+          configs.push(config);
+          return this;
+        },
+        withOptions(option: unknown) {
+          options.push(option);
+          return this;
+        },
+        on() {
+          return this;
+        },
+        onMessage(handler: SumsubMessageHandler) {
+          handlers.push(handler);
+          return this;
+        },
+        build() {
+          return {
+            launch(target: unknown) {
+              launchTargets.push(target);
+            },
+            destroy() {
+              destroyCallCount += 1;
+            },
+          };
+        },
+      };
+    },
+  };
+
+  host.document = {
+    createElement(tagName: string) {
+      assert.equal(tagName, "script");
+      return {
+        src: "",
+        async: false,
+        onload: null,
+        onerror: null,
+      } satisfies ScriptStub;
+    },
+    head: {
+      appendChild(script: ScriptStub) {
+        appendedScripts.push(script);
+        queueMicrotask(() => {
+          host.snsWebSdk = sdk;
+          script.onload?.();
+        });
+      },
+    },
+  };
+
+  return {
+    appendedScripts,
+    configs,
+    options,
+    initCalls,
+    launchTargets,
+    get destroyCallCount() {
+      return destroyCallCount;
+    },
+    cleanup() {
+      if (previousDocument === undefined) {
+        delete host.document;
+      } else {
+        host.document = previousDocument;
+      }
+      if (previousSdk === undefined) {
+        delete host.snsWebSdk;
+      } else {
+        host.snsWebSdk = previousSdk;
+      }
+    },
+    createTarget(id: string): HTMLElement {
+      return {
+        id,
+        replaceChildren() {
+          // no-op test target
+        },
+      } satisfies TargetStub as unknown as HTMLElement;
+    },
+    emit(type: string, payload: unknown) {
+      for (const handler of handlers) {
+        handler(type, payload);
+      }
+    },
+  };
+}

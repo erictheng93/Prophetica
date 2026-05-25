@@ -25,7 +25,10 @@ export {
   createSumsubMockProvider,
   type SumsubMockProviderOptions,
 } from "./sumsub-mock-provider.js";
-export { createRealSumsubProvider } from "./sumsub-provider.js";
+export {
+  createRealSumsubProvider,
+  type RealSumsubProviderOptions,
+} from "./sumsub-provider.js";
 export {
   createKycProviderForStage,
   selectKycProvider,

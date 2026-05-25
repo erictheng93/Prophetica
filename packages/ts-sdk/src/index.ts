@@ -51,6 +51,7 @@ export type {
   KycStep,
   KycTargetTier,
   MockKycProviderOptions,
+  RealSumsubProviderOptions,
   SelectKycProviderOptions,
   SumsubMockProviderOptions,
 } from "./kyc-provider/index.js";
