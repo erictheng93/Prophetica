@@ -7,7 +7,7 @@ export function createRealIproovProvider(): KycIdentityProvider {
     async mount() {
       throw new KycSdkError(
         "not_implemented",
-        "Real iProov provider is not implemented yet. Pending PR #2 sandbox account wiring.",
+        "Real iProov provider is not implemented yet. Blocked on SPEC-000 Q-9 SumSub/iProov sandbox credentials and verified mount behavior.",
       );
     },
   };
