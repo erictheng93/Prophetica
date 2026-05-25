@@ -42,12 +42,12 @@ pub fn buy_order_lock_minor_units(order_kind: OrderKind, price_pts: i64, quantit
 
 #[must_use]
 pub fn curve_taker_fee_bps(price_pts: i32, fee_curve_bps: u32) -> u32 {
-    let price_pts = price_pts.clamp(0, 100) as u128;
+    let price_pts = u128::try_from(price_pts.clamp(0, 100)).unwrap_or(0);
     let complement_pts = 100_u128.saturating_sub(price_pts);
     let numerator = u128::from(fee_curve_bps)
         .saturating_mul(price_pts)
         .saturating_mul(complement_pts);
-    ((numerator + 5_000) / 10_000) as u32
+    u32::try_from((numerator + 5_000) / 10_000).unwrap_or(u32::MAX)
 }
 
 #[must_use]
@@ -67,7 +67,13 @@ fn max_curve_taker_fee_minor_units(
         OrderKind::Market => 100,
     };
     (0..=max_price)
-        .map(|price| curve_taker_fee_minor_units(price as i32, quantity, fee_curve_bps))
+        .map(|price| {
+            curve_taker_fee_minor_units(
+                i32::try_from(price).unwrap_or(i32::MAX),
+                quantity,
+                fee_curve_bps,
+            )
+        })
         .max()
         .unwrap_or(0)
 }

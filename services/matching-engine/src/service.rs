@@ -657,12 +657,12 @@ fn total_taker_fee_minor_units(trades: &[TradeEvent], fee_curve_bps: u32) -> i64
 }
 
 fn curve_taker_fee_bps(price: Price, fee_curve_bps: u32) -> u32 {
-    let price = price.min(100) as u128;
+    let price = u128::from(price.min(100));
     let complement = 100_u128.saturating_sub(price);
     let numerator = u128::from(fee_curve_bps)
         .saturating_mul(price)
         .saturating_mul(complement);
-    ((numerator + 5_000) / 10_000) as u32
+    u32::try_from((numerator + 5_000) / 10_000).unwrap_or(u32::MAX)
 }
 
 fn curve_taker_fee_minor_units(price: Price, quantity: Quantity, fee_curve_bps: u32) -> i64 {

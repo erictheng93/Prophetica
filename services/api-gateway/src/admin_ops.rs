@@ -2763,68 +2763,26 @@ impl PostgresCompensationProposalStore {
         .await
         .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         if status != "proposed" {
-            if let Some(review_row) = existing_review {
-                let decision = review_row
-                    .try_get("decision")
-                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-                let note = review_row
-                    .try_get("review_note")
-                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-                tx.commit()
-                    .await
-                    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-                let detail = self.compensation_proposal_detail(proposal_id).await?;
-                return Ok(CompensationProposalReviewResponse {
-                    proposal: detail.proposal,
-                    review: CompensationReviewSummary {
-                        reviewer_user_id: context.actor_user_id,
-                        reviewer_role: context.actor_role,
-                        decision,
-                        note,
-                    },
-                    replayed: true,
-                });
-            }
-            return Err(AdminOpsStoreError::new("compensation proposal not pending"));
+            return replay_existing_compensation_review(
+                self,
+                tx,
+                proposal_id,
+                existing_review,
+                context,
+            )
+            .await;
         }
         if existing_review.is_some() {
             return Err(AdminOpsStoreError::new("compensation proposal not pending"));
         }
 
-        sqlx::query(
-            r"
-            INSERT INTO admin_compensation_proposal_approvals (
-                proposal_id, approver_user_id, role, decision, review_note
-            )
-            VALUES ($1, $2, $3, $4, $5)
-            ",
-        )
-        .bind(row_id)
-        .bind(&context.actor_user_id)
-        .bind(&context.actor_role)
-        .bind(&request.decision)
-        .bind(request.note.as_deref())
-        .execute(&mut *tx)
-        .await
-        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         let next_status = if request.decision == "approved" {
             "approved"
         } else {
             "rejected"
         };
-        sqlx::query(
-            r"
-            UPDATE admin_compensation_proposals
-            SET status = $2,
-                approved_at = CASE WHEN $2 = 'approved' THEN now() ELSE approved_at END
-            WHERE id = $1
-            ",
-        )
-        .bind(row_id)
-        .bind(next_status)
-        .execute(&mut *tx)
-        .await
-        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+        persist_compensation_review_decision(&mut tx, row_id, &request, &context, next_status)
+            .await?;
         insert_compensation_review_audit_event(&mut tx, row_id, &row, &request, &context).await?;
         tx.commit()
             .await
@@ -2904,18 +2862,20 @@ impl PostgresCompensationProposalStore {
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         insert_compensation_posting_audit_event(
             &mut tx,
-            row_id,
-            "compensation_posting_attempt_started",
-            &actor_user_id,
-            &actor_role,
-            &subject_user_id,
-            &ticket_id,
-            &correlation_id,
-            json!({
-                "proposer_kind": proposer_kind,
-                "ledger_idempotency_key": stored_ledger_idempotency_key,
-                "attempt": posting_attempt_count,
-            }),
+            CompensationPostingAuditEvent {
+                proposal_row_id: row_id,
+                action: "compensation_posting_attempt_started",
+                actor_user_id: &actor_user_id,
+                actor_role: &actor_role,
+                subject_user_id: &subject_user_id,
+                ticket_id: &ticket_id,
+                correlation_id: &correlation_id,
+                metadata: json!({
+                    "proposer_kind": proposer_kind,
+                    "ledger_idempotency_key": stored_ledger_idempotency_key,
+                    "attempt": posting_attempt_count,
+                }),
+            },
         )
         .await?;
         tx.commit()
@@ -2942,35 +2902,7 @@ impl PostgresCompensationProposalStore {
             .begin()
             .await
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let (next_status, ledger_transaction_id, last_error, action, error_class) = match &outcome {
-            CompensationLedgerPostOutcome::Posted { txn_id } => (
-                "posted",
-                Some(*txn_id),
-                None,
-                "compensation_ledger_transaction_posted",
-                None,
-            ),
-            CompensationLedgerPostOutcome::Failed {
-                error_class,
-                message,
-            } => (
-                "posting_failed",
-                None,
-                Some(format!("{error_class}: {message}")),
-                "compensation_posting_attempt_failed",
-                Some(error_class.clone()),
-            ),
-            CompensationLedgerPostOutcome::Unknown {
-                error_class,
-                message,
-            } => (
-                "posting_unknown",
-                None,
-                Some(format!("{error_class}: {message}")),
-                "compensation_posting_attempt_failed",
-                Some(error_class.clone()),
-            ),
-        };
+        let outcome = compensation_posting_outcome_parts(&outcome);
         let row = sqlx::query(
             r"
             UPDATE admin_compensation_proposals
@@ -2987,55 +2919,18 @@ impl PostgresCompensationProposalStore {
             ",
         )
         .bind(proposal_id)
-        .bind(next_status)
-        .bind(ledger_transaction_id)
-        .bind(last_error.as_deref())
+        .bind(outcome.next_status)
+        .bind(outcome.ledger_transaction_id)
+        .bind(outcome.last_error.as_deref())
         .fetch_one(&mut *tx)
         .await
         .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let row_id: i64 = row
-            .try_get("id")
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let subject_user_id: String = row
-            .try_get("subject_user_id")
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let ticket_id: String = row
-            .try_get("ticket_id")
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let correlation_id: String = row
-            .try_get("correlation_id")
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let actor_user_id: String = row
-            .try_get("actor_user_id")
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let actor_role: String = row
-            .try_get("actor_role")
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let proposer_kind: String = row
-            .try_get("proposer_kind")
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let ledger_idempotency_key: Option<String> = row
-            .try_get("ledger_idempotency_key")
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let posting_attempt_count: i32 = row
-            .try_get("posting_attempt_count")
-            .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        insert_compensation_posting_audit_event(
+        insert_compensation_outcome_audit_event(
             &mut tx,
-            row_id,
-            action,
-            &actor_user_id,
-            &actor_role,
-            &subject_user_id,
-            &ticket_id,
-            &correlation_id,
-            json!({
-                "proposer_kind": proposer_kind,
-                "ledger_idempotency_key": ledger_idempotency_key,
-                "ledger_transaction_id": ledger_transaction_id,
-                "attempt": posting_attempt_count,
-                "error_class": error_class,
-            }),
+            &row,
+            outcome.action,
+            outcome.ledger_transaction_id,
+            outcome.error_class.as_deref(),
         )
         .await?;
         tx.commit()
@@ -3048,18 +2943,20 @@ impl PostgresCompensationProposalStore {
 
     /// Compensation reconcile algorithm shared by v1 manual retry and the deferred
     /// v1.1 worker:
-    /// 1. Select proposals in posting/posting_failed/posting_unknown that are old
-    ///    enough for reconciliation.
-    /// 2. Read the existing ledger_idempotency_key from the proposal. If it is
-    ///    NULL, audit and fail; never synthesize a retry key.
+    ///
+    /// 1. Select proposals in `posting` / `posting_failed` / `posting_unknown`
+    ///    that are old enough for reconciliation.
+    /// 2. Read the existing `ledger_idempotency_key` from the proposal. If it
+    ///    is `NULL`, audit and fail; never synthesize a retry key.
     /// 3. Query wallet-ledger by that key before any post attempt. This step is
-    ///    mandatory for both posting_failed and posting_unknown because unknown
+    ///    mandatory for both `posting_failed` and `posting_unknown` because unknown
     ///    may mean "ledger committed, gateway lost the response".
     /// 4. If ledger returns an existing txn, mark the proposal posted and audit
-    ///    compensation_reconcile_marked_posted.
+    ///    `compensation_reconcile_marked_posted`.
     /// 5. If ledger does not have the txn, repost the original compensation with
-    ///    the same ledger_idempotency_key, increment posting_attempt_count, then
+    ///    the same `ledger_idempotency_key`, increment `posting_attempt_count`, then
     ///    apply the Task 6 success/failed/unknown outcome handling.
+    ///
     /// The v1 worker shell is intentionally out of scope; manual retry invokes
     /// this algorithm directly.
     async fn prepare_compensation_manual_retry(
@@ -3127,18 +3024,20 @@ impl PostgresCompensationProposalStore {
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         insert_compensation_posting_audit_event(
             &mut tx,
-            row_id,
-            "compensation_posting_manual_retry",
-            &context.actor_user_id,
-            &context.actor_role,
-            &subject_user_id,
-            &ticket_id,
-            &correlation_id,
-            json!({
-                "proposer_kind": proposer_kind,
-                "ledger_idempotency_key": ledger_idempotency_key,
-                "attempt": posting_attempt_count,
-            }),
+            CompensationPostingAuditEvent {
+                proposal_row_id: row_id,
+                action: "compensation_posting_manual_retry",
+                actor_user_id: &context.actor_user_id,
+                actor_role: &context.actor_role,
+                subject_user_id: &subject_user_id,
+                ticket_id: &ticket_id,
+                correlation_id: &correlation_id,
+                metadata: json!({
+                    "proposer_kind": proposer_kind,
+                    "ledger_idempotency_key": ledger_idempotency_key,
+                    "attempt": posting_attempt_count,
+                }),
+            },
         )
         .await?;
         tx.commit()
@@ -3215,18 +3114,20 @@ impl PostgresCompensationProposalStore {
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         insert_compensation_posting_audit_event(
             &mut tx,
-            row_id,
-            "compensation_posting_attempt_started",
-            &actor_user_id,
-            &actor_role,
-            &subject_user_id,
-            &ticket_id,
-            &correlation_id,
-            json!({
-                "proposer_kind": proposer_kind,
-                "ledger_idempotency_key": ledger_idempotency_key,
-                "attempt": posting_attempt_count,
-            }),
+            CompensationPostingAuditEvent {
+                proposal_row_id: row_id,
+                action: "compensation_posting_attempt_started",
+                actor_user_id: &actor_user_id,
+                actor_role: &actor_role,
+                subject_user_id: &subject_user_id,
+                ticket_id: &ticket_id,
+                correlation_id: &correlation_id,
+                metadata: json!({
+                    "proposer_kind": proposer_kind,
+                    "ledger_idempotency_key": ledger_idempotency_key,
+                    "attempt": posting_attempt_count,
+                }),
+            },
         )
         .await?;
         tx.commit()
@@ -3299,18 +3200,20 @@ impl PostgresCompensationProposalStore {
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
         insert_compensation_posting_audit_event(
             &mut tx,
-            row_id,
-            "compensation_reconcile_marked_posted",
-            &actor_user_id,
-            &actor_role,
-            &subject_user_id,
-            &ticket_id,
-            &correlation_id,
-            json!({
-                "proposer_kind": proposer_kind,
-                "ledger_idempotency_key": ledger_idempotency_key,
-                "ledger_transaction_id": txn_id,
-            }),
+            CompensationPostingAuditEvent {
+                proposal_row_id: row_id,
+                action: "compensation_reconcile_marked_posted",
+                actor_user_id: &actor_user_id,
+                actor_role: &actor_role,
+                subject_user_id: &subject_user_id,
+                ticket_id: &ticket_id,
+                correlation_id: &correlation_id,
+                metadata: json!({
+                    "proposer_kind": proposer_kind,
+                    "ledger_idempotency_key": ledger_idempotency_key,
+                    "ledger_transaction_id": txn_id,
+                }),
+            },
         )
         .await?;
         tx.commit()
@@ -3454,12 +3357,14 @@ impl PostgresCompensationProposalStore {
 
         insert_compensation_audit_event(
             &mut tx,
-            row_id,
-            user_id,
-            &ticket_id,
-            &correlation_id,
-            amount_minor_units,
-            &proposer_kind,
+            CompensationCreatedAuditEvent {
+                proposal_row_id: row_id,
+                user_id,
+                ticket_id: &ticket_id,
+                correlation_id: &correlation_id,
+                amount_minor_units,
+                proposer_kind: &proposer_kind,
+            },
             &context,
         )
         .await?;
@@ -3677,18 +3582,13 @@ impl PostgresCompensationProposalStore {
 
 async fn insert_compensation_audit_event(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    proposal_row_id: i64,
-    user_id: &str,
-    ticket_id: &str,
-    correlation_id: &str,
-    amount_minor_units: i64,
-    proposer_kind: &str,
+    event: CompensationCreatedAuditEvent<'_>,
     context: &AdminOpsRequestContext,
 ) -> Result<(), AdminOpsStoreError> {
     let mut metadata = json!({
-        "proposer_kind": proposer_kind,
-        "amount_minor_units": amount_minor_units,
-        "ticket_id": ticket_id,
+        "proposer_kind": event.proposer_kind,
+        "amount_minor_units": event.amount_minor_units,
+        "ticket_id": event.ticket_id,
     });
     if let Some(relationship) = context.compensation_referral_relationship.as_deref() {
         metadata["relationship"] = json!(relationship);
@@ -3705,17 +3605,26 @@ async fn insert_compensation_audit_event(
         )
         ",
     )
-    .bind(proposal_row_id)
+    .bind(event.proposal_row_id)
     .bind(&context.actor_user_id)
     .bind(&context.actor_role)
-    .bind(user_id)
-    .bind(ticket_id)
-    .bind(correlation_id)
+    .bind(event.user_id)
+    .bind(event.ticket_id)
+    .bind(event.correlation_id)
     .bind(metadata)
     .execute(&mut **tx)
     .await
     .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
     Ok(())
+}
+
+struct CompensationCreatedAuditEvent<'a> {
+    proposal_row_id: i64,
+    user_id: &'a str,
+    ticket_id: &'a str,
+    correlation_id: &'a str,
+    amount_minor_units: i64,
+    proposer_kind: &'a str,
 }
 
 async fn insert_compensation_review_audit_event(
@@ -3769,16 +3678,180 @@ async fn insert_compensation_review_audit_event(
     Ok(())
 }
 
+async fn replay_existing_compensation_review(
+    store: &PostgresCompensationProposalStore,
+    tx: sqlx::Transaction<'_, sqlx::Postgres>,
+    proposal_id: &str,
+    existing_review: Option<sqlx::postgres::PgRow>,
+    context: AdminOpsRequestContext,
+) -> Result<CompensationProposalReviewResponse, AdminOpsStoreError> {
+    let Some(review_row) = existing_review else {
+        return Err(AdminOpsStoreError::new("compensation proposal not pending"));
+    };
+    let decision = review_row
+        .try_get("decision")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let note = review_row
+        .try_get("review_note")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    tx.commit()
+        .await
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let detail = store.compensation_proposal_detail(proposal_id).await?;
+    Ok(CompensationProposalReviewResponse {
+        proposal: detail.proposal,
+        review: CompensationReviewSummary {
+            reviewer_user_id: context.actor_user_id,
+            reviewer_role: context.actor_role,
+            decision,
+            note,
+        },
+        replayed: true,
+    })
+}
+
+struct CompensationPostingOutcomeParts {
+    next_status: &'static str,
+    ledger_transaction_id: Option<i64>,
+    last_error: Option<String>,
+    action: &'static str,
+    error_class: Option<String>,
+}
+
+fn compensation_posting_outcome_parts(
+    outcome: &CompensationLedgerPostOutcome,
+) -> CompensationPostingOutcomeParts {
+    match outcome {
+        CompensationLedgerPostOutcome::Posted { txn_id } => CompensationPostingOutcomeParts {
+            next_status: "posted",
+            ledger_transaction_id: Some(*txn_id),
+            last_error: None,
+            action: "compensation_ledger_transaction_posted",
+            error_class: None,
+        },
+        CompensationLedgerPostOutcome::Failed {
+            error_class,
+            message,
+        } => CompensationPostingOutcomeParts {
+            next_status: "posting_failed",
+            ledger_transaction_id: None,
+            last_error: Some(format!("{error_class}: {message}")),
+            action: "compensation_posting_attempt_failed",
+            error_class: Some(error_class.clone()),
+        },
+        CompensationLedgerPostOutcome::Unknown {
+            error_class,
+            message,
+        } => CompensationPostingOutcomeParts {
+            next_status: "posting_unknown",
+            ledger_transaction_id: None,
+            last_error: Some(format!("{error_class}: {message}")),
+            action: "compensation_posting_attempt_failed",
+            error_class: Some(error_class.clone()),
+        },
+    }
+}
+
+async fn insert_compensation_outcome_audit_event(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    row: &sqlx::postgres::PgRow,
+    action: &str,
+    ledger_transaction_id: Option<i64>,
+    error_class: Option<&str>,
+) -> Result<(), AdminOpsStoreError> {
+    let row_id: i64 = row
+        .try_get("id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let subject_user_id: String = row
+        .try_get("subject_user_id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let ticket_id: String = row
+        .try_get("ticket_id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let correlation_id: String = row
+        .try_get("correlation_id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let actor_user_id: String = row
+        .try_get("actor_user_id")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let actor_role: String = row
+        .try_get("actor_role")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let proposer_kind: String = row
+        .try_get("proposer_kind")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let ledger_idempotency_key: Option<String> = row
+        .try_get("ledger_idempotency_key")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    let posting_attempt_count: i32 = row
+        .try_get("posting_attempt_count")
+        .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+
+    insert_compensation_posting_audit_event(
+        tx,
+        CompensationPostingAuditEvent {
+            proposal_row_id: row_id,
+            action,
+            actor_user_id: &actor_user_id,
+            actor_role: &actor_role,
+            subject_user_id: &subject_user_id,
+            ticket_id: &ticket_id,
+            correlation_id: &correlation_id,
+            metadata: json!({
+                "proposer_kind": proposer_kind,
+                "ledger_idempotency_key": ledger_idempotency_key,
+                "ledger_transaction_id": ledger_transaction_id,
+                "attempt": posting_attempt_count,
+                "error_class": error_class,
+            }),
+        },
+    )
+    .await
+}
+
+async fn persist_compensation_review_decision(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    row_id: i64,
+    request: &CompensationReviewRequest,
+    context: &AdminOpsRequestContext,
+    next_status: &str,
+) -> Result<(), AdminOpsStoreError> {
+    sqlx::query(
+        r"
+        INSERT INTO admin_compensation_proposal_approvals (
+            proposal_id, approver_user_id, role, decision, review_note
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        ",
+    )
+    .bind(row_id)
+    .bind(&context.actor_user_id)
+    .bind(&context.actor_role)
+    .bind(&request.decision)
+    .bind(request.note.as_deref())
+    .execute(&mut **tx)
+    .await
+    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+
+    sqlx::query(
+        r"
+        UPDATE admin_compensation_proposals
+        SET status = $2,
+            approved_at = CASE WHEN $2 = 'approved' THEN now() ELSE approved_at END
+        WHERE id = $1
+        ",
+    )
+    .bind(row_id)
+    .bind(next_status)
+    .execute(&mut **tx)
+    .await
+    .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
+    Ok(())
+}
+
 async fn insert_compensation_posting_audit_event(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    proposal_row_id: i64,
-    action: &str,
-    actor_user_id: &str,
-    actor_role: &str,
-    subject_user_id: &str,
-    ticket_id: &str,
-    correlation_id: &str,
-    metadata: Value,
+    event: CompensationPostingAuditEvent<'_>,
 ) -> Result<(), AdminOpsStoreError> {
     sqlx::query(
         r"
@@ -3789,18 +3862,29 @@ async fn insert_compensation_posting_audit_event(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ",
     )
-    .bind(proposal_row_id)
-    .bind(action)
-    .bind(actor_user_id)
-    .bind(actor_role)
-    .bind(subject_user_id)
-    .bind(ticket_id)
-    .bind(correlation_id)
-    .bind(metadata)
+    .bind(event.proposal_row_id)
+    .bind(event.action)
+    .bind(event.actor_user_id)
+    .bind(event.actor_role)
+    .bind(event.subject_user_id)
+    .bind(event.ticket_id)
+    .bind(event.correlation_id)
+    .bind(event.metadata)
     .execute(&mut **tx)
     .await
     .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
     Ok(())
+}
+
+struct CompensationPostingAuditEvent<'a> {
+    proposal_row_id: i64,
+    action: &'a str,
+    actor_user_id: &'a str,
+    actor_role: &'a str,
+    subject_user_id: &'a str,
+    ticket_id: &'a str,
+    correlation_id: &'a str,
+    metadata: Value,
 }
 
 struct CompensationProposalResponseParts {
@@ -4747,152 +4831,13 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
             .state
             .lock()
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let proposer_user_id = state
-            .compensation_proposal_actors
-            .iter()
-            .find_map(|(stored_proposal_id, actor_user_id)| {
-                (stored_proposal_id == proposal_id).then(|| actor_user_id.clone())
-            })
-            .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
-        if proposer_user_id == context.actor_user_id {
-            return Err(AdminOpsStoreError::new("compensation self review"));
-        }
-        let proposal = state
-            .compensation_proposals
-            .iter_mut()
-            .find(|proposal| proposal.proposal_id == proposal_id)
-            .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
-        if proposal.status != CompensationProposalStatus::Proposed {
-            if proposal
-                .approvals
-                .iter()
-                .any(|approval| approval.approver_user_id == context.actor_user_id)
-            {
-                return Ok(CompensationProposalReviewResponse {
-                    proposal: proposal.clone(),
-                    review: CompensationReviewSummary {
-                        reviewer_user_id: context.actor_user_id,
-                        reviewer_role: context.actor_role,
-                        decision: request.decision,
-                        note: request.note,
-                    },
-                    replayed: true,
-                });
-            }
-            return Err(AdminOpsStoreError::new("compensation proposal not pending"));
-        }
-        proposal.status = if request.decision == "approved" {
-            CompensationProposalStatus::Approved
-        } else {
-            CompensationProposalStatus::Rejected
-        };
-        if request.decision == "approved" {
-            proposal.approved_at = Some("now".to_owned());
-        }
-        proposal.approvals.push(CompensationApprovalRequest {
-            approver_user_id: context.actor_user_id.clone(),
-            role: context.actor_role.clone(),
-        });
-        let proposal = proposal.clone();
-        state.audit_records.push(CompensationAuditMetadata {
-            action: if request.decision == "approved" {
-                "compensation_proposal_approved".to_owned()
-            } else {
-                "compensation_proposal_rejected".to_owned()
-            },
-            subject_user_id: proposal.user_id.clone(),
-            ticket_id: proposal.ticket_id.clone(),
-            correlation_id: format!("{}:review", proposal.proposal_id),
-            approval_roles: vec![context.actor_role.clone()],
-            proposer_kind: proposal.proposer_kind.clone(),
-            ledger_transaction_posted: false,
-        });
-        let mut proposal = proposal;
-        if request.decision == "approved" {
-            let ledger_idempotency_key = format!("cs-cmp-{proposal_id}");
-            proposal.status = CompensationProposalStatus::Posting;
-            proposal.ledger_idempotency_key = Some(ledger_idempotency_key.clone());
-            proposal.posting_attempt_count += 1;
-            state.audit_records.push(CompensationAuditMetadata {
-                action: "compensation_posting_attempt_started".to_owned(),
-                subject_user_id: proposal.user_id.clone(),
-                ticket_id: proposal.ticket_id.clone(),
-                correlation_id: format!("{}:posting", proposal.proposal_id),
-                approval_roles: vec![context.actor_role.clone()],
-                proposer_kind: proposal.proposer_kind.clone(),
-                ledger_transaction_posted: false,
-            });
-            match self
-                .compensation_ledger_outcome
-                .clone()
-                .unwrap_or(CompensationLedgerPostOutcome::Posted { txn_id: 9001 })
-            {
-                CompensationLedgerPostOutcome::Posted { txn_id } => {
-                    proposal.status = CompensationProposalStatus::Posted;
-                    proposal.ledger_transaction_posted = true;
-                    proposal.ledger_transaction_id = Some(txn_id);
-                    proposal.last_posting_error = None;
-                    state.audit_records.push(CompensationAuditMetadata {
-                        action: "compensation_ledger_transaction_posted".to_owned(),
-                        subject_user_id: proposal.user_id.clone(),
-                        ticket_id: proposal.ticket_id.clone(),
-                        correlation_id: format!("{}:posted", proposal.proposal_id),
-                        approval_roles: vec![context.actor_role.clone()],
-                        proposer_kind: proposal.proposer_kind.clone(),
-                        ledger_transaction_posted: true,
-                    });
-                }
-                CompensationLedgerPostOutcome::Failed {
-                    error_class,
-                    message,
-                } => {
-                    proposal.status = CompensationProposalStatus::PostingFailed;
-                    proposal.last_posting_error = Some(format!("{error_class}: {message}"));
-                    state.audit_records.push(CompensationAuditMetadata {
-                        action: "compensation_posting_attempt_failed".to_owned(),
-                        subject_user_id: proposal.user_id.clone(),
-                        ticket_id: proposal.ticket_id.clone(),
-                        correlation_id: format!("{}:posting-failed", proposal.proposal_id),
-                        approval_roles: vec![context.actor_role.clone()],
-                        proposer_kind: proposal.proposer_kind.clone(),
-                        ledger_transaction_posted: false,
-                    });
-                }
-                CompensationLedgerPostOutcome::Unknown {
-                    error_class,
-                    message,
-                } => {
-                    proposal.status = CompensationProposalStatus::PostingUnknown;
-                    proposal.last_posting_error = Some(format!("{error_class}: {message}"));
-                    state.audit_records.push(CompensationAuditMetadata {
-                        action: "compensation_posting_attempt_failed".to_owned(),
-                        subject_user_id: proposal.user_id.clone(),
-                        ticket_id: proposal.ticket_id.clone(),
-                        correlation_id: format!("{}:posting-unknown", proposal.proposal_id),
-                        approval_roles: vec![context.actor_role.clone()],
-                        proposer_kind: proposal.proposer_kind.clone(),
-                        ledger_transaction_posted: false,
-                    });
-                }
-            }
-            if let Some(stored) = state
-                .compensation_proposals
-                .iter_mut()
-                .find(|stored| stored.proposal_id == proposal.proposal_id)
-            {
-                *stored = proposal.clone();
-            }
-        }
-        Ok(CompensationProposalReviewResponse {
-            proposal,
-            review: CompensationReviewSummary {
-                reviewer_user_id: context.actor_user_id,
-                reviewer_role: context.actor_role,
-                decision: request.decision,
-                note: request.note,
-            },
-            replayed: false,
-        })
+        review_in_memory_compensation_proposal(
+            &mut state,
+            proposal_id,
+            request,
+            context,
+            self.compensation_ledger_outcome.clone(),
+        )
     }
 
     async fn retry_compensation_posting(
@@ -4907,106 +4852,13 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
             .state
             .lock()
             .map_err(|error| AdminOpsStoreError::new(error.to_string()))?;
-        let proposal_index = state
-            .compensation_proposals
-            .iter()
-            .position(|proposal| proposal.proposal_id == proposal_id)
-            .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
-        let proposal = state.compensation_proposals[proposal_index].clone();
-        if !matches!(
-            proposal.status,
-            CompensationProposalStatus::Posting
-                | CompensationProposalStatus::PostingFailed
-                | CompensationProposalStatus::PostingUnknown
-                | CompensationProposalStatus::Posted
-        ) {
-            return Err(AdminOpsStoreError::new("compensation retry not available"));
-        }
-        let Some(_ledger_idempotency_key) = proposal.ledger_idempotency_key.clone() else {
-            return Err(AdminOpsStoreError::new(
-                "compensation ledger idempotency key missing",
-            ));
-        };
-        state.audit_records.push(CompensationAuditMetadata {
-            action: "compensation_posting_manual_retry".to_owned(),
-            subject_user_id: proposal.user_id.clone(),
-            ticket_id: proposal.ticket_id.clone(),
-            correlation_id: format!("{}:manual-retry", proposal.proposal_id),
-            approval_roles: vec![context.actor_role.clone()],
-            proposer_kind: proposal.proposer_kind.clone(),
-            ledger_transaction_posted: proposal.ledger_transaction_posted,
-        });
-        if let Some(txn_id) = self
-            .compensation_ledger_lookup_txn_id
-            .or(proposal.ledger_transaction_id)
-        {
-            let proposal = {
-                let proposal = &mut state.compensation_proposals[proposal_index];
-                proposal.status = CompensationProposalStatus::Posted;
-                proposal.ledger_transaction_posted = true;
-                proposal.ledger_transaction_id = Some(txn_id);
-                proposal.last_posting_error = None;
-                proposal.clone()
-            };
-            state.audit_records.push(CompensationAuditMetadata {
-                action: "compensation_reconcile_marked_posted".to_owned(),
-                subject_user_id: proposal.user_id.clone(),
-                ticket_id: proposal.ticket_id.clone(),
-                correlation_id: format!("{}:reconcile", proposal.proposal_id),
-                approval_roles: vec![context.actor_role],
-                proposer_kind: proposal.proposer_kind.clone(),
-                ledger_transaction_posted: true,
-            });
-            return Ok(CompensationPostingRetryResponse {
-                proposal,
-                replayed: true,
-            });
-        }
-        state.audit_records.push(CompensationAuditMetadata {
-            action: "compensation_posting_attempt_started".to_owned(),
-            subject_user_id: proposal.user_id.clone(),
-            ticket_id: proposal.ticket_id.clone(),
-            correlation_id: format!("{}:retry-posting", proposal.proposal_id),
-            approval_roles: vec![context.actor_role.clone()],
-            proposer_kind: proposal.proposer_kind.clone(),
-            ledger_transaction_posted: false,
-        });
-        let outcome = self
-            .compensation_ledger_outcome
-            .clone()
-            .unwrap_or(CompensationLedgerPostOutcome::Posted { txn_id: 9001 });
-        let proposal = {
-            let proposal = &mut state.compensation_proposals[proposal_index];
-            proposal.status = CompensationProposalStatus::Posting;
-            proposal.posting_attempt_count += 1;
-            match outcome {
-                CompensationLedgerPostOutcome::Posted { txn_id } => {
-                    proposal.status = CompensationProposalStatus::Posted;
-                    proposal.ledger_transaction_posted = true;
-                    proposal.ledger_transaction_id = Some(txn_id);
-                    proposal.last_posting_error = None;
-                }
-                CompensationLedgerPostOutcome::Failed {
-                    error_class,
-                    message,
-                } => {
-                    proposal.status = CompensationProposalStatus::PostingFailed;
-                    proposal.last_posting_error = Some(format!("{error_class}: {message}"));
-                }
-                CompensationLedgerPostOutcome::Unknown {
-                    error_class,
-                    message,
-                } => {
-                    proposal.status = CompensationProposalStatus::PostingUnknown;
-                    proposal.last_posting_error = Some(format!("{error_class}: {message}"));
-                }
-            }
-            proposal.clone()
-        };
-        Ok(CompensationPostingRetryResponse {
-            proposal,
-            replayed: false,
-        })
+        retry_in_memory_compensation_posting(
+            &mut state,
+            proposal_id,
+            &context,
+            self.compensation_ledger_lookup_txn_id,
+            self.compensation_ledger_outcome.clone(),
+        )
     }
 
     async fn create_compensation_proposal(
@@ -5208,5 +5060,338 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         self.kyc_url_override
             .clone()
             .unwrap_or_else(crate::kyc_service_base_url_from_env)
+    }
+}
+
+fn review_in_memory_compensation_proposal(
+    state: &mut AdminOpsState,
+    proposal_id: &str,
+    request: CompensationReviewRequest,
+    context: AdminOpsRequestContext,
+    ledger_outcome: Option<CompensationLedgerPostOutcome>,
+) -> Result<CompensationProposalReviewResponse, AdminOpsStoreError> {
+    let proposer_user_id = state
+        .compensation_proposal_actors
+        .iter()
+        .find_map(|(stored_proposal_id, actor_user_id)| {
+            (stored_proposal_id == proposal_id).then(|| actor_user_id.clone())
+        })
+        .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
+    if proposer_user_id == context.actor_user_id {
+        return Err(AdminOpsStoreError::new("compensation self review"));
+    }
+    let proposal_index = state
+        .compensation_proposals
+        .iter()
+        .position(|proposal| proposal.proposal_id == proposal_id)
+        .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
+
+    if state.compensation_proposals[proposal_index].status != CompensationProposalStatus::Proposed {
+        return in_memory_compensation_review_replay(
+            &state.compensation_proposals[proposal_index],
+            request,
+            context,
+        );
+    }
+
+    record_in_memory_compensation_review(state, proposal_index, &request, &context);
+    if request.decision == "approved" {
+        apply_in_memory_compensation_posting(
+            state,
+            proposal_index,
+            proposal_id,
+            &context,
+            ledger_outcome,
+        );
+    }
+    Ok(CompensationProposalReviewResponse {
+        proposal: state.compensation_proposals[proposal_index].clone(),
+        review: CompensationReviewSummary {
+            reviewer_user_id: context.actor_user_id,
+            reviewer_role: context.actor_role,
+            decision: request.decision,
+            note: request.note,
+        },
+        replayed: false,
+    })
+}
+
+fn in_memory_compensation_review_replay(
+    proposal: &CompensationProposal,
+    request: CompensationReviewRequest,
+    context: AdminOpsRequestContext,
+) -> Result<CompensationProposalReviewResponse, AdminOpsStoreError> {
+    if !proposal
+        .approvals
+        .iter()
+        .any(|approval| approval.approver_user_id == context.actor_user_id)
+    {
+        return Err(AdminOpsStoreError::new("compensation proposal not pending"));
+    }
+    Ok(CompensationProposalReviewResponse {
+        proposal: proposal.clone(),
+        review: CompensationReviewSummary {
+            reviewer_user_id: context.actor_user_id,
+            reviewer_role: context.actor_role,
+            decision: request.decision,
+            note: request.note,
+        },
+        replayed: true,
+    })
+}
+
+fn record_in_memory_compensation_review(
+    state: &mut AdminOpsState,
+    proposal_index: usize,
+    request: &CompensationReviewRequest,
+    context: &AdminOpsRequestContext,
+) {
+    let proposal = &mut state.compensation_proposals[proposal_index];
+    proposal.status = if request.decision == "approved" {
+        CompensationProposalStatus::Approved
+    } else {
+        CompensationProposalStatus::Rejected
+    };
+    if request.decision == "approved" {
+        proposal.approved_at = Some("now".to_owned());
+    }
+    proposal.approvals.push(CompensationApprovalRequest {
+        approver_user_id: context.actor_user_id.clone(),
+        role: context.actor_role.clone(),
+    });
+    let proposal = proposal.clone();
+    state.audit_records.push(compensation_audit_metadata(
+        if request.decision == "approved" {
+            "compensation_proposal_approved"
+        } else {
+            "compensation_proposal_rejected"
+        },
+        &proposal,
+        format!("{}:review", proposal.proposal_id),
+        &context.actor_role,
+        false,
+    ));
+}
+
+fn apply_in_memory_compensation_posting(
+    state: &mut AdminOpsState,
+    proposal_index: usize,
+    proposal_id: &str,
+    context: &AdminOpsRequestContext,
+    ledger_outcome: Option<CompensationLedgerPostOutcome>,
+) {
+    let proposal = &mut state.compensation_proposals[proposal_index];
+    proposal.status = CompensationProposalStatus::Posting;
+    proposal.ledger_idempotency_key = Some(format!("cs-cmp-{proposal_id}"));
+    proposal.posting_attempt_count += 1;
+    let proposal = proposal.clone();
+    state.audit_records.push(compensation_audit_metadata(
+        "compensation_posting_attempt_started",
+        &proposal,
+        format!("{}:posting", proposal.proposal_id),
+        &context.actor_role,
+        false,
+    ));
+    apply_in_memory_compensation_ledger_outcome(
+        state,
+        proposal_index,
+        context,
+        ledger_outcome.unwrap_or(CompensationLedgerPostOutcome::Posted { txn_id: 9001 }),
+    );
+}
+
+fn apply_in_memory_compensation_ledger_outcome(
+    state: &mut AdminOpsState,
+    proposal_index: usize,
+    context: &AdminOpsRequestContext,
+    outcome: CompensationLedgerPostOutcome,
+) {
+    let (action, suffix, posted) = {
+        let proposal = &mut state.compensation_proposals[proposal_index];
+        match outcome {
+            CompensationLedgerPostOutcome::Posted { txn_id } => {
+                proposal.status = CompensationProposalStatus::Posted;
+                proposal.ledger_transaction_posted = true;
+                proposal.ledger_transaction_id = Some(txn_id);
+                proposal.last_posting_error = None;
+                ("compensation_ledger_transaction_posted", "posted", true)
+            }
+            CompensationLedgerPostOutcome::Failed {
+                error_class,
+                message,
+            } => {
+                proposal.status = CompensationProposalStatus::PostingFailed;
+                proposal.last_posting_error = Some(format!("{error_class}: {message}"));
+                (
+                    "compensation_posting_attempt_failed",
+                    "posting-failed",
+                    false,
+                )
+            }
+            CompensationLedgerPostOutcome::Unknown {
+                error_class,
+                message,
+            } => {
+                proposal.status = CompensationProposalStatus::PostingUnknown;
+                proposal.last_posting_error = Some(format!("{error_class}: {message}"));
+                (
+                    "compensation_posting_attempt_failed",
+                    "posting-unknown",
+                    false,
+                )
+            }
+        }
+    };
+    let proposal = state.compensation_proposals[proposal_index].clone();
+    state.audit_records.push(compensation_audit_metadata(
+        action,
+        &proposal,
+        format!("{}:{suffix}", proposal.proposal_id),
+        &context.actor_role,
+        posted,
+    ));
+}
+
+fn retry_in_memory_compensation_posting(
+    state: &mut AdminOpsState,
+    proposal_id: &str,
+    context: &AdminOpsRequestContext,
+    lookup_txn_id: Option<i64>,
+    ledger_outcome: Option<CompensationLedgerPostOutcome>,
+) -> Result<CompensationPostingRetryResponse, AdminOpsStoreError> {
+    let proposal_index = state
+        .compensation_proposals
+        .iter()
+        .position(|proposal| proposal.proposal_id == proposal_id)
+        .ok_or_else(|| AdminOpsStoreError::new("compensation proposal not found"))?;
+    let proposal = state.compensation_proposals[proposal_index].clone();
+    ensure_compensation_retry_available(&proposal)?;
+    state.audit_records.push(compensation_audit_metadata(
+        "compensation_posting_manual_retry",
+        &proposal,
+        format!("{}:manual-retry", proposal.proposal_id),
+        &context.actor_role,
+        proposal.ledger_transaction_posted,
+    ));
+    if let Some(txn_id) = lookup_txn_id.or(proposal.ledger_transaction_id) {
+        return Ok(mark_in_memory_compensation_retry_posted(
+            state,
+            proposal_index,
+            txn_id,
+            context,
+        ));
+    }
+    state.audit_records.push(compensation_audit_metadata(
+        "compensation_posting_attempt_started",
+        &proposal,
+        format!("{}:retry-posting", proposal.proposal_id),
+        &context.actor_role,
+        false,
+    ));
+    let outcome = ledger_outcome.unwrap_or(CompensationLedgerPostOutcome::Posted { txn_id: 9001 });
+    {
+        let proposal = &mut state.compensation_proposals[proposal_index];
+        proposal.status = CompensationProposalStatus::Posting;
+        proposal.posting_attempt_count += 1;
+    }
+    apply_in_memory_retry_outcome(state, proposal_index, outcome);
+    Ok(CompensationPostingRetryResponse {
+        proposal: state.compensation_proposals[proposal_index].clone(),
+        replayed: false,
+    })
+}
+
+fn ensure_compensation_retry_available(
+    proposal: &CompensationProposal,
+) -> Result<(), AdminOpsStoreError> {
+    if !matches!(
+        proposal.status,
+        CompensationProposalStatus::Posting
+            | CompensationProposalStatus::PostingFailed
+            | CompensationProposalStatus::PostingUnknown
+            | CompensationProposalStatus::Posted
+    ) {
+        return Err(AdminOpsStoreError::new("compensation retry not available"));
+    }
+    if proposal.ledger_idempotency_key.is_none() {
+        return Err(AdminOpsStoreError::new(
+            "compensation ledger idempotency key missing",
+        ));
+    }
+    Ok(())
+}
+
+fn mark_in_memory_compensation_retry_posted(
+    state: &mut AdminOpsState,
+    proposal_index: usize,
+    txn_id: i64,
+    context: &AdminOpsRequestContext,
+) -> CompensationPostingRetryResponse {
+    let proposal = {
+        let proposal = &mut state.compensation_proposals[proposal_index];
+        proposal.status = CompensationProposalStatus::Posted;
+        proposal.ledger_transaction_posted = true;
+        proposal.ledger_transaction_id = Some(txn_id);
+        proposal.last_posting_error = None;
+        proposal.clone()
+    };
+    state.audit_records.push(compensation_audit_metadata(
+        "compensation_reconcile_marked_posted",
+        &proposal,
+        format!("{}:reconcile", proposal.proposal_id),
+        &context.actor_role,
+        true,
+    ));
+    CompensationPostingRetryResponse {
+        proposal,
+        replayed: true,
+    }
+}
+
+fn apply_in_memory_retry_outcome(
+    state: &mut AdminOpsState,
+    proposal_index: usize,
+    outcome: CompensationLedgerPostOutcome,
+) {
+    let proposal = &mut state.compensation_proposals[proposal_index];
+    match outcome {
+        CompensationLedgerPostOutcome::Posted { txn_id } => {
+            proposal.status = CompensationProposalStatus::Posted;
+            proposal.ledger_transaction_posted = true;
+            proposal.ledger_transaction_id = Some(txn_id);
+            proposal.last_posting_error = None;
+        }
+        CompensationLedgerPostOutcome::Failed {
+            error_class,
+            message,
+        } => {
+            proposal.status = CompensationProposalStatus::PostingFailed;
+            proposal.last_posting_error = Some(format!("{error_class}: {message}"));
+        }
+        CompensationLedgerPostOutcome::Unknown {
+            error_class,
+            message,
+        } => {
+            proposal.status = CompensationProposalStatus::PostingUnknown;
+            proposal.last_posting_error = Some(format!("{error_class}: {message}"));
+        }
+    }
+}
+
+fn compensation_audit_metadata(
+    action: &str,
+    proposal: &CompensationProposal,
+    correlation_id: String,
+    actor_role: &str,
+    ledger_transaction_posted: bool,
+) -> CompensationAuditMetadata {
+    CompensationAuditMetadata {
+        action: action.to_owned(),
+        subject_user_id: proposal.user_id.clone(),
+        ticket_id: proposal.ticket_id.clone(),
+        correlation_id,
+        approval_roles: vec![actor_role.to_owned()],
+        proposer_kind: proposal.proposer_kind.clone(),
+        ledger_transaction_posted,
     }
 }

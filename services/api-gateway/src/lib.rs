@@ -3778,15 +3778,27 @@ where
     P: PositionProjectionClient + Send + Sync + 'static,
 {
     router_with_services_kyc_payment_flags_market_fees_position_projection_and_trade_stores(
-        wallet_ledger,
-        engine,
-        referral,
-        kyc,
-        payment_flags,
-        market_fees,
-        position_projection,
+        GatewayRouterServices {
+            wallet_ledger,
+            engine,
+            referral,
+            kyc,
+            payment_flags,
+            market_fees,
+            position_projection,
+        },
         GatewayStateStores::in_memory_noop(),
     )
+}
+
+struct GatewayRouterServices<W, E, R, K, F, M, P> {
+    wallet_ledger: W,
+    engine: E,
+    referral: R,
+    kyc: K,
+    payment_flags: F,
+    market_fees: M,
+    position_projection: P,
 }
 
 fn router_with_services_kyc_payment_flags_market_fees_position_projection_and_trade_stores<
@@ -3798,13 +3810,7 @@ fn router_with_services_kyc_payment_flags_market_fees_position_projection_and_tr
     M,
     P,
 >(
-    wallet_ledger: W,
-    engine: E,
-    referral: R,
-    kyc: K,
-    payment_flags: F,
-    market_fees: M,
-    position_projection: P,
+    services: GatewayRouterServices<W, E, R, K, F, M, P>,
     stores: GatewayStateStores,
 ) -> Router
 where
@@ -3816,6 +3822,15 @@ where
     M: MarketFeeReader + Send + Sync + 'static,
     P: PositionProjectionClient + Send + Sync + 'static,
 {
+    let GatewayRouterServices {
+        wallet_ledger,
+        engine,
+        referral,
+        kyc,
+        payment_flags,
+        market_fees,
+        position_projection,
+    } = services;
     let rg_router = responsible_gaming::responsible_gaming_router(
         wallet_ledger.clone(),
         responsible_gaming::InMemorySelfExclusionStore::default(),
@@ -5212,36 +5227,75 @@ where
             .await?;
     }
 
-    if record.status == "pending" {
-        match state
-            .affiliate_credentials
-            .create_affiliate_credential(
-                AffiliateCredentialCreateRequest {
-                    user_id: request.user_id.clone(),
-                    display_name: request.display_name.clone(),
-                    email: request.email.clone(),
-                    phone: request.phone.clone(),
-                    password: request.password.clone(),
-                    affiliate_id: request.affiliate_id.clone(),
-                },
-                context.clone(),
-            )
-            .await
-        {
-            Ok(()) => {
-                "credential_created".clone_into(&mut record.status);
-                record.last_error = None;
-                state.affiliate_account_sagas.put(record.clone()).await?;
-            }
-            Err(error) => {
-                "failed".clone_into(&mut record.status);
-                record.last_error = Some(error.message.clone());
-                state.affiliate_account_sagas.put(record.clone()).await?;
-                return Ok((StatusCode::BAD_GATEWAY, Json(saga_response(record))));
-            }
-        }
+    if let Some(response) =
+        create_affiliate_credential_step(&state, &context, &request, &mut record).await?
+    {
+        return Ok(response);
     }
 
+    create_affiliate_profile_step(&state, &context, &request, record).await
+}
+
+async fn create_affiliate_credential_step<W, E, R, K>(
+    state: &AppStateWithServices<W, E, R, K>,
+    context: &AdminProxyContext,
+    request: &AffiliateAccountCreateRequest,
+    record: &mut AffiliateAccountSagaRecord,
+) -> Result<Option<(StatusCode, Json<AffiliateAccountSagaResponse>)>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
+{
+    if record.status != "pending" {
+        return Ok(None);
+    }
+    match state
+        .affiliate_credentials
+        .create_affiliate_credential(
+            AffiliateCredentialCreateRequest {
+                user_id: request.user_id.clone(),
+                display_name: request.display_name.clone(),
+                email: request.email.clone(),
+                phone: request.phone.clone(),
+                password: request.password.clone(),
+                affiliate_id: request.affiliate_id.clone(),
+            },
+            context.clone(),
+        )
+        .await
+    {
+        Ok(()) => {
+            "credential_created".clone_into(&mut record.status);
+            record.last_error = None;
+            state.affiliate_account_sagas.put(record.clone()).await?;
+            Ok(None)
+        }
+        Err(error) => {
+            "failed".clone_into(&mut record.status);
+            record.last_error = Some(error.message.clone());
+            state.affiliate_account_sagas.put(record.clone()).await?;
+            Ok(Some((
+                StatusCode::BAD_GATEWAY,
+                Json(saga_response(record.clone())),
+            )))
+        }
+    }
+}
+
+async fn create_affiliate_profile_step<W, E, R, K>(
+    state: &AppStateWithServices<W, E, R, K>,
+    context: &AdminProxyContext,
+    request: &AffiliateAccountCreateRequest,
+    mut record: AffiliateAccountSagaRecord,
+) -> Result<(StatusCode, Json<AffiliateAccountSagaResponse>), ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
+{
     let profile_request = serde_json::json!({
         "id": request.affiliate_id,
         "userId": request.user_id,
@@ -5255,7 +5309,7 @@ where
     });
     match state
         .referral
-        .create_admin_affiliate(profile_request, context)
+        .create_admin_affiliate(profile_request, context.clone())
         .await
     {
         Ok(affiliate) => {
@@ -5641,13 +5695,15 @@ pub async fn run_http() -> anyhow::Result<()> {
     let app = service_stub::router(&config)
         .merge(
             router_with_services_kyc_payment_flags_market_fees_position_projection_and_trade_stores(
-                wallet_ledger,
-                matching_engine,
-                referral,
-                kyc,
-                payment_flags,
-                market_service.clone(),
-                position_service.clone(),
+                GatewayRouterServices {
+                    wallet_ledger,
+                    engine: matching_engine,
+                    referral,
+                    kyc,
+                    payment_flags,
+                    market_fees: market_service.clone(),
+                    position_projection: position_service.clone(),
+                },
                 GatewayStateStores {
                     trade: TradeFillStores {
                         order_owners: durability_setup.order_owners,
@@ -5841,14 +5897,15 @@ mod tests {
         DEFAULT_TAKER_FEE_CURVE_BPS, InMemoryAffiliateAccountSagaStore, InMemoryFeatureFlagStore,
         InMemoryGatewayDeniedAuditStore, InMemoryTradeFillSagaStore, KycTier, KycTierClient,
         LedgerEntry, LedgerPostResult, Market, MarketListResponse, MarketServiceClient,
-        MatchingEngineClient, OrderActionResponse, OrderFill, OrderOwnerStore, PlaceOrderRequest,
-        Position, PositionFillProjectionRequest, PositionListResponse, PositionProjectionClient,
-        PositionServiceClient, ReferralClient, SERVICE_NAME, TRADE_FILL_SAGA_BATCH_LIMIT,
-        TradeFillSagaStatus, TradeSettlementRequest, WalletBalance, WalletLedgerClient,
-        X_USER_ID_TRANSITION_ALLOWLIST, X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-        X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF, drain_due_trade_fill_sagas, market_router,
-        matching_engine_user_id_header_value, observability, positions_router, router,
-        router_with_engine, router_with_engine_and_kyc, router_with_engine_and_kyc_and_market_fees,
+        MatchingEngineClient, OrderActionResponse, OrderFill, OrderFillSettlement, OrderOwnerStore,
+        PlaceOrderRequest, Position, PositionFillProjectionRequest, PositionListResponse,
+        PositionProjectionClient, PositionServiceClient, ReferralClient, SERVICE_NAME,
+        TRADE_FILL_SAGA_BATCH_LIMIT, TradeFillSagaStatus, TradeSettlementRequest, WalletBalance,
+        WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
+        X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        drain_due_trade_fill_sagas, market_router, matching_engine_user_id_header_value,
+        observability, positions_router, router, router_with_engine, router_with_engine_and_kyc,
+        router_with_engine_and_kyc_and_market_fees,
         router_with_engine_and_kyc_and_market_fees_and_position_projection,
         router_with_payment_flags, router_with_services,
         router_with_services_and_affiliate_account_clients, settle_and_project_order_fills,

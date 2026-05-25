@@ -1334,6 +1334,7 @@ async fn compensation_lists_and_details_proposals() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn compensation_review_approves_rejects_and_replays() {
     let store = InMemoryAdminOpsStore::default()
         .with_compensation_known_members(vec!["user_123".to_owned()]);
