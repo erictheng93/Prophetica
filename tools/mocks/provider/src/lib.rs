@@ -39,13 +39,16 @@ struct MockState {
 
 pub fn router(secret: String) -> Router {
     Router::new()
-        .route("/mock/sumsub/applicant-reviewed", post(applicant_reviewed))
         .route(
-            "/mock/sumsub/applicants/:applicant_id/documents",
+            "/mock/provider/applicant-reviewed",
+            post(applicant_reviewed),
+        )
+        .route(
+            "/mock/provider/applicants/:applicant_id/documents",
             get(mock_document_list),
         )
         .route(
-            "/mock/sumsub/applicants/:applicant_id/documents/:doc_id/image",
+            "/mock/provider/applicants/:applicant_id/documents/:doc_id/image",
             get(mock_document_image),
         )
         .with_state(MockState {
@@ -124,8 +127,8 @@ mod tests {
     use tower::ServiceExt;
 
     #[tokio::test]
-    async fn applicant_review_endpoint_returns_signed_sumsub_payload() {
-        let response = crate::router("dev-sumsub-webhook-secret".to_owned())
+    async fn applicant_review_endpoint_returns_signed_provider_payload() {
+        let response = crate::router("dev-provider-webhook-secret".to_owned())
             .oneshot(json_post(&json!({
                 "applicant_id": "applicant_42",
                 "external_user_id": "user_42",
@@ -153,7 +156,7 @@ mod tests {
         let list = app
             .clone()
             .oneshot(
-                axum::http::Request::get("/mock/sumsub/applicants/applicant_1/documents")
+                axum::http::Request::get("/mock/provider/applicants/applicant_1/documents")
                     .body(axum::body::Body::empty())
                     .expect("request should build"),
             )
@@ -163,7 +166,7 @@ mod tests {
         let img = app
             .oneshot(
                 axum::http::Request::get(
-                    "/mock/sumsub/applicants/applicant_1/documents/doc_1/image",
+                    "/mock/provider/applicants/applicant_1/documents/doc_1/image",
                 )
                 .body(axum::body::Body::empty())
                 .expect("request should build"),
@@ -182,7 +185,7 @@ mod tests {
     fn json_post(body: &Value) -> Request<Body> {
         Request::builder()
             .method("POST")
-            .uri("/mock/sumsub/applicant-reviewed")
+            .uri("/mock/provider/applicant-reviewed")
             .header("content-type", "application/json")
             .body(Body::from(body.to_string()))
             .expect("request should build")

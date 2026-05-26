@@ -8,9 +8,9 @@ use axum::{
 use http_body_util::BodyExt;
 use kyc_service::{
     SecretConfig,
-    api::router_with_sumsub_client,
+    api::router_with_provider_client,
     kyc::{InMemoryKycStore, KycStore, KycTier, StartUpgradeDraft},
-    sumsub_documents::{SumsubDocument, SumsubDocumentClient},
+    provider_documents::{ProviderDocument, ProviderDocumentClient},
 };
 use serde_json::Value;
 use tower::ServiceExt;
@@ -27,13 +27,13 @@ fn test_store() -> InMemoryKycStore {
     InMemoryKycStore::new("test-salt")
 }
 
-fn test_router_with_server<S: KycStore>(store: S, sumsub_base_url: &str) -> Router {
-    let client = SumsubDocumentClient::new(
-        sumsub_base_url.to_owned(),
+fn test_router_with_server<S: KycStore>(store: S, provider_base_url: &str) -> Router {
+    let client = ProviderDocumentClient::new(
+        provider_base_url.to_owned(),
         "app-token".to_owned(),
         "secret".to_owned(),
     );
-    router_with_sumsub_client(store, SecretConfig::dev_default(), client)
+    router_with_provider_client(store, SecretConfig::dev_default(), client)
 }
 
 async fn seed_tier2_user(store: &InMemoryKycStore, user_id: &str) -> String {
@@ -82,7 +82,7 @@ async fn collect_bytes(response: axum::response::Response) -> Vec<u8> {
         .to_vec()
 }
 
-fn mount_doc_list(applicant_id: &str, documents: &[SumsubDocument]) -> ResponseTemplate {
+fn mount_doc_list(applicant_id: &str, documents: &[ProviderDocument]) -> ResponseTemplate {
     let body = serde_json::json!({
         "applicant_id": applicant_id,
         "documents": documents,
@@ -90,8 +90,8 @@ fn mount_doc_list(applicant_id: &str, documents: &[SumsubDocument]) -> ResponseT
     ResponseTemplate::new(200).set_body_json(body)
 }
 
-fn sample_doc(doc_id: &str) -> SumsubDocument {
-    SumsubDocument {
+fn sample_doc(doc_id: &str) -> ProviderDocument {
+    ProviderDocument {
         doc_id: doc_id.to_owned(),
         kind: "id_doc".to_owned(),
         country: Some("TWN".to_owned()),
@@ -103,7 +103,7 @@ fn sample_doc(doc_id: &str) -> SumsubDocument {
 
 // ---------------------------------------------------------------------------
 // Scenario 1: user with Tier-2 record whose `provider_applicant_id` is Some
-//             → list returns 200 + document array from SumSub
+//             → list returns 200 + document array from the KYC provider
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -115,7 +115,7 @@ async fn list_documents_returns_doc_array_for_tier2_user() {
     let doc = sample_doc("doc_abc");
     Mock::given(method("GET"))
         .and(path(format!(
-            "/mock/sumsub/applicants/{applicant_id}/documents"
+            "/mock/provider/applicants/{applicant_id}/documents"
         )))
         .respond_with(mount_doc_list(&applicant_id, &[doc.clone()]))
         .mount(&server)
@@ -151,7 +151,7 @@ async fn get_document_image_returns_png_bytes_for_valid_doc() {
     let doc = sample_doc("doc_img_1");
     Mock::given(method("GET"))
         .and(path(format!(
-            "/mock/sumsub/applicants/{applicant_id}/documents"
+            "/mock/provider/applicants/{applicant_id}/documents"
         )))
         .respond_with(mount_doc_list(&applicant_id, &[doc]))
         .mount(&server)
@@ -160,7 +160,7 @@ async fn get_document_image_returns_png_bytes_for_valid_doc() {
     // Mount image endpoint
     Mock::given(method("GET"))
         .and(path(format!(
-            "/mock/sumsub/applicants/{applicant_id}/documents/doc_img_1/image"
+            "/mock/provider/applicants/{applicant_id}/documents/doc_img_1/image"
         )))
         .respond_with(
             ResponseTemplate::new(200)
@@ -203,7 +203,7 @@ async fn get_document_unbound_doc_id_returns_404_identical_to_no_applicant() {
     let doc = sample_doc("doc_real");
     Mock::given(method("GET"))
         .and(path(format!(
-            "/mock/sumsub/applicants/{applicant_id}/documents"
+            "/mock/provider/applicants/{applicant_id}/documents"
         )))
         .respond_with(mount_doc_list(&applicant_id, &[doc]))
         .mount(&server)
@@ -288,7 +288,7 @@ async fn successful_list_and_view_write_success_audit_rows() {
     // Mount list endpoint (used twice: once for list call, once for binding check in view)
     Mock::given(method("GET"))
         .and(path(format!(
-            "/mock/sumsub/applicants/{applicant_id}/documents"
+            "/mock/provider/applicants/{applicant_id}/documents"
         )))
         .respond_with(mount_doc_list(&applicant_id, &[sample_doc("doc_audit")]))
         .expect(2)
@@ -298,7 +298,7 @@ async fn successful_list_and_view_write_success_audit_rows() {
     // Mount image endpoint
     Mock::given(method("GET"))
         .and(path(format!(
-            "/mock/sumsub/applicants/{applicant_id}/documents/doc_audit/image"
+            "/mock/provider/applicants/{applicant_id}/documents/doc_audit/image"
         )))
         .respond_with(
             ResponseTemplate::new(200)
@@ -366,7 +366,7 @@ async fn unbound_doc_writes_denied_audit_row_with_denial_reason() {
     // Applicant has doc_real, but we request doc_unrelated
     Mock::given(method("GET"))
         .and(path(format!(
-            "/mock/sumsub/applicants/{applicant_id}/documents"
+            "/mock/provider/applicants/{applicant_id}/documents"
         )))
         .respond_with(mount_doc_list(&applicant_id, &[sample_doc("doc_real")]))
         .mount(&server)

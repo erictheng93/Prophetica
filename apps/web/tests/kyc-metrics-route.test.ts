@@ -23,7 +23,7 @@ test("POST /api/metrics/kyc accepts a valid event and returns 204", async () => 
   const result = await handleKycMetricsPost(
     jsonBody({
       name: "proph_kyc_session_started_total",
-      labels: { tier: "TIER_2", provider: "sumsub" },
+      labels: { tier: "TIER_2", provider: "iproov" },
     }),
   );
   assert.equal(result.status, 204);
@@ -49,7 +49,7 @@ test("POST /api/metrics/kyc rejects an unknown metric name with 400", async () =
   const result = await handleKycMetricsPost(
     jsonBody({
       name: "rogue_metric",
-      labels: { tier: "TIER_2", provider: "sumsub" },
+      labels: { tier: "TIER_2", provider: "iproov" },
     }),
   );
   assert.equal(result.status, 400);
@@ -60,13 +60,13 @@ test("POST then GET produces a Prom exposition with the recorded counter", async
   await handleKycMetricsPost(
     jsonBody({
       name: "proph_kyc_session_started_total",
-      labels: { tier: "TIER_2", provider: "sumsub" },
+      labels: { tier: "TIER_2", provider: "iproov" },
     }),
   );
   await handleKycMetricsPost(
     jsonBody({
       name: "proph_kyc_session_started_total",
-      labels: { tier: "TIER_2", provider: "sumsub" },
+      labels: { tier: "TIER_2", provider: "iproov" },
     }),
   );
 
@@ -78,10 +78,13 @@ test("POST then GET produces a Prom exposition with the recorded counter", async
     "application/openmetrics-text; version=1.0.0; charset=utf-8",
   );
   assert.match(result.body, /^# HELP proph_kyc_session_started_total /m);
-  assert.match(result.body, /^# TYPE proph_kyc_session_started_total counter$/m);
   assert.match(
     result.body,
-    /proph_kyc_session_started_total\{tier="TIER_2",provider="sumsub"\} 2/,
+    /^# TYPE proph_kyc_session_started_total counter$/m,
+  );
+  assert.match(
+    result.body,
+    /proph_kyc_session_started_total\{tier="TIER_2",provider="iproov"\} 2/,
   );
   assert.match(result.body, /^# EOF$/m);
 });

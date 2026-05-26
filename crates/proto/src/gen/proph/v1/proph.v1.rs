@@ -841,7 +841,7 @@ pub struct KycRecord {
     pub tier: i32,
     #[prost(enumeration="KycStatus", tag="4")]
     pub status: i32,
-    /// 'sumsub' / 'iproov' / 'manual'
+    /// 'iproov' / 'manual'
     #[prost(string, tag="5")]
     pub provider: ::prost::alloc::string::String,
     #[prost(string, tag="6")]
@@ -874,15 +874,15 @@ pub struct StartKycUpgradeRequest {
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StartKycUpgradeResponse {
-    /// SumSub Web SDK token
+    /// KYC provider SDK token
     #[prost(string, tag="1")]
     pub sdk_token: ::prost::alloc::string::String,
     #[prost(message, optional, tag="2")]
     pub expires_at: ::core::option::Option<super::super::google::protobuf::Timestamp>,
 }
-/// SumsubWebhookEvent — 對應 SPEC-005 §3.3 webhook payload 之內部 normalized 形式。
+/// ProviderWebhookEvent — 對應 SPEC-005 §3.3 webhook payload 之內部 normalized 形式。
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SumsubWebhookEvent {
+pub struct ProviderWebhookEvent {
     #[prost(string, tag="1")]
     pub applicant_id: ::prost::alloc::string::String,
     /// 對應 'user_42'

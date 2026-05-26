@@ -36,7 +36,7 @@ message KycRecord {
   UserID user = 2;
   KycTier tier = 3;
   KycStatus status = 4;
-  string provider = 5;            // 'sumsub' / 'iproov' / 'manual'
+  string provider = 5;            // 'iproov' / 'manual'
   string provider_applicant_id = 6;
   string document_id_hash = 7;    // SHA256(salt + ID)（不存原值）
   string country = 8;             // ISO 3166-1 alpha-2
@@ -55,12 +55,12 @@ message StartKycUpgradeRequest {
 }
 
 message StartKycUpgradeResponse {
-  string sdk_token = 1;            // SumSub Web SDK token
+  string sdk_token = 1;            // KYC provider SDK token
   google.protobuf.Timestamp expires_at = 2;
 }
 
-// SumsubWebhookEvent — 對應 SPEC-005 §3.3 webhook payload 之內部 normalized 形式。
-message SumsubWebhookEvent {
+// ProviderWebhookEvent — 對應 SPEC-005 §3.3 webhook payload 之內部 normalized 形式。
+message ProviderWebhookEvent {
   string applicant_id = 1;
   string external_user_id = 2;     // 對應 'user_42'
   string event_type = 3;           // 'applicantReviewed' 等

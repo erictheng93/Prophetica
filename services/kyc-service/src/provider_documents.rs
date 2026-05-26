@@ -1,11 +1,11 @@
-//! `SumSub` document API client.
+//! KYC provider document API client.
 //!
-//! Provides [`SumsubDocumentClient`] for listing applicant documents and
+//! Provides [`ProviderDocumentClient`] for listing applicant documents and
 //! fetching document image bytes as a streaming [`reqwest::Response`].
 //!
-//! The real `SumSub` API requires HMAC-signed requests. This client keeps
+//! The real KYC provider API requires HMAC-signed requests. This client keeps
 //! compatibility with mock routes while adding the same canonical signature
-//! headers (`X-App-Access-Sig`, `X-App-Access-Ts`) used by `SumSub` production.
+//! headers (`X-App-Access-Sig`, `X-App-Access-Ts`) used by the production KYC provider.
 
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -13,9 +13,9 @@ use sha2::Sha256;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// A single document record returned by the `SumSub` documents endpoint.
+/// A single document record returned by the KYC provider documents endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SumsubDocument {
+pub struct ProviderDocument {
     pub doc_id: String,
     pub kind: String,
     pub country: Option<String>,
@@ -24,17 +24,17 @@ pub struct SumsubDocument {
     pub captured_at: String,
 }
 
-/// The streaming image result returned by [`SumsubDocumentClient::fetch_image`].
+/// The streaming image result returned by [`ProviderDocumentClient::fetch_image`].
 ///
 /// Callers may stream the image body via `response.bytes_stream()`.
-pub struct SumsubImage {
+pub struct ProviderDocumentImage {
     pub content_type: String,
     pub response: reqwest::Response,
 }
 
-/// HTTP client for the `SumSub` document API (mock endpoints).
+/// HTTP client for the KYC provider document API (mock endpoints).
 #[derive(Clone)]
-pub struct SumsubDocumentClient {
+pub struct ProviderDocumentClient {
     base_url: String,
     app_token: String,
     secret_key: String,
@@ -43,10 +43,10 @@ pub struct SumsubDocumentClient {
 
 #[derive(Deserialize)]
 struct DocumentsPayload {
-    documents: Vec<SumsubDocument>,
+    documents: Vec<ProviderDocument>,
 }
 
-impl SumsubDocumentClient {
+impl ProviderDocumentClient {
     /// Create a new client targeting `base_url`.
     #[must_use]
     pub fn new(base_url: String, app_token: String, secret_key: String) -> Self {
@@ -62,16 +62,16 @@ impl SumsubDocumentClient {
     ///
     /// # Errors
     ///
-    /// Returns [`SumsubDocumentError::NotFound`] on HTTP 404,
-    /// [`SumsubDocumentError::ProviderAuth`] on HTTP 401/403, and
-    /// [`SumsubDocumentError::Upstream`] on other failures.
+    /// Returns [`ProviderDocumentError::NotFound`] on HTTP 404,
+    /// [`ProviderDocumentError::ProviderAuth`] on HTTP 401/403, and
+    /// [`ProviderDocumentError::Upstream`] on other failures.
     pub async fn list_documents(
         &self,
         applicant_id: &str,
-    ) -> Result<Vec<SumsubDocument>, SumsubDocumentError> {
+    ) -> Result<Vec<ProviderDocument>, ProviderDocumentError> {
         let url = build_url(
             &self.base_url,
-            &["mock", "sumsub", "applicants", applicant_id, "documents"],
+            &["mock", "provider", "applicants", applicant_id, "documents"],
         )?;
         let request = self
             .http
@@ -81,14 +81,14 @@ impl SumsubDocumentClient {
         let response = request
             .send()
             .await
-            .map_err(|e| SumsubDocumentError::Upstream(e.to_string()))?;
+            .map_err(|e| ProviderDocumentError::Upstream(e.to_string()))?;
 
         match response.status().as_u16() {
             200 => {}
-            404 => return Err(SumsubDocumentError::NotFound),
-            401 | 403 => return Err(SumsubDocumentError::ProviderAuth),
+            404 => return Err(ProviderDocumentError::NotFound),
+            401 | 403 => return Err(ProviderDocumentError::ProviderAuth),
             other => {
-                return Err(SumsubDocumentError::Upstream(format!(
+                return Err(ProviderDocumentError::Upstream(format!(
                     "unexpected status {other}"
                 )));
             }
@@ -97,7 +97,7 @@ impl SumsubDocumentClient {
         let payload: DocumentsPayload = response
             .json()
             .await
-            .map_err(|e| SumsubDocumentError::Upstream(e.to_string()))?;
+            .map_err(|e| ProviderDocumentError::Upstream(e.to_string()))?;
         Ok(payload.documents)
     }
 
@@ -108,19 +108,19 @@ impl SumsubDocumentClient {
     ///
     /// # Errors
     ///
-    /// Returns [`SumsubDocumentError::NotFound`] on HTTP 404,
-    /// [`SumsubDocumentError::ProviderAuth`] on HTTP 401/403, and
-    /// [`SumsubDocumentError::Upstream`] on other failures.
+    /// Returns [`ProviderDocumentError::NotFound`] on HTTP 404,
+    /// [`ProviderDocumentError::ProviderAuth`] on HTTP 401/403, and
+    /// [`ProviderDocumentError::Upstream`] on other failures.
     pub async fn fetch_image(
         &self,
         applicant_id: &str,
         doc_id: &str,
-    ) -> Result<SumsubImage, SumsubDocumentError> {
+    ) -> Result<ProviderDocumentImage, ProviderDocumentError> {
         let url = build_url(
             &self.base_url,
             &[
                 "mock",
-                "sumsub",
+                "provider",
                 "applicants",
                 applicant_id,
                 "documents",
@@ -136,14 +136,14 @@ impl SumsubDocumentClient {
         let response = request
             .send()
             .await
-            .map_err(|e| SumsubDocumentError::Upstream(e.to_string()))?;
+            .map_err(|e| ProviderDocumentError::Upstream(e.to_string()))?;
 
         match response.status().as_u16() {
             200 => {}
-            404 => return Err(SumsubDocumentError::NotFound),
-            401 | 403 => return Err(SumsubDocumentError::ProviderAuth),
+            404 => return Err(ProviderDocumentError::NotFound),
+            401 | 403 => return Err(ProviderDocumentError::ProviderAuth),
             other => {
-                return Err(SumsubDocumentError::Upstream(format!(
+                return Err(ProviderDocumentError::Upstream(format!(
                     "unexpected status {other}"
                 )));
             }
@@ -156,7 +156,7 @@ impl SumsubDocumentClient {
             .unwrap_or("application/octet-stream")
             .to_owned();
 
-        Ok(SumsubImage {
+        Ok(ProviderDocumentImage {
             content_type,
             response,
         })
@@ -167,11 +167,11 @@ impl SumsubDocumentClient {
 ///
 /// Encoding the segments prevents caller-influenced values (applicant or
 /// document ids) from altering the URL path structure.
-fn build_url(base: &str, segments: &[&str]) -> Result<reqwest::Url, SumsubDocumentError> {
+fn build_url(base: &str, segments: &[&str]) -> Result<reqwest::Url, ProviderDocumentError> {
     let mut url =
-        reqwest::Url::parse(base).map_err(|e| SumsubDocumentError::Upstream(e.to_string()))?;
+        reqwest::Url::parse(base).map_err(|e| ProviderDocumentError::Upstream(e.to_string()))?;
     url.path_segments_mut()
-        .map_err(|()| SumsubDocumentError::Upstream("invalid base url".to_owned()))?
+        .map_err(|()| ProviderDocumentError::Upstream("invalid base url".to_owned()))?
         .extend(segments);
     Ok(url)
 }
@@ -215,9 +215,9 @@ fn current_unix_timestamp_secs() -> u64 {
         .map_or(0, |duration| duration.as_secs())
 }
 
-/// Errors returned by [`SumsubDocumentClient`].
+/// Errors returned by [`ProviderDocumentClient`].
 #[derive(Debug)]
-pub enum SumsubDocumentError {
+pub enum ProviderDocumentError {
     /// The requested applicant or document was not found.
     NotFound,
     /// The provider rejected the request due to authentication failure.
@@ -226,7 +226,7 @@ pub enum SumsubDocumentError {
     Upstream(String),
 }
 
-impl std::fmt::Display for SumsubDocumentError {
+impl std::fmt::Display for ProviderDocumentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotFound => f.write_str("document not found"),
@@ -236,4 +236,4 @@ impl std::fmt::Display for SumsubDocumentError {
     }
 }
 
-impl std::error::Error for SumsubDocumentError {}
+impl std::error::Error for ProviderDocumentError {}

@@ -1,13 +1,13 @@
-// SPEC-005a §2 — KycSessionStartParams.locale must be one of the SumSub-
+// SPEC-005a §2 — KycSessionStartParams.locale must be one of the iProov-
 // recognised BCP-47 codes (zh-TW / zh-CN / ja-JP / ko-KR / vi-VN / ms-MY /
 // en). next-intl exposes app locales like `zh-Hant` and `zh-Hans` (script
-// subtags) that would otherwise reach SumSub as unknown codes. This module is
+// subtags) that would otherwise reach iProov as unknown codes. This module is
 // the only place that knows how to translate.
 //
 // Keep this list in lockstep with messages/<locale>.json files: when a new
 // locale is added in i18n/request.ts, add the corresponding mapping here.
 
-export type SumsubLocale =
+export type ProviderLocale =
   | "zh-TW"
   | "zh-CN"
   | "ja-JP"
@@ -16,9 +16,9 @@ export type SumsubLocale =
   | "ms-MY"
   | "en";
 
-export const SUMSUB_DEFAULT_LOCALE: SumsubLocale = "en";
+export const PROVIDER_DEFAULT_LOCALE: ProviderLocale = "en";
 
-export function mapLocaleToSumsub(locale: string): SumsubLocale {
+export function mapLocaleToProvider(locale: string): ProviderLocale {
   switch (locale) {
     case "zh-Hant":
     case "zh-TW":
@@ -49,7 +49,7 @@ export function mapLocaleToSumsub(locale: string): SumsubLocale {
       return "en";
     default:
       // Unknown locale — fall back to English rather than passing through an
-      // unrecognised code that SumSub would silently reject.
-      return SUMSUB_DEFAULT_LOCALE;
+      // unrecognised code that iProov would silently reject.
+      return PROVIDER_DEFAULT_LOCALE;
   }
 }

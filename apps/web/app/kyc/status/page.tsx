@@ -22,7 +22,7 @@ export async function generateMetadata(): Promise<Metadata> {
 type StepState = "done" | "current" | "pending" | "failed";
 
 interface TimelineStep {
-  key: "tier1" | "tier2" | "sumsub" | "notification" | "tierUpdate";
+  key: "tier1" | "tier2" | "providerReview" | "notification" | "tierUpdate";
   state: StepState;
   timestamp?: string;
 }
@@ -165,7 +165,8 @@ export default async function StatusPage() {
 
 function buildTimeline(overview: KycOverview): TimelineStep[] {
   const tier1Done = overview.currentTierNumber >= 1;
-  const tier2Done = overview.currentTierNumber >= 2 && overview.status === "passed";
+  const tier2Done =
+    overview.currentTierNumber >= 2 && overview.status === "passed";
   const tier2Current =
     overview.currentTier === "TIER_2" && overview.status === "pending";
   const failed = overview.status === "rejected" || overview.status === "frozen";
@@ -174,26 +175,57 @@ function buildTimeline(overview: KycOverview): TimelineStep[] {
     {
       key: "tier1",
       state: failed && !tier1Done ? "failed" : tier1Done ? "done" : "pending",
-      timestamp: tier1Done ? overview.submittedAt ?? undefined : undefined,
+      timestamp: tier1Done ? (overview.submittedAt ?? undefined) : undefined,
     },
     {
       key: "tier2",
-      state: tier2Done ? "done" : tier2Current ? "current" : failed ? "failed" : "pending",
-      timestamp: overview.currentTierNumber >= 2 ? overview.submittedAt ?? undefined : undefined,
+      state: tier2Done
+        ? "done"
+        : tier2Current
+          ? "current"
+          : failed
+            ? "failed"
+            : "pending",
+      timestamp:
+        overview.currentTierNumber >= 2
+          ? (overview.submittedAt ?? undefined)
+          : undefined,
     },
     {
-      key: "sumsub",
-      state: tier2Done ? "done" : tier2Current ? "current" : failed ? "failed" : "pending",
-      timestamp: overview.provider === "sumsub" ? overview.submittedAt ?? undefined : undefined,
+      key: "providerReview",
+      state: tier2Done
+        ? "done"
+        : tier2Current
+          ? "current"
+          : failed
+            ? "failed"
+            : "pending",
+      timestamp:
+        overview.provider === "iproov"
+          ? (overview.submittedAt ?? undefined)
+          : undefined,
     },
     {
       key: "notification",
-      state: overview.reviewedAt ? "done" : tier2Current ? "pending" : failed ? "failed" : "pending",
+      state: overview.reviewedAt
+        ? "done"
+        : tier2Current
+          ? "pending"
+          : failed
+            ? "failed"
+            : "pending",
       timestamp: overview.reviewedAt ?? undefined,
     },
     {
       key: "tierUpdate",
-      state: overview.status === "passed" ? "done" : tier2Current ? "pending" : failed ? "failed" : "pending",
+      state:
+        overview.status === "passed"
+          ? "done"
+          : tier2Current
+            ? "pending"
+            : failed
+              ? "failed"
+              : "pending",
       timestamp: overview.reviewedAt ?? undefined,
     },
   ];

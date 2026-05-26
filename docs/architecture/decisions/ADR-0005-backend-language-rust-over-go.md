@@ -1,14 +1,14 @@
 # ADR-0005 — 後端語言由 Go 切換至 Rust（全平台）
 
-| 欄位 | 內容 |
-|------|------|
-| **Status** | Accepted（**retroactive** — 決策實際發生於 2026-05-05 隨 SPEC-014 v0.2.0；本 ADR 於 2026-05-07 補做 governance 追認） |
-| **Date** | 2026-05-05（決策日）/ 2026-05-07（ADR 撰寫日）|
-| **Deciders** | Founder, Tech Lead |
-| **Consulted** | 預定：撮合 / ledger 工程師（待招募）、Codex 開發代理；Anthropic Rust 社群參考資料 |
-| **Informed** | 全工程團隊、Compliance Officer（編譯時間影響迭代）、QA |
-| **Tags** | backend-language · core-architecture · runtime · type-safety · matching-engine · ledger |
-| **依賴 / 影響** | SPEC-014 §3.1 / §4 / §5 / §6 / §8 / §9 / §10 / §12 / §14（v0.2.0 隨同更新）；SPEC-017 §2 / §3 / §4 / §6 / §8 / §11 / §12（v0.2.0 隨同更新）；SPEC-002 §3.2（v0.1.3）；SPEC-003 整檔（v0.2.0）；ADR-0006（INV-6 trigger plpgsql 落地依賴本決策）|
+| 欄位            | 內容                                                                                                                                                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Accepted（**retroactive** — 決策實際發生於 2026-05-05 隨 SPEC-014 v0.2.0；本 ADR 於 2026-05-07 補做 governance 追認）                                                                                                                           |
+| **Date**        | 2026-05-05（決策日）/ 2026-05-07（ADR 撰寫日）                                                                                                                                                                                                  |
+| **Deciders**    | Founder, Tech Lead                                                                                                                                                                                                                              |
+| **Consulted**   | 預定：撮合 / ledger 工程師（待招募）、Codex 開發代理；Anthropic Rust 社群參考資料                                                                                                                                                               |
+| **Informed**    | 全工程團隊、Compliance Officer（編譯時間影響迭代）、QA                                                                                                                                                                                          |
+| **Tags**        | backend-language · core-architecture · runtime · type-safety · matching-engine · ledger                                                                                                                                                         |
+| **依賴 / 影響** | SPEC-014 §3.1 / §4 / §5 / §6 / §8 / §9 / §10 / §12 / §14（v0.2.0 隨同更新）；SPEC-017 §2 / §3 / §4 / §6 / §8 / §11 / §12（v0.2.0 隨同更新）；SPEC-002 §3.2（v0.1.3）；SPEC-003 整檔（v0.2.0）；ADR-0006（INV-6 trigger plpgsql 落地依賴本決策） |
 
 ---
 
@@ -61,35 +61,36 @@ PRD v0 與 SPEC-014 v0.1.x 原指定後端為 **Go 1.22+**。此選擇在 2026-0
 
 ### 4.1 為何選 C 而非 A（維持 Go）
 
-| 比較面向 | Go 1.22 | Rust 1.85 |
-|---------|--------|-----------|
-| GC pause（撮合 hot path）| 1-3ms tail latency 抖動 | **無 GC**，tail latency 可預期 |
-| 不變式型別化 | 需 runtime check + code review | newtype / `Send+Sync` / lifetimes 編譯時強制 |
-| 編譯時 SQL 檢查 | sqlc（separate codegen step）| sqlx `query!` macro（一體化 + offline cache） |
-| Mutation testing | go-mutesting（社群 maintain，limited） | cargo-mutants（Rust Foundation backed） |
-| Unsafe 監測 | go vet（基本） | cargo geiger（細粒度統計）|
-| 業界對標撮合 | 較少（多數金融服務用 C++ / Java）| Kalshi / Polkadot / Solana validator |
-| 編譯時間 | < 30s incremental | < 90s incremental（with sccache）|
-| 招募成本（台灣）| 充足（普及度高）| 中等（需培訓 + pair programming）|
-| 學習曲線 | 1-2 週 | 4-6 週（borrow checker） |
+| 比較面向                  | Go 1.22                                | Rust 1.85                                     |
+| ------------------------- | -------------------------------------- | --------------------------------------------- |
+| GC pause（撮合 hot path） | 1-3ms tail latency 抖動                | **無 GC**，tail latency 可預期                |
+| 不變式型別化              | 需 runtime check + code review         | newtype / `Send+Sync` / lifetimes 編譯時強制  |
+| 編譯時 SQL 檢查           | sqlc（separate codegen step）          | sqlx `query!` macro（一體化 + offline cache） |
+| Mutation testing          | go-mutesting（社群 maintain，limited） | cargo-mutants（Rust Foundation backed）       |
+| Unsafe 監測               | go vet（基本）                         | cargo geiger（細粒度統計）                    |
+| 業界對標撮合              | 較少（多數金融服務用 C++ / Java）      | Kalshi / Polkadot / Solana validator          |
+| 編譯時間                  | < 30s incremental                      | < 90s incremental（with sccache）             |
+| 招募成本（台灣）          | 充足（普及度高）                       | 中等（需培訓 + pair programming）             |
+| 學習曲線                  | 1-2 週                                 | 4-6 週（borrow checker）                      |
 
 決定性因素：**GC pause 對撮合 P99 之破壞不可接受**。即便 Go 1.22 GC 相比 1.18 已大幅改善（pacer rewrite、background mark），STW phase 在 high allocation 下仍非零；對於撮合引擎這種「每筆訂單都被計時」的場景，這個風險無法接受。
 
 ### 4.2 為何選 C 而非 B（Rust + Go 混搭）
 
-| 議題 | 影響 |
-|------|------|
-| 雙語言 SDK | observability / errors / proto stub / ledger client 要寫兩套，維運成本高於單語言收益 |
-| 雙語言 OTel 配置 | 兩套 SDK 版本對齊、attribute 命名一致性、span propagation 需額外 review |
-| 招募 / onboarding | 工程師需熟悉兩個生態、兩套 build tool、兩個 IDE 配置 |
-| Code review pool | Rust review 與 Go review 不通用，PR queue 容易堵塞 |
-| 部署 | 兩套 base image / 兩套 cargo-chef vs go-build cache 策略 |
+| 議題              | 影響                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| 雙語言 SDK        | observability / errors / proto stub / ledger client 要寫兩套，維運成本高於單語言收益 |
+| 雙語言 OTel 配置  | 兩套 SDK 版本對齊、attribute 命名一致性、span propagation 需額外 review              |
+| 招募 / onboarding | 工程師需熟悉兩個生態、兩套 build tool、兩個 IDE 配置                                 |
+| Code review pool  | Rust review 與 Go review 不通用，PR queue 容易堵塞                                   |
+| 部署              | 兩套 base image / 兩套 cargo-chef vs go-build cache 策略                             |
 
 混搭方案在小團隊（< 20 人）下管理複雜度大於收益。Option B 在大型企業（> 100 人）有合理性（如 Discord 用 Rust + Elixir），但本專案規模不適用。
 
 ### 4.3 為何選 C 而非 D（C++ for hot path）
 
 C++ 在 HFT 業界成熟，但：
+
 - **記憶體安全**：C++ memory safety 完全靠紀律與 sanitizer；Rust 是編譯時保證。對於金融系統 zero tolerance 之 memory bug，Rust 安全網更強
 - **依賴管理**：CMake / Conan / vcpkg 生態破碎；Cargo 一體化
 - **招募**：C++ 撮合工程師供給少且昂貴，Rust 雖也緊俏但學習曲線較友善（無 manual memory management）
@@ -115,16 +116,18 @@ D 否決，但採納其**設計理念**：撮合 hot path 之 lock-free / cache-
 3. **編譯時間顯著高於 Go**：cold build 12 services × `cargo build` 在 4-cores runner 下 ~12-15 min（Go 同等規模 ~3-5 min）
 4. **CRUD service 部分過度設計**：user-service 之 CRUD 用 Rust 並無顯著技術優勢，僅為「單語言一致性」付出 borrow checker 成本
 5. **Macro debugging 痛點**：sqlx `query!` / serde derive macro 出錯時 error message 對新手不友善
-6. **第三方 SaaS Rust SDK 缺口**：SumSub / Sift / Sardine 主推 Go / TypeScript / Python SDK，Rust 端常需用 reqwest 自行包 REST API
+6. **第三方 SaaS Rust SDK 缺口**：KYC provider / Sift / Sardine 主推 Go / TypeScript / Python SDK，Rust 端常需用 reqwest 自行包 REST API
 
 ### 5.3 Mitigation Plan
 
 針對 Negative #1 / #2：
+
 - 前 4 週 mandatory pair programming，撮合 / ledger 兩名 senior 工程師輪流帶；定期讀書會（async-book、The Rustonomicon hot-path 章節）
 - Tech Lead 親自 review 前 50 個 Rust PR，著重 unwrap / panic / unsafe / lifetime mistake
 - 招募策略：優先找有 C++ 經驗者（borrow checker 適應快），其次 Go 經驗者，避免「我願學 Rust」但無系統程式背景之候選人
 
 針對 Negative #3：
+
 - CI runner 採 `ubuntu-latest-4-cores`（SPEC-017 v0.2.5 / T-8）
 - sccache 共享快取（s3-backed）跨 PR 重用編譯產物
 - cargo-chef 分層 Docker build cache
@@ -132,15 +135,18 @@ D 否決，但採納其**設計理念**：撮合 hot path 之 lock-free / cache-
 - Production binary 採 `lto = "thin"` + `codegen-units = 1` 一次性犧牲時間換 runtime 性能
 
 針對 Negative #4：
+
 - 接受此 trade-off；SPEC-014 §3.1 已明示「全 Rust 而非混搭」之決策理由（單語言內部 RPC 維運成本 > CRUD borrow checker 成本）
 
 針對 Negative #5：
+
 - 建立內部 cheat sheet：常見 sqlx / serde error message → 解法對照表
 - VS Code 配置 rust-analyzer + Even Better TOML + crates 等 extension（onboarding 文件涵蓋）
 
 針對 Negative #6：
+
 - SaaS REST API 用 reqwest + serde 自行包；webhook receiver 在 axum middleware 統一處理（SPEC-016 §5.5.4 Driver trait 之設計理念）
-- 必要時為高頻 SaaS（SumSub / Stripe）寫一份 thin wrapper crate 放 `crates/sdk/saas-clients/`
+- 必要時為高頻 SaaS（KYC provider / Stripe）寫一份 thin wrapper crate 放 `crates/sdk/saas-clients/`
 
 ## 6. Compliance & Legal Boundary
 
@@ -195,6 +201,6 @@ D 否決，但採納其**設計理念**：撮合 hot path 之 lock-free / cache-
 
 ## 10. Revision History
 
-| 日期 | 版本 | 作者 | 變更 |
-|------|------|------|------|
-| 2026-05-07 | v1.0 | Tech Lead | 首版 Accepted（**retroactive**）：將 2026-05-05 SPEC-014 v0.2.0 之「後端 Go → Rust」切換決策補做 ADR governance 化；說明 driver / options / consequences / mitigation；補 SPEC-014 v0.2.0 變更日誌未涵蓋之決策論證細節（特別是「為何全 Rust 而非混搭」「為何 Rust 而非 C++」）|
+| 日期       | 版本 | 作者      | 變更                                                                                                                                                                                                                                                                           |
+| ---------- | ---- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-05-07 | v1.0 | Tech Lead | 首版 Accepted（**retroactive**）：將 2026-05-05 SPEC-014 v0.2.0 之「後端 Go → Rust」切換決策補做 ADR governance 化；說明 driver / options / consequences / mitigation；補 SPEC-014 v0.2.0 變更日誌未涵蓋之決策論證細節（特別是「為何全 Rust 而非混搭」「為何 Rust 而非 C++」） |

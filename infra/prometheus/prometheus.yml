@@ -8,7 +8,7 @@ scrape_configs:
   - job_name: "prophetica-mocks"
     static_configs:
       - targets:
-          - "mock-sumsub:8081"
+          - "mock-provider:8081"
           - "mock-payment:8082"
 
   - job_name: "prophetica-services"

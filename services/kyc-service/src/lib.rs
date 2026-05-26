@@ -5,7 +5,7 @@ pub mod api;
 pub mod internal_auth;
 pub mod internal_reports;
 pub mod kyc;
-pub mod sumsub_documents;
+pub mod provider_documents;
 
 #[derive(Debug, Clone)]
 pub struct SecretConfig {
@@ -21,8 +21,11 @@ impl SecretConfig {
     ///
     /// Returns an error when a required secret is missing outside dev/test.
     pub fn from_env(env: &str) -> anyhow::Result<Self> {
-        let webhook_secret =
-            read_secret_var(env, "SUMSUB_WEBHOOK_SECRET", "dev-sumsub-webhook-secret")?;
+        let webhook_secret = read_secret_var(
+            env,
+            "KYC_PROVIDER_WEBHOOK_SECRET",
+            "dev-provider-webhook-secret",
+        )?;
         let document_hash_salt =
             read_secret_var(env, "KYC_DOCUMENT_HASH_SALT", "dev-only-kyc-document-salt")?;
         let internal_call_secret = read_secret_var(
@@ -40,7 +43,7 @@ impl SecretConfig {
     #[must_use]
     pub fn dev_default() -> Self {
         Self {
-            webhook_secret: "dev-sumsub-webhook-secret".to_owned(),
+            webhook_secret: "dev-provider-webhook-secret".to_owned(),
             document_hash_salt: "dev-only-kyc-document-salt".to_owned(),
             internal_call_secret: "dev-analytics-internal-call-secret".to_owned(),
         }
@@ -177,12 +180,12 @@ mod api_contract_tests {
         let body = response_json(response).await;
         assert_eq!(body["user_id"], json!("user_01"));
         assert_eq!(body["target_tier"], json!("TIER_2"));
-        assert_eq!(body["provider"], json!("sumsub"));
+        assert_eq!(body["provider"], json!("iproov"));
         assert_eq!(body["replayed"], json!(false));
         assert!(
             body["sdk_token"]
                 .as_str()
-                .is_some_and(|token| { token.starts_with("sumsub_sandbox_user_01_TIER_2_") })
+                .is_some_and(|token| { token.starts_with("iproov_sandbox_user_01_TIER_2_") })
         );
 
         let status = test_router(store)
@@ -389,7 +392,7 @@ mod api_contract_tests {
     }
 
     #[tokio::test]
-    async fn sumsub_webhook_requires_hmac_and_updates_pending_upgrade() {
+    async fn provider_webhook_requires_hmac_and_updates_pending_upgrade() {
         let store = test_store();
         let app = test_router(store.clone());
         let applicant_id = create_tier_two_upgrade(app.clone(), "user_03").await;
@@ -403,17 +406,17 @@ mod api_contract_tests {
         });
 
         let rejected = test_router(store.clone())
-            .oneshot(json_post("/api/internal/webhooks/sumsub", &webhook_body))
+            .oneshot(json_post("/api/internal/webhooks/provider", &webhook_body))
             .await
             .expect("webhook request should be handled");
         assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
 
         let accepted = test_router(store.clone())
             .oneshot(json_post_with_header(
-                "/api/internal/webhooks/sumsub",
+                "/api/internal/webhooks/provider",
                 &webhook_body,
                 "x-payload-digest",
-                &sumsub_digest(&webhook_body),
+                &provider_digest(&webhook_body),
             ))
             .await
             .expect("signed webhook request should be handled");
@@ -432,7 +435,7 @@ mod api_contract_tests {
     }
 
     #[tokio::test]
-    async fn sumsub_webhook_red_without_sanction_freezes_user() {
+    async fn provider_webhook_red_without_sanction_freezes_user() {
         let store = test_store();
         let app = test_router(store.clone());
         let applicant_id = create_tier_two_upgrade(app, "user_red").await;
@@ -447,10 +450,10 @@ mod api_contract_tests {
 
         let accepted = test_router(store.clone())
             .oneshot(json_post_with_header(
-                "/api/internal/webhooks/sumsub",
+                "/api/internal/webhooks/provider",
                 &webhook_body,
                 "x-payload-digest",
-                &sumsub_digest(&webhook_body),
+                &provider_digest(&webhook_body),
             ))
             .await
             .expect("signed webhook request should be handled");
@@ -468,7 +471,7 @@ mod api_contract_tests {
     }
 
     #[tokio::test]
-    async fn sumsub_webhook_yellow_keeps_user_pending() {
+    async fn provider_webhook_yellow_keeps_user_pending() {
         let store = test_store();
         let app = test_router(store.clone());
         let applicant_id = create_tier_two_upgrade(app, "user_yellow").await;
@@ -483,10 +486,10 @@ mod api_contract_tests {
 
         let accepted = test_router(store.clone())
             .oneshot(json_post_with_header(
-                "/api/internal/webhooks/sumsub",
+                "/api/internal/webhooks/provider",
                 &webhook_body,
                 "x-payload-digest",
-                &sumsub_digest(&webhook_body),
+                &provider_digest(&webhook_body),
             ))
             .await
             .expect("signed webhook request should be handled");
@@ -504,7 +507,7 @@ mod api_contract_tests {
     }
 
     #[tokio::test]
-    async fn sumsub_webhook_replays_exact_raw_payload_hash_not_applicant_id() {
+    async fn provider_webhook_replays_exact_raw_payload_hash_not_applicant_id() {
         let store = test_store();
         let app = test_router(store.clone());
         let applicant_id = create_tier_two_upgrade(app, "user_replay").await;
@@ -519,10 +522,10 @@ mod api_contract_tests {
 
         let first = test_router(store.clone())
             .oneshot(json_post_with_header(
-                "/api/internal/webhooks/sumsub",
+                "/api/internal/webhooks/provider",
                 &webhook_body,
                 "x-payload-digest",
-                &sumsub_digest(&webhook_body),
+                &provider_digest(&webhook_body),
             ))
             .await
             .expect("first signed webhook request should be handled");
@@ -533,10 +536,10 @@ mod api_contract_tests {
 
         let replay = test_router(store.clone())
             .oneshot(json_post_with_header(
-                "/api/internal/webhooks/sumsub",
+                "/api/internal/webhooks/provider",
                 &webhook_body,
                 "x-payload-digest",
-                &sumsub_digest(&webhook_body),
+                &provider_digest(&webhook_body),
             ))
             .await
             .expect("replayed signed webhook request should be handled");
@@ -555,10 +558,10 @@ mod api_contract_tests {
         });
         let changed = test_router(store)
             .oneshot(json_post_with_header(
-                "/api/internal/webhooks/sumsub",
+                "/api/internal/webhooks/provider",
                 &changed_body_same_applicant,
                 "x-payload-digest",
-                &sumsub_digest(&changed_body_same_applicant),
+                &provider_digest(&changed_body_same_applicant),
             ))
             .await
             .expect("changed signed webhook request should be handled");
@@ -789,11 +792,11 @@ mod api_contract_tests {
         }
     }
 
-    fn sumsub_digest(body: &Value) -> String {
+    fn provider_digest(body: &Value) -> String {
         use hmac::{Hmac, Mac};
         use sha1::Sha1;
 
-        let mut mac = match Hmac::<Sha1>::new_from_slice(b"dev-sumsub-webhook-secret") {
+        let mut mac = match Hmac::<Sha1>::new_from_slice(b"dev-provider-webhook-secret") {
             Ok(mac) => mac,
             Err(error) => panic!("test hmac key should initialize: {error}"),
         };

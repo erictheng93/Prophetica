@@ -42,9 +42,9 @@ test("two calls to startKycUpgrade with same (env userId, tier) hit kyc-service 
           userId: request.userId,
           targetTier: request.targetTier,
           status: "pending",
-          provider: "sumsub",
+          provider: "iproov",
           providerApplicantId: "applicant_x",
-          sdkToken: "sumsub_sandbox_user_doubleclick_TIER_2_1",
+          sdkToken: "iproov_sandbox_user_doubleclick_TIER_2_1",
           expiresAt: null,
           replayed: observed.length > 1, // simulate kyc-service replay
         };
@@ -97,9 +97,9 @@ test("retry attempt segment differentiates the key — explicit re-verify create
           userId: request.userId,
           targetTier: request.targetTier,
           status: "pending",
-          provider: "sumsub",
+          provider: "iproov",
           providerApplicantId: "applicant_y",
-          sdkToken: "sumsub_sandbox_user_retry_TIER_2_2",
+          sdkToken: "iproov_sandbox_user_retry_TIER_2_2",
           expiresAt: null,
           replayed: false,
         };

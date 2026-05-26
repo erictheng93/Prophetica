@@ -1,5 +1,5 @@
 [package]
-name = "mock-sumsub"
+name = "mock-provider"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

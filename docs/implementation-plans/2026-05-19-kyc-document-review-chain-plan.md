@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 讓 admin「會員管理 → KYC 審核」頁能即時檢視 SumSub 收集的會員證件 / 自拍 / liveness 影像，全程經 `admin → api-gateway → kyc-service` 代理、不外露 vendor URL。
+**Goal:** 讓 admin「會員管理 → KYC 審核」頁能即時檢視 KYC provider 收集的會員證件 / 自拍 / liveness 影像，全程經 `admin → api-gateway → kyc-service` 代理、不外露 vendor URL。
 
-**Architecture:** kyc-service 新增 SumSub document client 與內部 admin 端點（`user_id → provider_applicant_id` 解析、opaque `doc_id` 綁定驗證、稽核留痕）；api-gateway 新增「驗 signed call + streaming proxy」的 KYC document 路由；admin app 新增 streaming route handler 與證件 gallery UI。影像 bytes 全 3 hop streaming，不得 buffer。
+**Architecture:** kyc-service 新增 KYC provider document client 與內部 admin 端點（`user_id → provider_applicant_id` 解析、opaque `doc_id` 綁定驗證、稽核留痕）；api-gateway 新增「驗 signed call + streaming proxy」的 KYC document 路由；admin app 新增 streaming route handler 與證件 gallery UI。影像 bytes 全 3 hop streaming，不得 buffer。
 
 **Tech Stack:** Rust 2024 + axum + reqwest + sqlx（offline）；Next.js 16 / React 19（admin app，ESM、import 用 `.js` 副檔名）；Node `node:test`。
 
@@ -17,27 +17,27 @@
 - **Phase 0（Task 1–2）是 spec PR，必須先合併**，後續實作 PR 才能引用 `SPEC-005 §5.x`（repo SDD 紀律）。
 - Phase 1–6 為實作，依序進行；每個 Task 結束時 commit。
 - 受限於開發機算力（CLAUDE.md Compute Policy）：Rust 一律用 `-p <crate>` 標的指令；不要跑 workspace 全量。SQLx 為 offline 模式，新增/改動 query 後需 `cargo sqlx prepare`（見 Task 7）。
-- 全程對 `mock-sumsub` 開發；真 SumSub 憑證接線受 SPEC-000 §5 Q-9 阻擋，不在本計畫。
+- 全程對 `mock-provider` 開發；真 KYC provider 憑證接線受 SPEC-000 §5 Q-9 阻擋，不在本計畫。
 
 ## 檔案結構
 
-| 檔案 | 動作 | 責任 |
-|---|---|---|
-| `specs/SPEC-005-kyc-aml.html` | 改 | §5 展開為可實作規格（§5.3 取圖代理 / §5.4 R2 歸檔） |
-| `docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html` | 改 | 加 §5 段落，指向本計畫檔 |
-| `services/api-gateway/src/internal_call_auth.rs` | 建 | 共用 signed-call 驗證模組（HMAC + timestamp skew） |
-| `tools/mocks/sumsub/src/lib.rs` | 改 | 新增 mock document list / image 端點 |
-| `services/kyc-service/src/sumsub_documents.rs` | 建 | SumSub document client（list / 下載影像 bytes） |
-| `services/kyc-service/migrations/202605190001_create_kyc_document_access_log.sql` | 建 | 稽核表 |
-| `services/kyc-service/src/kyc.rs` | 改 | `KycStore` 加文件端點所需方法 |
-| `services/kyc-service/src/api.rs` | 改 | 兩個內部 admin document 路由 + handler |
-| `services/api-gateway/src/admin_ops.rs` | 改 | 兩個 KYC document gateway 路由 + streaming proxy |
-| `apps/admin/lib/kyc-documents-bff.ts` | 建 | BFF：簽章 + streaming 代理 helper |
-| `apps/admin/app/api/members/[userId]/kyc-documents/route.ts` | 建 | 文件清單 route handler |
-| `apps/admin/app/api/members/[userId]/kyc-documents/[docId]/route.ts` | 建 | 影像 streaming route handler |
-| `apps/admin/lib/member-management-shared.ts` | 改 | 新增 `KycDocument` / `KycDocumentList` 型別 |
-| `apps/admin/components/kyc-document-gallery.tsx` | 建 | 證件 gallery 元件 |
-| `apps/admin/components/member-management.tsx` | 改 | 以 gallery 取代 1311-1316 佔位卡片 |
+| 檔案                                                                              | 動作 | 責任                                                  |
+| --------------------------------------------------------------------------------- | ---- | ----------------------------------------------------- |
+| `specs/SPEC-005-kyc-aml.html`                                                     | 改   | §5 展開為可實作規格（§5.3 取圖代理 / §5.4 R2 歸檔）   |
+| `docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html`             | 改   | 加 §5 段落，指向本計畫檔                              |
+| `services/api-gateway/src/internal_call_auth.rs`                                  | 建   | 共用 signed-call 驗證模組（HMAC + timestamp skew）    |
+| `tools/mocks/provider/src/lib.rs`                                                 | 改   | 新增 mock document list / image 端點                  |
+| `services/kyc-service/src/provider_documents.rs`                                  | 建   | KYC provider document client（list / 下載影像 bytes） |
+| `services/kyc-service/migrations/202605190001_create_kyc_document_access_log.sql` | 建   | 稽核表                                                |
+| `services/kyc-service/src/kyc.rs`                                                 | 改   | `KycStore` 加文件端點所需方法                         |
+| `services/kyc-service/src/api.rs`                                                 | 改   | 兩個內部 admin document 路由 + handler                |
+| `services/api-gateway/src/admin_ops.rs`                                           | 改   | 兩個 KYC document gateway 路由 + streaming proxy      |
+| `apps/admin/lib/kyc-documents-bff.ts`                                             | 建   | BFF：簽章 + streaming 代理 helper                     |
+| `apps/admin/app/api/members/[userId]/kyc-documents/route.ts`                      | 建   | 文件清單 route handler                                |
+| `apps/admin/app/api/members/[userId]/kyc-documents/[docId]/route.ts`              | 建   | 影像 streaming route handler                          |
+| `apps/admin/lib/member-management-shared.ts`                                      | 改   | 新增 `KycDocument` / `KycDocumentList` 型別           |
+| `apps/admin/components/kyc-document-gallery.tsx`                                  | 建   | 證件 gallery 元件                                     |
+| `apps/admin/components/member-management.tsx`                                     | 改   | 以 gallery 取代 1311-1316 佔位卡片                    |
 
 ---
 
@@ -46,17 +46,19 @@
 ### Task 1: 展開 SPEC-005 §5 HTML
 
 **Files:**
+
 - Modify: `specs/SPEC-005-kyc-aml.html`（§5「證件儲存與隱私」段落）
 
 - [ ] **Step 1: 重構 §5**
 
 把現有 §5.1 四條 bullet 擴成可實作規格。新增子節（沿用既有 HTML 結構與標題樣式）：
-- **§5.3 即時取圖代理**：鏈路 `admin → api-gateway → kyc-service → SumSub`；端點
+
+- **§5.3 即時取圖代理**：鏈路 `admin → api-gateway → kyc-service → KYC provider`；端點
   `GET /v1/internal/admin/kyc/members/{user_id}/documents`（清單）與
   `.../documents/{doc_id}`（影像）；綁定不變式（`user_id → applicant_id` 僅內部解析、
   `doc_id` 為 opaque、綁定失敗一律單一 404）；signed call 驗證在 api-gateway、
   影像全程 streaming；存取受 KYC review permission 限制（MVP = admin/manager）。
-- **§5.4 R2 歸檔**：每日批次下載 SumSub 影像至 R2（`kyc-documents` /
+- **§5.4 R2 歸檔**：每日批次下載 KYC provider 影像至 R2（`kyc-documents` /
   `kyc-liveness`）、Object Lock 保存 7 年（標「待合規簽核」）、SSE-AES256；
   既有 `apps/{admin,web}/wrangler.toml` R2 binding 標為「歷史配置 / 待拆遷」。
 - 在 §5 標注「短期 token」定義 = server-to-server signed internal call（不進瀏覽器）。
@@ -78,6 +80,7 @@ git commit -m "docs(spec): expand SPEC-005 §5 into KYC document proxy + R2 arch
 ### Task 2: 在 implementation-plan HTML 加 §5 指標
 
 **Files:**
+
 - Modify: `docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html`
 
 - [ ] **Step 1: 新增 §5 段落**
@@ -105,6 +108,7 @@ git commit -m "docs(spec): link SPEC-005 §5 KYC document chain plan"
 ### Task 3: 建立 `internal_call_auth` 模組
 
 **Files:**
+
 - Create: `services/api-gateway/src/internal_call_auth.rs`
 - Modify: `services/api-gateway/src/lib.rs`（加 `mod internal_call_auth;`）
 - Test: `services/api-gateway/tests/internal_call_auth.rs`
@@ -257,17 +261,18 @@ git commit -m "feat(api-gateway): add shared internal-call HMAC verification mod
 
 ---
 
-## Phase 2 — mock-sumsub 影像 + kyc-service SumSub document client
+## Phase 2 — mock-provider 影像 + kyc-service KYC provider document client
 
-### Task 4: mock-sumsub 提供 mock 文件清單與影像
+### Task 4: mock-provider 提供 mock 文件清單與影像
 
 **Files:**
-- Modify: `tools/mocks/sumsub/src/lib.rs`
-- Test: `tools/mocks/sumsub/src/lib.rs`（`#[cfg(test)]` 區塊）
+
+- Modify: `tools/mocks/provider/src/lib.rs`
+- Test: `tools/mocks/provider/src/lib.rs`（`#[cfg(test)]` 區塊）
 
 - [ ] **Step 1: 寫失敗測試**
 
-在 `tools/mocks/sumsub/src/lib.rs` 的測試區塊新增（用既有測試掛 router 的方式）：
+在 `tools/mocks/provider/src/lib.rs` 的測試區塊新增（用既有測試掛 router 的方式）：
 
 ```rust
 #[tokio::test]
@@ -275,13 +280,13 @@ async fn serves_document_list_and_image() {
     let app = router("test-secret".to_owned());
     // 清單
     let list = app.clone().oneshot(
-        axum::http::Request::get("/mock/sumsub/applicants/applicant_1/documents")
+        axum::http::Request::get("/mock/provider/applicants/applicant_1/documents")
             .body(axum::body::Body::empty()).unwrap(),
     ).await.unwrap();
     assert_eq!(list.status(), axum::http::StatusCode::OK);
     // 影像
     let img = app.oneshot(
-        axum::http::Request::get("/mock/sumsub/applicants/applicant_1/documents/doc_1/image")
+        axum::http::Request::get("/mock/provider/applicants/applicant_1/documents/doc_1/image")
             .body(axum::body::Body::empty()).unwrap(),
     ).await.unwrap();
     assert_eq!(img.status(), axum::http::StatusCode::OK);
@@ -291,8 +296,8 @@ async fn serves_document_list_and_image() {
 
 - [ ] **Step 2: 跑測試確認失敗**
 
-Run: `cargo nextest run -p sumsub-mock serves_document_list_and_image --locked`
-（crate 名以 `tools/mocks/sumsub/Cargo.toml` 的 `name` 為準）
+Run: `cargo nextest run -p provider-mock serves_document_list_and_image --locked`
+（crate 名以 `tools/mocks/provider/Cargo.toml` 的 `name` 為準）
 Expected: FAIL（404，路由不存在）
 
 - [ ] **Step 3: 實作 mock 端點**
@@ -301,11 +306,11 @@ Expected: FAIL（404，路由不存在）
 
 ```rust
 .route(
-    "/mock/sumsub/applicants/:applicant_id/documents",
+    "/mock/provider/applicants/:applicant_id/documents",
     get(mock_document_list),
 )
 .route(
-    "/mock/sumsub/applicants/:applicant_id/documents/:doc_id/image",
+    "/mock/provider/applicants/:applicant_id/documents/:doc_id/image",
     get(mock_document_image),
 )
 ```
@@ -341,36 +346,37 @@ async fn mock_document_image(Path((_applicant, _doc)): Path<(String, String)>) -
 
 - [ ] **Step 4: 跑測試確認通過**
 
-Run: `cargo nextest run -p sumsub-mock serves_document_list_and_image --locked`
+Run: `cargo nextest run -p provider-mock serves_document_list_and_image --locked`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/mocks/sumsub/src/lib.rs
-git commit -m "feat(mock-sumsub): serve mock KYC document list and image endpoints"
+git add tools/mocks/provider/src/lib.rs
+git commit -m "feat(mock-provider): serve mock KYC document list and image endpoints"
 ```
 
-### Task 5: kyc-service SumSub document client
+### Task 5: kyc-service KYC provider document client
 
 **Files:**
-- Create: `services/kyc-service/src/sumsub_documents.rs`
-- Modify: `services/kyc-service/src/lib.rs`（加 `mod sumsub_documents;`）
-- Test: `services/kyc-service/tests/sumsub_documents.rs`
+
+- Create: `services/kyc-service/src/provider_documents.rs`
+- Modify: `services/kyc-service/src/lib.rs`（加 `mod provider_documents;`）
+- Test: `services/kyc-service/tests/provider_documents.rs`
 
 - [ ] **Step 1: 寫失敗測試**
 
-`services/kyc-service/tests/sumsub_documents.rs` —— 用 `wiremock` 或既有 mock 模式
+`services/kyc-service/tests/provider_documents.rs` —— 用 `wiremock` 或既有 mock 模式
 起一個假伺服器，驗證 client 能取清單並下載影像 bytes：
 
 ```rust
-use kyc_service::sumsub_documents::{SumsubDocumentClient, SumsubDocument};
+use kyc_service::provider_documents::{ProviderDocumentClient, ProviderDocument};
 
 #[tokio::test]
 async fn lists_documents_for_applicant() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("GET"))
-        .and(wiremock::matchers::path("/mock/sumsub/applicants/applicant_1/documents"))
+        .and(wiremock::matchers::path("/mock/provider/applicants/applicant_1/documents"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "applicant_id": "applicant_1",
             "documents": [{ "doc_id": "doc_1", "kind": "id_doc", "country": "TWN",
@@ -378,8 +384,8 @@ async fn lists_documents_for_applicant() {
         })))
         .mount(&server).await;
 
-    let client = SumsubDocumentClient::new(server.uri(), "app-token".into(), "secret-key".into());
-    let docs: Vec<SumsubDocument> = client.list_documents("applicant_1").await.unwrap();
+    let client = ProviderDocumentClient::new(server.uri(), "app-token".into(), "secret-key".into());
+    let docs: Vec<ProviderDocument> = client.list_documents("applicant_1").await.unwrap();
     assert_eq!(docs.len(), 1);
     assert_eq!(docs[0].doc_id, "doc_1");
     assert_eq!(docs[0].content_type, "image/png");
@@ -391,35 +397,36 @@ async fn lists_documents_for_applicant() {
 
 - [ ] **Step 2: 跑測試確認失敗**
 
-Run: `cargo nextest run -p kyc-service sumsub_documents --locked`
+Run: `cargo nextest run -p kyc-service provider_documents --locked`
 Expected: FAIL（模組不存在）
 
 - [ ] **Step 3: 實作 client**
 
-`services/kyc-service/src/sumsub_documents.rs`。`SumsubDocument` struct 對應 mock
+`services/kyc-service/src/provider_documents.rs`。`ProviderDocument` struct 對應 mock
 清單欄位（`doc_id`、`kind`、`country: Option<String>`、`side: Option<String>`、
-`content_type`、`captured_at`）。`SumsubDocumentClient`：
+`content_type`、`captured_at`）。`ProviderDocumentClient`：
+
 - `new(base_url, app_token, secret_key)`
-- `list_documents(&self, applicant_id) -> Result<Vec<SumsubDocument>, SumsubDocumentError>`
-  → `GET {base_url}/mock/sumsub/applicants/{applicant_id}/documents`
-- `fetch_image(&self, applicant_id, doc_id) -> Result<SumsubImage, SumsubDocumentError>`
-  → `GET .../documents/{doc_id}/image`；`SumsubImage { content_type: String, body: reqwest::Response }`
+- `list_documents(&self, applicant_id) -> Result<Vec<ProviderDocument>, ProviderDocumentError>`
+  → `GET {base_url}/mock/provider/applicants/{applicant_id}/documents`
+- `fetch_image(&self, applicant_id, doc_id) -> Result<ProviderImage, ProviderDocumentError>`
+  → `GET .../documents/{doc_id}/image`；`ProviderImage { content_type: String, body: reqwest::Response }`
   **保留 `reqwest::Response` 以便上層 streaming**，不在此處 `bytes()` 整包讀取。
-- `SumsubDocumentError` 區分 `NotFound` / `ProviderAuth`（HTTP 401/403）/ `Upstream`
-  （其他）。**錯誤訊息不得含 SumSub URL**（設計 §7、§8 不變式 1）。
-- app-token 簽章 header 真實接 SumSub 時才需要；mock 階段帶上 `X-App-Token` 即可，
+- `ProviderDocumentError` 區分 `NotFound` / `ProviderAuth`（HTTP 401/403）/ `Upstream`
+  （其他）。**錯誤訊息不得含 KYC provider URL**（設計 §7、§8 不變式 1）。
+- app-token 簽章 header 真實接 KYC provider 時才需要；mock 階段帶上 `X-App-Token` 即可，
   簽章函式留介面、以憑證在則加 header 實作。
 
 - [ ] **Step 4: 跑測試確認通過**
 
-Run: `cargo nextest run -p kyc-service sumsub_documents --locked`
+Run: `cargo nextest run -p kyc-service provider_documents --locked`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add services/kyc-service/src/sumsub_documents.rs services/kyc-service/src/lib.rs services/kyc-service/Cargo.toml services/kyc-service/tests/sumsub_documents.rs
-git commit -m "feat(kyc-service): add SumSub document client (list + streaming image fetch)"
+git add services/kyc-service/src/provider_documents.rs services/kyc-service/src/lib.rs services/kyc-service/Cargo.toml services/kyc-service/tests/provider_documents.rs
+git commit -m "feat(kyc-service): add KYC provider document client (list + streaming image fetch)"
 ```
 
 ---
@@ -429,6 +436,7 @@ git commit -m "feat(kyc-service): add SumSub document client (list + streaming i
 ### Task 6: `kyc_document_access_log` 遷移
 
 **Files:**
+
 - Create: `services/kyc-service/migrations/202605190001_create_kyc_document_access_log.sql`
 
 - [ ] **Step 1: 寫遷移 SQL**
@@ -468,13 +476,14 @@ git commit -m "feat(kyc-service): add kyc_document_access_log migration"
 ### Task 7: kyc-service 文件清單 + 影像端點
 
 **Files:**
+
 - Modify: `services/kyc-service/src/kyc.rs`（`KycStore` 加方法）
 - Modify: `services/kyc-service/src/api.rs`（2 路由 + 2 handler）
 - Test: `services/kyc-service/tests/kyc_documents_api.rs`
 
 - [ ] **Step 1: 寫失敗測試**
 
-`services/kyc-service/tests/kyc_documents_api.rs`，用 in-memory store + `mock-sumsub`
+`services/kyc-service/tests/kyc_documents_api.rs`，用 in-memory store + `mock-provider`
 （或 wiremock）掛 `api::router`，覆蓋設計 §10 的 kyc-service 項目：
 
 ```rust
@@ -498,7 +507,7 @@ Expected: FAIL（路由不存在）
 `services/kyc-service/src/kyc.rs` 的 `KycStore` trait 新增：
 
 ```rust
-/// 解析會員當前 KYC record 的 SumSub applicant id。無 record / 無 applicant 回 None。
+/// 解析會員當前 KYC record 的 KYC provider applicant id。無 record / 無 applicant 回 None。
 async fn applicant_id_for_user(&self, user_id: &str) -> Result<Option<String>, KycStoreError>;
 
 /// 寫入一列文件存取稽核。
@@ -531,28 +540,30 @@ Postgres 端的 `record_document_access` 為 `INSERT INTO kyc_document_access_lo
 )
 ```
 
-`ApiState` 加一個 `sumsub_documents: SumsubDocumentClient` 欄位（由 `router()`
+`ApiState` 加一個 `provider_documents: ProviderDocumentClient` 欄位（由 `router()`
 的 `secrets` / 設定建構）。
 
 `list_member_documents`：
+
 1. `applicant_id_for_user(user_id)` → 無則回 `Json([])`、寫 `success`/`list` 稽核。
-2. 有則 `sumsub_documents.list_documents(applicant_id)`。
-3. 回 `Json<Vec<SumsubDocument>>`（Task 5 已定義且 `Serialize`，其欄位即對外
-   DTO；`doc_id` 直接用 SumSub doc id —— 本 MVP doc id 即 opaque 對外 id，
+2. 有則 `provider_documents.list_documents(applicant_id)`。
+3. 回 `Json<Vec<ProviderDocument>>`（Task 5 已定義且 `Serialize`，其欄位即對外
+   DTO；`doc_id` 直接用 KYC provider doc id —— 本 MVP doc id 即 opaque 對外 id，
    因其本就不是可猜的 vendor URL，且下載端會重驗綁定）。
 4. 寫 `kyc_document_access_log`（`action='list'`, `result='success'`）。
 
 `get_member_document`：
+
 1. `applicant_id_for_user(user_id)`；無 applicant → 寫 `denied`/`view`
    (`denial_reason='no_applicant'`)、回 **404**。
-2. `sumsub_documents.list_documents` 確認 `doc_id` ∈ 該 applicant 的文件集；
+2. `provider_documents.list_documents` 確認 `doc_id` ∈ 該 applicant 的文件集；
    不在 → 寫 `denied`/`view`（`denial_reason='doc_not_bound'`）、回 **404**
    （與步驟 1 的 404 body 完全相同 —— 設計不變式 3）。
-3. `sumsub_documents.fetch_image(applicant_id, doc_id)` → 用
+3. `provider_documents.fetch_image(applicant_id, doc_id)` → 用
    `axum::body::Body::from_stream(response.bytes_stream())` **streaming** 回傳，
    `Content-Type` 取自影像、限白名單 `image/jpeg|png|webp`，加
    `Cache-Control: private, no-store`。**不得 `bytes().await` 整包讀取。**
-4. SumSub 401/403 → 記 provider auth error、回通用 502/「文件暫時無法載入」，
+4. KYC provider 401/403 → 記 provider auth error、回通用 502/「文件暫時無法載入」，
    不外露 vendor code。
 5. 成功寫 `kyc_document_access_log`（`action='view'`, `result='success'`）。
 
@@ -579,6 +590,7 @@ git commit -m "feat(kyc-service): add internal admin KYC document list + streami
 ### Task 8: gateway KYC document 路由（驗章 + streaming）
 
 **Files:**
+
 - Modify: `services/api-gateway/src/admin_ops.rs`
 - Test: `services/api-gateway/tests/kyc_documents_proxy.rs`
 
@@ -615,6 +627,7 @@ Expected: FAIL（路由不存在）
 ```
 
 兩個 handler 共同流程：
+
 1. 取 `secret = env::var("ADMIN_INTERNAL_CALL_SECRET")`；缺失 → 500
    （production fail-fast）。
 2. `internal_call_auth::verify_internal_call(&headers, method, path, b"", &secret, now)`
@@ -652,6 +665,7 @@ git commit -m "feat(api-gateway): add KYC document proxy routes with signed-call
 ### Task 9: BFF streaming 代理 helper + 型別
 
 **Files:**
+
 - Create: `apps/admin/lib/kyc-documents-bff.ts`
 - Modify: `apps/admin/lib/member-management-shared.ts`
 - Test: `apps/admin/tests/kyc-documents-bff.test.ts`
@@ -686,14 +700,27 @@ import { proxyKycDocumentRequest } from "../lib/kyc-documents-bff.js";
 
 test("proxyKycDocumentRequest streams body without buffering", async () => {
   const stream = new ReadableStream({
-    start(c) { c.enqueue(new Uint8Array([1, 2, 3])); c.close(); },
+    start(c) {
+      c.enqueue(new Uint8Array([1, 2, 3]));
+      c.close();
+    },
   });
   const fetchImpl = async () =>
-    new Response(stream, { status: 200, headers: { "content-type": "image/png" } });
+    new Response(stream, {
+      status: 200,
+      headers: { "content-type": "image/png" },
+    });
   const res = await proxyKycDocumentRequest(
     { sub: "U-ADMIN", role: "admin" } as never,
-    { userId: "U-1", adminPath: "/api/internal/admin/members/U-1/kyc-documents/doc_1" },
-    { gatewayUrl: "https://gw.test", secret: "shared-secret-32-bytes-1234567890", fetchImpl },
+    {
+      userId: "U-1",
+      adminPath: "/api/internal/admin/members/U-1/kyc-documents/doc_1",
+    },
+    {
+      gatewayUrl: "https://gw.test",
+      secret: "shared-secret-32-bytes-1234567890",
+      fetchImpl,
+    },
   );
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-type"), "image/png");
@@ -760,7 +787,8 @@ export async function proxyKycDocumentRequest(
     return Response.json({ error: "gateway_unavailable" }, { status: 502 });
   }
 
-  const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";
+  const contentType =
+    upstream.headers.get("content-type") ?? "application/octet-stream";
   const responseHeaders = new Headers();
   responseHeaders.set("content-type", contentType);
   responseHeaders.set("cache-control", "private, no-store");
@@ -768,7 +796,10 @@ export async function proxyKycDocumentRequest(
   responseHeaders.set("x-content-type-options", "nosniff");
 
   // 影像回應強制白名單；非影像（JSON 清單 / 錯誤）原樣透傳。
-  if (contentType.startsWith("image/") && !IMAGE_CONTENT_TYPES.has(contentType)) {
+  if (
+    contentType.startsWith("image/") &&
+    !IMAGE_CONTENT_TYPES.has(contentType)
+  ) {
     return Response.json({ error: "unsupported_media_type" }, { status: 502 });
   }
   // 關鍵：streaming 透傳，不 buffer。
@@ -794,6 +825,7 @@ git commit -m "feat(admin): add streaming KYC document BFF proxy helper"
 ### Task 10: admin route handlers
 
 **Files:**
+
 - Create: `apps/admin/app/api/members/[userId]/kyc-documents/route.ts`
 - Create: `apps/admin/app/api/members/[userId]/kyc-documents/[docId]/route.ts`
 
@@ -872,12 +904,14 @@ git commit -m "feat(admin): add KYC document list and image route handlers"
 ### Task 11: gallery 元件取代佔位卡片
 
 **Files:**
+
 - Create: `apps/admin/components/kyc-document-gallery.tsx`
 - Modify: `apps/admin/components/member-management.tsx`（取代 §1311-1316 佔位卡片）
 
 - [ ] **Step 1: 實作 gallery 元件**
 
 `apps/admin/components/kyc-document-gallery.tsx` —— client component，props `{ userId: string }`：
+
 1. mount 時 `fetch('/api/members/{userId}/kyc-documents')` 取清單（`cache: 'no-store'`）。
 2. **先有清單才 render `<img>`**（設計 §4.5）。清單失敗顯示「文件暫時無法載入」，
    空清單顯示「尚無文件」。
@@ -903,19 +937,26 @@ export function KycDocumentGallery({ userId }: { userId: string }) {
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/members/${encodeURIComponent(userId)}/kyc-documents`, { cache: "no-store" })
+    fetch(`/api/members/${encodeURIComponent(userId)}/kyc-documents`, {
+      cache: "no-store",
+    })
       .then(async (r) => {
         if (!r.ok) throw new Error("load_failed");
         return (await r.json()) as KycDocument[];
       })
       .then((d) => active && setDocs(d))
       .catch(() => active && setError("文件暫時無法載入。"));
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [userId]);
 
-  if (error) return <p className="text-[14px] text-proph-ink-muted-80">{error}</p>;
-  if (!docs) return <p className="text-[14px] text-proph-ink-muted-80">載入中…</p>;
-  if (docs.length === 0) return <p className="text-[14px] text-proph-ink-muted-80">尚無文件。</p>;
+  if (error)
+    return <p className="text-[14px] text-proph-ink-muted-80">{error}</p>;
+  if (!docs)
+    return <p className="text-[14px] text-proph-ink-muted-80">載入中…</p>;
+  if (docs.length === 0)
+    return <p className="text-[14px] text-proph-ink-muted-80">尚無文件。</p>;
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -967,7 +1008,7 @@ Expected: PASS
 
 Run: `make dev-infra && make dev`，登入 admin（`admin@prophetica.local` / `admin`），
 進「會員管理 → KYC 審核」，選一個有 Tier 2 record 的會員，確認證件卡片顯示
-mock-sumsub 的 mock 影像；開 DevTools Network 確認 `/api/members/.../kyc-documents/...`
+mock-provider 的 mock 影像；開 DevTools Network 確認 `/api/members/.../kyc-documents/...`
 回 `image/png`、`cache-control: private, no-store`。
 
 - [ ] **Step 5: Commit**
@@ -981,19 +1022,19 @@ git commit -m "feat(admin): replace KYC placeholder card with live document gall
 
 ## 驗收條件（(A) 完成定義）
 
-- admin「KYC 審核」頁可顯示 SumSub（mock-sumsub）收集的證件 / 自拍影像。
-- 影像鏈路 `admin → api-gateway → kyc-service → SumSub` 全程 streaming，無 buffer。
+- admin「KYC 審核」頁可顯示 KYC provider（mock-provider）收集的證件 / 自拍影像。
+- 影像鏈路 `admin → api-gateway → kyc-service → KYC provider` 全程 streaming，無 buffer。
 - api-gateway 對 KYC document 路由驗 signed call + timestamp skew。
 - `doc_id` 不屬於 `user_id` 一律單一 404，不洩存在性。
 - 每次 list/view（成功與綁定拒絕）在 `kyc_document_access_log` 留痕。
 - 影像回應帶 `private, no-store` + `nosniff`，content-type 限白名單。
-- SumSub URL / vendor path 不外露至 api-gateway / admin / 瀏覽器。
+- KYC provider URL / vendor path 不外露至 api-gateway / admin / 瀏覽器。
 - `cargo nextest run -p kyc-service`、`-p api-gateway`、`pnpm --filter @prophetica/admin lint test` 全綠。
 
 ## 範圍外（後續任務）
 
 - (B) 每日 R2 歸檔批次（spec §5.4 已定義，實作另開計畫）。
 - 既有 admin ops 端點全面補 signed-call 驗證（設計 §13，建議另開 SPEC-010 finding）。
-- 真實 SumSub 憑證接線（SPEC-000 §5 Q-9）。
+- 真實 KYC provider 憑證接線（SPEC-000 §5 Q-9）。
 - `kyc_document:read` 獨立 permission（設計 §6.1 長期項）。
 - admin / api-gateway 安全稽核 channel 若不存在的建置（設計 §6.3）。

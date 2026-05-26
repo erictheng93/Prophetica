@@ -17,23 +17,19 @@ test("KYC CSP is scoped to /kyc/:path* (not site-wide) per SPEC-005a section 11.
   assert.match(configSource, /KYC_ROUTE_GLOB\s*=\s*"\/kyc\/:path\*"/);
 });
 
-test("KYC CSP allows SumSub origins required by SPEC-005a section 8", () => {
-  assert.match(
-    configSource,
-    /"script-src 'self' 'unsafe-inline' https:\/\/static\.sumsub\.com"/,
-  );
+test("KYC CSP keeps provider origins out until the real SDK is selected", () => {
+  const cspBlock = extractCspBlock(configSource);
+  assert.match(configSource, /"script-src 'self'"/);
   assert.match(configSource, /"style-src 'self' 'unsafe-inline'"/);
-  assert.match(
-    configSource,
-    /"connect-src 'self' https:\/\/api\.sumsub\.com https:\/\/\*\.sumsub\.com wss:\/\/\*\.sumsub\.com"/,
-  );
-  assert.match(configSource, /"frame-src 'self' https:\/\/\*\.sumsub\.com"/);
-  assert.match(
-    configSource,
-    /"img-src 'self' data: blob: https:\/\/\*\.sumsub\.com"/,
-  );
+  assert.match(configSource, /"connect-src 'self'"/);
+  assert.match(configSource, /"frame-src 'self'"/);
+  assert.match(configSource, /"img-src 'self' data: blob:"/);
   assert.match(configSource, /"media-src 'self' blob:"/);
   assert.match(configSource, /"worker-src 'self' blob:"/);
+  assert.ok(
+    !/https?:\/\/|wss?:\/\//i.test(cspBlock),
+    "CSP must not include KYC provider origins",
+  );
 });
 
 test("KYC CSP keeps a tight default-src baseline", () => {

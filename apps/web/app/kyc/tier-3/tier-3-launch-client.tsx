@@ -2,7 +2,7 @@
 
 // SPEC-005a §5 / §6.1 ??Tier 3 launch surface. Same SDK contract as Tier 2
 // but without the income bucket form (Tier 3 source-of-funds collection
-// happens inside the SumSub/iProov flow per SPEC-005 §6.3, not on this page).
+// happens inside the iProov/iProov flow per SPEC-005 §6.3, not on this page).
 //
 // Polling matches the Tier 2 cadence (3s tick / 5min cap). On timeout we
 // surface a recoverable error rather than blocking the user, since Tier 3
@@ -10,7 +10,7 @@
 // follow-up ??see SPEC-005 §10 (5-10 working days for full Compliance review).
 //
 // SPEC-005a §11.2 open question: whether Tier 3 ultimately needs a two-stage
-// SumSub + iProov adapter pair. For Slice A we route through the same
+// iProov + iProov adapter pair. For Slice A we route through the same
 // `selectKycProvider` abstraction; the open question stays open.
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
@@ -23,13 +23,10 @@ import {
   type KycSessionHandle,
 } from "@prophetica/ts-sdk";
 
-import {
-  refreshKycOverviewAction,
-  startKycUpgradeAction,
-} from "../_actions";
+import { refreshKycOverviewAction, startKycUpgradeAction } from "../_actions";
 import { useKycWebhookPolling } from "../use-kyc-webhook-polling";
 import { useKycMetrics } from "../use-kyc-metrics";
-import { mapLocaleToSumsub } from "@/lib/kyc-locale";
+import { mapLocaleToProvider } from "@/lib/provider-locale";
 import type { KycProviderName } from "@prophetica/ts-sdk";
 import {
   initialKycPhase,
@@ -51,7 +48,9 @@ export function Tier3LaunchClient({ country }: Tier3LaunchClientProps) {
 
   const [phase, dispatch] = useReducer(reduceKycPhase, initialKycPhase);
   const [retryAttempt, setRetryAttempt] = useState(0);
-  const [providerName, setProviderName] = useState<KycProviderName | null>(null);
+  const [providerName, setProviderName] = useState<KycProviderName | null>(
+    null,
+  );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<KycSessionHandle | null>(null);
@@ -86,7 +85,7 @@ export function Tier3LaunchClient({ country }: Tier3LaunchClientProps) {
           sdkToken,
           targetTier: "TIER_3",
           // SPEC-005a 禮2 ??see Tier 2 client for rationale.
-          locale: mapLocaleToSumsub(locale),
+          locale: mapLocaleToProvider(locale),
           country,
         });
       } catch {

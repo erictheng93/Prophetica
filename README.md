@@ -38,52 +38,52 @@ Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站�
 
 ### P0 — 第一行 production code 之前必須完成（6 份）
 
-| ID | 標題 |
-|----|------|
-| [SPEC-002](./specs/SPEC-002-funds-safety.html) | 資金安全與虛擬點數帳本 |
-| [SPEC-003](./specs/SPEC-003-matching-engine.html) | 撮合引擎詳規 |
-| [SPEC-004](./specs/SPEC-004-settlement-dispute.html) | 結算與爭議處理 |
-| [SPEC-015](./specs/SPEC-015-market-lifecycle.html) | 市場生命週期管理 |
-| [SPEC-016](./specs/SPEC-016-payment-gateway.html) | 支付通路整合 |
+| ID                                                   | 標題                          |
+| ---------------------------------------------------- | ----------------------------- |
+| [SPEC-002](./specs/SPEC-002-funds-safety.html)       | 資金安全與虛擬點數帳本        |
+| [SPEC-003](./specs/SPEC-003-matching-engine.html)    | 撮合引擎詳規                  |
+| [SPEC-004](./specs/SPEC-004-settlement-dispute.html) | 結算與爭議處理                |
+| [SPEC-015](./specs/SPEC-015-market-lifecycle.html)   | 市場生命週期管理              |
+| [SPEC-016](./specs/SPEC-016-payment-gateway.html)    | 支付通路整合                  |
 | [SPEC-017](./specs/SPEC-017-monorepo-bootstrap.html) | Monorepo bootstrap 與本地開發 |
 
 ### P1 — 公開 Beta 前完成（10 份）
 
-| ID | 標題 |
-|----|------|
-| [SPEC-005](./specs/SPEC-005-kyc-aml.html) | KYC/AML 整合（🟡 contract / frontend main path 已有進度；Postgres wiring、SumSub sandbox E2E、iProov real adapter 仍為 Public Beta blocker） |
-| [SPEC-007](./specs/SPEC-007-observability.html) | 可觀測性與監控 |
-| [SPEC-008](./specs/SPEC-008-disaster-recovery.html) | 災備與高可用 |
-| [SPEC-009](./specs/SPEC-009-dmm-liquidity.html) | DMM 與流動性 |
-| [SPEC-010](./specs/SPEC-010-security-antifraud.html) | 安全與反作弊 |
-| [SPEC-012](./specs/SPEC-012-customer-support.html) | 客服與爭議升級 |
-| [SPEC-013](./specs/SPEC-013-cicd-release.html) | CI/CD 與發布 |
-| [SPEC-018](./specs/SPEC-018-auditability-evidence-pack.html) | 稽核與合規證據化 |
-| [SPEC-019](./specs/SPEC-019-incident-response-sre.html) | 事件與事故回應 |
+| ID                                                           | 標題                                                                                                                                               |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [SPEC-005](./specs/SPEC-005-kyc-aml.html)                    | KYC/AML 整合（🟡 contract / frontend main path 已有進度；Postgres wiring、KYC provider sandbox E2E、iProov real adapter 仍為 Public Beta blocker） |
+| [SPEC-007](./specs/SPEC-007-observability.html)              | 可觀測性與監控                                                                                                                                     |
+| [SPEC-008](./specs/SPEC-008-disaster-recovery.html)          | 災備與高可用                                                                                                                                       |
+| [SPEC-009](./specs/SPEC-009-dmm-liquidity.html)              | DMM 與流動性                                                                                                                                       |
+| [SPEC-010](./specs/SPEC-010-security-antifraud.html)         | 安全與反作弊                                                                                                                                       |
+| [SPEC-012](./specs/SPEC-012-customer-support.html)           | 客服與爭議升級                                                                                                                                     |
+| [SPEC-013](./specs/SPEC-013-cicd-release.html)               | CI/CD 與發布                                                                                                                                       |
+| [SPEC-018](./specs/SPEC-018-auditability-evidence-pack.html) | 稽核與合規證據化                                                                                                                                   |
+| [SPEC-019](./specs/SPEC-019-incident-response-sre.html)      | 事件與事故回應                                                                                                                                     |
 
 ### P2 — Beta 後 90 天內完成（2 份）
 
-| ID | 標題 |
-|----|------|
+| ID                                                     | 標題         |
+| ------------------------------------------------------ | ------------ |
 | [SPEC-011](./specs/SPEC-011-affiliate-commission.html) | 代理分潤體系 |
-| [SPEC-020](./specs/SPEC-020-analytics-reporting.html) | 分析與報表 |
+| [SPEC-020](./specs/SPEC-020-analytics-reporting.html)  | 分析與報表   |
 
 ### 跨章節
 
-| ID | 標題 |
-|----|------|
+| ID                                                  | 標題         |
+| --------------------------------------------------- | ------------ |
 | [SPEC-014](./specs/SPEC-014-tech-architecture.html) | 整體技術架構 |
 
 ## 架構決策（ADR）
 
 決策紀錄位於 [`docs/architecture/decisions/`](./docs/architecture/decisions/)。
 
-| ID | 標題 |
-|----|------|
-| [ADR-0001](./docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md) | 撮合模型採 Order Book + DMM，捨棄 LMSR |
-| [ADR-0002](./docs/architecture/decisions/ADR-0002-three-company-corporate-structure.md) | 三公司結構（Holding / Operating / Tech）|
-| [ADR-0003](./docs/architecture/decisions/ADR-0003-double-entry-ledger.md) | 採用雙簿記帳本 |
-| [ADR-0004](./docs/architecture/decisions/ADR-0004-react-stack-due-to-kumo.md) | 前端棧由 Nuxt 3 切換為 Next.js 15 / React 19（Cloudflare Kumo）|
+| ID                                                                                      | 標題                                                            |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [ADR-0001](./docs/architecture/decisions/ADR-0001-order-book-with-dmm-over-lmsr.md)     | 撮合模型採 Order Book + DMM，捨棄 LMSR                          |
+| [ADR-0002](./docs/architecture/decisions/ADR-0002-three-company-corporate-structure.md) | 三公司結構（Holding / Operating / Tech）                        |
+| [ADR-0003](./docs/architecture/decisions/ADR-0003-double-entry-ledger.md)               | 採用雙簿記帳本                                                  |
+| [ADR-0004](./docs/architecture/decisions/ADR-0004-react-stack-due-to-kumo.md)           | 前端棧由 Nuxt 3 切換為 Next.js 15 / React 19（Cloudflare Kumo） |
 
 ## 技術棧（簡）
 
@@ -91,7 +91,7 @@ Prophetica 是一個 **趣味預測競猜娛樂遊戲平台**，讓玩家以站�
 - **前端**：Next.js 15 (App Router, React 19) · TypeScript · `@cloudflare/kumo` · TailwindCSS · Zustand · Lightweight Charts
 - **基礎設施**：Linode LKE (Tokyo Primary) + AWS (Singapore DR) · Cloudflare · ArgoCD
 - **觀測**：Prometheus + Grafana + Loki + Tempo (OpenTelemetry)
-- **KYC SaaS**：SumSub（主）+ Onfido（備）
+- **KYC SaaS**：KYC provider（主）+ Onfido（備）
 
 詳見 [SPEC-014 整體技術架構](./specs/SPEC-014-tech-architecture.html) 與 [ADR-0004](./docs/architecture/decisions/ADR-0004-react-stack-due-to-kumo.md)。
 
@@ -123,7 +123,7 @@ make dev
 
 ## 文件版本
 
-當前 SPEC 套件版本：**v0.3.4**（2026-05-09）— post-PR #2 對齊 SPEC-005 / SPEC-005a 狀態，將 SumSub sandbox credentials 收斂為 LG-3 / LG-4 共同 blocker。
+當前 SPEC 套件版本：**v0.3.4**（2026-05-09）— post-PR #2 對齊 SPEC-005 / SPEC-005a 狀態，將 KYC provider sandbox credentials 收斂為 LG-3 / LG-4 共同 blocker。
 
 完整變更紀錄見 [SPEC-000 §4](./specs/SPEC-000-index.html#4-變更紀錄)。
 

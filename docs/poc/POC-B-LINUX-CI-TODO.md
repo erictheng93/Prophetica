@@ -2,7 +2,7 @@
 
 > Owner: SRE / Tech Lead  
 > Status: Pending  
-> Blocked by SumSub credentials only for real iframe / webhook / mobile E2E checks. Linux CI can verify OpenNext Workers adapter output and non-SumSub runtime behavior first.
+> Blocked by KYC provider credentials only for real iframe / webhook / mobile E2E checks. Linux CI can verify OpenNext Workers adapter output and non-KYC provider runtime behavior first.
 
 ## Goal
 
@@ -13,7 +13,7 @@ Run PoC-B on Linux or CI to verify the OpenNext Cloudflare Workers adapter outpu
 - Linux runner with Node / pnpm matching repo toolchain.
 - Cloudflare Workers preview project available: `prophetica-web-poc`.
 - Non-secret Workers vars may be configured in `apps/web/wrangler.toml`.
-- Real SumSub scenarios remain blocked until SPEC-000 Q-9 credentials exist.
+- Real KYC provider scenarios remain blocked until SPEC-000 Q-9 credentials exist.
 
 ## TODO
 
@@ -48,15 +48,15 @@ Run PoC-B on Linux or CI to verify the OpenNext Cloudflare Workers adapter outpu
 
 - [ ] Scenario E: verify env binding shape without exposing secrets.
   - Evidence to capture: public var available only where expected; secret names not leaked into client static bundle.
-  - Do not place real SumSub secrets in `wrangler.toml`; use Cloudflare secret bindings only after Q-9 is completed.
+  - Do not place real KYC provider secrets in `wrangler.toml`; use Cloudflare secret bindings only after Q-9 is completed.
 
 - [ ] Scenario A partial: verify KYC page shell, CSP, SDK script allowance, and mock-provider fallback on preview.
-  - Evidence to capture: KYC route loads, CSP header includes SumSub origins only on `/kyc/*`, no client bundle secret leakage.
-  - Real SumSub iframe mount, applicant token, webhook HMAC, P95 flow time, and mobile WebRTC remain blocked by Q-9.
+  - Evidence to capture: KYC route loads, CSP header includes KYC provider origins only on `/kyc/*`, no client bundle secret leakage.
+  - Real KYC provider iframe mount, applicant token, webhook HMAC, P95 flow time, and mobile WebRTC remain blocked by Q-9.
 
 - [ ] Backfill `docs/poc/PRE-FLIGHT-POCS.md` section 4.4 with Linux/CI results.
   - Include pass/fail per scenario, command logs, preview URL, commit SHA, and fallback decision if any.
 
 - [ ] Backfill SPECs after PoC-B result.
-  - If all non-SumSub checks pass: keep Edge runtime as provisional path and leave Q-9 as the remaining live E2E blocker.
+  - If all non-KYC provider checks pass: keep Edge runtime as provisional path and leave Q-9 as the remaining live E2E blocker.
   - If adapter or runtime fails on Linux: update SPEC-014 section 3.2.1 and open ADR for Node.js runtime / BFF fallback.

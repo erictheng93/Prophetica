@@ -158,7 +158,7 @@ function reduceSdkEvent(
   switch (event.kind) {
     case "ready": {
       // The mock provider emits `ready` synchronously after subscribe; the
-      // real SumSub adapter emits via onReady. Both paths converge to in_progress.
+      // real provider adapter emits via onReady. Both paths converge to in_progress.
       if (phase.kind === "mounting" || phase.kind === "in_progress") {
         return { kind: "in_progress" };
       }

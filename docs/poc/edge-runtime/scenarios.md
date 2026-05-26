@@ -4,56 +4,65 @@
 
 ---
 
-## Scenario A — KYC iframe (SumSub Web SDK)
+## Scenario A — KYC iframe (KYC provider Web SDK)
 
 `apps/poc-kyc/app/page.tsx`:
 
 ```tsx
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export default function KycIframePoc() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // 1. Server-side route returns SumSub access token (sandbox)
-      const r = await fetch('/api/kyc-token', { method: 'POST' });
+      // 1. Server-side route returns KYC provider access token (sandbox)
+      const r = await fetch("/api/kyc-token", { method: "POST" });
       if (!r.ok) {
-        if (!cancelled) setStatus('error');
+        if (!cancelled) setStatus("error");
         return;
       }
       const { applicantId, accessToken } = await r.json();
 
-      // 2. Load SumSub SDK script + boot iframe
-      const s = document.createElement('script');
-      s.src = 'https://static.sumsub.com/idensic/static/sns-websdk-builder.js';
+      // 2. Load KYC provider SDK script + boot iframe
+      const s = document.createElement("script");
+      s.src = "https://provider-sdk.example.invalid/websdk.js";
       s.async = true;
       s.onload = () => {
-        // @ts-expect-error - SumSub global injected by SDK script
-        const sdk = window.snsWebSdk
+        // @ts-expect-error - KYC provider global injected by SDK script
+        const sdk = window.kycProviderSdk
           .init(accessToken, () => Promise.resolve(accessToken))
-          .withConf({ lang: 'zh-Hant', theme: 'light' })
-          .on('idCheck.onApplicantStatusChanged', (e: unknown) => console.log('[poc-a]', e))
+          .withConf({ lang: "zh-Hant", theme: "light" })
+          .on("idCheck.onApplicantStatusChanged", (e: unknown) =>
+            console.log("[poc-a]", e),
+          )
           .build();
         if (containerRef.current) sdk.launch(containerRef.current);
-        if (!cancelled) setStatus('ready');
+        if (!cancelled) setStatus("ready");
       };
       document.head.appendChild(s);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
     <main style={{ padding: 24 }}>
       <h1>PoC-B · Scenario A · KYC iframe</h1>
       <p>Status: {status}</p>
-      <div ref={containerRef} style={{ minHeight: 600, border: '1px dashed #ccc' }} />
+      <div
+        ref={containerRef}
+        style={{ minHeight: 600, border: "1px dashed #ccc" }}
+      />
     </main>
   );
 }
@@ -63,76 +72,79 @@ export default function KycIframePoc() {
 
 ```ts
 // Edge runtime — uses Web Crypto API (subtle.sign) instead of Node crypto.
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export async function POST() {
-  // Replace with real SumSub sandbox credentials (from Cloudflare Pages env binding).
-  const appToken = process.env.SUMSUB_SANDBOX_APP_TOKEN ?? '';
-  const secretKey = process.env.SUMSUB_SANDBOX_SECRET ?? '';
+  // Replace with real KYC provider sandbox credentials (from Cloudflare Pages env binding).
+  const appToken = process.env.KYC_PROVIDER_SANDBOX_APP_TOKEN ?? "";
+  const secretKey = process.env.KYC_PROVIDER_SANDBOX_SECRET ?? "";
   const externalUserId = `poc-${Date.now()}`;
 
   const ts = Math.floor(Date.now() / 1000);
-  const body = JSON.stringify({ levelName: 'basic-kyc-level' });
+  const body = JSON.stringify({ levelName: "basic-kyc-level" });
   const path = `/resources/accessTokens?userId=${encodeURIComponent(externalUserId)}`;
 
-  // Web Crypto HMAC-SHA256 signature for SumSub auth
+  // Web Crypto HMAC-SHA256 signature for KYC provider auth
   const key = await crypto.subtle.importKey(
-    'raw',
+    "raw",
     new TextEncoder().encode(secretKey),
-    { name: 'HMAC', hash: 'SHA-256' },
+    { name: "HMAC", hash: "SHA-256" },
     false,
-    ['sign'],
+    ["sign"],
   );
   const sig = await crypto.subtle.sign(
-    'HMAC',
+    "HMAC",
     key,
     new TextEncoder().encode(`${ts}POST${path}${body}`),
   );
   const sigHex = Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 
-  const r = await fetch(`https://api.sumsub.com${path}`, {
-    method: 'POST',
+  const r = await fetch(`https://api.provider.com${path}`, {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'X-App-Token': appToken,
-      'X-App-Access-Sig': sigHex,
-      'X-App-Access-Ts': String(ts),
+      "Content-Type": "application/json",
+      "X-App-Token": appToken,
+      "X-App-Access-Sig": sigHex,
+      "X-App-Access-Ts": String(ts),
     },
     body,
   });
-  return Response.json({ applicantId: externalUserId, accessToken: (await r.json()).token });
+  return Response.json({
+    applicantId: externalUserId,
+    accessToken: (await r.json()).token,
+  });
 }
 ```
 
-`apps/poc-kyc/app/api/webhooks/sumsub/route.ts`:
+`apps/poc-kyc/app/api/webhooks/provider/route.ts`:
 
 ```ts
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export async function POST(req: Request) {
-  const sig = req.headers.get('x-payload-digest') ?? '';
+  const sig = req.headers.get("x-payload-digest") ?? "";
   const raw = new Uint8Array(await req.arrayBuffer());
 
   // HMAC-SHA1 verify (Web Crypto API in Workers V8 isolate)
   const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(process.env.SUMSUB_WEBHOOK_SECRET ?? ''),
-    { name: 'HMAC', hash: 'SHA-1' },
+    "raw",
+    new TextEncoder().encode(process.env.KYC_PROVIDER_WEBHOOK_SECRET ?? ""),
+    { name: "HMAC", hash: "SHA-1" },
     false,
-    ['verify'],
+    ["verify"],
   );
   const ok = await crypto.subtle.verify(
-    'HMAC',
+    "HMAC",
     key,
     Uint8Array.from(sig.match(/.{2}/g) ?? [], (b) => parseInt(b, 16)),
     raw,
   );
 
-  if (!ok) return new Response('Unauthorized', { status: 401 });
-  console.log('[poc-a webhook]', new TextDecoder().decode(raw));
-  return new Response('ok');
+  if (!ok) return new Response("Unauthorized", { status: 401 });
+  console.log("[poc-a webhook]", new TextDecoder().decode(raw));
+  return new Response("ok");
 }
 ```
 
@@ -145,11 +157,11 @@ export async function POST(req: Request) {
 `apps/poc-ws/app/page.tsx`:
 
 ```tsx
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export default function WsFanoutPoc() {
   const [seq, setSeq] = useState<number | null>(null);
@@ -167,11 +179,17 @@ export default function WsFanoutPoc() {
       ws = new WebSocket(url);
       ws.onopen = () => {
         setReconnectCount(reconnectAttempt);
-        ws?.send(JSON.stringify({ action: 'subscribe', market: 'mkt_dev_demo', depth: 10 }));
+        ws?.send(
+          JSON.stringify({
+            action: "subscribe",
+            market: "mkt_dev_demo",
+            depth: 10,
+          }),
+        );
       };
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data);
-        if (typeof msg.seq === 'number') {
+        if (typeof msg.seq === "number") {
           if (lastSeq !== 0 && msg.seq !== lastSeq + 1) setGapDetected(true);
           lastSeq = msg.seq;
           setSeq(msg.seq);
@@ -190,8 +208,8 @@ export default function WsFanoutPoc() {
   return (
     <main style={{ padding: 24 }}>
       <h1>PoC-B · Scenario B · WebSocket fan-out</h1>
-      <p>seq: {seq ?? '—'}</p>
-      <p>gap detected: {gapDetected ? 'YES (re-snapshot needed)' : 'no'}</p>
+      <p>seq: {seq ?? "—"}</p>
+      <p>gap detected: {gapDetected ? "YES (re-snapshot needed)" : "no"}</p>
       <p>reconnect count: {reconnectCount}</p>
     </main>
   );
@@ -207,9 +225,9 @@ export default function WsFanoutPoc() {
 `apps/poc-actions/app/page.tsx`:
 
 ```tsx
-import { fetchMarkets } from './actions';
+import { fetchMarkets } from "./actions";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export default async function ServerActionsPoc() {
   const markets = await fetchMarkets();
@@ -229,15 +247,17 @@ export default async function ServerActionsPoc() {
 `apps/poc-actions/app/actions.ts`:
 
 ```ts
-'use server';
+"use server";
 
-export async function fetchMarkets(): Promise<Array<{ id: string; title: string }>> {
+export async function fetchMarkets(): Promise<
+  Array<{ id: string; title: string }>
+> {
   // Edge runtime fetch — must NOT import any node-only module.
   // Test that transitive deps (e.g. from @prophetica/ts-sdk) don't pull in
   // Buffer / fs / net / process.cwd() — those break Edge build at compile time.
-  const r = await fetch('https://api-sandbox.example.com/api/v1/markets/open', {
-    headers: { 'Content-Type': 'application/json' },
-    cache: 'no-store',
+  const r = await fetch("https://api-sandbox.example.com/api/v1/markets/open", {
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
   });
   if (!r.ok) return [];
   return r.json();
@@ -255,24 +275,26 @@ export async function fetchMarkets(): Promise<Array<{ id: string; title: string 
 `apps/poc-fetch/app/page.tsx`:
 
 ```tsx
-'use client';
+"use client";
 
-import { useState } from 'react';
+import { useState } from "react";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export default function FetchPoc() {
-  const [result, setResult] = useState<string>('—');
+  const [result, setResult] = useState<string>("—");
 
   async function probe() {
     const ctrl = new AbortController();
     const timeoutId = setTimeout(() => ctrl.abort(), 100);
     try {
-      const r = await fetch('https://httpbin.org/delay/3', { signal: ctrl.signal });
+      const r = await fetch("https://httpbin.org/delay/3", {
+        signal: ctrl.signal,
+      });
       setResult(`unexpected success: ${r.status}`);
     } catch (e: unknown) {
       // Edge runtime: AbortError vs DOMException naming may differ vs Node.js
-      const name = e instanceof Error ? e.name : 'unknown';
+      const name = e instanceof Error ? e.name : "unknown";
       setResult(`abort observed: ${name}`);
     } finally {
       clearTimeout(timeoutId);
@@ -312,16 +334,18 @@ NEXT_PUBLIC_FOO = "public-value-visible-to-client"
 `apps/poc-env/app/page.tsx` (client-side, must see PUBLIC_FOO only):
 
 ```tsx
-'use client';
+"use client";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export default function EnvPoc() {
   return (
     <main style={{ padding: 24 }}>
       <h1>PoC-B · Scenario E · env binding</h1>
-      <p>NEXT_PUBLIC_FOO: {process.env.NEXT_PUBLIC_FOO ?? '(not set)'}</p>
-      <p>SECRET_KEY (should be undefined here): {String(process.env.SECRET_KEY)}</p>
+      <p>NEXT_PUBLIC_FOO: {process.env.NEXT_PUBLIC_FOO ?? "(not set)"}</p>
+      <p>
+        SECRET_KEY (should be undefined here): {String(process.env.SECRET_KEY)}
+      </p>
     </main>
   );
 }
@@ -331,16 +355,19 @@ export default function EnvPoc() {
 
 ```ts
 // Server-side only; SECRET_KEY must reach env.SECRET_KEY in Cloudflare Pages.
-export const runtime = 'edge';
+export const runtime = "edge";
 
 export async function GET() {
   // In next-on-pages the request context exposes env via process.env at runtime.
   const value = process.env.SECRET_KEY;
-  return Response.json({ hasSecret: typeof value === 'string' && value.length > 0 });
+  return Response.json({
+    hasSecret: typeof value === "string" && value.length > 0,
+  });
 }
 ```
 
 **Pass criteria**:
+
 1. `NEXT_PUBLIC_FOO` visible in client bundle; `SECRET_KEY` undefined.
 2. `/api/secret-probe` returns `{ hasSecret: true }` after `wrangler pages secret put SECRET_KEY` is run.
 3. `grep -r SECRET_KEY .next/static/` finds zero hits — secret never reaches the client bundle.

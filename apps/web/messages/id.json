@@ -188,7 +188,7 @@
           "kyc": {
             "kicker": "KYC",
             "title": "Verifikasi identitas",
-            "body": "Kegagalan upgrade tier, alur SumSub, dan penyimpanan dokumen."
+            "body": "Kegagalan upgrade tier, alur KYC provider, dan penyimpanan dokumen."
           },
           "settlement": {
             "kicker": "Penyelesaian",
@@ -674,10 +674,10 @@
           },
           "documentImage": {
             "field": "Gambar dokumen",
-            "collected": "Tier 2 / 3 melalui SumSub",
+            "collected": "Tier 2 / 3 melalui KYC provider",
             "purpose": "Mengambil data dengan OCR dan membantu reviewer menilai keaslian dokumen.",
-            "retention": "SumSub Cloud di region EU + cadangan harian R2 EU kami, dienkripsi AES-256 at rest dan dilindungi Object Lock 7 tahun.",
-            "access": "Compliance Officer + reviewer SumSub + auditor berwenang. Staf dukungan tidak dapat mengakses gambar mentah secara langsung."
+            "retention": "KYC provider Cloud di region EU + cadangan harian R2 EU kami, dienkripsi AES-256 at rest dan dilindungi Object Lock 7 tahun.",
+            "access": "Compliance Officer + reviewer KYC provider + auditor berwenang. Staf dukungan tidak dapat mengakses gambar mentah secara langsung."
           },
           "selfie": {
             "field": "Selfie + pemeriksaan liveness",

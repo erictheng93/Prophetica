@@ -1,818 +1,1904 @@
 ﻿<!doctype html>
 <html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Master Index</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
-      margin: 2rem;
-      line-height: 1.5;
-    }
-    img { max-width: 100%; }
-    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-    pre {
-      overflow: auto;
-      padding: 1rem;
-      background: #f6f8fa;
-      border: 1px solid #d8dee3;
-    }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
-    a { color: #0969da; }
-    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
-    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
-    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1rem; }
-    .changelog-entry p,
-    .changelog-entry ul { margin: 0.35rem 0; }
-    .changelog-entry ul { padding-left: 1.15rem; }
-    .changelog-entry li { margin-bottom: 0.35rem; }
-  </style>
-</head>
-<body>
-<h1>Master Index — 規格總索引</h1>
-<blockquote>
-<p><strong>prophetica</strong> — 趣味預測娛樂遊戲平台
-文件版本：v0.4.0 · 最後更新：2026-05-20 · 維護人：Tech Lead</p>
-<p>Legacy file path：<code>specs/SPEC-000-index.html</code>；本文件不作為單一功能 SPEC 實作輸入。</p>
-</blockquote>
-<hr>
-<h2>0. 文件性質</h2>
-<p>本目錄下所有 <code>SPEC-*.html</code> 文件均為<strong>可實施規格</strong>（Implementable Specification），遵循 SDD（Spec-Driven Development）方法論。</p>
-<ul>
-<li>每份 SPEC 都是 Codex 開發任務的輸入。</li>
-<li>所有實作 PR 必須在 description 中引用 <code>SPEC-XXX § N.N</code> 章節。</li>
-<li>任何 SPEC 變更須先提 PR 審閱，再進行對應實作。</li>
-<li>SPEC 與 code 同步進入 git，不允許 SPEC 落後於程式碼。</li>
-</ul>
-<h2>1. 專案定位</h2>
-<table>
-<thead>
-<tr>
-<th>項目</th>
-<th>內容</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>中文名稱</td>
-<td>趣味預測競猜娛樂遊戲平台</td>
-</tr>
-<tr>
-<td>英文代號</td>
-<td>prophetica</td>
-</tr>
-<tr>
-<td>法律分類</td>
-<td><strong>娛樂遊戲服務</strong>（非博弈、非彩券、非衍生性金融商品）</td>
-</tr>
-<tr>
-<td>玩家行為</td>
-<td>以站內<strong>虛擬銅幣</strong>對未公開事件結果進行預測，與其他玩家撮合</td>
-</tr>
-<tr>
-<td>平台角色</td>
-<td><strong>中立撮合平台</strong>，僅收手續費，不持有合約倉位、不做造市商</td>
-</tr>
-<tr>
-<td>出金政策</td>
-<td><strong>台灣司法管轄區內無任何出金通道</strong>；銅幣僅可在站內使用，不可兌換外部資產 / 虛擬貨幣 / 實體商品</td>
-</tr>
-<tr>
-<td>主要市場</td>
-<td>亞太娛樂用戶</td>
-</tr>
-</tbody></table>
-<h2>2. SPEC 清單</h2>
-<h3>P0 — 必須在第一行 code 之前完成</h3>
-<table>
-<thead>
-<tr>
-<th>ID</th>
-<th>標題</th>
-<th>摘要</th>
-<th>狀態</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><a href="./SPEC-002-funds-safety.html">SPEC-002</a></td>
-<td>資金安全與虛擬銅幣帳本</td>
-<td>雙簿記、隔離帳戶、對帳機制、Frozen 子科目、<strong>INV-6 銅幣出口白名單（R-1，ADR-0006 落地，含 chargeback carve-out v0.1.8、manual adjustment carve-out v0.1.9）</strong>、MVP 手動銅幣調整、§9.3 最終一致性窗口（T-5）、Phase 1 monthly partition（T-3）</td>
-<td>🟢 v0.1.9</td>
-</tr>
-<tr>
-<td><a href="./SPEC-003-matching-engine.html">SPEC-003</a></td>
-<td>撮合引擎詳規</td>
-<td>Order Book、訂單類型、撮合演算法、API、SLO、<strong>uid=4 sentinel 移除（R-2）</strong>、§17.2 etcd-driven 市場路由（T-4）、§17.3 熱冷市場 thread model 分流（T-6）</td>
-<td>🟢 v0.2.3（Rust）</td>
-</tr>
-<tr>
-<td><a href="./SPEC-004-settlement-dispute.html">SPEC-004</a></td>
-<td>結算與爭議處理</td>
-<td>Oracle、結算狀態機、申訴窗口、batch 500 + off-peak（T-12）</td>
-<td>🟢 v0.1.2</td>
-</tr>
-<tr>
-<td><a href="./SPEC-015-market-lifecycle.html">SPEC-015</a></td>
-<td>市場生命週期管理</td>
-<td>市場創建、上架審查、內容紅線、開盤排程、強制下架</td>
-<td>🟢 v0.1.1</td>
-</tr>
-<tr>
-<td><a href="./SPEC-016-payment-gateway.html">SPEC-016</a></td>
-<td>支付通路整合</td>
-<td>通路選型、Webhook、Chargeback ≥ 1 統一封號（H-5）、跨 Token、PCI 範圍</td>
-<td>🟢 v0.1.1</td>
-</tr>
-<tr>
-<td><a href="./SPEC-017-monorepo-bootstrap.html">SPEC-017</a></td>
-<td>Monorepo Bootstrap &amp; Local Dev</td>
-<td>Repo 骨架、Docker Compose、Makefile、CI bootstrap、PR #1 acceptance checklist、Mutation 門檻分階段（T-7）、CI runner 4-cores（T-8）、§11.3 PoC gating（T-9 / T-10）</td>
-<td>🟢 v0.2.8（Rust）</td>
-</tr>
-</tbody></table>
-<h3>P1 — 必須在公開 Beta 之前完成</h3>
-<table>
-<thead>
-<tr>
-<th>ID</th>
-<th>標題</th>
-<th>摘要</th>
-<th>狀態</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><a href="./SPEC-005-kyc-aml.html">SPEC-005</a></td>
-<td>KYC/AML 整合</td>
-<td>分層 KYC、SaaS 整合、制裁名單篩查</td>
-<td>🟡 Backend Postgres wiring baseline done（2026-05-09）/ Frontend 主路徑 done（PR #2 merged）；blocker: <a href="#cross-cutting-q9">Q-9</a> SumSub sandbox · v0.1.4</td>
-</tr>
-<tr>
-<td><a href="./SPEC-005a-sumsub-frontend-contract.html">SPEC-005a</a></td>
-<td>SumSub 前端整合契約</td>
-<td><code>KycIdentityProvider</code> 抽象、Tier 2 page state machine、idempotency / polling / CSP 紀律</td>
-<td>🟡 Frontend 主路徑 done（PR #2 merged 2026-05-09）；blocker: <a href="#cross-cutting-q9">Q-9</a> SumSub sandbox + iProov real adapter · v0.1.2</td>
-</tr>
-<tr>
-<td><a href="./SPEC-007-observability.html">SPEC-007</a></td>
-<td>可觀測性與監控</td>
-<td>Metrics/Log/Tracing、SLO、告警、<strong>§6.4 跨服務 Latency Budget</strong>（下單熱路徑 11 hop × P99 時間預算）</td>
-<td>🟢 v0.2.1 draft</td>
-</tr>
-<tr>
-<td><a href="./SPEC-008-disaster-recovery.html">SPEC-008</a></td>
-<td>災備與高可用</td>
-<td><strong>RTO/RPO 拆 region-local + cross-region 兩層（T-2）</strong>、跨區備援、Failover 演練、§7 客戶端容錯可執行契約（v0.2.1 F-2）、§9.3 cross-ref SPEC-010 §9.3 MS-9（v0.2.1 F-1）</td>
-<td>🟢 v0.2.1</td>
-</tr>
-<tr>
-<td><a href="./SPEC-009-dmm-liquidity.html">SPEC-009</a></td>
-<td>DMM 與流動性</td>
-<td>做市商計畫、API、rebate；<strong>§5 冷啟動補貼整段移除（R-2）</strong></td>
-<td>🟢 v0.2.1（Rust）</td>
-</tr>
-<tr>
-<td><a href="./SPEC-010-security-antifraud.html">SPEC-010</a></td>
-<td>安全與反作弊</td>
-<td>裝置指紋、行為分析、洗售偵測、<strong>§9.3 Multi-sig 治理中央表</strong>、EdDSA mobile PoC（T-9，PoC plan 落地）、sqlx 編譯時 SQL（H-4）、Chargeback ≥ 1（H-5）</td>
-<td>🟢 v0.2.2</td>
-</tr>
-<tr>
-  <td><a href="./SPEC-012-customer-support.html">SPEC-012</a></td>
-  <td>客服與爭議升級</td>
-  <td>公開 Beta 最低客服 SLA、KYC / 支付 / 結算爭議分流、帳本影響操作留痕</td>
-  <td>🟢 v0.1.1（P1 launch gate）</td>
-</tr>
-<tr>
-  <td><a href="./SPEC-013-cicd-release.html">SPEC-013</a></td>
-  <td>CI/CD 與發布</td>
-  <td>Pipeline（SPEC-017 §8 超集，H-3）、Coverage 分層（H-6）、Feature Flag、回滾；公開 Beta 前必須具備 prod release gate</td>
-  <td>🟢 v0.2.1（P1 launch gate）</td>
-</tr>
-<tr>
-  <td><a href="./SPEC-018-auditability-evidence-pack.html">SPEC-018</a></td>
-  <td>稽核與合規證據化</td>
-  <td>帳本與關鍵事件稽核、不可變更日誌、Evidence Pack 匯出；真實入金前必須具備最小證據鏈</td>
-  <td>🟢 v0.1.0</td>
-</tr>
-<tr>
-  <td><a href="./SPEC-019-incident-response-sre.html">SPEC-019</a></td>
-  <td>事件與事故回應</td>
-  <td>事故分級（S0~S3）、SLA、公告更新節奏、72 小時事故回顧</td>
-  <td>🟢 v0.1.0</td>
-</tr>
-<tr>
-  <td><a href="./SPEC-022-login-event-intelligence.html">SPEC-022</a></td>
-  <td>登入事件情報</td>
-  <td>登入 IP、IP 推估地點、裝置資訊、可信 proxy header、隱私保存、查詢權限與後續風控基礎事件</td>
-  <td>🟢 v0.1.3</td>
-</tr>
-<tr>
-  <td><a href="./SPEC-023-player-onboarding-journey.html">SPEC-023</a></td>
-  <td>玩家入門與首次下單旅程</td>
-  <td>landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單之旅程編排層：階段狀態機、跨頁重導向契約（<code>return_to</code> / open redirect 防護）、門檻攔截規則、進場入口交接；範圍涵蓋完整旅程（含 KYC / 儲值門檻），僅 <code>apps/web</code>；下單最低 tier = Tier 1（與 SPEC-005 §2.1 對齊）；<a href="../docs/implementation-plans/SPEC-023-player-onboarding-journey-implementation-plan.html">實作計畫</a> v0.1.1（Option B 邊緣 JWT 驗章為目標 + transitional state 收斂，含 Phase 0 Task 0.7 / 0.8 補強）</td>
-  <td>🟢 v0.1.2</td>
-</tr>
-</tbody></table>
-<h3>P2 — 公開 Beta 後 90 天內完成</h3>
-<table>
-<thead>
-<tr>
-<th>ID</th>
-<th>標題</th>
-<th>摘要</th>
-<th>狀態</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><a href="./SPEC-011-affiliate-commission.html">SPEC-011</a></td>
-<td>代理分潤體系</td>
-<td>單層介紹費 + 交易佣金、業務 B2B 路徑（<strong>獨立法律關係，不從玩家錢包出口；R-1</strong>）、稅務扣繳、§4.1.2 延遲 30 天發放 + §4.6 月度 / 終身 / 群組上限（G-3 / G-8）、§4.7 代理信用評級與信用帳戶管控</td>
-<td>🟢 v0.2.4</td>
-</tr>
-<tr>
-  <td><a href="./SPEC-020-analytics-reporting.html">SPEC-020</a></td>
-  <td>分析與報表</td>
-  <td>玩家/營運/風控報表、授權導出、版本化與留存規範</td>
-  <td>🟢 v0.1.0</td>
-</tr>
-</tbody></table>
-<h3>跨章節文件</h3>
-<table>
-<thead>
-<tr>
-<th>ID</th>
-<th>標題</th>
-<th>摘要</th>
-<th>狀態</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><a href="./SPEC-014-tech-architecture.html">SPEC-014</a></td>
-<td>整體技術架構</td>
-<td>服務拓撲、技術棧（Rust 1.85 / edition 2024，<strong>ADR-0005 governance</strong>）、Repo 結構、§3.2.1 Cloudflare Pages Edge runtime PoC（T-10，PoC plan 落地）、§4.1 MVP 合併部署、§4.1.1 目前採 <code>services/_binaries/*</code> deployable entrypoints，保留 12 service crate lib 邊界並定義未來拆回 12-binary 條件、§6.1.2 Gateway 認證與 principal 傳遞契約（§6.1.2.1 transitional state + 三階段遷移路徑）</td>
-<td>🟢 v0.2.10</td>
-</tr>
-</tbody></table>
-<h3>Public Beta Launch Gate（真實入金 / 公開 Beta 前必須全部通過）</h3>
-<p>本 gate 是跨 SPEC 的上線門檻；它不阻擋 PR #1 / 內部開發，但<strong>阻擋公開 Beta、真實入金、真實下單與對外行銷</strong>。任何一列未完成時，只能做 internal alpha / sandbox demo。</p>
-<table>
-<thead>
-<tr>
-<th>Gate</th>
-<th>阻擋條件</th>
-<th>Required evidence</th>
-<th>Owner</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>LG-1 Legal / licence</td>
-<td>SPEC-000 §5 Q-2 仍為 Pending；Op Co. 執照地、允許市場類型、玩家所在地限制未由執照地律師書面確認</td>
-<td>Legal memo + jurisdiction decision + market category allow/deny matrix</td>
-<td>Owner / Legal / Compliance</td>
-</tr>
-<tr>
-<td>LG-2 Payment acquiring</td>
-<td>SPEC-000 §5 Q-4 仍為 Pending；至少一家支付通路未完成 MCC / prediction-market 接受度、chargeback 條款、sandbox webhook、PCI SAQ A 邊界驗證</td>
-<td>Signed provider terms 或 LOI、sandbox webhook evidence、PCI scope note、refund / chargeback drill log</td>
-<td>Owner / Finance / Backend</td>
-</tr>
-<tr>
-<td>LG-3 KYC / AML production path</td>
-<td>SPEC-005 / SPEC-005a 尚未跑通真實 SumSub 或替代 provider sandbox；Tier 2 iframe、webhook HMAC、RED→freeze、PEP / sanctions flow 未 E2E 驗證</td>
-<td>Sandbox credential record、E2E test log、frontend screenshot、webhook replay evidence</td>
-<td>Frontend / Backend / Compliance</td>
-</tr>
-<tr>
-<td>LG-4 Platform PoC closure</td>
-<td>PoC-A EdDSA / LIFF 或 PoC-B Cloudflare Edge runtime live verification 仍為 Pending，且未採用 fallback ADR</td>
-<td>docs/poc/PRE-FLIGHT-POCS.md §3.5 / §4.4 completed，或 fallback ADR accepted</td>
-<td>Frontend / Tech Lead</td>
-</tr>
-<tr>
-<td>LG-5 Release safety</td>
-<td>SPEC-013 minimum prod release gate 未完成：feature flag、canary / rollback、migration rollback、secret scan、prod approval MS-12</td>
-<td>Staging release run, rollback drill, CI run URL, approval audit log</td>
-<td>SRE / Tech Lead</td>
-</tr>
-<tr>
-<td>LG-6 Support / incident / audit</td>
-<td>SPEC-012 / SPEC-018 / SPEC-019 最小上線子集未完成：客服入口、事故公告節奏、帳本 / 支付 / KYC evidence pack、S0/S1 runbook</td>
-<td>Support queue URL, incident drill, evidence export sample, P0/S0 runbook links</td>
-<td>Operations / SRE / Compliance</td>
-</tr>
-</tbody>
-</table>
-<h2>3. 全域名詞表（Glossary）</h2>
-<table>
-<thead>
-<tr>
-<th>名詞</th>
-<th>中文</th>
-<th>定義</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Market</td>
-<td>市場 / 合約</td>
-<td>一個可預測的未公開事件，含 YES/NO 兩個 Outcome</td>
-</tr>
-<tr>
-<td>Outcome</td>
-<td>結果腿</td>
-<td>市場的兩種結果之一（YES 或 NO）</td>
-</tr>
-<tr>
-<td>Order</td>
-<td>訂單</td>
-<td>玩家對某個 Outcome 在特定價格下單的意圖</td>
-</tr>
-<tr>
-<td>Trade</td>
-<td>成交</td>
-<td>兩張對手方訂單撮合形成的交易紀錄</td>
-</tr>
-<tr>
-<td>Position</td>
-<td>持倉</td>
-<td>玩家在某個 Outcome 上的累計持有股數</td>
-</tr>
-<tr>
-<td>Settlement</td>
-<td>結算</td>
-<td>市場到期後依官方判定結果，將持倉轉為銅幣</td>
-</tr>
-<tr>
-<td>Tick</td>
-<td>最小價格單位</td>
-<td>1 cent（0.01 銅幣）</td>
-</tr>
-<tr>
-<td>Lot</td>
-<td>最小數量單位</td>
-<td>1 股 = 1 銅幣面額</td>
-</tr>
-<tr>
-<td>Points</td>
-<td>站內銅幣</td>
-<td>玩家儲值購買的虛擬遊戲銅幣，<strong>不可兌回外部資產</strong></td>
-</tr>
-<tr>
-<td>Gold Token</td>
-<td>金幣</td>
-<td>平台主要入金與計價 Token，用於儲值門檻、限額與對帳基準。</td>
-</tr>
-<tr>
-<td>Silver Token</td>
-<td>銀幣</td>
-<td>跨區、合規門檻與大型營運預算的參照 Token，不使用外部法定幣名稱。</td>
-</tr>
-<tr>
-<td>Copper Token</td>
-<td>銅幣</td>
-<td>站內遊戲、交易、獎勵與結算使用的玩家錢包 Token，不可兌回外部資產。</td>
-</tr>
-<tr>
-<td>DMM</td>
-<td>Designated Market Maker</td>
-<td>受邀的外部做市商</td>
-</tr>
-<tr>
-<td>KYC</td>
-<td>Know Your Customer</td>
-<td>客戶身份驗證</td>
-</tr>
-<tr>
-<td>AML</td>
-<td>Anti-Money Laundering</td>
-<td>反洗錢機制</td>
-</tr>
-</tbody></table>
-<h2>4. 變更紀錄</h2>
-<section class="changelog">
-<div class="changelog-list">
-  <article class="changelog-entry">
-    <h3>2026-05-20 · v0.4.0 · Tech Lead</h3>
-    <p><strong>Option B 邊緣 JWT 驗章為目標架構 + transitional state 收斂</strong>：spike 發現現況為 BFF-trust transitional state（<code>apps/web</code> 自簽 HMAC cookie <code>proph_session</code> + 另存 <code>proph_user_service_session</code>，呼叫 gateway 時送裸 <code>x-user-id</code>，gateway 不驗章）。決議 Option B 為目標架構（gateway 邊緣 JWT 驗章），明確寫成 target + transitional plan、不假裝現況已是 B。理由：(i) 旅程入口規格不應把未來 client 鎖死在 BFF-only（SPEC-023 已含未來 native / LIFF 內嵌）；(ii) gateway 是外部 API principal 權威邊界，長期信任裸 <code>x-user-id</code> 是錯誤安全邊界；(iii) 「gateway 永遠私網」前提脆弱，infra 演進易破；(iv) user-service JWT + JWKS 基礎已存在，Option B 是「轉送既有 token」而非導入新身份系統。本輪閉環：</p>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Master Index</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+        margin: 2rem;
+        line-height: 1.5;
+      }
+      img {
+        max-width: 100%;
+      }
+      code,
+      pre {
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+      pre {
+        overflow: auto;
+        padding: 1rem;
+        background: #f6f8fa;
+        border: 1px solid #d8dee3;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #d0d7de;
+        padding: 0.4rem;
+        vertical-align: top;
+      }
+      a {
+        color: #0969da;
+      }
+      .changelog-list {
+        margin-top: 1rem;
+        display: grid;
+        gap: 1rem;
+      }
+      .changelog-entry {
+        border: 1px solid #d0d7de;
+        padding: 0.75rem;
+        border-radius: 0.25rem;
+      }
+      .changelog-entry h3 {
+        margin: 0 0 0.5rem;
+        font-size: 1rem;
+      }
+      .changelog-entry p,
+      .changelog-entry ul {
+        margin: 0.35rem 0;
+      }
+      .changelog-entry ul {
+        padding-left: 1.15rem;
+      }
+      .changelog-entry li {
+        margin-bottom: 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Master Index — 規格總索引</h1>
+    <blockquote>
+      <p>
+        <strong>prophetica</strong> — 趣味預測娛樂遊戲平台 文件版本：v0.4.0 ·
+        最後更新：2026-05-20 · 維護人：Tech Lead
+      </p>
+      <p>
+        Legacy file
+        path：<code>specs/SPEC-000-index.html</code>；本文件不作為單一功能 SPEC
+        實作輸入。
+      </p>
+    </blockquote>
+    <hr />
+    <h2>0. 文件性質</h2>
+    <p>
+      本目錄下所有
+      <code>SPEC-*.html</code>
+      文件均為<strong>可實施規格</strong>（Implementable Specification），遵循
+      SDD（Spec-Driven Development）方法論。
+    </p>
     <ul>
-      <li><strong>SPEC-023 plan v0.1.0 → v0.1.1</strong>：採用 Option B 為目標架構；§3 新增 §3.1「現況拓撲（spike 收斂）」；§4 拓撲圖加 transitional 註記；§5.0 Phase 0 補上原本缺漏的 <strong>Task 0.7</strong>（apps/web BFF clients 改送 <code>Authorization: Bearer</code>）與 <strong>Task 0.8</strong>（未遷移內部 caller transition hardening），並更新 Task 0.3 / 0.5 dependency 與 Checkpoint Phase 0 為明確 cutover 順序（0.0 → 0.1 → 0.2 → 0.4 → 0.7 → 0.8 → 0.3 cutover → 0.5 attack-surface）。同步補入 INV-JOURNEY-2 公開唯讀 allowlist、Task 0.6 Phase 2/3 blocker 收斂、Task 3.3 + 4.9 landing/LIFF handoff 驗證。</li>
-      <li><strong>SPEC-014 v0.2.9 → v0.2.10</strong>：§6.1.2 末段新增 §6.1.2.1「現況與遷移路徑（Transitional state, 2026-05-19）」。明確 §6.1.2 描述為<strong>目標態</strong>；現況為 BFF-trust transitional state；遷移分三階段（caller credential migration → gateway JWT validation online → cutover + 攻擊面驗證）；關鍵順序不變式：階段 3 的 <code>x-user-id</code> strip 必須在所有 caller 完成階段 1 之後啟用，否則仍以裸 <code>x-user-id</code> 呼叫之 caller 將立即 401。Cutover 完成後 §6.1.2 全面生效，§6.1.2.1 可標記為 historical。</li>
-      <li><strong>SPEC-023 spec v0.1.2</strong>：補上實作計畫 v0.1.1 連結（spec 本體內容不變）。</li>
+      <li>每份 SPEC 都是 Codex 開發任務的輸入。</li>
+      <li>
+        所有實作 PR 必須在 description 中引用 <code>SPEC-XXX § N.N</code> 章節。
+      </li>
+      <li>任何 SPEC 變更須先提 PR 審閱，再進行對應實作。</li>
+      <li>SPEC 與 code 同步進入 git，不允許 SPEC 落後於程式碼。</li>
     </ul>
-    <p>同步更新 P1 表 SPEC-023 列摘要、跨章節表 SPEC-014 列版本與摘要。本輪所有變更為 spec / plan 對齊；未動程式碼。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-19 · v0.3.9 · Tech Lead</h3>
-    <p><strong>SPEC-023 v0.1.2 — 工程實作計畫落地</strong>：新增 <code>docs/implementation-plans/SPEC-023-player-onboarding-journey-implementation-plan.html</code> v0.1.0；SPEC-023 §1 補上計畫連結並 bump 版本。實作計畫分四個 phase：</p>
+    <h2>1. 專案定位</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>項目</th>
+          <th>內容</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>中文名稱</td>
+          <td>趣味預測競猜娛樂遊戲平台</td>
+        </tr>
+        <tr>
+          <td>英文代號</td>
+          <td>prophetica</td>
+        </tr>
+        <tr>
+          <td>法律分類</td>
+          <td>
+            <strong>娛樂遊戲服務</strong>（非博弈、非彩券、非衍生性金融商品）
+          </td>
+        </tr>
+        <tr>
+          <td>玩家行為</td>
+          <td>
+            以站內<strong>虛擬銅幣</strong>對未公開事件結果進行預測，與其他玩家撮合
+          </td>
+        </tr>
+        <tr>
+          <td>平台角色</td>
+          <td>
+            <strong>中立撮合平台</strong
+            >，僅收手續費，不持有合約倉位、不做造市商
+          </td>
+        </tr>
+        <tr>
+          <td>出金政策</td>
+          <td>
+            <strong>台灣司法管轄區內無任何出金通道</strong
+            >；銅幣僅可在站內使用，不可兌換外部資產 / 虛擬貨幣 / 實體商品
+          </td>
+        </tr>
+        <tr>
+          <td>主要市場</td>
+          <td>亞太娛樂用戶</td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>2. SPEC 清單</h2>
+    <h3>P0 — 必須在第一行 code 之前完成</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>標題</th>
+          <th>摘要</th>
+          <th>狀態</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="./SPEC-002-funds-safety.html">SPEC-002</a></td>
+          <td>資金安全與虛擬銅幣帳本</td>
+          <td>
+            雙簿記、隔離帳戶、對帳機制、Frozen 子科目、<strong
+              >INV-6 銅幣出口白名單（R-1，ADR-0006 落地，含 chargeback carve-out
+              v0.1.8、manual adjustment carve-out v0.1.9）</strong
+            >、MVP 手動銅幣調整、§9.3 最終一致性窗口（T-5）、Phase 1 monthly
+            partition（T-3）、<strong
+              >會員間轉點 / 贈點 peer_transfer（v0.1.12，Q-10；PendingTransfer
+              escrow + 24h pending、INV-6 part II carve-out 待 ADR-0006 v1.0.3
+              追認）</strong
+            >
+          </td>
+          <td>🟢 v0.1.12</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-003-matching-engine.html">SPEC-003</a></td>
+          <td>撮合引擎詳規</td>
+          <td>
+            Order Book、訂單類型、撮合演算法、API、SLO、<strong
+              >uid=4 sentinel 移除（R-2）</strong
+            >、§17.2 etcd-driven 市場路由（T-4）、§17.3 熱冷市場 thread model
+            分流（T-6）
+          </td>
+          <td>🟢 v0.2.3（Rust）</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-004-settlement-dispute.html">SPEC-004</a></td>
+          <td>結算與爭議處理</td>
+          <td>Oracle、結算狀態機、申訴窗口、batch 500 + off-peak（T-12）</td>
+          <td>🟢 v0.1.2</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-015-market-lifecycle.html">SPEC-015</a></td>
+          <td>市場生命週期管理</td>
+          <td>市場創建、上架審查、內容紅線、開盤排程、強制下架</td>
+          <td>🟢 v0.1.1</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-016-payment-gateway.html">SPEC-016</a></td>
+          <td>支付通路整合</td>
+          <td>
+            通路選型、Webhook、Chargeback ≥ 1 統一封號（H-5）、跨 Token、PCI
+            範圍
+          </td>
+          <td>🟢 v0.1.1</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-017-monorepo-bootstrap.html">SPEC-017</a></td>
+          <td>Monorepo Bootstrap &amp; Local Dev</td>
+          <td>
+            Repo 骨架、Docker Compose、Makefile、CI bootstrap、PR #1 acceptance
+            checklist、Mutation 門檻分階段（T-7）、CI runner
+            4-cores（T-8）、§11.3 PoC gating（T-9 / T-10）
+          </td>
+          <td>🟢 v0.2.8（Rust）</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>P1 — 必須在公開 Beta 之前完成</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>標題</th>
+          <th>摘要</th>
+          <th>狀態</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="./SPEC-005-kyc-aml.html">SPEC-005</a></td>
+          <td>KYC/AML 整合</td>
+          <td>
+            分層 KYC、SaaS 整合、制裁名單篩查、<strong
+              >§2.1.3 peer_transfer 准入規則（v0.1.6，Q-10）</strong
+            >
+          </td>
+          <td>
+            🟡 Backend Postgres wiring baseline done（2026-05-09）/ Frontend
+            主路徑 done（PR #2 merged）；blocker:
+            <a href="#cross-cutting-q9">Q-9</a> KYC provider sandbox · v0.1.6
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <a href="./SPEC-005a-kyc-provider-frontend-contract.html"
+              >SPEC-005a</a
+            >
+          </td>
+          <td>KYC provider 前端整合契約</td>
+          <td>
+            <code>KycIdentityProvider</code> 抽象、Tier 2 page state
+            machine、idempotency / polling / CSP 紀律
+          </td>
+          <td>
+            🟡 Frontend 主路徑 done（PR #2 merged 2026-05-09）；blocker:
+            <a href="#cross-cutting-q9">Q-9</a> KYC provider sandbox + iProov
+            real adapter · v0.1.2
+          </td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-007-observability.html">SPEC-007</a></td>
+          <td>可觀測性與監控</td>
+          <td>
+            Metrics/Log/Tracing、SLO、告警、<strong
+              >§6.4 跨服務 Latency Budget</strong
+            >（下單熱路徑 11 hop × P99 時間預算）
+          </td>
+          <td>🟢 v0.2.1 draft</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-008-disaster-recovery.html">SPEC-008</a></td>
+          <td>災備與高可用</td>
+          <td>
+            <strong>RTO/RPO 拆 region-local + cross-region 兩層（T-2）</strong
+            >、跨區備援、Failover 演練、§7 客戶端容錯可執行契約（v0.2.1
+            F-2）、§9.3 cross-ref SPEC-010 §9.3 MS-9（v0.2.1 F-1）
+          </td>
+          <td>🟢 v0.2.1</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-009-dmm-liquidity.html">SPEC-009</a></td>
+          <td>DMM 與流動性</td>
+          <td>
+            做市商計畫、API、rebate；<strong
+              >§5 冷啟動補貼整段移除（R-2）</strong
+            >
+          </td>
+          <td>🟢 v0.2.1（Rust）</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-010-security-antifraud.html">SPEC-010</a></td>
+          <td>安全與反作弊</td>
+          <td>
+            裝置指紋、行為分析、洗售偵測、<strong
+              >§9.3 Multi-sig 治理中央表</strong
+            >、EdDSA mobile PoC（T-9，PoC plan 落地）、sqlx 編譯時
+            SQL（H-4）、Chargeback ≥ 1（H-5）、<strong
+              >§4.2.5 peer_transfer 異常偵測 PT-1/2/3（v0.2.3，Q-10）</strong
+            >
+          </td>
+          <td>🟢 v0.2.3</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-012-customer-support.html">SPEC-012</a></td>
+          <td>客服與爭議升級</td>
+          <td>
+            公開 Beta 最低客服 SLA、KYC / 支付 / 結算爭議分流、帳本影響操作留痕
+          </td>
+          <td>🟢 v0.1.1（P1 launch gate）</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-013-cicd-release.html">SPEC-013</a></td>
+          <td>CI/CD 與發布</td>
+          <td>
+            Pipeline（SPEC-017 §8 超集，H-3）、Coverage 分層（H-6）、Feature
+            Flag、回滾；公開 Beta 前必須具備 prod release gate
+          </td>
+          <td>🟢 v0.2.1（P1 launch gate）</td>
+        </tr>
+        <tr>
+          <td>
+            <a href="./SPEC-018-auditability-evidence-pack.html">SPEC-018</a>
+          </td>
+          <td>稽核與合規證據化</td>
+          <td>
+            帳本與關鍵事件稽核、不可變更日誌、Evidence Pack
+            匯出；真實入金前必須具備最小證據鏈
+          </td>
+          <td>🟢 v0.1.0</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-019-incident-response-sre.html">SPEC-019</a></td>
+          <td>事件與事故回應</td>
+          <td>事故分級（S0~S3）、SLA、公告更新節奏、72 小時事故回顧</td>
+          <td>🟢 v0.1.0</td>
+        </tr>
+        <tr>
+          <td>
+            <a href="./SPEC-022-login-event-intelligence.html">SPEC-022</a>
+          </td>
+          <td>登入事件情報</td>
+          <td>
+            登入 IP、IP 推估地點、裝置資訊、可信 proxy
+            header、隱私保存、查詢權限與後續風控基礎事件
+          </td>
+          <td>🟢 v0.1.3</td>
+        </tr>
+        <tr>
+          <td>
+            <a href="./SPEC-023-player-onboarding-journey.html">SPEC-023</a>
+          </td>
+          <td>玩家入門與首次下單旅程</td>
+          <td>
+            landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 →
+            首次下單之旅程編排層：階段狀態機、跨頁重導向契約（<code
+              >return_to</code
+            >
+            / open redirect
+            防護）、門檻攔截規則、進場入口交接；範圍涵蓋完整旅程（含 KYC /
+            儲值門檻），僅 <code>apps/web</code>；下單最低 tier = Tier 1（與
+            SPEC-005 §2.1 對齊）；<a
+              href="../docs/implementation-plans/SPEC-023-player-onboarding-journey-implementation-plan.html"
+              >實作計畫</a
+            >
+            v0.1.1（Option B 邊緣 JWT 驗章為目標 + transitional state 收斂，含
+            Phase 0 Task 0.7 / 0.8 補強）
+          </td>
+          <td>🟢 v0.1.2</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>P2 — 公開 Beta 後 90 天內完成</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>標題</th>
+          <th>摘要</th>
+          <th>狀態</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="./SPEC-011-affiliate-commission.html">SPEC-011</a></td>
+          <td>代理分潤體系</td>
+          <td>
+            單層介紹費 + 交易佣金、業務 B2B
+            路徑（<strong>獨立法律關係，不從玩家錢包出口；R-1</strong>）、稅務扣繳、§4.1.2
+            延遲 30 天發放 + §4.6 月度 / 終身 / 群組上限（G-3 / G-8）、§4.7
+            代理信用評級與信用帳戶管控
+          </td>
+          <td>🟢 v0.2.4</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-020-analytics-reporting.html">SPEC-020</a></td>
+          <td>分析與報表</td>
+          <td>玩家/營運/風控報表、授權導出、版本化與留存規範</td>
+          <td>🟢 v0.1.0</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>跨章節文件</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>標題</th>
+          <th>摘要</th>
+          <th>狀態</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="./SPEC-014-tech-architecture.html">SPEC-014</a></td>
+          <td>整體技術架構</td>
+          <td>
+            服務拓撲、技術棧（Rust 1.85 / edition 2024，<strong
+              >ADR-0005 governance</strong
+            >）、Repo 結構、§3.2.1 Cloudflare Pages Edge runtime PoC（T-10，PoC
+            plan 落地）、§4.1 MVP 合併部署、§4.1.1 目前採
+            <code>services/_binaries/*</code> deployable entrypoints，保留 12
+            service crate lib 邊界並定義未來拆回 12-binary 條件、§6.1.2 Gateway
+            認證與 principal 傳遞契約（§6.1.2.1 transitional state +
+            三階段遷移路徑）
+          </td>
+          <td>🟢 v0.2.10</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>Public Beta Launch Gate（真實入金 / 公開 Beta 前必須全部通過）</h3>
+    <p>
+      本 gate 是跨 SPEC 的上線門檻；它不阻擋 PR #1 / 內部開發，但<strong
+        >阻擋公開 Beta、真實入金、真實下單與對外行銷</strong
+      >。任何一列未完成時，只能做 internal alpha / sandbox demo。
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Gate</th>
+          <th>阻擋條件</th>
+          <th>Required evidence</th>
+          <th>Owner</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>LG-1 Legal / licence</td>
+          <td>
+            SPEC-000 §5 Q-2 仍為 Pending；Op Co.
+            執照地、允許市場類型、玩家所在地限制未由執照地律師書面確認
+          </td>
+          <td>
+            Legal memo + jurisdiction decision + market category allow/deny
+            matrix
+          </td>
+          <td>Owner / Legal / Compliance</td>
+        </tr>
+        <tr>
+          <td>LG-2 Payment acquiring</td>
+          <td>
+            SPEC-000 §5 Q-4 仍為 Pending；至少一家支付通路未完成 MCC /
+            prediction-market 接受度、chargeback 條款、sandbox webhook、PCI SAQ
+            A 邊界驗證
+          </td>
+          <td>
+            Signed provider terms 或 LOI、sandbox webhook evidence、PCI scope
+            note、refund / chargeback drill log
+          </td>
+          <td>Owner / Finance / Backend</td>
+        </tr>
+        <tr>
+          <td>LG-3 KYC / AML production path</td>
+          <td>
+            SPEC-005 / SPEC-005a 尚未跑通真實 KYC provider 或替代 provider
+            sandbox；Tier 2 iframe、webhook HMAC、RED→freeze、PEP / sanctions
+            flow 未 E2E 驗證
+          </td>
+          <td>
+            Sandbox credential record、E2E test log、frontend
+            screenshot、webhook replay evidence
+          </td>
+          <td>Frontend / Backend / Compliance</td>
+        </tr>
+        <tr>
+          <td>LG-4 Platform PoC closure</td>
+          <td>
+            PoC-A EdDSA / LIFF 或 PoC-B Cloudflare Edge runtime live
+            verification 仍為 Pending，且未採用 fallback ADR
+          </td>
+          <td>
+            docs/poc/PRE-FLIGHT-POCS.md §3.5 / §4.4 completed，或 fallback ADR
+            accepted
+          </td>
+          <td>Frontend / Tech Lead</td>
+        </tr>
+        <tr>
+          <td>LG-5 Release safety</td>
+          <td>
+            SPEC-013 minimum prod release gate 未完成：feature flag、canary /
+            rollback、migration rollback、secret scan、prod approval MS-12
+          </td>
+          <td>
+            Staging release run, rollback drill, CI run URL, approval audit log
+          </td>
+          <td>SRE / Tech Lead</td>
+        </tr>
+        <tr>
+          <td>LG-6 Support / incident / audit</td>
+          <td>
+            SPEC-012 / SPEC-018 / SPEC-019
+            最小上線子集未完成：客服入口、事故公告節奏、帳本 / 支付 / KYC
+            evidence pack、S0/S1 runbook
+          </td>
+          <td>
+            Support queue URL, incident drill, evidence export sample, P0/S0
+            runbook links
+          </td>
+          <td>Operations / SRE / Compliance</td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>3. 全域名詞表（Glossary）</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>名詞</th>
+          <th>中文</th>
+          <th>定義</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Market</td>
+          <td>市場 / 合約</td>
+          <td>一個可預測的未公開事件，含 YES/NO 兩個 Outcome</td>
+        </tr>
+        <tr>
+          <td>Outcome</td>
+          <td>結果腿</td>
+          <td>市場的兩種結果之一（YES 或 NO）</td>
+        </tr>
+        <tr>
+          <td>Order</td>
+          <td>訂單</td>
+          <td>玩家對某個 Outcome 在特定價格下單的意圖</td>
+        </tr>
+        <tr>
+          <td>Trade</td>
+          <td>成交</td>
+          <td>兩張對手方訂單撮合形成的交易紀錄</td>
+        </tr>
+        <tr>
+          <td>Position</td>
+          <td>持倉</td>
+          <td>玩家在某個 Outcome 上的累計持有股數</td>
+        </tr>
+        <tr>
+          <td>Settlement</td>
+          <td>結算</td>
+          <td>市場到期後依官方判定結果，將持倉轉為銅幣</td>
+        </tr>
+        <tr>
+          <td>Tick</td>
+          <td>最小價格單位</td>
+          <td>1 cent（0.01 銅幣）</td>
+        </tr>
+        <tr>
+          <td>Lot</td>
+          <td>最小數量單位</td>
+          <td>1 股 = 1 銅幣面額</td>
+        </tr>
+        <tr>
+          <td>Points</td>
+          <td>站內銅幣</td>
+          <td>玩家儲值購買的虛擬遊戲銅幣，<strong>不可兌回外部資產</strong></td>
+        </tr>
+        <tr>
+          <td>Gold Token</td>
+          <td>金幣</td>
+          <td>平台主要入金與計價 Token，用於儲值門檻、限額與對帳基準。</td>
+        </tr>
+        <tr>
+          <td>Silver Token</td>
+          <td>銀幣</td>
+          <td>
+            跨區、合規門檻與大型營運預算的參照 Token，不使用外部法定幣名稱。
+          </td>
+        </tr>
+        <tr>
+          <td>Copper Token</td>
+          <td>銅幣</td>
+          <td>
+            站內遊戲、交易、獎勵與結算使用的玩家錢包 Token，不可兌回外部資產。
+          </td>
+        </tr>
+        <tr>
+          <td>DMM</td>
+          <td>Designated Market Maker</td>
+          <td>受邀的外部做市商</td>
+        </tr>
+        <tr>
+          <td>KYC</td>
+          <td>Know Your Customer</td>
+          <td>客戶身份驗證</td>
+        </tr>
+        <tr>
+          <td>AML</td>
+          <td>Anti-Money Laundering</td>
+          <td>反洗錢機制</td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>4. 變更紀錄</h2>
+    <section class="changelog">
+      <div class="changelog-list">
+        <article class="changelog-entry">
+          <h3>2026-05-20 · v0.4.0 · Tech Lead</h3>
+          <p>
+            <strong
+              >Option B 邊緣 JWT 驗章為目標架構 + transitional state
+              收斂</strong
+            >：spike 發現現況為 BFF-trust transitional state（<code
+              >apps/web</code
+            >
+            自簽 HMAC cookie <code>proph_session</code> + 另存
+            <code>proph_user_service_session</code>，呼叫 gateway 時送裸
+            <code>x-user-id</code>，gateway 不驗章）。決議 Option B
+            為目標架構（gateway 邊緣 JWT 驗章），明確寫成 target + transitional
+            plan、不假裝現況已是 B。理由：(i) 旅程入口規格不應把未來 client
+            鎖死在 BFF-only（SPEC-023 已含未來 native / LIFF 內嵌）；(ii)
+            gateway 是外部 API principal 權威邊界，長期信任裸
+            <code>x-user-id</code> 是錯誤安全邊界；(iii) 「gateway
+            永遠私網」前提脆弱，infra 演進易破；(iv) user-service JWT + JWKS
+            基礎已存在，Option B 是「轉送既有
+            token」而非導入新身份系統。本輪閉環：
+          </p>
+          <ul>
+            <li>
+              <strong>SPEC-023 plan v0.1.0 → v0.1.1</strong>：採用 Option B
+              為目標架構；§3 新增 §3.1「現況拓撲（spike 收斂）」；§4 拓撲圖加
+              transitional 註記；§5.0 Phase 0 補上原本缺漏的
+              <strong>Task 0.7</strong>（apps/web BFF clients 改送
+              <code>Authorization: Bearer</code>）與
+              <strong>Task 0.8</strong>（未遷移內部 caller transition
+              hardening），並更新 Task 0.3 / 0.5 dependency 與 Checkpoint Phase
+              0 為明確 cutover 順序（0.0 → 0.1 → 0.2 → 0.4 → 0.7 → 0.8 → 0.3
+              cutover → 0.5 attack-surface）。同步補入 INV-JOURNEY-2 公開唯讀
+              allowlist、Task 0.6 Phase 2/3 blocker 收斂、Task 3.3 + 4.9
+              landing/LIFF handoff 驗證。
+            </li>
+            <li>
+              <strong>SPEC-014 v0.2.9 → v0.2.10</strong>：§6.1.2 末段新增
+              §6.1.2.1「現況與遷移路徑（Transitional state, 2026-05-19）」。明確
+              §6.1.2 描述為<strong>目標態</strong>；現況為 BFF-trust
+              transitional state；遷移分三階段（caller credential migration →
+              gateway JWT validation online → cutover +
+              攻擊面驗證）；關鍵順序不變式：階段 3 的
+              <code>x-user-id</code> strip 必須在所有 caller 完成階段 1
+              之後啟用，否則仍以裸 <code>x-user-id</code> 呼叫之 caller 將立即
+              401。Cutover 完成後 §6.1.2 全面生效，§6.1.2.1 可標記為
+              historical。
+            </li>
+            <li>
+              <strong>SPEC-023 spec v0.1.2</strong>：補上實作計畫 v0.1.1
+              連結（spec 本體內容不變）。
+            </li>
+          </ul>
+          <p>
+            同步更新 P1 表 SPEC-023 列摘要、跨章節表 SPEC-014
+            列版本與摘要。本輪所有變更為 spec / plan 對齊；未動程式碼。
+          </p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-19 · v0.3.9 · Tech Lead</h3>
+          <p>
+            <strong>SPEC-023 v0.1.2 — 工程實作計畫落地</strong>：新增
+            <code
+              >docs/implementation-plans/SPEC-023-player-onboarding-journey-implementation-plan.html</code
+            >
+            v0.1.0；SPEC-023 §1 補上計畫連結並 bump 版本。實作計畫分四個 phase：
+          </p>
+          <ul>
+            <li>
+              <strong>Phase 0</strong> — Gateway 認證接縫（SPEC-014 §6.1.2
+              落地）：JWKS 驗章、principal header 注入 + 外部同名 header
+              剝除、結構化 401 / 403。
+            </li>
+            <li>
+              <strong>Phase 1</strong> — Web 旅程 middleware：session
+              讀取、受保護路徑導向、<code>return_to</code> same-origin 強制。
+            </li>
+            <li>
+              <strong>Phase 2</strong> — 下單前置門檻：gateway 對 KYC tier ≥
+              TIER_1 與可動用餘額 ≥ 訂單成本做強制；<code>GET /v1/markets</code>
+              透過 gateway 暴露；trade panel soft check + 多重門檻順序攔截。
+            </li>
+            <li>
+              <strong>Phase 3</strong> — MVP topup 服務協助
+              UI；訪客唯讀瀏覽公開市場頁的驗收。
+            </li>
+            <li>
+              <strong>Phase 4</strong> — E2E：happy
+              path、三種攔截、多重門檻、訪客瀏覽、open redirect
+              拒絕、後端強制（繞過前端）。
+            </li>
+          </ul>
+          <p>同步更新 P1 表 SPEC-023 列版本與摘要（加入實作計畫連結）。</p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-19 · v0.3.8 · Tech Lead</h3>
+          <p>
+            <strong>SPEC-023 v0.1.1 — Open Questions 收斂</strong>：v0.1.0 §13
+            的 5 個 open questions（OQ-1 至 OQ-5）對齊 SPEC-005 §2.1 與
+            <code>apps/web/messages/zh-Hant.json</code> 後全數收斂：
+          </p>
+          <ul>
+            <li>
+              <strong>OQ-1</strong>：下單所需最低 KYC tier 為
+              <strong>Tier 1</strong>（非 Tier 2）；Tier 2 / Tier 3
+              為儲值上限升級與 EDD，不是下單入場閘門。既有
+              <code>apps/web</code> KYC 文案與此結論一致，無需修改。
+            </li>
+            <li>
+              <strong>OQ-2</strong>：MVP 階段
+              <code>/topup</code> 必須呈現服務協助訊息、不得渲染真實支付
+              CTA，LG-2 通過後再切換為 SPEC-016 通路選擇 UI。
+            </li>
+            <li>
+              <strong>OQ-3</strong
+              >：訪客可唯讀瀏覽公開市場列表、市場詳情、訂單簿與近期成交（SPEC-005
+              §2.1 Tier 0）。
+            </li>
+            <li>
+              <strong>OQ-4</strong>：<code>return_to</code> same-origin 強制由
+              <code>apps/web</code> 中介層執行，api-gateway 不負責語意驗證。
+            </li>
+            <li>
+              <strong>OQ-5</strong>：Email 驗證屬 Tier 1 流程內項目（SPEC-005
+              §2.1），不是 S1 → S2 之閘門。
+            </li>
+          </ul>
+          <p>
+            <strong>OQ-6</strong>（旅程事件與 SPEC-020 漏斗整合）保留為
+            Open，但收斂方向確定為「事件來源為 server 端紀錄、分類學由 SPEC-020
+            定義」。同步更新 P1 表 SPEC-023 列版本與摘要。本輪未變更 SPEC-014。
+          </p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-19 · v0.3.7 · Tech Lead</h3>
+          <p>
+            <strong
+              >新增 SPEC-023 玩家入門旅程 + SPEC-014 §6.1.2 gateway
+              認證契約</strong
+            >：landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 →
+            首次下單之端到端旅程原先分散於 SPEC-021 / 022 / 005 / 016 / 015 /
+            003，無單一 owner。本輪閉環如下：
+          </p>
+          <ul>
+            <li>
+              新增
+              <strong>SPEC-023</strong
+              >「玩家入門與首次下單旅程」（P1）作為旅程編排層，定義階段狀態機、跨頁重導向契約、門檻攔截規則與進場入口交接。範圍為完整旅程（含
+              KYC / 儲值門檻），僅涵蓋 <code>apps/web</code>；LIFF
+              目前僅負責把使用者帶到 landing page，不在本旅程承載註冊 / 登入 /
+              下單。SPEC-023 不重寫各零件機制，KYC / 支付 / 撮合分別以 SPEC-005
+              / 016 / 003 為權威。
+            </li>
+            <li>
+              <strong>SPEC-014 bump 至 v0.2.9</strong>：§6.1 新增
+              §6.1.2「Gateway 認證與 principal 傳遞契約」，把 §4 服務表中
+              api-gateway 的「認證」職責具體化為可實作契約——gateway 自驗 session
+              token（user-service JWKS）、注入 <code>x-user-id</code> 等
+              principal header、剝除外部 client 傳入的同名 header。對應現行
+              <code>AuthContext</code> 直接讀取未驗證
+              <code>x-user-id</code> header 之缺陷，亦為 SPEC-023
+              旅程認證接縫的權威來源。
+            </li>
+            <li>
+              同步更新 P1 表（新增 SPEC-023 列）與跨章節表（SPEC-014
+              版本與摘要）。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-12 · v0.3.6 · Tech Lead</h3>
+          <p>
+            <strong>SPEC-011 affiliate credit governance alignment</strong
+            >：SPEC-011 v0.2.4 新增
+            §4.7，明確平台官方管理員可調整簽約代理信用評級，並可增加、限制、暫停或撤銷代理可提供的信用帳戶數量、狀態與限額；所有信用管控變更必須寫入操作留痕。同步更新
+            P2 表摘要與版本。
+          </p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-11 · v0.3.5 · Tech Lead</h3>
+          <p>
+            <strong>SPEC-002 MVP manual points implementation alignment</strong
+            >：SPEC-002 v0.1.9 新增
+            <code>manual_points_adjustment</code>
+            作為尚未啟用真實儲值前的授權調點路徑，admin / manager
+            可查詢、增加、扣除會員銅幣，affiliate 僅能增加銅幣；所有操作必須
+            delta-only 並寫入 <code>audit_logs</code>。本檔同步更新 P0
+            表摘要與版本；ADR-0006 v1.0.2 追認 INV-6
+            <code>Expense.ManualPointsGrant</code> carve-out。
+          </p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-09 · v0.3.4 · Tech Lead</h3>
+          <p>
+            <strong>Post-PR #2 status realignment</strong>：PR #1（SPEC-008 DR +
+            governance kill switch，merged 2026-05-08）/ PR #2（SPEC-005a KYC
+            provider 前端骨架，stacked on PR #1，merged 2026-05-09）皆 merged
+            後，本檔 P1 表對 SPEC-005 / SPEC-005a 之狀態與版本與實際 SPEC 文件
+            drift。本輪閉環如下：
+          </p>
+          <ul>
+            <li>
+              <strong>SPEC-005</strong> P1 列從「⚠️ Backend in-memory contract /
+              P0 follow-up · v0.1.3」更新為「🟡 Backend Postgres wiring 待 P0
+              sprint / Frontend 主路徑 done · v0.1.4」反映 SPEC-005 plan v0.1.5
+              §0 之實作狀態 + PR #2 frontend 落地；SPEC-005 spec 本檔 v0.1.4
+              status 行 wording 同步精修（status emoji ⚠️ → 🟡、real iframe
+              blocker 指向 Q-9），未 bump SPEC 版本；
+            </li>
+            <li>
+              <strong>SPEC-005a</strong> P1 列從「⚠️ Contract draft ·
+              v0.1.0」更新為「🟡 Frontend 主路徑 done（PR #2 merged）；blocker:
+              Q-9 KYC provider sandbox + iProov real adapter · v0.1.2」反映 PR
+              #2 已交付 §2 / §5.2.1 / §6.1 / §7.3 / §8 / §10 / §11.2 之 frontend
+              實作；
+            </li>
+            <li>
+              <strong>§5 新增 Q-9</strong>「KYC provider sandbox credentials
+              採購」為 LG-3（KYC production path）+ LG-4（PoC-B Cloudflare Edge
+              live verification）之共同單點瓶頸；採購清單包含 tenant
+              credentials、webhook signing secret、Tier 2/3 applicant
+              levels、iProov liveness add-on、staging webhook URL
+              allow-list；Owner / Compliance 可走直接採購、vendor sandbox
+              evaluation 或 fallback provider evaluation 三條路徑；
+            </li>
+            <li>
+              對應
+              <code
+                >docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html</code
+              >
+              §0 同步精煉，「Frontend 待完成」改為「Frontend 主路徑已落地（PR
+              #2）」+「Frontend 剩餘工作（blocked on Q-9 採購）」雙段，避免後續
+              reviewer 誤判 frontend 進度。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-09 · v0.3.3 · Tech Lead</h3>
+          <p>
+            <strong>Launch readiness gate 補強</strong>：新增 §2 Public Beta
+            Launch Gate（LG-1 ~ LG-6），明確區分「不阻擋內部開發」與「阻擋公開
+            Beta / 真實入金 / 真實下單」之門檻；Q-2 / Q-4 待動作改為公開 Beta
+            blocker；SPEC-012 / SPEC-013 / SPEC-018 從 P2 上移至 P1 launch
+            gate；SPEC-011 狀態對齊 v0.2.3。同步修復 HTML 產物 drift：SPEC-003
+            亂碼重生、過期 Markdown 副檔名敘述改為 HTML 副檔名。
+          </p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-07 · v0.3.2 · Tech Lead</h3>
+          <p>
+            <strong
+              >SPEC-011 v0.2.1 pre-implementation gap closure（G-1 ~
+              G-8）</strong
+            >：Tech Lead 對 SPEC-011 v0.2.0 進行落地前審視，發現合規層（§2 /
+            §6）成熟但落地細節有 8 個技術 gap 將導致 Codex 動工後 PR
+            退回。本輪閉環如下：
+          </p>
+          <ul>
+            <li>
+              <strong>G-1</strong> §3.2 推薦碼演算法釘死：BLAKE3 6-byte hex（12
+              chars）+ Crockford Base32 4-char random + collision retry 5 次；
+            </li>
+            <li>
+              <strong>G-2</strong> §3.3.1 親屬偵測升級為 SPEC-010 §4.2.1
+              <code>user_link_score</code> 子規則
+              <code>affiliate_kinship_link</code>，含 6 條偵測特徵 / 權重 + 雙重
+              gate（註冊前 / 發放前）+ Compliance MS-4 4-eye 裁決；
+            </li>
+            <li>
+              <strong>G-3</strong> §4.1 達標獎勵改為<strong
+                >延遲 30 天發放</strong
+              >模型，徹底繞開 INV-6 clawback 衝突（從未發放 → 無物可追回）；
+            </li>
+            <li>
+              <strong>G-4</strong> §4.2 交易佣金獨立每日批次 txn +
+              <code>commission_accruals</code> staging 表，trade transaction
+              entry 維持 SPEC-002 §4.4.3 兩條不變；
+            </li>
+            <li>
+              <strong>G-5</strong> §4.4 chargeback 反沖細化：介紹獎勵走 G-3
+              延遲路徑無需
+              clawback；持續佣金封號自動停止；封號前已支付佣金<strong>不追回</strong>（保善意第三方
+              + 不破 INV-6 + cost &lt; CAC 可吸收）；
+            </li>
+            <li>
+              <strong>G-6</strong> §4.5 ledger entry 補 sign convention
+              cross-ref SPEC-002 §4.3 direction =±1 規則；
+            </li>
+            <li>
+              <strong>G-7</strong> §5.1 「推薦樹」用詞改為「推薦清單（flat
+              list）」避免暗示 MLM；
+            </li>
+            <li>
+              <strong>G-8</strong> §4.6 推薦獎勵上限：月度 20 個介紹 / 終身 200
+              個 / 月度佣金 金幣 50k / 同 IP-fingerprint 群組合併計算，超出進
+              EDD 4-eye review。§9 驗收條件由原 7 項擴充為 9.1 後端（9 項，Codex
+              owner）+ 9.2 前端（3 項，Tech Lead owner）+ 9.3 跨 SPEC 依賴（2
+              項）+ 9.4 法律 / 業務（2 項）。§10 OQ #1 標 Resolved，新增 OQ
+              #6（上限調整 governance）。本檔 §5 新增 Q-8
+              跨檔決策追蹤條目（v0.2.1 8 個 gap 之 single source of
+              truth）。SPEC-011 「依賴」由 4 份擴增為 5 份（加
+              SPEC-016）。SPEC-011 v0.2.0 → v0.2.1。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-07 · v0.3.1 · Tech Lead</h3>
+          <p><strong>SPEC-008 v0.2.1 patch（F-1 ~ F-5 縫補）</strong>：</p>
+          <ul>
+            <li>
+              <strong>F-1 governance drift fix</strong>：§9.3 Kill switch
+              解除明示 cross-ref SPEC-010 §9.3 <strong>MS-9</strong>，禁止 admin
+              UI 為 MS-9 自刻流程（單一 multi-sig component 原則）；
+            </li>
+            <li>
+              <strong>F-2 客戶端容錯契約化</strong>：§7.1 / §7.2 / §7.3 / §7.4
+              由描述性敘述升級為可執行技術契約 — WS reconnect（500ms / 倍率 2.0
+              / jitter ±20% / cap 30s / max 30 attempts / heartbeat 15s）+
+              Idempotency-Key（UUID v7）+ Reconcile（per-subscription monotonic
+              seq + 60s tail）+ Fail-soft 模式（polling 降級 + disable 下單 +
+              手動重試）+ retry budget 反 pattern 警示（呼應 SPEC-007 §6.4.4）；
+            </li>
+            <li>
+              <strong>F-3 stale OQ 清理</strong>：§13 OQ
+              #5「監管最低備份保留期」標 Resolved；
+            </li>
+            <li>
+              <strong>F-4 Redis 邊界釐清</strong>：§5.2 補 inline 註明「Lock /
+              Idempotency 落 PG，<strong>不</strong>存 Redis」呼應 SPEC-002
+              §6.1；
+            </li>
+            <li>
+              <strong>F-5 future-proof</strong>：§3.1 區域佈局圖補 Cloudflare
+              Edge runtime（PoC-B）fallback semantics 待回填；
+            </li>
+            <li>
+              <strong>前端落地</strong
+              >：<code>apps/web/lib/idempotency.ts</code>（UUID v7 +
+              withIdempotencyKey）+
+              <code>apps/web/lib/ws-client.ts</code>（reconnecting WebSocket +
+              reconcile）+
+              <code>apps/web/components/connection-status-banner.tsx</code
+              >（單一 banner 對應 §7.3 fail-soft 與 §9.2 HALTED 兩態）；對應
+              unit tests 跑 <code>node:test</code> 通過 +
+              <code>tsc --noEmit</code> 過。SPEC-008 v0.2.0 → v0.2.1。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-07 · v0.3.0 · Tech Lead</h3>
+          <p>
+            <strong>PoC artifacts 落地 round 8</strong>（最後 pre-flight
+            工程準備）：
+          </p>
+          <ul>
+            <li>
+              <strong>PoC-A（EdDSA / LIFF）</strong>：建立
+              <a href="../docs/poc/eddsa/"><code>docs/poc/eddsa/</code></a> —
+              <code>README.md</code>（playbook + desk research + acceptance +
+              dual-algo 退路）/ <code>check-support.html</code>（Web Crypto
+              Ed25519 三項 standalone 檢測）/
+              <code>server-token-sample.rs</code>（Rust + jsonwebtoken 0.9 EdDSA
+              token issue + verify reference，含 cookie HTTP-only / SameSite=Lax
+              配置）。Desk research 結論：iOS Safari 17+ / Android Chrome /
+              Cloudflare Workers / 各 mobile JWT lib 皆支援 Ed25519；LIFF
+              webview engine ≈ host Safari/Chrome；舊裝置（iOS 15- / Android
+              9-）為已知風險點需實機驗證。
+            </li>
+            <li>
+              <strong>PoC-B（Cloudflare Edge runtime）</strong>：建立
+              <a href="../docs/poc/edge-runtime/"
+                ><code>docs/poc/edge-runtime/</code></a
+              >
+              — <code>README.md</code>（5 場景 playbook + desk research +
+              acceptance + 退路矩陣）/ <code>scenarios.md</code>（5 場景之
+              minimal Next.js 15 code snippets：KYC iframe + WebSocket fan-out +
+              Server Actions + fetch behaviour + env / secret binding）。Desk
+              research 結論：A/B/D/E preliminary pass；C 部分風險（某些 SaaS SDK
+              之 Node.js API 依賴會在 Edge runtime build fail）。
+            </li>
+            <li>
+              <strong>PRE-FLIGHT-POCS.md v1.0 → v1.1</strong>：status 從 🟡
+              Pending 升級為 🟢 Desk Research Done · 🟡 Live Verification
+              Pending；§3.5 / §4.4 結構化回填欄位（Step / Scenario × ☐ Pass/Fail
+              checkbox + 失敗時 offending 標記）。
+            </li>
+            <li>
+              PoC 執行成本評估：PoC-A ~ 半天 + 1 LIFF channel + 2 phones；PoC-B
+              ~ 1-2 天 + 1 Cloudflare Pages preview + ngrok。
+            </li>
+            <li>
+              <strong>PR #1 開發路徑解鎖</strong>：用戶可在 PR #1 開發期間並行跑
+              live PoC；artifacts 已就緒消除「PoC 阻塞」之 critical path。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-07 · v0.2.9 · Tech Lead</h3>
+          <p>
+            <strong>程式碼 ↔ SPEC 同步收斂 round 7</strong>（agent 驗證 →
+            R-1/R-2 補齊 + 殘餘 gap 對齊）：
+          </p>
+          <ul>
+            <li>
+              <strong>R-1/R-2 程式碼補齊</strong>（commit
+              <code>430643c</code>）：sentinel 重構為 sorted const slice +
+              <code>RESERVED_REMOVED_USER_IDS</code>、INV-6 application validate
+              + DB CONSTRAINT TRIGGER 雙層、CI sentinel-scan job 補 R-1/R-2 grep
+              gate、CI runner 切
+              <code>ubuntu-latest-4-cores</code>、KUMO_NPM_TOKEN
+              殘留移除、cargo-mutants 門檻調 60；87 unit tests pass / clippy
+              clean / fmt clean；INV-6 chargeback carve-out 補正（SPEC-002
+              v0.1.8、ADR-0006 v1.0.1）。
+            </li>
+            <li>
+              <strong>SPEC-005 §0 標記降級</strong>：v0.1.2「✅ Complete」→
+              v0.1.3「⚠️ Backend Complete / Frontend Pending KYC provider
+              Integration」；新增 §0.1 backend 已完成清單、§0.2 待完成清單（KYC
+              provider iframe / Tier 2/3 OCR / batch scheduler / income stale /
+              EdDSA PoC）、§0.3 PR #1 acceptance 條件。SDD 紀律：spec
+              反映現況，不誤導 Compliance。
+            </li>
+            <li>
+              <strong><code>.env.example</code> sweep</strong>：移除殘留
+              <code>KUMO_NPM_TOKEN=</code>（v0.2.3 erratum 後不需要）、補
+              observability port（PROMETHEUS / GRAFANA / TEMPO_OTLP_GRPC / LOKI
+              / MAILHOG SMTP+UI）、補 frontend port（WEB / ADMIN / LIFF）、補
+              <code>NEXT_PUBLIC_LIFF_ID</code>、補檔頭註記 SPEC-017 §7.1 /
+              SPEC-010 §3.3 / Vault sidecar 警示。
+            </li>
+            <li>
+              <strong>SPEC-014 §4.1.1 對齊現況</strong>：紀錄 round 7
+              程式碼驗證結果「當前採 12-binary 拓撲」+ 採 12-binary 之
+              acceptance 補強（PR description 須宣告 latency budget 壓測承諾）+
+              §4.1.1.1 轉 7-binary 之 4 條觸發條件 + 簡述轉換流程；SPEC-014
+              v0.2.5 → v0.2.6。
+            </li>
+            <li>
+              Agent 驗證澄清：admin / liff stub 對 SPEC-017 §6.3
+              acceptance（health route + middleware + LIFF init +
+              fail-fast）已落地；apps/web/app/api/health/route.ts 已存在（agent
+              之前誤報）。版本 bump：SPEC-002 v0.1.7 → v0.1.8、SPEC-005 v0.1.2 →
+              v0.1.3、SPEC-014 v0.2.5 → v0.2.6；ADR-0006 v1.0 → v1.0.1。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-07 · v0.2.8 · Tech Lead</h3>
+          <p>
+            <strong>動工前最後兩件 round 6</strong>（ADR-0005 retroactive + PoC
+            plan 文件化）：
+          </p>
+          <ul>
+            <li>
+              <strong>ADR-0005 新增（Accepted, retroactive）</strong>：補做
+              SPEC-014 v0.2.0「後端 Go → Rust」切換之 governance ADR。涵蓋
+              driver（GC pause / 不變式型別化 / 業界對標 Kalshi）、4 個
+              considered options（維持 Go / Rust+Go 混搭 / 全 Rust / C++ hot
+              path）、為何選全 Rust 之具體論證（單語言 SDK 維運成本 &lt; CRUD
+              borrow checker 成本）、Negative consequences 與 Mitigation
+              Plan、Notes for Codex 6 條紀律。SPEC-014 §3.1 v0.2.0 變更說明補
+              cross-ref 至 ADR-0005；SPEC-014 v0.2.4 → v0.2.5。
+            </li>
+            <li>
+              <strong>PoC plan 文件落地</strong>：建立
+              <a href="../docs/poc/PRE-FLIGHT-POCS.md"
+                ><code>docs/poc/PRE-FLIGHT-POCS.md</code></a
+              >，涵蓋 PoC-A（EdDSA / LIFF SDK 三步驟驗證 + 退路）+
+              PoC-B（Cloudflare Edge runtime 5 場景驗證 + 退路）+ §5 PoC 完成後
+              SPEC 回填規則 + §6 失敗 escalation 流程；SPEC-010 §3.1.2 /
+              SPEC-014 §3.2.1 補 cross-ref；SPEC-017 §11.3 新增 PoC
+              gating（2026-05-09 v0.3.3 後校準為 launch acceptance gate，不阻擋
+              PR #1 / internal alpha，但阻擋公開 Beta / 真實入金 / prod
+              deployment）；SPEC-010 v0.2.1 → v0.2.2、SPEC-017 v0.2.5 → v0.2.6。
+            </li>
+            <li>
+              ADR README 索引補 ADR-0005。本輪後<strong
+                >所有動工前清單已 closed</strong
+              >：兩條紅線清除（R-1 / R-2）+ 跨檔一致性（H-1~H-6）+
+              跨檔治理（M-1, M-3, multi-sig 中央表）+ 12
+              個技術風險點（T-1~T-12）+ ADR-0001 §6 patch + ADR-0005 retroactive
+              + ADR-0006 INV-6 + PoC plan 文件化。Codex 拿到 SPEC + ADR + PoC
+              plan 即可依 SPEC-017 §11.3 跑 PoC，PoC 通過後依 §11.2 開 PR #1。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-07 · v0.2.7 · Tech Lead</h3>
+          <p>
+            <strong>動工前剩餘待辦清除 round 5</strong>（ADR governance + T-1 ~
+            T-8 落地）：
+          </p>
+          <ul>
+            <li>
+              <strong>ADR-0001 v1.0.2</strong>：§6「唯一例外」carve-out
+              撤除（連動 R-2），補 <code>probability_symmetry</code> /
+              <code>auto_hedge</code> 禁字；
+            </li>
+            <li>
+              <strong>ADR-0006 新增（Accepted）</strong>：擴展 ADR-0003 §5 INV
+              集合 INV-1 ~ INV-5 → INV-1 ~ INV-6，正式 governance 追認
+              INV-2/INV-4 含 Frozen 子科目（v0.1.1 SPEC drift 補正），新增 INV-6
+              outflow whitelist（連動 R-1）+ plpgsql trigger template +
+              application/DB/CI 三層保護；
+            </li>
+            <li>
+              <strong>ADR-0003 v1.0.3</strong>：§5 標 partial superseded by
+              ADR-0006；
+            </li>
+            <li>
+              <strong>ADR README</strong>：索引補 ADR-0006，ADR-0001 / ADR-0003
+              狀態加註修訂；
+            </li>
+            <li>
+              <strong>T-1 service 拓撲</strong>：SPEC-014 §4.1 advisory 建議 MVP
+              7-binary 合併部署（保留 12 service crate 結構），DAU &gt; 5k
+              後再拆；
+            </li>
+            <li>
+              <strong>T-2 RPO 拆兩層</strong>：SPEC-008 §2 RTO/RPO 表 RPO
+              拆「region-local（synchronous standby + WAL fdatasync + Kafka
+              acks=all → RPO=0）」+「cross-region（async streaming → RPO ≤
+              5s）」；新增 §2.1/§2.2 三重保證 + SLA 邊界；SPEC-008 v0.1.0 →
+              v0.2.0；
+            </li>
+            <li>
+              <strong>T-3 partition 策略修正</strong>：SPEC-002 §12 OQ #2
+              改為「Phase 1 從 day 1 即 monthly partition by
+              <code>created_at</code> (pg_partman) + BRIN + cold
+              detach」，撤銷原「不分區後 migrate」設計；
+            </li>
+            <li>
+              <strong>T-4 hostNetwork 路由</strong>：SPEC-003 §17.2 落地
+              etcd-driven consistent hash routing（24 virtual nodes）+ 5
+              種觸發場景 + 跨服務銜接 + MVP-Scale-up-Scale-out 演進；
+            </li>
+            <li>
+              <strong>T-5 最終一致性窗口</strong>：SPEC-002 §9.3 明示 ~100ms
+              eventual consistency 語意 + 前端 optimistic UI + 後端
+              <code>?at_seq=N</code> / <code>?consistent=true</code> API + OTel
+              監控；
+            </li>
+            <li>
+              <strong>T-6 Thread model 分流</strong>：SPEC-003 §17.3
+              落地「熱市場（前 5%）獨佔 node + current_thread + core
+              pinning」vs「冷市場 multiplex + multi-thread + work-stealing」+
+              動態升降級 + 兩 binary 拆分；
+            </li>
+            <li>
+              <strong>T-7 Mutation 門檻分階段</strong>：SPEC-017 §3.3 R-4
+              改為「MVP 60% 起步、每季 +5%、6 個月達 75%」；
+            </li>
+            <li>
+              <strong>T-8 CI runner</strong>：SPEC-017 §11.2.10 預設改
+              <code>ubuntu-latest-4-cores</code>（&lt; 15 min cold
+              cache），standard 2-core fallback。版本 bump：SPEC-002 v0.1.6 →
+              v0.1.7、SPEC-003 v0.2.2 → v0.2.3、SPEC-008 v0.1.0 →
+              v0.2.0、SPEC-014 v0.2.3 → v0.2.4、SPEC-017 v0.2.4 →
+              v0.2.5；ADR-0001 v1.0.1 → v1.0.2、ADR-0003 v1.0.2 →
+              v1.0.3、ADR-0006 首版 v1.0 Accepted。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-07 · v0.2.6 · Tech Lead</h3>
+          <p>
+            <strong>技術可實現性收斂 round 4</strong>（T-9 ~ T-12 + H-3 ~ H-6 +
+            新增 latency budget SPEC）：
+          </p>
+          <ul>
+            <li>
+              <strong>T-12 Settlement batch</strong>：SPEC-004 §7.4 batch size
+              1000 → 500 + 新增 §7.5 強制 off-peak 排程（UTC 18-22 / 台北
+              02-06），降低 transaction window 與撮合 ledger worker lock
+              contention；SPEC-004 v0.1.1 → v0.1.2。
+            </li>
+            <li>
+              <strong>T-11 SLO 表補漏 + 新增 §6.4 Latency Budget</strong
+              >：SPEC-007 §6.1 補 wallet-ledger / market-service 兩個 P0 service
+              SLO；Matching Engine SLO 拆「引擎內部 &lt; 5ms」+「下單端到端 &lt;
+              30ms」雙層；新增 §6.4 跨服務 Latency Budget（11 hop × P99 預算分解
+              + OTel span 對照 + 違反處理 + budget 變更管控），明示「各 service
+              P99 達標但加總超標」之 SDD 防呆設計；SPEC-007 v0.1.0 → v0.2.0。
+            </li>
+            <li>
+              <strong>T-10 Cloudflare Edge runtime PoC</strong>：SPEC-014 新增
+              §3.2.1 列五個動工前必驗證場景（KYC iframe / WS fan-out / Server
+              Actions / fetch / env binding），含已知限制與退路選項（Node.js
+              runtime / 後端 BFF）；SPEC-014 v0.2.2 → v0.2.3。
+            </li>
+            <li>
+              <strong>T-9 EdDSA mobile PoC</strong>：SPEC-010 §3.1.2 補 LIFF SDK
+              / mobile / browser 之 Ed25519 相容性 PoC 表，含 RS256
+              後備策略；SPEC-010 v0.2.0 → v0.2.1。
+            </li>
+            <li>
+              <strong>H-3 CI gate 對齊</strong>：SPEC-013 §3.1 改為「SPEC-017 §8
+              之超集」明示繼承全部 bootstrap
+              gate（pnpm/cargo/sqlx/buf/clippy/nextest/deny/geiger/sentinel-scan）+
+              prod gate（SAST/SCA/image scan/IaC/secret/migration/E2E）；§3.2
+              必過 gate 表 19 列每列標來源；nightly 加 cargo-mutants /
+              macos-latest / terraform plan diff；prod approval cross-ref
+              MS-12。
+            </li>
+            <li>
+              <strong>H-4 ORM → sqlx</strong>：SPEC-010 §3.2 OWASP A03 由「ORM +
+              parameterized」修為「<code>sqlx::query!</code> 編譯時檢查 SQL +
+              parameterized binding」，對齊 SPEC-014 §3.1 不引入 ORM 決議。
+            </li>
+            <li>
+              <strong>H-5 Chargeback 門檻統一</strong>：SPEC-016 §6.1（≥ 1）/
+              SPEC-010 §6.2（&gt; 1 → ≥ 1）/ SPEC-002
+              §8.1（補上門檻）三處對齊為「累計 chargeback
+              <strong>≥ 1</strong> 永久封號 + 黑名單」；SPEC-002 v0.1.5 →
+              v0.1.6、SPEC-010 v0.2.0 → v0.2.1、SPEC-016 v0.1.0 → v0.1.1。
+            </li>
+            <li>
+              <strong>H-6 Coverage 分層</strong>：SPEC-013 §3.3
+              新增覆蓋率分層表（ledger/撮合 ≥ 95% / 結算 ≥ 90% / 安全敏感 ≥ 85%
+              / 其他 ≥ 80% / web ≥ 70% / mocks 不檢查），消除 SPEC-013（80%）vs
+              SPEC-003 §16.1（100%）vs SPEC-003 §18（≥
+              95%）三處內部矛盾；SPEC-003 §16.1 對齊修為「≥ 95% baseline + 100%
+              stretch」；SPEC-013 v0.1.0 → v0.2.0、SPEC-013「依賴」加 SPEC-017。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-07 · v0.2.5 · Tech Lead</h3>
+          <p>
+            <strong>R-1 / R-2 兩條合規紅線清除</strong>（業主 2026-05-07
+            拍板）：
+          </p>
+          <ul>
+            <li>
+              <strong>R-1 銅幣回兌紅線</strong>：SPEC-011 §6 整節重寫為 4
+              子節（B2B 簽約獨立法律關係 / 雙身份隔離 / 帳本層 INV-6 強制 /
+              會計科目分離）；§5.2 / §7.1 同步修正誤導描述；SPEC-002 §4.2 Chart
+              of Accounts 補
+              <code>Liability.AccountsPayable.{partner_id}</code> /
+              <code>Expense.AffiliatePartnerFee</code> /
+              <code>Bank.OperatingAccount.{token_kind}</code>；SPEC-002 §5 新增
+              INV-6（<code>Player.Wallet.*</code> outflow 白名單，DB CONSTRAINT
+              TRIGGER 強制 + CI sentinel-scan grep gate），ADR-0006 待落地擴展
+              ADR-0003 §5 INV 集合；SPEC-002 v0.1.4 → v0.1.5、SPEC-011 v0.1.0 →
+              v0.2.0、SPEC-011「依賴」清單加 SPEC-010。
+            </li>
+            <li>
+              <strong>R-2 平台下場紅線</strong>：SPEC-009 §5
+              「冷啟動補貼」整段移除（保留 placeholder
+              章節說明移除理由與替代方案 — DMM rebate 放大）；SPEC-009 §9 OQ #5
+              標 Resolved；SPEC-003 §12.1.1 sentinel
+              <code>system.platform_announcement</code> (uid=4) 移除並加入
+              <code>RESERVED_REMOVED_USER_IDS</code> 防重用集合 + 兩個 unit
+              test；SPEC-003
+              §12.1.4「例外情況」整段刪除（改為「<strong>無</strong>」）；SPEC-003
+              v0.2.1 → v0.2.2、SPEC-009 v0.2.0 → v0.2.1。
+            </li>
+            <li>
+              本檔 §5 新增 R-1 / R-2 governance 條目（採 🔴 → ✅ 圖示保留
+              deal-breaker 痕跡供未來 audit）；§5.1 圖示說明補新狀態。
+            </li>
+            <li>
+              <strong>後續落地</strong>：ADR-0001 §6 「唯一例外」描述待新 ADR
+              標記為 superseded；ADR-0006 待業主審閱後落地。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-07 · v0.2.4 · Tech Lead</h3>
+          <p>動工前一致性 sweep round 3：</p>
+          <ul>
+            <li>
+              <strong>H-1 Go → Rust 殘留清理</strong>：SPEC-003 §3.1 Market
+              struct / §3.2 Outcome enum / §12.1.1-3 sentinel 與 CI grep / §14.2
+              金額計算 / §15 orderbook 範例 / §16 測試策略（<code
+                >cargo nextest</code
+              >
+              取代 <code>goleak</code>、<code>proptest</code> 取代
+              <code>gopter</code>，新增 §16.6 mutation testing 對齊
+              R-4）；SPEC-004 §4.2 OracleSubmission struct；SPEC-009 §7 DMM
+              session 程式碼改 <code>tokio</code> + <code>tokio-rustls</code> +
+              <code>thiserror</code>；SPEC-009 v0.1.0 → v0.2.0、SPEC-003 v0.2.0
+              → v0.2.1、SPEC-004 v0.1.0 → v0.1.1。SPEC-003 §6 ~ §11 之演算法
+              pseudo-code 維持 Go 風格（已由 §6 開頭註記為
+              pseudo-code，本次不動）。
+            </li>
+            <li>
+              <strong>H-2 Rust 1.78 → 1.85 化石清理</strong>：SPEC-014 §3.1
+              表格、SPEC-017 §2 file tree 註解、SPEC-017 §8 CI workflow
+              <code>toolchain: &#39;1.78&#39;</code> →
+              <code>&#39;1.85&#39;</code>（edition 2024）；SPEC-014 v0.2.1 →
+              v0.2.2、SPEC-017 v0.2.3 → v0.2.4。
+            </li>
+            <li>
+              <strong>M-1 Hedge 政策 Resolved（Q-7）</strong>：新增本檔 §5 Q-7
+              為「允許 hedge」（對齊 Kalshi / Polymarket 業界做法）；SPEC-002
+              §4.4.4 NOTE 3 加 cross-ref；SPEC-015 §8.1 刪 hedge 禁令並改為
+              hedge 允許說明 + post-trade 偵測引用；SPEC-003 §12
+              加允許註記，明示<strong>不</strong>加
+              <code>HEDGE_NOT_ALLOWED</code> pre-trade（撮合 hot path 無新增 1
+              hop）；SPEC-002 v0.1.3 → v0.1.4、SPEC-015 v0.1.0 → v0.1.1。
+            </li>
+            <li>
+              <strong>M-3 Multi-sig 治理中央表</strong>：SPEC-010 新增 §9.3（17
+              條規則 MS-1 ~ MS-17 + 已 Resolved 不入表決策 + Admin UI 實作要求 +
+              為何集中），原各 SPEC（002 / 004 / 008 / 012 / 013 / 015 / 016 /
+              017）之簽核要求皆改以「呼應 SPEC-010 §9.3 MS-N」方式引用，避免
+              admin / Compliance UI 流程分裂；SPEC-010 v0.1.0 →
+              v0.2.0；SPEC-010「被依賴」清單擴增為 9 份反映其 governance
+              中央表角色。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-06 · v0.2.3 · Codex</h3>
+          <p>
+            <strong>Superseded by v0.3.3 / v0.3.4 status calibration.</strong>
+            當時 SPEC-005 工程實作完成並驗證通過之範圍僅涵蓋 backend in-memory
+            contract、<code>mock-provider</code>、<code>packages/ts-sdk</code>、<code
+              >apps/web</code
+            >
+            與 seed / migration 流程；後續已降級為 🟡，不得解讀為 Public Beta /
+            production KYC 完成。最新狀態以本檔 §2 SPEC-005 / SPEC-005a 狀態列與
+            SPEC-005 §0 為準。
+          </p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.2.2 · Tech Lead</h3>
+          <p>
+            SPEC-017 §11 擴充：拆 §11.1（整體 Definition of Done）+ §11.2（Codex
+            PR #1 acceptance checklist），含 10 個子節（repo 根結構 / Rust
+            workspace / Protobuf / Frontend / docker-compose / env / CI / tools
+            / 文件 / 規模預期）約 50 項勾選項，明列 PR diff 規模 5-9k 行、commit
+            8-15、CI cold cache &lt; 25 min 與 reject 紅線。SPEC-017 v0.2.1 →
+            v0.2.2。
+          </p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.2.1 · Tech Lead</h3>
+          <p>Rust 工具鏈 6 項硬性決議拍板（R-1..R-6）：</p>
+          <ul>
+            <li>
+              <strong>R-1 TLS</strong>：rustls 為預設（sqlx / fred / reqwest /
+              tonic / opentelemetry 全 rustls-tls），rdkafka 例外沿用 librdkafka
+              OpenSSL；
+            </li>
+            <li>
+              <strong>R-2 Edition</strong>：採 Rust edition
+              <strong>2024</strong> + MSRV <strong>1.85</strong>；
+            </li>
+            <li>
+              <strong>R-3 Runtime</strong>：撮合引擎 current_thread + per-market
+              <code>LocalSet</code> + <code>core_affinity</code> thread
+              pinning；其餘 11 個 service 走 multi-thread runtime；
+            </li>
+            <li>
+              <strong>R-4 Mutation testing</strong>：cargo-mutants 限縮
+              <code>crates/sdk/ledger</code> +
+              <code>services/{wallet-ledger-service,matching-engine}</code>
+              核心邏輯，nightly CI cron，caught rate ≥ 75%；
+            </li>
+            <li>
+              <strong>R-5 Unsafe</strong>：workspace 全域
+              <code>#![forbid(unsafe_code)]</code>，例外須 ADR + 4-eye
+              review，CI 跑 cargo geiger；
+            </li>
+            <li>
+              <strong>R-6 sqlx offline</strong>：<code>.sqlx/</code> commit 進
+              git，CI 跑 <code>cargo sqlx prepare --check</code>。落入 SPEC-014
+              §3.1 / SPEC-017 §3.3 / §4.2 / §6.1.1 / §8 / §8.2，及
+              .gitignore。SPEC-014 v0.2.0 → v0.2.1，SPEC-017 v0.2.0 → v0.2.1。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.2.0 · Tech Lead</h3>
+          <p><strong>後端語言由 Go 切換至 Rust（重大）</strong>：</p>
+          <ul>
+            <li>
+              SPEC-014 v0.2.0 改寫 §3.1 後端技術棧（Rust 1.78+ / axum / tonic /
+              sqlx / tokio / sccache / cargo-nextest / rdkafka / fred / tracing
+              / dotenvy / ulid），§4 service 表全標 Rust，§5 monorepo 結構新增
+              <code>crates/sdk/</code> + <code>crates/proto/</code>、移除
+              <code>packages/go-sdk/</code>，§6 / §8 / §9 / §10 / §12 / §14
+              同步；§14 OQ #5「撮合切 Rust」隨之 Resolved；
+            </li>
+            <li>
+              SPEC-017 v0.2.0：§2 file tree、§3 toolchain（Rust 1.78+ / clippy /
+              rustfmt / sqlx-cli + sccache + cargo-nextest + cargo-chef +
+              cargo-deny）、§4.2 Cargo workspace 取代 go.work、§4.4 prost/tonic
+              取代 protoc-gen-go、§4.5 Makefile cargo 命令、§6.1 Rust axum stub
+              範例、§8 CI 改 dtolnay/rust-toolchain + sccache +
+              Swatinem/rust-cache、§11 / §12 同步；
+            </li>
+            <li>
+              SPEC-003 v0.2.0：§1 in-process memory 改 Rust、§4.3
+              <code>OrderID = [u8; 16]</code> Rust canonical、§5 OrderBook 改
+              BTreeMap + VecDeque、§6 開頭加 pseudocode 註記、§19 OQ #3
+              落地動作對齊 ulid crate；
+            </li>
+            <li>SPEC-002 v0.1.3：§3.2 內部型別 int64 → i64；</li>
+            <li>
+              SPEC-013 / 016 / README / ADR-0004 / .gitignore /
+              packages/proto/README + common.proto / CLAUDE.md 同步；
+            </li>
+            <li>
+              packages/proto/v1/common.proto 之 <code>OrderID</code> 由 uint64
+              改為 <code>bytes</code>（16 bytes ULID）對齊 SPEC-003 §19。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.1.7 · Tech Lead</h3>
+          <p>Codex 動工前 OQ 收尾 round 2：</p>
+          <ul>
+            <li>
+              SPEC-017 §12 OQ #3 mock servers 同 monorepo Resolved（含
+              production binary 隔離 build tag）；
+            </li>
+            <li>
+              SPEC-002 §12 OQ #2 <code>ledger_entries</code> Phase 1
+              不分區，明列分區觸發門檻與 monthly partition 為未來方案；
+            </li>
+            <li>
+              SPEC-003 §19 OQ #3 訂單 ID 採 ULID（保留 per-market
+              <code>seq uint64</code> 為撮合 FIFO 排序），§4.3 加 TODO 標記 PR
+              #1 改 [16]byte；
+            </li>
+            <li>
+              SPEC-016 §7 Phase 2 多 Token觸發條件由「Q-3 拍板」改為業務驅動（Op
+              Co. 國際版本 / FX
+              對沖），明示<strong>目前無啟用計畫</strong>；SPEC-002 §3.1
+              國際化說明同步收斂。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.1.6 · Tech Lead</h3>
+          <p>Codex 動工前 deal-breaker 收尾：</p>
+          <ul>
+            <li>
+              Q-3 銅幣計價 1 銅幣 = 金幣 1 由暫定改為 ✅
+              Resolved（業主拍板），SPEC-002 §3.1 同步；
+            </li>
+            <li>Q-6 數據主權暫定 Cloudflare R2 ✅ Resolved；</li>
+            <li>
+              SPEC-005 §2.1 釘住 KYC tier canonical enum
+              <code>TIER_0/1/2/3</code>，SPEC-017 §5.2 同步；
+            </li>
+            <li>
+              SPEC-017 §12 OQ #1 / #2 / #5 全部 Resolved（commit
+              gen/、env_file、Linux PR gate + macOS nightly）；
+            </li>
+            <li>
+              SPEC-002 §12 OQ #1 ledger 拆獨立 service Resolved，§4.2.1 新增
+              <code>Player.Frozen.{user_id}</code> 子科目，INV-2 同步擴展。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.1.5 · Tech Lead</h3>
+          <p>Codex 動工前置補強：</p>
+          <ul>
+            <li>新增 SPEC-017 monorepo bootstrap &amp; local dev（P0）；</li>
+            <li>
+              建立 packages/proto/v1/ 共 6 份 .proto（errors / common / ledger /
+              engine / market / kyc / payment）；
+            </li>
+            <li>
+              SPEC-002 §4.4.3 trade entry 改寫對齊 §4.4.4 不對稱
+              escrow，移除「兩邊皆鎖 6,500」之簡化；
+            </li>
+            <li>
+              SPEC-015 §6 補 outcomes / oracle_submissions / disputes /
+              dispute_resolutions / positions 五張 schema，SPEC-004 §6.3
+              改為呼應引用；
+            </li>
+            <li>
+              SPEC-016 §5.5 補通路 webhook payload 對映表（綠界 / Stripe / 藍新
+              / PayMongo / MoMo / VNPay 6 家）；
+            </li>
+            <li>
+              SPEC-010 §3.1 補 JWT claims schema、refresh token rotation、reuse
+              detection、step-up MFA 細節。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-15 · v0.1.5 · Tech Lead</h3>
+          <p>產品方針改為 multi-landing：</p>
+          <ul>
+            <li>
+              §1 系統屬性表「嚴格 Geo-block」整列移除；目標市場改由各
+              <code>apps/landing-*</code> variant 自治（見新 SPEC-021）；
+            </li>
+            <li>
+              SPEC-005 §2.4 / §2.4.2 重寫：移除「紅名單地區」「Geo-block runtime
+              配置」「Phase 2 waiting list」等條文；Tier 1 5
+              國轉為純工程文件支援範圍，其餘地區直走 Tier 2 KYC provider；
+            </li>
+            <li>
+              SPEC-010 §2.1 Cloudflare 規則表「Geo-rules: 拒絕 🔴
+              名單地區」整列移除；
+            </li>
+            <li>
+              新增 SPEC-021 規範 landing variant lifecycle（region × product
+              matrix、合規檢核、上線/退役、共用 packages 契約）；
+            </li>
+            <li>
+              CLAUDE.md / README.md /
+              <code>docs/implementation-plans/README.html</code> 對 SPEC-001
+              的保留引用同步清除（SPEC-001 anchor 廢止，原章節改由 SPEC-002 ~
+              SPEC-010 各自承擔法律邊界條文）。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.1.4 · Tech Lead</h3>
+          <p>第二輪交叉一致性 review（純技術視角，合規由業主自治）：</p>
+          <ul>
+            <li>SPEC-005 §2.4 dead link 修正；</li>
+            <li>SPEC-015 §11 7 年保留補強；</li>
+            <li>
+              ADR-0002 多處 dead link 全部修正並補 v1.0.2 Revision History；
+            </li>
+            <li>補回 SPEC-002 §3.2 內部精度（純技術整數化規範）；</li>
+            <li>
+              SPEC-016 §7 跨 Token整節重寫，明確 Phase 1 單 Token / Phase 2 多
+              Token保留設計，移除 <code>Bank.TrustAccount.銀幣</code> 舉例；
+            </li>
+            <li>
+              SPEC-002 §12 Open Questions 補齊編號 1/2 並收斂跨檔議題引用。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.1.3 · Tech Lead</h3>
+          <p>
+            規格索引章節重整：更新 Geo-block
+            全域描述與跨檔決策追蹤表引用，移除對已刪除公司結構與司法管轄區分級表的硬引用。
+          </p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.1.2 · Tech Lead</h3>
+          <p>完成首輪交叉一致性 review：</p>
+          <ul>
+            <li>修 SPEC-002 §5 INV 編號對齊 ADR-0003 §5；</li>
+            <li>修 PRD.md dead link；</li>
+            <li>HK/SG geo-block 統一為保守 🔴；</li>
+            <li>修 SPEC-002 §4.4.4 零金額結算 entry 衝突；</li>
+            <li>
+              ADR-0002 / ADR-0003 §11 改名為「Pre-Execution Validation Items」；
+            </li>
+            <li>§5 改為跨檔決策追蹤表（含 Resolved-by 欄位）；</li>
+            <li>
+              SPEC-005 補 declared_monthly_income 作為 KYC / EDD 風控輔助欄位；
+            </li>
+            <li>SPEC-005 §2.4 補首發 5 國 Tier 1 證件驗證；</li>
+            <li>新增 SPEC-015 市場生命週期；</li>
+            <li>新增 SPEC-016 支付通路整合；</li>
+            <li>SPEC-003 §12.1 補 PLATFORM_SYSTEM_USER_IDS sentinel 定義；</li>
+            <li>SPEC-015 / SPEC-016 加入 P0 索引。</li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.1.1 · Tech Lead</h3>
+          <p>
+            專案英文代號定案：propheticaNet（暫定）→ prophetica；同步刪除 legacy
+            PRD.md；連帶 bump SPEC-005 / SPEC-014 至
+            v0.1.1（修正內文專案名稱）；ADR-0001 / ADR-0002 同步修名但依 ADR
+            慣例不變動 Status / Date。
+          </p>
+        </article>
+        <article class="changelog-entry">
+          <h3>2026-05-05 · v0.1.0 · Tech Lead</h3>
+          <p>初版建立，14 份 SPEC 全數草稿完成</p>
+        </article>
+      </div>
+    </section>
+    <h2>5. 跨檔決策追蹤表（Cross-cutting Decision Tracker）</h2>
+    <blockquote>
+      <p>
+        本表為跨多份 SPEC / ADR
+        的全域決策點之<strong>單一真相來源</strong>。任何議題一旦被某 SPEC / ADR
+        決定，<strong>Status</strong> 改為 <code>Resolved</code> 並填入
+        <code>Resolved by</code> 欄位；其他文件的 Open Questions
+        不重複記錄此議題。
+      </p>
+    </blockquote>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>議題</th>
+          <th>影響範圍</th>
+          <th>Status</th>
+          <th>Resolved by</th>
+          <th>待動作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Q-1</td>
+          <td>控股公司司法地：BVI vs Cayman vs Delaware</td>
+          <td>ADR-0002</td>
+          <td>✅ Resolved</td>
+          <td>
+            <a
+              href="../docs/architecture/decisions/ADR-0002-three-company-corporate-structure.md"
+              >ADR-0002 §4.4</a
+            >
+          </td>
+          <td>BVI；未來 IPO 路徑前重組為 Cayman/Delaware</td>
+        </tr>
+        <tr>
+          <td>Q-2</td>
+          <td>Op Co. 執照地：Malta MGA / Curaçao / PAGCOR / Isle of Man</td>
+          <td>ADR-0002 §11 V-1</td>
+          <td>🟡 Pending</td>
+          <td>—</td>
+          <td>
+            公開 Beta / 真實入金前由執照地律師擇一，並完成 LG-1
+            evidence；未完成時僅允許 internal alpha / sandbox demo
+          </td>
+        </tr>
+        <tr>
+          <td>Q-3</td>
+          <td>銅幣計價單位：1 銅幣 = 金幣 1 vs 銀幣 0.01 vs 抽象單位</td>
+          <td>SPEC-002 §3.1 / ADR-0003 §11 V-5</td>
+          <td>✅ Resolved</td>
+          <td><a href="./SPEC-002-funds-safety.html">SPEC-002 §3.1</a></td>
+          <td>
+            1 銅幣 = 金幣 1（內部記帳基準 Token 類型恆為 金幣，多 Token 走
+            SPEC-016 §7 Phase 2）
+          </td>
+        </tr>
+        <tr>
+          <td>Q-4</td>
+          <td>入金通路供應商：綠界 / 藍新 / 紅陽 / Stripe；MCC 接受度</td>
+          <td>SPEC-016</td>
+          <td>🟡 Pending</td>
+          <td>
+            <a href="./SPEC-016-payment-gateway.html">SPEC-016 §3.2</a> 列驗證項
+          </td>
+          <td>
+            公開 Beta / 真實入金前完成至少 3 家詢價與 1 家 sandbox webhook + MCC
+            接受度驗證，並對齊支付 Gateway BIN 檢查；未完成時不得開放真實儲值
+          </td>
+        </tr>
+        <tr>
+          <td>Q-6</td>
+          <td>
+            數據主權：Cloudflare R2（EU / 全球）vs Linode Object Storage (Tokyo)
+            vs AWS S3 (Singapore)
+          </td>
+          <td>SPEC-005 §5.1 / SPEC-008 §6.1</td>
+          <td>✅ Resolved（暫定）</td>
+          <td>業主決議 2026-05-05</td>
+          <td>
+            KYC 證件 / WORM hash chain / 影像類資產一律存
+            <strong>Cloudflare R2</strong
+            >（區域選擇由業主與運營方確認）；撮合事件流冷備走 SPEC-008 §6.1
+            雙寫策略
+          </td>
+        </tr>
+        <tr>
+          <td>Q-7</td>
+          <td>Hedge 政策：同帳戶在同一市場是否允許同時持 YES + NO？</td>
+          <td>SPEC-002 §4.4.4 / SPEC-003 §12 / SPEC-015 §8.1</td>
+          <td>✅ Resolved</td>
+          <td>Tech Lead 2026-05-07</td>
+          <td>
+            <strong>允許 hedge</strong>：保留 SPEC-002 §4.4.4 NOTE 3 之逐
+            <code>position_id</code> 結算邏輯；<strong>移除</strong> SPEC-015
+            §8.1 hedge 禁令該行；SPEC-003 §12 風控前置層<strong>不</strong>加
+            <code>HEDGE_NOT_ALLOWED</code> 檢查（撮合 hot path 無新增 1
+            hop）；同帳戶自我對沖之刷量行為由 SPEC-010 §4.2.2 wash trading
+            post-trade 偵測攔截。對齊 Kalshi / Polymarket 業界做法
+          </td>
+        </tr>
+        <tr>
+          <td><strong>R-1</strong></td>
+          <td>
+            銅幣回兌紅線：是否允許「玩家錢包銅幣 → B2B 應付帳款 /
+            外部資產」之任何技術路徑？
+          </td>
+          <td>SPEC-002 §4.2 §5 / SPEC-011 §6</td>
+          <td>🔴 → ✅ Resolved</td>
+          <td>業主決議 2026-05-07</td>
+          <td>
+            <strong>永不允許</strong>：徹底清除 SPEC-011 §6
+            原「業務帳戶可選擇將銅幣獎勵轉為 B2B 合約應付」設計；§6 重寫為 4
+            子節（B2B 簽約獨立、雙身份隔離、帳本層 INV-6 強制、會計科目分離
+            <code>Expense.AffiliateCommission</code> vs
+            <code>Expense.AffiliatePartnerFee</code>）；SPEC-002 §5 新增 INV-6
+            由 DB CONSTRAINT TRIGGER 強制 <code>Player.Wallet.*</code> outflow
+            目的地白名單；ADR-0006 待落地擴展 ADR-0003 §5 INV 集合為 INV-1 ~
+            INV-6
+          </td>
+        </tr>
+        <tr>
+          <td><strong>R-2</strong></td>
+          <td>
+            平台下場紅線：是否保留「平台公告錢包」冷啟動補貼之 feature flag /
+            sentinel 例外？
+          </td>
+          <td>SPEC-003 §12.1 / SPEC-009 §5 / ADR-0001 §6</td>
+          <td>🔴 → ✅ Resolved</td>
+          <td>業主決議 2026-05-07</td>
+          <td>
+            <strong>永不允許，徹底刪除</strong>：SPEC-009 §5
+            「冷啟動補貼」整段移除（保留 placeholder 章節說明）；SPEC-003
+            §12.1.1 sentinel <code>system.platform_announcement</code> (uid=4)
+            移除並加入 <code>RESERVED_REMOVED_USER_IDS</code> 防重用；SPEC-003
+            §12.1.4「例外情況」整段刪除（改為「<strong>無</strong>」）；流動性不足走
+            SPEC-009 §3.3 DMM rebate 放大或市場延後上架；ADR-0001 §6
+            「唯一例外」描述待新 ADR 更新為「無例外」
+          </td>
+        </tr>
+        <tr>
+          <td>Q-8</td>
+          <td>
+            SPEC-011 落地前 8 個技術 gap（推薦碼演算法 / 親屬偵測子規則 / 達標
+            claw-back / 帳本流向 / chargeback 反沖 / sign convention / 用詞 /
+            獎勵上限）
+          </td>
+          <td>
+            SPEC-011 §3.2 §3.3 §4.1 §4.2 §4.4 §4.5 §4.6 §5.1 / SPEC-002 §5 INV-6
+            / SPEC-010 §4.2.1
+          </td>
+          <td>✅ Resolved</td>
+          <td>
+            <a href="./SPEC-011-affiliate-commission.html">SPEC-011 v0.2.1</a>
+            2026-05-07
+          </td>
+          <td>
+            <strong>G-1</strong> BLAKE3 + Crockford Base32 + 5 retries；<strong
+              >G-2</strong
+            >
+            <code>affiliate_kinship_link</code> 子規則 6 特徵 + 雙 gate；<strong
+              >G-3</strong
+            >
+            延遲 30 天發放（從根源繞開 INV-6 clawback 衝突）；<strong
+              >G-4</strong
+            >
+            獨立每日批次 txn + <code>commission_accruals</code> staging；<strong
+              >G-5</strong
+            >
+            chargeback 反沖：介紹獎勵 G-3 路徑無需
+            clawback、持續佣金自停、已付佣金不追回；<strong>G-6</strong> sign
+            convention cross-ref SPEC-002
+            §4.3；<strong>G-7</strong>「推薦樹」→「推薦清單」；<strong
+              >G-8</strong
+            >
+            月度 20 / 終身 200 / 月度佣金 金幣 50k 上限。SPEC-002 §5 INV-6
+            <strong>不</strong>需新增 affiliate clawback carve-out。Codex
+            動工輸入完備
+          </td>
+        </tr>
+        <tr id="cross-cutting-q10">
+          <td>Q-10</td>
+          <td>
+            會員間轉點 / 贈點（peer_transfer）：是否允許 wallet-to-wallet
+            主動流通？官方角色邊界（只進不出）為何？
+          </td>
+          <td>
+            SPEC-002 §4.2 §4.4.7 §5 INV-2/4/6 / SPEC-005 §2.1.3 / SPEC-010
+            §4.2.2 §4.2.5 / ADR-0006 v1.0.3 待落地
+          </td>
+          <td>✅ Resolved</td>
+          <td>業主決議 2026-05-26</td>
+          <td>
+            <strong>允許會員間轉點 / 贈點，平台無贖回出口</strong
+            >：產品定位收斂為「平台只進不出（儲值入金 yes、贖回 / 兌現
+            no）、會員間自由流通」。<strong>(1)</strong> SPEC-002 v0.1.12 §4.4.7
+            新增三段式分錄 <code>peer_transfer_send</code> /
+            <code>peer_transfer_accept</code> /
+            <code>peer_transfer_refund</code>，PendingTransfer escrow + 24h
+            pending 半終態 + 受贈方主動 accept / reject 與系統自動 timeout
+            refund；<strong>(2)</strong> 手續費 taker-style 百分比（具體 bps 落
+            implementation plan），於 send 階段一次性扣費入
+            <code>Revenue.PeerTransferFee</code>，refund 不退費；<strong
+              >(3)</strong
+            >
+            INV-2 / INV-4 含 <code>Player.PendingTransfer.*</code>，INV-6
+            carve-out (g)(h) + part (II) PendingTransfer outflow 白名單；<strong
+              >(4)</strong
+            >
+            SPEC-005 v0.1.6 §2.1.3 定義雙方皆需 <code>TIER_1</code> 之 KYC
+            准入閘門 + 依 tier 階梯之單日 / 單月轉出上限；<strong>(5)</strong>
+            SPEC-010 v0.2.3 §4.2.2 「24h 內彼此 &gt; 50%」規則語意擴展含
+            peer_transfer 量、§4.2.5 PT-1/PT-2/PT-3 三條洗錢偵測規則。<strong
+              >(6)</strong
+            >
+            既有平台 → 會員贈點路徑（<code>cs_compensation</code> /
+            <code>manual_points_adjustment</code> /
+            <code>affiliate_commission</code> / <code>dmm_rebate</code> /
+            <code>lm_reward</code>）<strong>本輪不動</strong>，scope
+            議題暫掛；其字面定位仍為「平台補償 / 激勵 /
+            合作方贈點」而非「贖回」，與「平台無贖回出口」並無衝突。<strong
+              >(7)</strong
+            >
+            落地前置：ADR-0006 須先 bump v1.0.3 追認 INV-2 / INV-4 / INV-6
+            carve-out 與新增 <code>Player.PendingTransfer.*</code> outflow
+            whitelist；proto 須先新增 <code>TXN_TYPE_PEER_TRANSFER_SEND</code> /
+            <code>TXN_TYPE_PEER_TRANSFER_ACCEPT</code> /
+            <code>TXN_TYPE_PEER_TRANSFER_REFUND</code> +
+            <code>Player.PendingTransfer</code> /
+            <code>Revenue.PeerTransferFee</code> account-type。
+          </td>
+        </tr>
+        <tr id="cross-cutting-q9">
+          <td>Q-9</td>
+          <td>
+            KYC provider sandbox credentials 採購：tenant credentials / webhook
+            signing secret / Tier 2+3 applicant levels / iProov liveness add-on
+          </td>
+          <td>
+            SPEC-005 §0.2 / SPEC-005a §10 / SPEC-014 §3.2.1 / SPEC-000 §2 LG-3 +
+            LG-4 / docs/poc/PRE-FLIGHT-POCS.md §4.4
+          </td>
+          <td>🔴 Pending（launch blocker）</td>
+          <td>—</td>
+          <td>
+            <strong>單點瓶頸</strong>同時阻擋 LG-3（KYC production path）與
+            LG-4（PoC-B Cloudflare Edge live verification）。採購清單：(a)
+            <code>KYC_PROVIDER_APP_TOKEN</code> +
+            <code>KYC_PROVIDER_SECRET_KEY</code>，(b) webhook signing
+            secret（SPEC-005 INV-KYC-4 HMAC-SHA256 用），(c) Tier 2 applicant
+            level（ID + selfie），(d) Tier 3 applicant level（含 iProov liveness
+            add-on，對應 SPEC-005a §11.2 stage 2），(e) staging / dev webhook
+            URL allow-list。Owner / Compliance 可選：(1) 直接向 KYC provider
+            申請 sandbox tenant，最快解鎖既有設計；(2) 先走 KYC provider sales /
+            compliance evaluation，取得測試 tenant +
+            地區證件支援矩陣後再簽約；(3) 若 KYC provider 拒給 iProov sandbox 或
+            APAC 文件覆蓋不足，同步評估 Onfido / Veriff fallback（SPEC-005 plan
+            §0 已預留 secret fallback hardening）。Tech Lead 接收 credentials
+            後啟動 mock → real adapter 替換 + iProov real provider 寫入。
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>5.1 議題狀態圖示</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>圖示</th>
+          <th>含義</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>✅ Resolved</td>
+          <td>已被某 SPEC / ADR 拍板</td>
+        </tr>
+        <tr>
+          <td>🟡 Pending</td>
+          <td>待決定，但不阻塞動工</td>
+        </tr>
+        <tr>
+          <td>🔴 Deal-breaker</td>
+          <td>阻塞 P0 收尾，必須在第一行 code 之前解決</td>
+        </tr>
+        <tr>
+          <td>🔴 → ✅</td>
+          <td>
+            原為 Deal-breaker，現已 Resolved（保留 🔴 標記提示其重要性，方便日後
+            audit）
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>5.2 維護規則</h3>
     <ul>
-      <li><strong>Phase 0</strong> — Gateway 認證接縫（SPEC-014 §6.1.2 落地）：JWKS 驗章、principal header 注入 + 外部同名 header 剝除、結構化 401 / 403。</li>
-      <li><strong>Phase 1</strong> — Web 旅程 middleware：session 讀取、受保護路徑導向、<code>return_to</code> same-origin 強制。</li>
-      <li><strong>Phase 2</strong> — 下單前置門檻：gateway 對 KYC tier ≥ TIER_1 與可動用餘額 ≥ 訂單成本做強制；<code>GET /v1/markets</code> 透過 gateway 暴露；trade panel soft check + 多重門檻順序攔截。</li>
-      <li><strong>Phase 3</strong> — MVP topup 服務協助 UI；訪客唯讀瀏覽公開市場頁的驗收。</li>
-      <li><strong>Phase 4</strong> — E2E：happy path、三種攔截、多重門檻、訪客瀏覽、open redirect 拒絕、後端強制（繞過前端）。</li>
+      <li>
+        新增跨檔議題請寫成新一列；<strong>不要</strong>在個別 SPEC 的 Open
+        Questions 重複記錄已在本表的議題
+      </li>
+      <li>
+        議題被拍板後，將相關 SPEC 的 Open Questions 條目刪除並改為「見 SPEC-000
+        §5 Q-N」
+      </li>
+      <li>
+        ADR 體裁中已 Accepted 的 ADR，§11 採用
+        <code>Pre-Execution Validation Items</code>
+        命名（驗證項目而非待決議題），參見 ADR-0002 / ADR-0003
+      </li>
     </ul>
-    <p>同步更新 P1 表 SPEC-023 列版本與摘要（加入實作計畫連結）。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-19 · v0.3.8 · Tech Lead</h3>
-    <p><strong>SPEC-023 v0.1.1 — Open Questions 收斂</strong>：v0.1.0 §13 的 5 個 open questions（OQ-1 至 OQ-5）對齊 SPEC-005 §2.1 與 <code>apps/web/messages/zh-Hant.json</code> 後全數收斂：</p>
-    <ul>
-      <li><strong>OQ-1</strong>：下單所需最低 KYC tier 為 <strong>Tier 1</strong>（非 Tier 2）；Tier 2 / Tier 3 為儲值上限升級與 EDD，不是下單入場閘門。既有 <code>apps/web</code> KYC 文案與此結論一致，無需修改。</li>
-      <li><strong>OQ-2</strong>：MVP 階段 <code>/topup</code> 必須呈現服務協助訊息、不得渲染真實支付 CTA，LG-2 通過後再切換為 SPEC-016 通路選擇 UI。</li>
-      <li><strong>OQ-3</strong>：訪客可唯讀瀏覽公開市場列表、市場詳情、訂單簿與近期成交（SPEC-005 §2.1 Tier 0）。</li>
-      <li><strong>OQ-4</strong>：<code>return_to</code> same-origin 強制由 <code>apps/web</code> 中介層執行，api-gateway 不負責語意驗證。</li>
-      <li><strong>OQ-5</strong>：Email 驗證屬 Tier 1 流程內項目（SPEC-005 §2.1），不是 S1 → S2 之閘門。</li>
-    </ul>
-    <p><strong>OQ-6</strong>（旅程事件與 SPEC-020 漏斗整合）保留為 Open，但收斂方向確定為「事件來源為 server 端紀錄、分類學由 SPEC-020 定義」。同步更新 P1 表 SPEC-023 列版本與摘要。本輪未變更 SPEC-014。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-19 · v0.3.7 · Tech Lead</h3>
-    <p><strong>新增 SPEC-023 玩家入門旅程 + SPEC-014 §6.1.2 gateway 認證契約</strong>：landing → 註冊 / 登入 → KYC 門檻 → 錢包儲值 → 市場探索 → 首次下單之端到端旅程原先分散於 SPEC-021 / 022 / 005 / 016 / 015 / 003，無單一 owner。本輪閉環如下：</p>
-    <ul>
-      <li>新增 <strong>SPEC-023</strong>「玩家入門與首次下單旅程」（P1）作為旅程編排層，定義階段狀態機、跨頁重導向契約、門檻攔截規則與進場入口交接。範圍為完整旅程（含 KYC / 儲值門檻），僅涵蓋 <code>apps/web</code>；LIFF 目前僅負責把使用者帶到 landing page，不在本旅程承載註冊 / 登入 / 下單。SPEC-023 不重寫各零件機制，KYC / 支付 / 撮合分別以 SPEC-005 / 016 / 003 為權威。</li>
-      <li><strong>SPEC-014 bump 至 v0.2.9</strong>：§6.1 新增 §6.1.2「Gateway 認證與 principal 傳遞契約」，把 §4 服務表中 api-gateway 的「認證」職責具體化為可實作契約——gateway 自驗 session token（user-service JWKS）、注入 <code>x-user-id</code> 等 principal header、剝除外部 client 傳入的同名 header。對應現行 <code>AuthContext</code> 直接讀取未驗證 <code>x-user-id</code> header 之缺陷，亦為 SPEC-023 旅程認證接縫的權威來源。</li>
-      <li>同步更新 P1 表（新增 SPEC-023 列）與跨章節表（SPEC-014 版本與摘要）。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-12 · v0.3.6 · Tech Lead</h3>
-    <p><strong>SPEC-011 affiliate credit governance alignment</strong>：SPEC-011 v0.2.4 新增 §4.7，明確平台官方管理員可調整簽約代理信用評級，並可增加、限制、暫停或撤銷代理可提供的信用帳戶數量、狀態與限額；所有信用管控變更必須寫入操作留痕。同步更新 P2 表摘要與版本。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-11 · v0.3.5 · Tech Lead</h3>
-    <p><strong>SPEC-002 MVP manual points implementation alignment</strong>：SPEC-002 v0.1.9 新增 <code>manual_points_adjustment</code> 作為尚未啟用真實儲值前的授權調點路徑，admin / manager 可查詢、增加、扣除會員銅幣，affiliate 僅能增加銅幣；所有操作必須 delta-only 並寫入 <code>audit_logs</code>。本檔同步更新 P0 表摘要與版本；ADR-0006 v1.0.2 追認 INV-6 <code>Expense.ManualPointsGrant</code> carve-out。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-09 · v0.3.4 · Tech Lead</h3>
-    <p><strong>Post-PR #2 status realignment</strong>：PR #1（SPEC-008 DR + governance kill switch，merged 2026-05-08）/ PR #2（SPEC-005a SumSub 前端骨架，stacked on PR #1，merged 2026-05-09）皆 merged 後，本檔 P1 表對 SPEC-005 / SPEC-005a 之狀態與版本與實際 SPEC 文件 drift。本輪閉環如下：</p>
-    <ul>
-      <li><strong>SPEC-005</strong> P1 列從「⚠️ Backend in-memory contract / P0 follow-up · v0.1.3」更新為「🟡 Backend Postgres wiring 待 P0 sprint / Frontend 主路徑 done · v0.1.4」反映 SPEC-005 plan v0.1.5 §0 之實作狀態 + PR #2 frontend 落地；SPEC-005 spec 本檔 v0.1.4 status 行 wording 同步精修（status emoji ⚠️ → 🟡、real iframe blocker 指向 Q-9），未 bump SPEC 版本；</li>
-      <li><strong>SPEC-005a</strong> P1 列從「⚠️ Contract draft · v0.1.0」更新為「🟡 Frontend 主路徑 done（PR #2 merged）；blocker: Q-9 SumSub sandbox + iProov real adapter · v0.1.2」反映 PR #2 已交付 §2 / §5.2.1 / §6.1 / §7.3 / §8 / §10 / §11.2 之 frontend 實作；</li>
-      <li><strong>§5 新增 Q-9</strong>「SumSub sandbox credentials 採購」為 LG-3（KYC production path）+ LG-4（PoC-B Cloudflare Edge live verification）之共同單點瓶頸；採購清單包含 tenant credentials、webhook signing secret、Tier 2/3 applicant levels、iProov liveness add-on、staging webhook URL allow-list；Owner / Compliance 可走直接採購、vendor sandbox evaluation 或 fallback provider evaluation 三條路徑；</li>
-      <li>對應 <code>docs/implementation-plans/SPEC-005-kyc-aml-implementation-plan.html</code> §0 同步精煉，「Frontend 待完成」改為「Frontend 主路徑已落地（PR #2）」+「Frontend 剩餘工作（blocked on Q-9 採購）」雙段，避免後續 reviewer 誤判 frontend 進度。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-09 · v0.3.3 · Tech Lead</h3>
-    <p><strong>Launch readiness gate 補強</strong>：新增 §2 Public Beta Launch Gate（LG-1 ~ LG-6），明確區分「不阻擋內部開發」與「阻擋公開 Beta / 真實入金 / 真實下單」之門檻；Q-2 / Q-4 待動作改為公開 Beta blocker；SPEC-012 / SPEC-013 / SPEC-018 從 P2 上移至 P1 launch gate；SPEC-011 狀態對齊 v0.2.3。同步修復 HTML 產物 drift：SPEC-003 亂碼重生、過期 Markdown 副檔名敘述改為 HTML 副檔名。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-07 · v0.3.2 · Tech Lead</h3>
-    <p><strong>SPEC-011 v0.2.1 pre-implementation gap closure（G-1 ~ G-8）</strong>：Tech Lead 對 SPEC-011 v0.2.0 進行落地前審視，發現合規層（§2 / §6）成熟但落地細節有 8 個技術 gap 將導致 Codex 動工後 PR 退回。本輪閉環如下：</p>
-    <ul>
-      <li><strong>G-1</strong> §3.2 推薦碼演算法釘死：BLAKE3 6-byte hex（12 chars）+ Crockford Base32 4-char random + collision retry 5 次；</li>
-      <li><strong>G-2</strong> §3.3.1 親屬偵測升級為 SPEC-010 §4.2.1 <code>user_link_score</code> 子規則 <code>affiliate_kinship_link</code>，含 6 條偵測特徵 / 權重 + 雙重 gate（註冊前 / 發放前）+ Compliance MS-4 4-eye 裁決；</li>
-      <li><strong>G-3</strong> §4.1 達標獎勵改為<strong>延遲 30 天發放</strong>模型，徹底繞開 INV-6 clawback 衝突（從未發放 → 無物可追回）；</li>
-      <li><strong>G-4</strong> §4.2 交易佣金獨立每日批次 txn + <code>commission_accruals</code> staging 表，trade transaction entry 維持 SPEC-002 §4.4.3 兩條不變；</li>
-      <li><strong>G-5</strong> §4.4 chargeback 反沖細化：介紹獎勵走 G-3 延遲路徑無需 clawback；持續佣金封號自動停止；封號前已支付佣金<strong>不追回</strong>（保善意第三方 + 不破 INV-6 + cost &lt; CAC 可吸收）；</li>
-      <li><strong>G-6</strong> §4.5 ledger entry 補 sign convention cross-ref SPEC-002 §4.3 direction =±1 規則；</li>
-      <li><strong>G-7</strong> §5.1 「推薦樹」用詞改為「推薦清單（flat list）」避免暗示 MLM；</li>
-      <li><strong>G-8</strong> §4.6 推薦獎勵上限：月度 20 個介紹 / 終身 200 個 / 月度佣金 金幣 50k / 同 IP-fingerprint 群組合併計算，超出進 EDD 4-eye review。§9 驗收條件由原 7 項擴充為 9.1 後端（9 項，Codex owner）+ 9.2 前端（3 項，Tech Lead owner）+ 9.3 跨 SPEC 依賴（2 項）+ 9.4 法律 / 業務（2 項）。§10 OQ #1 標 Resolved，新增 OQ #6（上限調整 governance）。本檔 §5 新增 Q-8 跨檔決策追蹤條目（v0.2.1 8 個 gap 之 single source of truth）。SPEC-011 「依賴」由 4 份擴增為 5 份（加 SPEC-016）。SPEC-011 v0.2.0 → v0.2.1。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-07 · v0.3.1 · Tech Lead</h3>
-    <p><strong>SPEC-008 v0.2.1 patch（F-1 ~ F-5 縫補）</strong>：</p>
-    <ul>
-      <li><strong>F-1 governance drift fix</strong>：§9.3 Kill switch 解除明示 cross-ref SPEC-010 §9.3 <strong>MS-9</strong>，禁止 admin UI 為 MS-9 自刻流程（單一 multi-sig component 原則）；</li>
-      <li><strong>F-2 客戶端容錯契約化</strong>：§7.1 / §7.2 / §7.3 / §7.4 由描述性敘述升級為可執行技術契約 — WS reconnect（500ms / 倍率 2.0 / jitter ±20% / cap 30s / max 30 attempts / heartbeat 15s）+ Idempotency-Key（UUID v7）+ Reconcile（per-subscription monotonic seq + 60s tail）+ Fail-soft 模式（polling 降級 + disable 下單 + 手動重試）+ retry budget 反 pattern 警示（呼應 SPEC-007 §6.4.4）；</li>
-      <li><strong>F-3 stale OQ 清理</strong>：§13 OQ #5「監管最低備份保留期」標 Resolved；</li>
-      <li><strong>F-4 Redis 邊界釐清</strong>：§5.2 補 inline 註明「Lock / Idempotency 落 PG，<strong>不</strong>存 Redis」呼應 SPEC-002 §6.1；</li>
-      <li><strong>F-5 future-proof</strong>：§3.1 區域佈局圖補 Cloudflare Edge runtime（PoC-B）fallback semantics 待回填；</li>
-      <li><strong>前端落地</strong>：<code>apps/web/lib/idempotency.ts</code>（UUID v7 + withIdempotencyKey）+ <code>apps/web/lib/ws-client.ts</code>（reconnecting WebSocket + reconcile）+ <code>apps/web/components/connection-status-banner.tsx</code>（單一 banner 對應 §7.3 fail-soft 與 §9.2 HALTED 兩態）；對應 unit tests 跑 <code>node:test</code> 通過 + <code>tsc --noEmit</code> 過。SPEC-008 v0.2.0 → v0.2.1。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-07 · v0.3.0 · Tech Lead</h3>
-    <p><strong>PoC artifacts 落地 round 8</strong>（最後 pre-flight 工程準備）：</p>
-    <ul>
-      <li><strong>PoC-A（EdDSA / LIFF）</strong>：建立 <a href="../docs/poc/eddsa/"><code>docs/poc/eddsa/</code></a> — <code>README.md</code>（playbook + desk research + acceptance + dual-algo 退路）/ <code>check-support.html</code>（Web Crypto Ed25519 三項 standalone 檢測）/ <code>server-token-sample.rs</code>（Rust + jsonwebtoken 0.9 EdDSA token issue + verify reference，含 cookie HTTP-only / SameSite=Lax 配置）。Desk research 結論：iOS Safari 17+ / Android Chrome / Cloudflare Workers / 各 mobile JWT lib 皆支援 Ed25519；LIFF webview engine ≈ host Safari/Chrome；舊裝置（iOS 15- / Android 9-）為已知風險點需實機驗證。</li>
-      <li><strong>PoC-B（Cloudflare Edge runtime）</strong>：建立 <a href="../docs/poc/edge-runtime/"><code>docs/poc/edge-runtime/</code></a> — <code>README.md</code>（5 場景 playbook + desk research + acceptance + 退路矩陣）/ <code>scenarios.md</code>（5 場景之 minimal Next.js 15 code snippets：KYC iframe + WebSocket fan-out + Server Actions + fetch behaviour + env / secret binding）。Desk research 結論：A/B/D/E preliminary pass；C 部分風險（某些 SaaS SDK 之 Node.js API 依賴會在 Edge runtime build fail）。</li>
-      <li><strong>PRE-FLIGHT-POCS.md v1.0 → v1.1</strong>：status 從 🟡 Pending 升級為 🟢 Desk Research Done · 🟡 Live Verification Pending；§3.5 / §4.4 結構化回填欄位（Step / Scenario × ☐ Pass/Fail checkbox + 失敗時 offending 標記）。</li>
-      <li>PoC 執行成本評估：PoC-A ~ 半天 + 1 LIFF channel + 2 phones；PoC-B ~ 1-2 天 + 1 Cloudflare Pages preview + ngrok。</li>
-      <li><strong>PR #1 開發路徑解鎖</strong>：用戶可在 PR #1 開發期間並行跑 live PoC；artifacts 已就緒消除「PoC 阻塞」之 critical path。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-07 · v0.2.9 · Tech Lead</h3>
-    <p><strong>程式碼 ↔ SPEC 同步收斂 round 7</strong>（agent 驗證 → R-1/R-2 補齊 + 殘餘 gap 對齊）：</p>
-    <ul>
-      <li><strong>R-1/R-2 程式碼補齊</strong>（commit <code>430643c</code>）：sentinel 重構為 sorted const slice + <code>RESERVED_REMOVED_USER_IDS</code>、INV-6 application validate + DB CONSTRAINT TRIGGER 雙層、CI sentinel-scan job 補 R-1/R-2 grep gate、CI runner 切 <code>ubuntu-latest-4-cores</code>、KUMO_NPM_TOKEN 殘留移除、cargo-mutants 門檻調 60；87 unit tests pass / clippy clean / fmt clean；INV-6 chargeback carve-out 補正（SPEC-002 v0.1.8、ADR-0006 v1.0.1）。</li>
-      <li><strong>SPEC-005 §0 標記降級</strong>：v0.1.2「✅ Complete」→ v0.1.3「⚠️ Backend Complete / Frontend Pending SumSub Integration」；新增 §0.1 backend 已完成清單、§0.2 待完成清單（SumSub iframe / Tier 2/3 OCR / batch scheduler / income stale / EdDSA PoC）、§0.3 PR #1 acceptance 條件。SDD 紀律：spec 反映現況，不誤導 Compliance。</li>
-      <li><strong><code>.env.example</code> sweep</strong>：移除殘留 <code>KUMO_NPM_TOKEN=</code>（v0.2.3 erratum 後不需要）、補 observability port（PROMETHEUS / GRAFANA / TEMPO_OTLP_GRPC / LOKI / MAILHOG SMTP+UI）、補 frontend port（WEB / ADMIN / LIFF）、補 <code>NEXT_PUBLIC_LIFF_ID</code>、補檔頭註記 SPEC-017 §7.1 / SPEC-010 §3.3 / Vault sidecar 警示。</li>
-      <li><strong>SPEC-014 §4.1.1 對齊現況</strong>：紀錄 round 7 程式碼驗證結果「當前採 12-binary 拓撲」+ 採 12-binary 之 acceptance 補強（PR description 須宣告 latency budget 壓測承諾）+ §4.1.1.1 轉 7-binary 之 4 條觸發條件 + 簡述轉換流程；SPEC-014 v0.2.5 → v0.2.6。</li>
-      <li>Agent 驗證澄清：admin / liff stub 對 SPEC-017 §6.3 acceptance（health route + middleware + LIFF init + fail-fast）已落地；apps/web/app/api/health/route.ts 已存在（agent 之前誤報）。版本 bump：SPEC-002 v0.1.7 → v0.1.8、SPEC-005 v0.1.2 → v0.1.3、SPEC-014 v0.2.5 → v0.2.6；ADR-0006 v1.0 → v1.0.1。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-07 · v0.2.8 · Tech Lead</h3>
-    <p><strong>動工前最後兩件 round 6</strong>（ADR-0005 retroactive + PoC plan 文件化）：</p>
-    <ul>
-      <li><strong>ADR-0005 新增（Accepted, retroactive）</strong>：補做 SPEC-014 v0.2.0「後端 Go → Rust」切換之 governance ADR。涵蓋 driver（GC pause / 不變式型別化 / 業界對標 Kalshi）、4 個 considered options（維持 Go / Rust+Go 混搭 / 全 Rust / C++ hot path）、為何選全 Rust 之具體論證（單語言 SDK 維運成本 &lt; CRUD borrow checker 成本）、Negative consequences 與 Mitigation Plan、Notes for Codex 6 條紀律。SPEC-014 §3.1 v0.2.0 變更說明補 cross-ref 至 ADR-0005；SPEC-014 v0.2.4 → v0.2.5。</li>
-      <li><strong>PoC plan 文件落地</strong>：建立 <a href="../docs/poc/PRE-FLIGHT-POCS.md"><code>docs/poc/PRE-FLIGHT-POCS.md</code></a>，涵蓋 PoC-A（EdDSA / LIFF SDK 三步驟驗證 + 退路）+ PoC-B（Cloudflare Edge runtime 5 場景驗證 + 退路）+ §5 PoC 完成後 SPEC 回填規則 + §6 失敗 escalation 流程；SPEC-010 §3.1.2 / SPEC-014 §3.2.1 補 cross-ref；SPEC-017 §11.3 新增 PoC gating（2026-05-09 v0.3.3 後校準為 launch acceptance gate，不阻擋 PR #1 / internal alpha，但阻擋公開 Beta / 真實入金 / prod deployment）；SPEC-010 v0.2.1 → v0.2.2、SPEC-017 v0.2.5 → v0.2.6。</li>
-      <li>ADR README 索引補 ADR-0005。本輪後<strong>所有動工前清單已 closed</strong>：兩條紅線清除（R-1 / R-2）+ 跨檔一致性（H-1~H-6）+ 跨檔治理（M-1, M-3, multi-sig 中央表）+ 12 個技術風險點（T-1~T-12）+ ADR-0001 §6 patch + ADR-0005 retroactive + ADR-0006 INV-6 + PoC plan 文件化。Codex 拿到 SPEC + ADR + PoC plan 即可依 SPEC-017 §11.3 跑 PoC，PoC 通過後依 §11.2 開 PR #1。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-07 · v0.2.7 · Tech Lead</h3>
-    <p><strong>動工前剩餘待辦清除 round 5</strong>（ADR governance + T-1 ~ T-8 落地）：</p>
-    <ul>
-      <li><strong>ADR-0001 v1.0.2</strong>：§6「唯一例外」carve-out 撤除（連動 R-2），補 <code>probability_symmetry</code> / <code>auto_hedge</code> 禁字；</li>
-      <li><strong>ADR-0006 新增（Accepted）</strong>：擴展 ADR-0003 §5 INV 集合 INV-1 ~ INV-5 → INV-1 ~ INV-6，正式 governance 追認 INV-2/INV-4 含 Frozen 子科目（v0.1.1 SPEC drift 補正），新增 INV-6 outflow whitelist（連動 R-1）+ plpgsql trigger template + application/DB/CI 三層保護；</li>
-      <li><strong>ADR-0003 v1.0.3</strong>：§5 標 partial superseded by ADR-0006；</li>
-      <li><strong>ADR README</strong>：索引補 ADR-0006，ADR-0001 / ADR-0003 狀態加註修訂；</li>
-      <li><strong>T-1 service 拓撲</strong>：SPEC-014 §4.1 advisory 建議 MVP 7-binary 合併部署（保留 12 service crate 結構），DAU &gt; 5k 後再拆；</li>
-      <li><strong>T-2 RPO 拆兩層</strong>：SPEC-008 §2 RTO/RPO 表 RPO 拆「region-local（synchronous standby + WAL fdatasync + Kafka acks=all → RPO=0）」+「cross-region（async streaming → RPO ≤ 5s）」；新增 §2.1/§2.2 三重保證 + SLA 邊界；SPEC-008 v0.1.0 → v0.2.0；</li>
-      <li><strong>T-3 partition 策略修正</strong>：SPEC-002 §12 OQ #2 改為「Phase 1 從 day 1 即 monthly partition by <code>created_at</code> (pg_partman) + BRIN + cold detach」，撤銷原「不分區後 migrate」設計；</li>
-      <li><strong>T-4 hostNetwork 路由</strong>：SPEC-003 §17.2 落地 etcd-driven consistent hash routing（24 virtual nodes）+ 5 種觸發場景 + 跨服務銜接 + MVP-Scale-up-Scale-out 演進；</li>
-      <li><strong>T-5 最終一致性窗口</strong>：SPEC-002 §9.3 明示 ~100ms eventual consistency 語意 + 前端 optimistic UI + 後端 <code>?at_seq=N</code> / <code>?consistent=true</code> API + OTel 監控；</li>
-      <li><strong>T-6 Thread model 分流</strong>：SPEC-003 §17.3 落地「熱市場（前 5%）獨佔 node + current_thread + core pinning」vs「冷市場 multiplex + multi-thread + work-stealing」+ 動態升降級 + 兩 binary 拆分；</li>
-      <li><strong>T-7 Mutation 門檻分階段</strong>：SPEC-017 §3.3 R-4 改為「MVP 60% 起步、每季 +5%、6 個月達 75%」；</li>
-      <li><strong>T-8 CI runner</strong>：SPEC-017 §11.2.10 預設改 <code>ubuntu-latest-4-cores</code>（&lt; 15 min cold cache），standard 2-core fallback。版本 bump：SPEC-002 v0.1.6 → v0.1.7、SPEC-003 v0.2.2 → v0.2.3、SPEC-008 v0.1.0 → v0.2.0、SPEC-014 v0.2.3 → v0.2.4、SPEC-017 v0.2.4 → v0.2.5；ADR-0001 v1.0.1 → v1.0.2、ADR-0003 v1.0.2 → v1.0.3、ADR-0006 首版 v1.0 Accepted。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-07 · v0.2.6 · Tech Lead</h3>
-    <p><strong>技術可實現性收斂 round 4</strong>（T-9 ~ T-12 + H-3 ~ H-6 + 新增 latency budget SPEC）：</p>
-    <ul>
-      <li><strong>T-12 Settlement batch</strong>：SPEC-004 §7.4 batch size 1000 → 500 + 新增 §7.5 強制 off-peak 排程（UTC 18-22 / 台北 02-06），降低 transaction window 與撮合 ledger worker lock contention；SPEC-004 v0.1.1 → v0.1.2。</li>
-      <li><strong>T-11 SLO 表補漏 + 新增 §6.4 Latency Budget</strong>：SPEC-007 §6.1 補 wallet-ledger / market-service 兩個 P0 service SLO；Matching Engine SLO 拆「引擎內部 &lt; 5ms」+「下單端到端 &lt; 30ms」雙層；新增 §6.4 跨服務 Latency Budget（11 hop × P99 預算分解 + OTel span 對照 + 違反處理 + budget 變更管控），明示「各 service P99 達標但加總超標」之 SDD 防呆設計；SPEC-007 v0.1.0 → v0.2.0。</li>
-      <li><strong>T-10 Cloudflare Edge runtime PoC</strong>：SPEC-014 新增 §3.2.1 列五個動工前必驗證場景（KYC iframe / WS fan-out / Server Actions / fetch / env binding），含已知限制與退路選項（Node.js runtime / 後端 BFF）；SPEC-014 v0.2.2 → v0.2.3。</li>
-      <li><strong>T-9 EdDSA mobile PoC</strong>：SPEC-010 §3.1.2 補 LIFF SDK / mobile / browser 之 Ed25519 相容性 PoC 表，含 RS256 後備策略；SPEC-010 v0.2.0 → v0.2.1。</li>
-      <li><strong>H-3 CI gate 對齊</strong>：SPEC-013 §3.1 改為「SPEC-017 §8 之超集」明示繼承全部 bootstrap gate（pnpm/cargo/sqlx/buf/clippy/nextest/deny/geiger/sentinel-scan）+ prod gate（SAST/SCA/image scan/IaC/secret/migration/E2E）；§3.2 必過 gate 表 19 列每列標來源；nightly 加 cargo-mutants / macos-latest / terraform plan diff；prod approval cross-ref MS-12。</li>
-      <li><strong>H-4 ORM → sqlx</strong>：SPEC-010 §3.2 OWASP A03 由「ORM + parameterized」修為「<code>sqlx::query!</code> 編譯時檢查 SQL + parameterized binding」，對齊 SPEC-014 §3.1 不引入 ORM 決議。</li>
-      <li><strong>H-5 Chargeback 門檻統一</strong>：SPEC-016 §6.1（≥ 1）/ SPEC-010 §6.2（&gt; 1 → ≥ 1）/ SPEC-002 §8.1（補上門檻）三處對齊為「累計 chargeback <strong>≥ 1</strong> 永久封號 + 黑名單」；SPEC-002 v0.1.5 → v0.1.6、SPEC-010 v0.2.0 → v0.2.1、SPEC-016 v0.1.0 → v0.1.1。</li>
-      <li><strong>H-6 Coverage 分層</strong>：SPEC-013 §3.3 新增覆蓋率分層表（ledger/撮合 ≥ 95% / 結算 ≥ 90% / 安全敏感 ≥ 85% / 其他 ≥ 80% / web ≥ 70% / mocks 不檢查），消除 SPEC-013（80%）vs SPEC-003 §16.1（100%）vs SPEC-003 §18（≥ 95%）三處內部矛盾；SPEC-003 §16.1 對齊修為「≥ 95% baseline + 100% stretch」；SPEC-013 v0.1.0 → v0.2.0、SPEC-013「依賴」加 SPEC-017。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-07 · v0.2.5 · Tech Lead</h3>
-    <p><strong>R-1 / R-2 兩條合規紅線清除</strong>（業主 2026-05-07 拍板）：</p>
-    <ul>
-      <li><strong>R-1 銅幣回兌紅線</strong>：SPEC-011 §6 整節重寫為 4 子節（B2B 簽約獨立法律關係 / 雙身份隔離 / 帳本層 INV-6 強制 / 會計科目分離）；§5.2 / §7.1 同步修正誤導描述；SPEC-002 §4.2 Chart of Accounts 補 <code>Liability.AccountsPayable.{partner_id}</code> / <code>Expense.AffiliatePartnerFee</code> / <code>Bank.OperatingAccount.{token_kind}</code>；SPEC-002 §5 新增 INV-6（<code>Player.Wallet.*</code> outflow 白名單，DB CONSTRAINT TRIGGER 強制 + CI sentinel-scan grep gate），ADR-0006 待落地擴展 ADR-0003 §5 INV 集合；SPEC-002 v0.1.4 → v0.1.5、SPEC-011 v0.1.0 → v0.2.0、SPEC-011「依賴」清單加 SPEC-010。</li>
-      <li><strong>R-2 平台下場紅線</strong>：SPEC-009 §5 「冷啟動補貼」整段移除（保留 placeholder 章節說明移除理由與替代方案 — DMM rebate 放大）；SPEC-009 §9 OQ #5 標 Resolved；SPEC-003 §12.1.1 sentinel <code>system.platform_announcement</code> (uid=4) 移除並加入 <code>RESERVED_REMOVED_USER_IDS</code> 防重用集合 + 兩個 unit test；SPEC-003 §12.1.4「例外情況」整段刪除（改為「<strong>無</strong>」）；SPEC-003 v0.2.1 → v0.2.2、SPEC-009 v0.2.0 → v0.2.1。</li>
-      <li>本檔 §5 新增 R-1 / R-2 governance 條目（採 🔴 → ✅ 圖示保留 deal-breaker 痕跡供未來 audit）；§5.1 圖示說明補新狀態。</li>
-      <li><strong>後續落地</strong>：ADR-0001 §6 「唯一例外」描述待新 ADR 標記為 superseded；ADR-0006 待業主審閱後落地。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-07 · v0.2.4 · Tech Lead</h3>
-    <p>動工前一致性 sweep round 3：</p>
-    <ul>
-      <li><strong>H-1 Go → Rust 殘留清理</strong>：SPEC-003 §3.1 Market struct / §3.2 Outcome enum / §12.1.1-3 sentinel 與 CI grep / §14.2 金額計算 / §15 orderbook 範例 / §16 測試策略（<code>cargo nextest</code> 取代 <code>goleak</code>、<code>proptest</code> 取代 <code>gopter</code>，新增 §16.6 mutation testing 對齊 R-4）；SPEC-004 §4.2 OracleSubmission struct；SPEC-009 §7 DMM session 程式碼改 <code>tokio</code> + <code>tokio-rustls</code> + <code>thiserror</code>；SPEC-009 v0.1.0 → v0.2.0、SPEC-003 v0.2.0 → v0.2.1、SPEC-004 v0.1.0 → v0.1.1。SPEC-003 §6 ~ §11 之演算法 pseudo-code 維持 Go 風格（已由 §6 開頭註記為 pseudo-code，本次不動）。</li>
-      <li><strong>H-2 Rust 1.78 → 1.85 化石清理</strong>：SPEC-014 §3.1 表格、SPEC-017 §2 file tree 註解、SPEC-017 §8 CI workflow <code>toolchain: &#39;1.78&#39;</code> → <code>&#39;1.85&#39;</code>（edition 2024）；SPEC-014 v0.2.1 → v0.2.2、SPEC-017 v0.2.3 → v0.2.4。</li>
-      <li><strong>M-1 Hedge 政策 Resolved（Q-7）</strong>：新增本檔 §5 Q-7 為「允許 hedge」（對齊 Kalshi / Polymarket 業界做法）；SPEC-002 §4.4.4 NOTE 3 加 cross-ref；SPEC-015 §8.1 刪 hedge 禁令並改為 hedge 允許說明 + post-trade 偵測引用；SPEC-003 §12 加允許註記，明示<strong>不</strong>加 <code>HEDGE_NOT_ALLOWED</code> pre-trade（撮合 hot path 無新增 1 hop）；SPEC-002 v0.1.3 → v0.1.4、SPEC-015 v0.1.0 → v0.1.1。</li>
-      <li><strong>M-3 Multi-sig 治理中央表</strong>：SPEC-010 新增 §9.3（17 條規則 MS-1 ~ MS-17 + 已 Resolved 不入表決策 + Admin UI 實作要求 + 為何集中），原各 SPEC（002 / 004 / 008 / 012 / 013 / 015 / 016 / 017）之簽核要求皆改以「呼應 SPEC-010 §9.3 MS-N」方式引用，避免 admin / Compliance UI 流程分裂；SPEC-010 v0.1.0 → v0.2.0；SPEC-010「被依賴」清單擴增為 9 份反映其 governance 中央表角色。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-06 · v0.2.3 · Codex</h3>
-    <p><strong>Superseded by v0.3.3 / v0.3.4 status calibration.</strong> 當時 SPEC-005 工程實作完成並驗證通過之範圍僅涵蓋 backend in-memory contract、<code>mock-sumsub</code>、<code>packages/ts-sdk</code>、<code>apps/web</code> 與 seed / migration 流程；後續已降級為 🟡，不得解讀為 Public Beta / production KYC 完成。最新狀態以本檔 §2 SPEC-005 / SPEC-005a 狀態列與 SPEC-005 §0 為準。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.2.2 · Tech Lead</h3>
-    <p>SPEC-017 §11 擴充：拆 §11.1（整體 Definition of Done）+ §11.2（Codex PR #1 acceptance checklist），含 10 個子節（repo 根結構 / Rust workspace / Protobuf / Frontend / docker-compose / env / CI / tools / 文件 / 規模預期）約 50 項勾選項，明列 PR diff 規模 5-9k 行、commit 8-15、CI cold cache &lt; 25 min 與 reject 紅線。SPEC-017 v0.2.1 → v0.2.2。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.2.1 · Tech Lead</h3>
-    <p>Rust 工具鏈 6 項硬性決議拍板（R-1..R-6）：</p>
-    <ul>
-      <li><strong>R-1 TLS</strong>：rustls 為預設（sqlx / fred / reqwest / tonic / opentelemetry 全 rustls-tls），rdkafka 例外沿用 librdkafka OpenSSL；</li>
-      <li><strong>R-2 Edition</strong>：採 Rust edition <strong>2024</strong> + MSRV <strong>1.85</strong>；</li>
-      <li><strong>R-3 Runtime</strong>：撮合引擎 current_thread + per-market <code>LocalSet</code> + <code>core_affinity</code> thread pinning；其餘 11 個 service 走 multi-thread runtime；</li>
-      <li><strong>R-4 Mutation testing</strong>：cargo-mutants 限縮 <code>crates/sdk/ledger</code> + <code>services/{wallet-ledger-service,matching-engine}</code> 核心邏輯，nightly CI cron，caught rate ≥ 75%；</li>
-      <li><strong>R-5 Unsafe</strong>：workspace 全域 <code>#![forbid(unsafe_code)]</code>，例外須 ADR + 4-eye review，CI 跑 cargo geiger；</li>
-      <li><strong>R-6 sqlx offline</strong>：<code>.sqlx/</code> commit 進 git，CI 跑 <code>cargo sqlx prepare --check</code>。落入 SPEC-014 §3.1 / SPEC-017 §3.3 / §4.2 / §6.1.1 / §8 / §8.2，及 .gitignore。SPEC-014 v0.2.0 → v0.2.1，SPEC-017 v0.2.0 → v0.2.1。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.2.0 · Tech Lead</h3>
-    <p><strong>後端語言由 Go 切換至 Rust（重大）</strong>：</p>
-    <ul>
-      <li>SPEC-014 v0.2.0 改寫 §3.1 後端技術棧（Rust 1.78+ / axum / tonic / sqlx / tokio / sccache / cargo-nextest / rdkafka / fred / tracing / dotenvy / ulid），§4 service 表全標 Rust，§5 monorepo 結構新增 <code>crates/sdk/</code> + <code>crates/proto/</code>、移除 <code>packages/go-sdk/</code>，§6 / §8 / §9 / §10 / §12 / §14 同步；§14 OQ #5「撮合切 Rust」隨之 Resolved；</li>
-      <li>SPEC-017 v0.2.0：§2 file tree、§3 toolchain（Rust 1.78+ / clippy / rustfmt / sqlx-cli + sccache + cargo-nextest + cargo-chef + cargo-deny）、§4.2 Cargo workspace 取代 go.work、§4.4 prost/tonic 取代 protoc-gen-go、§4.5 Makefile cargo 命令、§6.1 Rust axum stub 範例、§8 CI 改 dtolnay/rust-toolchain + sccache + Swatinem/rust-cache、§11 / §12 同步；</li>
-      <li>SPEC-003 v0.2.0：§1 in-process memory 改 Rust、§4.3 <code>OrderID = [u8; 16]</code> Rust canonical、§5 OrderBook 改 BTreeMap + VecDeque、§6 開頭加 pseudocode 註記、§19 OQ #3 落地動作對齊 ulid crate；</li>
-      <li>SPEC-002 v0.1.3：§3.2 內部型別 int64 → i64；</li>
-      <li>SPEC-013 / 016 / README / ADR-0004 / .gitignore / packages/proto/README + common.proto / CLAUDE.md 同步；</li>
-      <li>packages/proto/v1/common.proto 之 <code>OrderID</code> 由 uint64 改為 <code>bytes</code>（16 bytes ULID）對齊 SPEC-003 §19。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.1.7 · Tech Lead</h3>
-    <p>Codex 動工前 OQ 收尾 round 2：</p>
-    <ul>
-      <li>SPEC-017 §12 OQ #3 mock servers 同 monorepo Resolved（含 production binary 隔離 build tag）；</li>
-      <li>SPEC-002 §12 OQ #2 <code>ledger_entries</code> Phase 1 不分區，明列分區觸發門檻與 monthly partition 為未來方案；</li>
-      <li>SPEC-003 §19 OQ #3 訂單 ID 採 ULID（保留 per-market <code>seq uint64</code> 為撮合 FIFO 排序），§4.3 加 TODO 標記 PR #1 改 [16]byte；</li>
-      <li>SPEC-016 §7 Phase 2 多 Token觸發條件由「Q-3 拍板」改為業務驅動（Op Co. 國際版本 / FX 對沖），明示<strong>目前無啟用計畫</strong>；SPEC-002 §3.1 國際化說明同步收斂。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.1.6 · Tech Lead</h3>
-    <p>Codex 動工前 deal-breaker 收尾：</p>
-    <ul>
-      <li>Q-3 銅幣計價 1 銅幣 = 金幣 1 由暫定改為 ✅ Resolved（業主拍板），SPEC-002 §3.1 同步；</li>
-      <li>Q-6 數據主權暫定 Cloudflare R2 ✅ Resolved；</li>
-      <li>SPEC-005 §2.1 釘住 KYC tier canonical enum <code>TIER_0/1/2/3</code>，SPEC-017 §5.2 同步；</li>
-      <li>SPEC-017 §12 OQ #1 / #2 / #5 全部 Resolved（commit gen/、env_file、Linux PR gate + macOS nightly）；</li>
-      <li>SPEC-002 §12 OQ #1 ledger 拆獨立 service Resolved，§4.2.1 新增 <code>Player.Frozen.{user_id}</code> 子科目，INV-2 同步擴展。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.1.5 · Tech Lead</h3>
-    <p>Codex 動工前置補強：</p>
-    <ul>
-      <li>新增 SPEC-017 monorepo bootstrap &amp; local dev（P0）；</li>
-      <li>建立 packages/proto/v1/ 共 6 份 .proto（errors / common / ledger / engine / market / kyc / payment）；</li>
-      <li>SPEC-002 §4.4.3 trade entry 改寫對齊 §4.4.4 不對稱 escrow，移除「兩邊皆鎖 6,500」之簡化；</li>
-      <li>SPEC-015 §6 補 outcomes / oracle_submissions / disputes / dispute_resolutions / positions 五張 schema，SPEC-004 §6.3 改為呼應引用；</li>
-      <li>SPEC-016 §5.5 補通路 webhook payload 對映表（綠界 / Stripe / 藍新 / PayMongo / MoMo / VNPay 6 家）；</li>
-      <li>SPEC-010 §3.1 補 JWT claims schema、refresh token rotation、reuse detection、step-up MFA 細節。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-15 · v0.1.5 · Tech Lead</h3>
-    <p>產品方針改為 multi-landing：</p>
-    <ul>
-      <li>§1 系統屬性表「嚴格 Geo-block」整列移除；目標市場改由各 <code>apps/landing-*</code> variant 自治（見新 SPEC-021）；</li>
-      <li>SPEC-005 §2.4 / §2.4.2 重寫：移除「紅名單地區」「Geo-block runtime 配置」「Phase 2 waiting list」等條文；Tier 1 5 國轉為純工程文件支援範圍，其餘地區直走 Tier 2 SumSub；</li>
-      <li>SPEC-010 §2.1 Cloudflare 規則表「Geo-rules: 拒絕 🔴 名單地區」整列移除；</li>
-      <li>新增 SPEC-021 規範 landing variant lifecycle（region × product matrix、合規檢核、上線/退役、共用 packages 契約）；</li>
-      <li>CLAUDE.md / README.md / <code>docs/implementation-plans/README.html</code> 對 SPEC-001 的保留引用同步清除（SPEC-001 anchor 廢止，原章節改由 SPEC-002 ~ SPEC-010 各自承擔法律邊界條文）。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.1.4 · Tech Lead</h3>
-    <p>第二輪交叉一致性 review（純技術視角，合規由業主自治）：</p>
-    <ul>
-      <li>SPEC-005 §2.4 dead link 修正；</li>
-      <li>SPEC-015 §11 7 年保留補強；</li>
-      <li>ADR-0002 多處 dead link 全部修正並補 v1.0.2 Revision History；</li>
-      <li>補回 SPEC-002 §3.2 內部精度（純技術整數化規範）；</li>
-      <li>SPEC-016 §7 跨 Token整節重寫，明確 Phase 1 單 Token / Phase 2 多 Token保留設計，移除 <code>Bank.TrustAccount.銀幣</code> 舉例；</li>
-      <li>SPEC-002 §12 Open Questions 補齊編號 1/2 並收斂跨檔議題引用。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.1.3 · Tech Lead</h3>
-    <p>規格索引章節重整：更新 Geo-block 全域描述與跨檔決策追蹤表引用，移除對已刪除公司結構與司法管轄區分級表的硬引用。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.1.2 · Tech Lead</h3>
-    <p>完成首輪交叉一致性 review：</p>
-    <ul>
-      <li>修 SPEC-002 §5 INV 編號對齊 ADR-0003 §5；</li>
-      <li>修 PRD.md dead link；</li>
-      <li>HK/SG geo-block 統一為保守 🔴；</li>
-      <li>修 SPEC-002 §4.4.4 零金額結算 entry 衝突；</li>
-      <li>ADR-0002 / ADR-0003 §11 改名為「Pre-Execution Validation Items」；</li>
-      <li>§5 改為跨檔決策追蹤表（含 Resolved-by 欄位）；</li>
-      <li>SPEC-005 補 declared_monthly_income 作為 KYC / EDD 風控輔助欄位；</li>
-      <li>SPEC-005 §2.4 補首發 5 國 Tier 1 證件驗證；</li>
-      <li>新增 SPEC-015 市場生命週期；</li>
-      <li>新增 SPEC-016 支付通路整合；</li>
-      <li>SPEC-003 §12.1 補 PLATFORM_SYSTEM_USER_IDS sentinel 定義；</li>
-      <li>SPEC-015 / SPEC-016 加入 P0 索引。</li>
-    </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.1.1 · Tech Lead</h3>
-    <p>專案英文代號定案：propheticaNet（暫定）→ prophetica；同步刪除 legacy PRD.md；連帶 bump SPEC-005 / SPEC-014 至 v0.1.1（修正內文專案名稱）；ADR-0001 / ADR-0002 同步修名但依 ADR 慣例不變動 Status / Date。</p>
-  </article>
-  <article class="changelog-entry">
-    <h3>2026-05-05 · v0.1.0 · Tech Lead</h3>
-    <p>初版建立，14 份 SPEC 全數草稿完成</p>
-  </article>
-</div>
-</section>
-<h2>5. 跨檔決策追蹤表（Cross-cutting Decision Tracker）</h2>
-<blockquote>
-<p>本表為跨多份 SPEC / ADR 的全域決策點之<strong>單一真相來源</strong>。任何議題一旦被某 SPEC / ADR 決定，<strong>Status</strong> 改為 <code>Resolved</code> 並填入 <code>Resolved by</code> 欄位；其他文件的 Open Questions 不重複記錄此議題。</p>
-</blockquote>
-<table>
-<thead>
-<tr>
-<th>ID</th>
-<th>議題</th>
-<th>影響範圍</th>
-<th>Status</th>
-<th>Resolved by</th>
-<th>待動作</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Q-1</td>
-<td>控股公司司法地：BVI vs Cayman vs Delaware</td>
-<td>ADR-0002</td>
-<td>✅ Resolved</td>
-<td><a href="../docs/architecture/decisions/ADR-0002-three-company-corporate-structure.md">ADR-0002 §4.4</a></td>
-<td>BVI；未來 IPO 路徑前重組為 Cayman/Delaware</td>
-</tr>
-<tr>
-<td>Q-2</td>
-<td>Op Co. 執照地：Malta MGA / Curaçao / PAGCOR / Isle of Man</td>
-<td>ADR-0002 §11 V-1</td>
-<td>🟡 Pending</td>
-<td>—</td>
-<td>公開 Beta / 真實入金前由執照地律師擇一，並完成 LG-1 evidence；未完成時僅允許 internal alpha / sandbox demo</td>
-</tr>
-<tr>
-<td>Q-3</td>
-<td>銅幣計價單位：1 銅幣 = 金幣 1 vs 銀幣 0.01 vs 抽象單位</td>
-<td>SPEC-002 §3.1 / ADR-0003 §11 V-5</td>
-<td>✅ Resolved</td>
-<td><a href="./SPEC-002-funds-safety.html">SPEC-002 §3.1</a></td>
-<td>1 銅幣 = 金幣 1（內部記帳基準 Token 類型恆為 金幣，多 Token 走 SPEC-016 §7 Phase 2）</td>
-</tr>
-<tr>
-<td>Q-4</td>
-<td>入金通路供應商：綠界 / 藍新 / 紅陽 / Stripe；MCC 接受度</td>
-<td>SPEC-016</td>
-<td>🟡 Pending</td>
-<td><a href="./SPEC-016-payment-gateway.html">SPEC-016 §3.2</a> 列驗證項</td>
-<td>公開 Beta / 真實入金前完成至少 3 家詢價與 1 家 sandbox webhook + MCC 接受度驗證，並對齊支付 Gateway BIN 檢查；未完成時不得開放真實儲值</td>
-</tr>
-<tr>
-<td>Q-6</td>
-<td>數據主權：Cloudflare R2（EU / 全球）vs Linode Object Storage (Tokyo) vs AWS S3 (Singapore)</td>
-<td>SPEC-005 §5.1 / SPEC-008 §6.1</td>
-<td>✅ Resolved（暫定）</td>
-<td>業主決議 2026-05-05</td>
-<td>KYC 證件 / WORM hash chain / 影像類資產一律存 <strong>Cloudflare R2</strong>（區域選擇由業主與運營方確認）；撮合事件流冷備走 SPEC-008 §6.1 雙寫策略</td>
-</tr>
-<tr>
-<td>Q-7</td>
-<td>Hedge 政策：同帳戶在同一市場是否允許同時持 YES + NO？</td>
-<td>SPEC-002 §4.4.4 / SPEC-003 §12 / SPEC-015 §8.1</td>
-<td>✅ Resolved</td>
-<td>Tech Lead 2026-05-07</td>
-<td><strong>允許 hedge</strong>：保留 SPEC-002 §4.4.4 NOTE 3 之逐 <code>position_id</code> 結算邏輯；<strong>移除</strong> SPEC-015 §8.1 hedge 禁令該行；SPEC-003 §12 風控前置層<strong>不</strong>加 <code>HEDGE_NOT_ALLOWED</code> 檢查（撮合 hot path 無新增 1 hop）；同帳戶自我對沖之刷量行為由 SPEC-010 §4.2.2 wash trading post-trade 偵測攔截。對齊 Kalshi / Polymarket 業界做法</td>
-</tr>
-<tr>
-<td><strong>R-1</strong></td>
-<td>銅幣回兌紅線：是否允許「玩家錢包銅幣 → B2B 應付帳款 / 外部資產」之任何技術路徑？</td>
-<td>SPEC-002 §4.2 §5 / SPEC-011 §6</td>
-<td>🔴 → ✅ Resolved</td>
-<td>業主決議 2026-05-07</td>
-<td><strong>永不允許</strong>：徹底清除 SPEC-011 §6 原「業務帳戶可選擇將銅幣獎勵轉為 B2B 合約應付」設計；§6 重寫為 4 子節（B2B 簽約獨立、雙身份隔離、帳本層 INV-6 強制、會計科目分離 <code>Expense.AffiliateCommission</code> vs <code>Expense.AffiliatePartnerFee</code>）；SPEC-002 §5 新增 INV-6 由 DB CONSTRAINT TRIGGER 強制 <code>Player.Wallet.*</code> outflow 目的地白名單；ADR-0006 待落地擴展 ADR-0003 §5 INV 集合為 INV-1 ~ INV-6</td>
-</tr>
-<tr>
-<td><strong>R-2</strong></td>
-<td>平台下場紅線：是否保留「平台公告錢包」冷啟動補貼之 feature flag / sentinel 例外？</td>
-<td>SPEC-003 §12.1 / SPEC-009 §5 / ADR-0001 §6</td>
-<td>🔴 → ✅ Resolved</td>
-<td>業主決議 2026-05-07</td>
-<td><strong>永不允許，徹底刪除</strong>：SPEC-009 §5 「冷啟動補貼」整段移除（保留 placeholder 章節說明）；SPEC-003 §12.1.1 sentinel <code>system.platform_announcement</code> (uid=4) 移除並加入 <code>RESERVED_REMOVED_USER_IDS</code> 防重用；SPEC-003 §12.1.4「例外情況」整段刪除（改為「<strong>無</strong>」）；流動性不足走 SPEC-009 §3.3 DMM rebate 放大或市場延後上架；ADR-0001 §6 「唯一例外」描述待新 ADR 更新為「無例外」</td>
-</tr>
-<tr>
-<td>Q-8</td>
-<td>SPEC-011 落地前 8 個技術 gap（推薦碼演算法 / 親屬偵測子規則 / 達標 claw-back / 帳本流向 / chargeback 反沖 / sign convention / 用詞 / 獎勵上限）</td>
-<td>SPEC-011 §3.2 §3.3 §4.1 §4.2 §4.4 §4.5 §4.6 §5.1 / SPEC-002 §5 INV-6 / SPEC-010 §4.2.1</td>
-<td>✅ Resolved</td>
-<td><a href="./SPEC-011-affiliate-commission.html">SPEC-011 v0.2.1</a> 2026-05-07</td>
-<td><strong>G-1</strong> BLAKE3 + Crockford Base32 + 5 retries；<strong>G-2</strong> <code>affiliate_kinship_link</code> 子規則 6 特徵 + 雙 gate；<strong>G-3</strong> 延遲 30 天發放（從根源繞開 INV-6 clawback 衝突）；<strong>G-4</strong> 獨立每日批次 txn + <code>commission_accruals</code> staging；<strong>G-5</strong> chargeback 反沖：介紹獎勵 G-3 路徑無需 clawback、持續佣金自停、已付佣金不追回；<strong>G-6</strong> sign convention cross-ref SPEC-002 §4.3；<strong>G-7</strong>「推薦樹」→「推薦清單」；<strong>G-8</strong> 月度 20 / 終身 200 / 月度佣金 金幣 50k 上限。SPEC-002 §5 INV-6 <strong>不</strong>需新增 affiliate clawback carve-out。Codex 動工輸入完備</td>
-</tr>
-<tr id="cross-cutting-q9">
-<td>Q-9</td>
-<td>SumSub sandbox credentials 採購：tenant credentials / webhook signing secret / Tier 2+3 applicant levels / iProov liveness add-on</td>
-<td>SPEC-005 §0.2 / SPEC-005a §10 / SPEC-014 §3.2.1 / SPEC-000 §2 LG-3 + LG-4 / docs/poc/PRE-FLIGHT-POCS.md §4.4</td>
-<td>🔴 Pending（launch blocker）</td>
-<td>—</td>
-<td><strong>單點瓶頸</strong>同時阻擋 LG-3（KYC production path）與 LG-4（PoC-B Cloudflare Edge live verification）。採購清單：(a) <code>SUMSUB_APP_TOKEN</code> + <code>SUMSUB_SECRET_KEY</code>，(b) webhook signing secret（SPEC-005 INV-KYC-4 HMAC-SHA256 用），(c) Tier 2 applicant level（ID + selfie），(d) Tier 3 applicant level（含 iProov liveness add-on，對應 SPEC-005a §11.2 stage 2），(e) staging / dev webhook URL allow-list。Owner / Compliance 可選：(1) 直接向 SumSub 申請 sandbox tenant，最快解鎖既有設計；(2) 先走 SumSub sales / compliance evaluation，取得測試 tenant + 地區證件支援矩陣後再簽約；(3) 若 SumSub 拒給 iProov sandbox 或 APAC 文件覆蓋不足，同步評估 Onfido / Veriff fallback（SPEC-005 plan §0 已預留 secret fallback hardening）。Tech Lead 接收 credentials 後啟動 mock → real adapter 替換 + iProov real provider 寫入。</td>
-</tr>
-</tbody></table>
-<h3>5.1 議題狀態圖示</h3>
-<table>
-<thead>
-<tr>
-<th>圖示</th>
-<th>含義</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>✅ Resolved</td>
-<td>已被某 SPEC / ADR 拍板</td>
-</tr>
-<tr>
-<td>🟡 Pending</td>
-<td>待決定，但不阻塞動工</td>
-</tr>
-<tr>
-<td>🔴 Deal-breaker</td>
-<td>阻塞 P0 收尾，必須在第一行 code 之前解決</td>
-</tr>
-<tr>
-<td>🔴 → ✅</td>
-<td>原為 Deal-breaker，現已 Resolved（保留 🔴 標記提示其重要性，方便日後 audit）</td>
-</tr>
-</tbody></table>
-<h3>5.2 維護規則</h3>
-<ul>
-<li>新增跨檔議題請寫成新一列；<strong>不要</strong>在個別 SPEC 的 Open Questions 重複記錄已在本表的議題</li>
-<li>議題被拍板後，將相關 SPEC 的 Open Questions 條目刪除並改為「見 SPEC-000 §5 Q-N」</li>
-<li>ADR 體裁中已 Accepted 的 ADR，§11 採用 <code>Pre-Execution Validation Items</code> 命名（驗證項目而非待決議題），參見 ADR-0002 / ADR-0003</li>
-</ul>
-
-</body>
+  </body>
 </html>

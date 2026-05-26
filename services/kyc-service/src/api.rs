@@ -15,11 +15,11 @@ use crate::SecretConfig;
 use crate::internal_auth::{InternalCallRejection, verify_internal_call};
 use crate::kyc::{
     AmlEventDraft, DocumentAccessEntry, KycRecord, KycStatus, KycStore, KycStoreError, KycTier,
-    PendingMemberCasesQuery, PendingMemberCasesResponse, ReviewAnswer, ScreeningMatchDraft,
-    ScreeningMatchType, StartUpgradeDraft, SumsubWebhookDraft, TierOneVerificationDraft,
+    PendingMemberCasesQuery, PendingMemberCasesResponse, ProviderWebhookDraft, ReviewAnswer,
+    ScreeningMatchDraft, ScreeningMatchType, StartUpgradeDraft, TierOneVerificationDraft,
     is_supported_tier_one_document,
 };
-use crate::sumsub_documents::{SumsubDocumentClient, SumsubDocumentError};
+use crate::provider_documents::{ProviderDocumentClient, ProviderDocumentError};
 
 #[derive(Debug, Deserialize)]
 pub struct TierOneVerificationRequest {
@@ -39,7 +39,7 @@ pub struct StartUpgradeRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SumsubWebhookPayload {
+pub struct ProviderWebhookPayload {
     #[serde(rename = "applicantId")]
     pub applicant_id: String,
     #[serde(rename = "externalUserId")]
@@ -47,7 +47,7 @@ pub struct SumsubWebhookPayload {
     #[serde(rename = "type")]
     pub event_type: String,
     #[serde(rename = "reviewResult")]
-    pub review_result: SumsubReviewResult,
+    pub review_result: ProviderReviewResult,
     #[serde(rename = "kycReason", default)]
     pub kyc_reason: String,
     #[serde(rename = "sanctionMatches", default)]
@@ -55,7 +55,7 @@ pub struct SumsubWebhookPayload {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SumsubReviewResult {
+pub struct ProviderReviewResult {
     #[serde(rename = "reviewAnswer")]
     pub review_answer: String,
 }
@@ -131,7 +131,7 @@ pub struct StartUpgradeResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct SumsubWebhookResponse {
+pub struct ProviderWebhookResponse {
     pub user_id: String,
     pub current_tier: KycTier,
     pub status: KycStatus,
@@ -174,38 +174,38 @@ struct ApiState<S> {
     store: S,
     webhook_secret: String,
     internal_call_secret: String,
-    sumsub_documents: SumsubDocumentClient,
+    provider_documents: ProviderDocumentClient,
 }
 
 pub fn router<S>(store: S, secrets: SecretConfig) -> Router
 where
     S: KycStore,
 {
-    let sumsub_base_url =
-        std::env::var("SUMSUB_BASE_URL").unwrap_or_else(|_| "http://localhost:8086".to_owned());
-    let sumsub_app_token =
-        std::env::var("SUMSUB_APP_TOKEN").unwrap_or_else(|_| "dev-sumsub-app-token".to_owned());
-    let sumsub_secret_key =
-        std::env::var("SUMSUB_SECRET_KEY").unwrap_or_else(|_| "dev-sumsub-secret-key".to_owned());
-    let sumsub_documents =
-        SumsubDocumentClient::new(sumsub_base_url, sumsub_app_token, sumsub_secret_key);
+    let provider_base_url = std::env::var("KYC_PROVIDER_BASE_URL")
+        .unwrap_or_else(|_| "http://localhost:8081".to_owned());
+    let provider_app_token = std::env::var("KYC_PROVIDER_APP_TOKEN")
+        .unwrap_or_else(|_| "dev-provider-app-token".to_owned());
+    let provider_secret_key = std::env::var("KYC_PROVIDER_SECRET_KEY")
+        .unwrap_or_else(|_| "dev-provider-secret-key".to_owned());
+    let provider_documents =
+        ProviderDocumentClient::new(provider_base_url, provider_app_token, provider_secret_key);
 
     let state = ApiState {
         store,
         webhook_secret: secrets.webhook_secret,
         internal_call_secret: secrets.internal_call_secret,
-        sumsub_documents,
+        provider_documents,
     };
 
     build_router(state)
 }
 
-/// Like [`router`] but accepts an explicit [`SumsubDocumentClient`] instead of
+/// Like [`router`] but accepts an explicit [`ProviderDocumentClient`] instead of
 /// reading env vars. Intended for integration tests that spin up a mock server.
-pub fn router_with_sumsub_client<S>(
+pub fn router_with_provider_client<S>(
     store: S,
     secrets: SecretConfig,
-    sumsub_documents: SumsubDocumentClient,
+    provider_documents: ProviderDocumentClient,
 ) -> Router
 where
     S: KycStore,
@@ -214,7 +214,7 @@ where
         store,
         webhook_secret: secrets.webhook_secret,
         internal_call_secret: secrets.internal_call_secret,
-        sumsub_documents,
+        provider_documents,
     };
     build_router(state)
 }
@@ -237,7 +237,10 @@ where
             "/api/v1/kyc/users/:user_id/upgrades",
             post(start_upgrade::<S>),
         )
-        .route("/api/internal/webhooks/sumsub", post(sumsub_webhook::<S>))
+        .route(
+            "/api/internal/webhooks/provider",
+            post(provider_webhook::<S>),
+        )
         .route("/internal/aml/events", post(record_aml_event::<S>))
         .route("/internal/screening/rescans", post(screening_rescan::<S>))
         .route("/internal/reports/kyc/monthly", get(monthly_report::<S>))
@@ -420,16 +423,16 @@ where
 }
 
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip(state, headers, body))]
-async fn sumsub_webhook<S>(
+async fn provider_webhook<S>(
     State(state): State<ApiState<S>>,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<Json<SumsubWebhookResponse>, (StatusCode, Json<ApiErrorResponse>)>
+) -> Result<Json<ProviderWebhookResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
-    verify_sumsub_hmac(&state.webhook_secret, &headers, &body)?;
-    let payload = serde_json::from_slice::<SumsubWebhookPayload>(&body).map_err(|error| {
+    verify_provider_hmac(&state.webhook_secret, &headers, &body)?;
+    let payload = serde_json::from_slice::<ProviderWebhookPayload>(&body).map_err(|error| {
         api_error(
             StatusCode::BAD_REQUEST,
             "invalid_webhook_payload",
@@ -440,7 +443,7 @@ where
     let raw_payload_sha256 = hex::encode(Sha256::digest(&body));
     let outcome = state
         .store
-        .apply_sumsub_webhook(SumsubWebhookDraft {
+        .apply_provider_webhook(ProviderWebhookDraft {
             applicant_id: payload.applicant_id,
             external_user_id: payload.external_user_id,
             review_answer,
@@ -462,7 +465,7 @@ where
             )
         })?;
 
-    Ok(Json(SumsubWebhookResponse {
+    Ok(Json(ProviderWebhookResponse {
         user_id: outcome.record.user_id,
         current_tier: outcome.record.tier,
         status: outcome.record.status,
@@ -615,7 +618,7 @@ fn validate_aml_event(
     Ok(())
 }
 
-fn verify_sumsub_hmac(
+fn verify_provider_hmac(
     secret: &str,
     headers: &HeaderMap,
     body: &[u8],
@@ -680,7 +683,7 @@ fn unauthorized_webhook() -> (StatusCode, Json<ApiErrorResponse>) {
     api_error(
         StatusCode::UNAUTHORIZED,
         "webhook_hmac_invalid",
-        "SumSub webhook HMAC is missing or invalid",
+        "KYC provider webhook HMAC is missing or invalid",
     )
 }
 
@@ -799,7 +802,7 @@ fn api_error(
 }
 
 /// Fixed 404 body used for both "no applicant" and "doc not bound" to prevent
-/// leaking whether a document exists in `SumSub`.
+/// leaking whether a document exists in the KYC provider.
 static DOC_NOT_FOUND_BODY: &[u8] =
     br#"{"error":"document_not_found","message":"document not found"}"#;
 
@@ -882,30 +885,30 @@ where
                 tracing::error!(?err, "failed to write kyc_document_access_log entry");
             }
             return Ok(axum::response::IntoResponse::into_response(Json(Vec::<
-                crate::sumsub_documents::SumsubDocument,
+                crate::provider_documents::ProviderDocument,
             >::new(
             ))));
         }
         Some(applicant) => state
-            .sumsub_documents
+            .provider_documents
             .list_documents(&applicant)
             .await
             .map_err(|e| match e {
-                SumsubDocumentError::ProviderAuth => {
-                    tracing::error!("sumsub provider auth failure listing documents");
+                ProviderDocumentError::ProviderAuth => {
+                    tracing::error!("KYC provider auth failure listing documents");
                     api_error(
                         StatusCode::BAD_GATEWAY,
                         "provider_error",
                         "upstream provider error",
                     )
                 }
-                SumsubDocumentError::NotFound => api_error(
+                ProviderDocumentError::NotFound => api_error(
                     StatusCode::NOT_FOUND,
                     "document_not_found",
                     "applicant not found",
                 ),
-                SumsubDocumentError::Upstream(msg) => {
-                    tracing::error!(%msg, "sumsub upstream error listing documents");
+                ProviderDocumentError::Upstream(msg) => {
+                    tracing::error!(%msg, "provider upstream error listing documents");
                     api_error(
                         StatusCode::BAD_GATEWAY,
                         "provider_error",
@@ -986,10 +989,10 @@ where
 
     // Step 2: verify doc_id belongs to this applicant
     let documents = state
-        .sumsub_documents
+        .provider_documents
         .list_documents(&applicant)
         .await
-        .map_err(sumsub_list_error)?;
+        .map_err(provider_list_error)?;
 
     if !documents.iter().any(|doc| doc.doc_id == doc_id) {
         let entry = denied_entry(
@@ -1008,10 +1011,10 @@ where
 
     // Step 3: stream the image
     let image = state
-        .sumsub_documents
+        .provider_documents
         .fetch_image(&applicant, &doc_id)
         .await
-        .map_err(sumsub_image_error)?;
+        .map_err(provider_image_error)?;
 
     let safe_content_type = safe_image_content_type(&image.content_type);
 
@@ -1061,25 +1064,23 @@ fn denied_entry(
     }
 }
 
-fn sumsub_list_error(e: SumsubDocumentError) -> (StatusCode, Json<ApiErrorResponse>) {
+fn provider_list_error(e: ProviderDocumentError) -> (StatusCode, Json<ApiErrorResponse>) {
     match e {
-        SumsubDocumentError::ProviderAuth => {
-            tracing::error!(
-                "sumsub provider auth failure fetching document list for binding check"
-            );
+        ProviderDocumentError::ProviderAuth => {
+            tracing::error!("KYC provider auth failure fetching document list for binding check");
             api_error(
                 StatusCode::BAD_GATEWAY,
                 "provider_error",
                 "upstream provider error",
             )
         }
-        SumsubDocumentError::NotFound => api_error(
+        ProviderDocumentError::NotFound => api_error(
             StatusCode::NOT_FOUND,
             "document_not_found",
             "applicant not found",
         ),
-        SumsubDocumentError::Upstream(msg) => {
-            tracing::error!(%msg, "sumsub upstream error fetching document list for binding check");
+        ProviderDocumentError::Upstream(msg) => {
+            tracing::error!(%msg, "provider upstream error fetching document list for binding check");
             api_error(
                 StatusCode::BAD_GATEWAY,
                 "provider_error",
@@ -1089,23 +1090,23 @@ fn sumsub_list_error(e: SumsubDocumentError) -> (StatusCode, Json<ApiErrorRespon
     }
 }
 
-fn sumsub_image_error(e: SumsubDocumentError) -> (StatusCode, Json<ApiErrorResponse>) {
+fn provider_image_error(e: ProviderDocumentError) -> (StatusCode, Json<ApiErrorResponse>) {
     match e {
-        SumsubDocumentError::ProviderAuth => {
-            tracing::error!("sumsub provider auth failure fetching image");
+        ProviderDocumentError::ProviderAuth => {
+            tracing::error!("KYC provider auth failure fetching image");
             api_error(
                 StatusCode::BAD_GATEWAY,
                 "provider_error",
                 "upstream provider error",
             )
         }
-        SumsubDocumentError::NotFound => api_error(
+        ProviderDocumentError::NotFound => api_error(
             StatusCode::NOT_FOUND,
             "document_not_found",
             "image not found",
         ),
-        SumsubDocumentError::Upstream(msg) => {
-            tracing::error!(%msg, "sumsub upstream error fetching image");
+        ProviderDocumentError::Upstream(msg) => {
+            tracing::error!(%msg, "provider upstream error fetching image");
             api_error(
                 StatusCode::BAD_GATEWAY,
                 "provider_error",

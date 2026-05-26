@@ -4,12 +4,12 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 // SPEC-005a §7.1 + SPEC-007 §4.3 — KYC client code must not write
-// applicant_id, sdk_token, raw SumSub event payloads, or document data to
+// applicant_id, sdk_token, raw provider event payloads, or document data to
 // the browser console. The structured logger in lib/observability/logger.ts
 // is the only sanctioned channel.
 //
 // This test scans every .ts/.tsx file under app/kyc/** (the surfaces where
-// the SumSub SDK and KYC state machine actually run) and forbids
+// the KYC SDK and state machine actually run) and forbids
 // `console.log` (allowing `console.warn` / `console.error` for genuine
 // failure paths). Comments are stripped first so SPEC references and
 // design notes that quote `console.log(...)` literally are ignored.

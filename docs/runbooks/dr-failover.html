@@ -1,92 +1,146 @@
-﻿<!DOCTYPE html>
+﻿<!doctype html>
 <html lang="zh-Hant">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SPEC-008 Cross-Region Failover Runbook</title>
-  <style>
-    :root { color-scheme: light; }
-    body { font-family: Arial, Helvetica, sans-serif; margin: 24px; line-height: 1.55; color: #1f2937; }
-    h1 { margin-top: 0; }
-    code, pre { font-family: Consolas, "Courier New", monospace; }
-    ol, ul { padding-left: 22px; }
-    li { margin-bottom: 6px; }
-  </style>
-</head>
-<body>
-  <main>
-<h1>SPEC-008 Cross-Region Failover Runbook</h1>
-<p>This runbook covers planned Tokyo -&gt; Singapore failover, disaster failover when Tokyo is unavailable, third-party provider fallback, and rollback criteria.</p>
-<h2>Planned Failover With Maintenance Window</h2>
-<ol>
-<li>Announce the maintenance window and freeze non-essential write operations.</li>
-<li>Confirm Singapore PostgreSQL standby is streaming async and Kafka MirrorMaker lag is &lt;= 1 second.</li>
-<li>Lower Cloudflare DNS TTL to 60 seconds before the traffic shift.</li>
-<li>Switch edge traffic from Tokyo to Singapore.</li>
-<li>Switch or promote the database primary according to the approved replication mode.</li>
-<li>Start the Singapore standby engine with mirrored topics.</li>
-<li>Run <code>tools/scripts/failover/canary-singapore.sh</code>.</li>
-<li>Keep the maintenance window open until canary checks and monitoring are stable for the agreed observation period.</li>
-</ol>
-<h2>Disaster Failover When Tokyo Is Unavailable</h2>
-<p>Automatic failover trigger conditions:</p>
-<ol>
-<li>Tokyo edge is unhealthy or unreachable.</li>
-<li>Tokyo DB primary is unhealthy or unreachable.</li>
-<li>Singapore DR is ready.</li>
-<li>Kafka MirrorMaker lag is within the SPEC-008 cross-region RPO boundary, &lt;= 5 seconds.</li>
-</ol>
-<p>Execution:</p>
-<ol>
-<li>Run <code>tools/scripts/failover/failover-tokyo-singapore.sh</code>.</li>
-<li>Run <code>tools/scripts/failover/canary-singapore.sh</code>.</li>
-<li>Run third-party fallback scripts for CloudFront, payment, KYC, email, and SMS as needed.</li>
-<li>Record RTO, RPO, deviations, and improvement actions in <code>drill_logs</code>.</li>
-</ol>
-<h2>Canary Verification</h2>
-<p>The staging canary must verify:</p>
-<ol>
-<li>Singapore edge health endpoint.</li>
-<li>Singapore database query.</li>
-<li>Matching-engine replay/read path.</li>
-<li>Wallet read path.</li>
-<li>Order book read path.</li>
-<li>Third-party fallback health checks.</li>
-</ol>
-<p>Any failed canary check triggers rollback.</p>
-<h2>Rollback Triggers</h2>
-<p>Rollback is required when any of these are true:</p>
-<ol>
-<li>Canary fails.</li>
-<li>Singapore DB query fails after traffic shift.</li>
-<li>Kafka replay lag exceeds 5 seconds after failover.</li>
-<li>Payment, KYC, email, or SMS fallback health check fails.</li>
-<li>Customer-facing error rate exceeds the incident threshold.</li>
-</ol>
-<p>Rollback action:</p>
-<ol>
-<li>Stop additional traffic migration.</li>
-<li>Run the configured rollback command for the affected component.</li>
-<li>Restore previous DNS or provider routing when data safety allows it.</li>
-<li>Record the rollback in <code>drill_logs</code>.</li>
-</ol>
-<h2>Third-Party Fallback</h2>
-<p>Each third-party switch script must run a target health check before switching and must have a rollback command configured:</p>
-<ol>
-<li>Cloudflare -&gt; AWS CloudFront DNS.</li>
-<li>Payment gateway: ECPay -&gt; NewebPay or Stripe.</li>
-<li>KYC SaaS: SumSub -&gt; Onfido.</li>
-<li>Email provider fallback.</li>
-<li>SMS provider fallback.</li>
-</ol>
-<h2>Drill Documentation</h2>
-<p>Every planned or disaster drill must include:</p>
-<ol>
-<li>Pre-plan.</li>
-<li>Execution record.</li>
-<li>Improvement actions within 24 hours.</li>
-</ol>
-<p>Use <code>GET /api/internal/audit/drill-logs?from=&amp;to=</code> for regulator review.</p>
-  </main>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPEC-008 Cross-Region Failover Runbook</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        margin: 24px;
+        line-height: 1.55;
+        color: #1f2937;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      code,
+      pre {
+        font-family: Consolas, "Courier New", monospace;
+      }
+      ol,
+      ul {
+        padding-left: 22px;
+      }
+      li {
+        margin-bottom: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>SPEC-008 Cross-Region Failover Runbook</h1>
+      <p>
+        This runbook covers planned Tokyo -&gt; Singapore failover, disaster
+        failover when Tokyo is unavailable, third-party provider fallback, and
+        rollback criteria.
+      </p>
+      <h2>Planned Failover With Maintenance Window</h2>
+      <ol>
+        <li>
+          Announce the maintenance window and freeze non-essential write
+          operations.
+        </li>
+        <li>
+          Confirm Singapore PostgreSQL standby is streaming async and Kafka
+          MirrorMaker lag is &lt;= 1 second.
+        </li>
+        <li>
+          Lower Cloudflare DNS TTL to 60 seconds before the traffic shift.
+        </li>
+        <li>Switch edge traffic from Tokyo to Singapore.</li>
+        <li>
+          Switch or promote the database primary according to the approved
+          replication mode.
+        </li>
+        <li>Start the Singapore standby engine with mirrored topics.</li>
+        <li>Run <code>tools/scripts/failover/canary-singapore.sh</code>.</li>
+        <li>
+          Keep the maintenance window open until canary checks and monitoring
+          are stable for the agreed observation period.
+        </li>
+      </ol>
+      <h2>Disaster Failover When Tokyo Is Unavailable</h2>
+      <p>Automatic failover trigger conditions:</p>
+      <ol>
+        <li>Tokyo edge is unhealthy or unreachable.</li>
+        <li>Tokyo DB primary is unhealthy or unreachable.</li>
+        <li>Singapore DR is ready.</li>
+        <li>
+          Kafka MirrorMaker lag is within the SPEC-008 cross-region RPO
+          boundary, &lt;= 5 seconds.
+        </li>
+      </ol>
+      <p>Execution:</p>
+      <ol>
+        <li>
+          Run <code>tools/scripts/failover/failover-tokyo-singapore.sh</code>.
+        </li>
+        <li>Run <code>tools/scripts/failover/canary-singapore.sh</code>.</li>
+        <li>
+          Run third-party fallback scripts for CloudFront, payment, KYC, email,
+          and SMS as needed.
+        </li>
+        <li>
+          Record RTO, RPO, deviations, and improvement actions in
+          <code>drill_logs</code>.
+        </li>
+      </ol>
+      <h2>Canary Verification</h2>
+      <p>The staging canary must verify:</p>
+      <ol>
+        <li>Singapore edge health endpoint.</li>
+        <li>Singapore database query.</li>
+        <li>Matching-engine replay/read path.</li>
+        <li>Wallet read path.</li>
+        <li>Order book read path.</li>
+        <li>Third-party fallback health checks.</li>
+      </ol>
+      <p>Any failed canary check triggers rollback.</p>
+      <h2>Rollback Triggers</h2>
+      <p>Rollback is required when any of these are true:</p>
+      <ol>
+        <li>Canary fails.</li>
+        <li>Singapore DB query fails after traffic shift.</li>
+        <li>Kafka replay lag exceeds 5 seconds after failover.</li>
+        <li>Payment, KYC, email, or SMS fallback health check fails.</li>
+        <li>Customer-facing error rate exceeds the incident threshold.</li>
+      </ol>
+      <p>Rollback action:</p>
+      <ol>
+        <li>Stop additional traffic migration.</li>
+        <li>Run the configured rollback command for the affected component.</li>
+        <li>
+          Restore previous DNS or provider routing when data safety allows it.
+        </li>
+        <li>Record the rollback in <code>drill_logs</code>.</li>
+      </ol>
+      <h2>Third-Party Fallback</h2>
+      <p>
+        Each third-party switch script must run a target health check before
+        switching and must have a rollback command configured:
+      </p>
+      <ol>
+        <li>Cloudflare -&gt; AWS CloudFront DNS.</li>
+        <li>Payment gateway: ECPay -&gt; NewebPay or Stripe.</li>
+        <li>KYC SaaS: KYC provider -&gt; Onfido.</li>
+        <li>Email provider fallback.</li>
+        <li>SMS provider fallback.</li>
+      </ol>
+      <h2>Drill Documentation</h2>
+      <p>Every planned or disaster drill must include:</p>
+      <ol>
+        <li>Pre-plan.</li>
+        <li>Execution record.</li>
+        <li>Improvement actions within 24 hours.</li>
+      </ol>
+      <p>
+        Use <code>GET /api/internal/audit/drill-logs?from=&amp;to=</code> for
+        regulator review.
+      </p>
+    </main>
+  </body>
 </html>

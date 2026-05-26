@@ -7,13 +7,7 @@
 //   - 6-phase state machine (delegated to lib/kyc-state-machine)
 // Polling, telemetry, and CSP are deferred to Slices C/D and B respectively.
 
-import {
-  useCallback,
-  useEffect,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   createKycProviderForStage,
@@ -22,13 +16,10 @@ import {
   type KycSessionHandle,
 } from "@prophetica/ts-sdk";
 
-import {
-  refreshKycOverviewAction,
-  startKycUpgradeAction,
-} from "../_actions";
+import { refreshKycOverviewAction, startKycUpgradeAction } from "../_actions";
 import { useKycWebhookPolling } from "../use-kyc-webhook-polling";
 import { useKycMetrics } from "../use-kyc-metrics";
-import { mapLocaleToSumsub } from "@/lib/kyc-locale";
+import { mapLocaleToProvider } from "@/lib/provider-locale";
 import type { KycProviderName } from "@prophetica/ts-sdk";
 import {
   initialKycPhase,
@@ -63,7 +54,9 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
   const [phase, dispatch] = useReducer(reduceKycPhase, initialKycPhase);
   const [retryAttempt, setRetryAttempt] = useState(0);
   const [incomeBucket, setIncomeBucket] = useState<IncomeBucketValue>("skip");
-  const [providerName, setProviderName] = useState<KycProviderName | null>(null);
+  const [providerName, setProviderName] = useState<KycProviderName | null>(
+    null,
+  );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<KycSessionHandle | null>(null);
@@ -114,9 +107,9 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
       handle = await provider.mount(target, {
         sdkToken: upgrade.sdkToken,
         targetTier: "TIER_2",
-        // SPEC-005a §2 — SumSub recognises BCP-47 region codes (zh-TW etc),
+        // SPEC-005a §2 — iProov recognises BCP-47 region codes (zh-TW etc),
         // not the script-tagged zh-Hant that next-intl returns.
-        locale: mapLocaleToSumsub(locale),
+        locale: mapLocaleToProvider(locale),
         country,
       });
     } catch {
@@ -155,10 +148,10 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
         <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
           <header className="mb-8">
             <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
-              {t("sumsub.heading")}
+              {t("iproov.heading")}
             </h2>
             <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
-              {t("sumsub.intro")}
+              {t("iproov.intro")}
             </p>
           </header>
 
@@ -175,7 +168,7 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
                 data-phase={phase.kind}
               >
                 <span className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
-                  {t("sumsub.launchKicker")}
+                  {t("iproov.launchKicker")}
                 </span>
                 <span className="font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px] text-proph-ink-muted-80">
                   {phaseLabel}

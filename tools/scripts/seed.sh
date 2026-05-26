@@ -5,7 +5,7 @@ SQL=$(cat <<'SEED'
 INSERT INTO user_kyc_records
     (user_id, tier, status, provider, provider_applicant_id, document_id_hash, country, declared_monthly_income, idempotency_key)
 VALUES
-    ('alice', 2, 'passed', 'sumsub', 'applicant_seed_alice', NULL, 'TW', 6000000, 'seed:kyc:alice:tier2'),
+    ('alice', 2, 'passed', 'iproov', 'applicant_seed_alice', NULL, 'TW', 6000000, 'seed:kyc:alice:tier2'),
     ('bob', 1, 'passed', 'manual', NULL, repeat('b', 64), 'TW', NULL, 'seed:kyc:bob:tier1'),
     ('dmm-001', 2, 'passed', 'manual', NULL, NULL, 'TW', NULL, 'seed:kyc:dmm-001:tier2')
 ON CONFLICT (idempotency_key) DO NOTHING;

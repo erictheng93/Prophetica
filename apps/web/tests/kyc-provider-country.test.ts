@@ -12,12 +12,12 @@ const tier3Page = readFileSync(
   "utf8",
 );
 
-test("Tier 2 SumSub launch uses the verified Tier 1 country from KYC overview", () => {
+test("Tier 2 iProov launch uses the verified Tier 1 country from KYC overview", () => {
   assert.match(tier2Page, /const country = overview\.country \?\? "TW";/);
   assert.doesNotMatch(tier2Page, /const country = "TW";/);
 });
 
-test("Tier 3 SumSub launch uses the verified Tier 1 country from KYC overview", () => {
+test("Tier 3 iProov launch uses the verified Tier 1 country from KYC overview", () => {
   assert.match(tier3Page, /const country = overview\.country \?\? "TW";/);
   assert.doesNotMatch(tier3Page, /const country = "TW";/);
 });

@@ -1,159 +1,366 @@
 ﻿<!doctype html>
 <html lang="zh-Hant">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SPEC-005 KYC / AML 實作計畫</title>
-  <style>
-    body { font-family: "Noto Sans TC", "PingFang TC", sans-serif; margin: 24px; line-height: 1.65; color: #0f172a; }
-    h1, h2, h3 { color: #0f172a; }
-    section { margin: 16px 0; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #dbeafe; padding: 8px; vertical-align: top; }
-    th { background: #f1f5f9; text-align: left; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .warn { color: #9a3412; background: #ffedd5; border-left: 4px solid #ea580c; padding: 10px; }
-  </style>
-</head>
-<body>
-  <h1>SPEC-005 — KYC / AML 實作計畫</h1>
-  <p><strong>規格參照：</strong><a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005-kyc-aml.html</a> · <strong>版本：</strong>v0.1.5</p>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPEC-005 KYC / AML 實作計畫</title>
+    <style>
+      body {
+        font-family: "Noto Sans TC", "PingFang TC", sans-serif;
+        margin: 24px;
+        line-height: 1.65;
+        color: #0f172a;
+      }
+      h1,
+      h2,
+      h3 {
+        color: #0f172a;
+      }
+      section {
+        margin: 16px 0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #dbeafe;
+        padding: 8px;
+        vertical-align: top;
+      }
+      th {
+        background: #f1f5f9;
+        text-align: left;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      .warn {
+        color: #9a3412;
+        background: #ffedd5;
+        border-left: 4px solid #ea580c;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SPEC-005 — KYC / AML 實作計畫</h1>
+    <p>
+      <strong>規格參照：</strong
+      ><a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005-kyc-aml.html</a> ·
+      <strong>版本：</strong>v0.1.5
+    </p>
 
-  <section>
-    <h2>0. 實作狀態與 Launch Gate</h2>
-    <ul>
-      <li><strong>Backend 已完成（PR #1 之前）</strong>：in-memory contract、API trait、mock provider、基本 migration、secret hardening 校準。</li>
-      <li><strong>Backend P0 sprint（Codex 範圍）</strong>：2026-05-09 已完成 Postgres provider wiring baseline（<code>PostgresKycStore</code> + <code>KYC_STORE=postgres</code> binary selection），涵蓋 current record、Tier 1 verification、upgrade records、webhook replay table、AML / SAR persistence、monthly report、screening rescan。</li>
-      <li><strong>Backend P0 sprint 剩餘</strong>：以真實 Postgres migrated DB 跑 integration tests、必要時補 SQLx offline metadata、補 webhook update + event insert transaction-boundary test、SumSub / Onfido sandbox secret fallback hardening。</li>
-      <li><strong>Frontend 主路徑已落地（PR #2 merged 2026-05-09）</strong>：<code>KycIdentityProvider</code> 抽象、Tier 2/3 state machine、Tier 3 polling fail-soft（SPEC-005a §6.1）、CSP（§8）、5 個 KYC telemetry metrics（§7.3）、Tier 3 SumSub → iProov adapter chain 骨架（§11.2）；acceptance gates 3 / 6 / 9 / 11 closed。<strong>Tier 3 stage 2 iProov real adapter 仍為 <code>not_implemented</code> stub</strong>。</li>
-      <li><strong>Frontend 剩餘工作（blocked on <a href="../../specs/SPEC-000-index.html#cross-cutting-q9">SPEC-000 §5 Q-9</a> 採購）</strong>：等 SumSub sandbox credentials 到位後（a）執行 mock → real provider 替換、（b）iProov real adapter 寫入並退掉 <code>not_implemented</code> stub、（c）Tier 2 SumSub iframe 真實 mount E2E 驗證、（d）webhook HMAC + GREEN/RED/PENDING replay sandbox E2E 通過。在 sandbox credentials 到位前無法啟動，且這同時是 LG-3 evidence 回填條件。</li>
-      <li><strong>Public Beta blocker</strong>：真實入金 / 真實下單前，Tier 2 SumSub iframe、webhook HMAC、GREEN / RED / PENDING replay、RED→Frozen、PEP / sanctions rescan 必須 sandbox E2E 通過並回填 SPEC-000 LG-3 evidence；採購進度追蹤於 SPEC-000 §5 Q-9。</li>
-    </ul>
-  </section>
+    <section>
+      <h2>0. 實作狀態與 Launch Gate</h2>
+      <ul>
+        <li>
+          <strong>Backend 已完成（PR #1 之前）</strong>：in-memory contract、API
+          trait、mock provider、基本 migration、secret hardening 校準。
+        </li>
+        <li>
+          <strong>Backend P0 sprint（Codex 範圍）</strong>：2026-05-09 已完成
+          Postgres provider wiring baseline（<code>PostgresKycStore</code> +
+          <code>KYC_STORE=postgres</code> binary selection），涵蓋 current
+          record、Tier 1 verification、upgrade records、webhook replay
+          table、AML / SAR persistence、monthly report、screening rescan。
+        </li>
+        <li>
+          <strong>Backend P0 sprint 剩餘</strong>：以真實 Postgres migrated DB
+          跑 integration tests、必要時補 SQLx offline metadata、補 webhook
+          update + event insert transaction-boundary test、KYC provider / Onfido
+          sandbox secret fallback hardening。
+        </li>
+        <li>
+          <strong>Frontend 主路徑已落地（PR #2 merged 2026-05-09）</strong
+          >：<code>KycIdentityProvider</code> 抽象、Tier 2/3 state machine、Tier
+          3 polling fail-soft（SPEC-005a §6.1）、CSP（§8）、5 個 KYC telemetry
+          metrics（§7.3）、Tier 3 KYC provider → iProov adapter chain
+          骨架（§11.2）；acceptance gates 3 / 6 / 9 / 11 closed。<strong
+            >Tier 3 stage 2 iProov real adapter 仍為
+            <code>not_implemented</code> stub</strong
+          >。
+        </li>
+        <li>
+          <strong
+            >Frontend 剩餘工作（blocked on
+            <a href="../../specs/SPEC-000-index.html#cross-cutting-q9"
+              >SPEC-000 §5 Q-9</a
+            >
+            採購）</strong
+          >：等 KYC provider sandbox credentials 到位後（a）執行 mock → real
+          provider 替換、（b）iProov real adapter 寫入並退掉
+          <code>not_implemented</code> stub、（c）Tier 2 KYC provider iframe
+          真實 mount E2E 驗證、（d）webhook HMAC + GREEN/RED/PENDING replay
+          sandbox E2E 通過。在 sandbox credentials 到位前無法啟動，且這同時是
+          LG-3 evidence 回填條件。
+        </li>
+        <li>
+          <strong>Public Beta blocker</strong>：真實入金 / 真實下單前，Tier 2
+          KYC provider iframe、webhook HMAC、GREEN / RED / PENDING
+          replay、RED→Frozen、PEP / sanctions rescan 必須 sandbox E2E 通過並回填
+          SPEC-000 LG-3 evidence；採購進度追蹤於 SPEC-000 §5 Q-9。
+        </li>
+      </ul>
+    </section>
 
-  <section>
-    <h2>1. 實作目標</h2>
-    <ul>
-      <li>完成分層 KYC（Tier 0/1/2/3）與升級流程。</li>
-      <li>實作 SumSub webhook 風險事件寫入與 idempotent 保證。</li>
-      <li>上線 AML 檔案、制裁名單與 SAR 觸發流程。</li>
-      <li>固定 KYC / AML 風控事件與告警輸出，對齊 observability 規格。</li>
-    </ul>
-  </section>
+    <section>
+      <h2>1. 實作目標</h2>
+      <ul>
+        <li>完成分層 KYC（Tier 0/1/2/3）與升級流程。</li>
+        <li>實作 KYC provider webhook 風險事件寫入與 idempotent 保證。</li>
+        <li>上線 AML 檔案、制裁名單與 SAR 觸發流程。</li>
+        <li>固定 KYC / AML 風控事件與告警輸出，對齊 observability 規格。</li>
+      </ul>
+    </section>
 
-  <section>
-    <h2>2. 範圍與邊界</h2>
-    <p><strong>包含</strong>：kyc-service、user-service、mock-sumsub、packages/ts-sdk、apps/web 之 KYC 路徑、PostgreSQL schema、審核排程。</p>
-    <p><strong>不含</strong>：支付、資安基底架構、客訴人員流程介面（由其他 SPEC 負責）。</p>
-  </section>
+    <section>
+      <h2>2. 範圍與邊界</h2>
+      <p>
+        <strong>包含</strong
+        >：kyc-service、user-service、mock-provider、packages/ts-sdk、apps/web
+        之 KYC 路徑、PostgreSQL schema、審核排程。
+      </p>
+      <p>
+        <strong>不含</strong>：支付、資安基底架構、客訴人員流程介面（由其他 SPEC
+        負責）。
+      </p>
+    </section>
 
-  <section>
-    <h2>3. 不變式（Invariants）</h2>
-    <table>
-      <thead>
-        <tr><th>ID</th><th>描述</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>INV-KYC-1</td><td>Tier 值固定為 <code>TIER_0 / TIER_1 / TIER_2 / TIER_3</code>，不得出現 LEVEL_* 或 tier1/tier2 等混用字面。</td></tr>
-        <tr><td>INV-KYC-2</td><td><code>user_kyc_records</code> 不得存證件原號；僅存 hash、provider 元資料、狀態與時間軸。</td></tr>
-        <tr><td>INV-KYC-3</td><td>同一位使用者在同一狀態轉移上不得同時存在重複未關閉 pending 記錄。</td></tr>
-        <tr><td>INV-KYC-4</td><td>SumSub webhook 必須以 <code>SHA256(raw_payload)</code> 做 idempotency key；若 payload 重送不得改寫既有結果。</td></tr>
-        <tr><td>INV-KYC-5</td><td>RED / 制裁命中為必停：不得只停留 pending，需更新為凍結或阻擋狀態。</td></tr>
-        <tr><td>INV-KYC-6</td><td>刷新 token 中的 KYC tier 後 15 分鐘內前端可讀取到新權限（現有 access token 可容許短暫陳舊）。</td></tr>
-      </tbody>
-    </table>
-  </section>
+    <section>
+      <h2>3. 不變式（Invariants）</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>描述</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>INV-KYC-1</td>
+            <td>
+              Tier 值固定為
+              <code>TIER_0 / TIER_1 / TIER_2 / TIER_3</code>，不得出現 LEVEL_*
+              或 tier1/tier2 等混用字面。
+            </td>
+          </tr>
+          <tr>
+            <td>INV-KYC-2</td>
+            <td>
+              <code>user_kyc_records</code> 不得存證件原號；僅存 hash、provider
+              元資料、狀態與時間軸。
+            </td>
+          </tr>
+          <tr>
+            <td>INV-KYC-3</td>
+            <td>
+              同一位使用者在同一狀態轉移上不得同時存在重複未關閉 pending 記錄。
+            </td>
+          </tr>
+          <tr>
+            <td>INV-KYC-4</td>
+            <td>
+              KYC provider webhook 必須以 <code>SHA256(raw_payload)</code> 做
+              idempotency key；若 payload 重送不得改寫既有結果。
+            </td>
+          </tr>
+          <tr>
+            <td>INV-KYC-5</td>
+            <td>
+              RED / 制裁命中為必停：不得只停留 pending，需更新為凍結或阻擋狀態。
+            </td>
+          </tr>
+          <tr>
+            <td>INV-KYC-6</td>
+            <td>
+              刷新 token 中的 KYC tier 後 15 分鐘內前端可讀取到新權限（現有
+              access token 可容許短暫陳舊）。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
 
-  <section>
-    <h2>4. 資料模型（PostgreSQL）</h2>
-    <p>重點表（建議最小集合）：</p>
-    <ul>
-      <li><code>user_kyc_records</code>：tier、status、provider、applicant、document hash、review payload、sanction/pep 命中欄位。</li>
-      <li><code>kyc_webhook_events</code>：raw_payload_sha256、review_answer、signature、processed_at、idempotent state。</li>
-      <li><code>kyc_audit_events</code>：tier 升降與審核結果追蹤（給 compliance 查核）。</li>
-      <li><code>kyc_screening_jobs</code>：日批次制裁篩查（status、offset、cursor、rows、runtime_s）。</li>
-      <li><code>user_declaration_history</code>：<code>declared_monthly_income</code> 申報值變更與 stale 標記。</li>
-    </ul>
-    <p>實際索引建議：<code>user_id,status</code>、<code>tier,updated_at</code>、<code>raw_payload_sha256 unique</code>。</p>
-  </section>
+    <section>
+      <h2>4. 資料模型（PostgreSQL）</h2>
+      <p>重點表（建議最小集合）：</p>
+      <ul>
+        <li>
+          <code>user_kyc_records</code
+          >：tier、status、provider、applicant、document hash、review
+          payload、sanction/pep 命中欄位。
+        </li>
+        <li>
+          <code>kyc_webhook_events</code
+          >：raw_payload_sha256、review_answer、signature、processed_at、idempotent
+          state。
+        </li>
+        <li>
+          <code>kyc_audit_events</code>：tier 升降與審核結果追蹤（給 compliance
+          查核）。
+        </li>
+        <li>
+          <code>kyc_screening_jobs</code
+          >：日批次制裁篩查（status、offset、cursor、rows、runtime_s）。
+        </li>
+        <li>
+          <code>user_declaration_history</code>：<code
+            >declared_monthly_income</code
+          >
+          申報值變更與 stale 標記。
+        </li>
+      </ul>
+      <p>
+        實際索引建議：<code>user_id,status</code>、<code>tier,updated_at</code>、<code
+          >raw_payload_sha256 unique</code
+        >。
+      </p>
+    </section>
 
-  <section>
-    <h2>5. 流程與 API 契約</h2>
-    <h3>5.1 Tier 1 自驗流程</h3>
-    <ul>
-      <li>輸入欄位：姓名、生日、國家、文件號。</li>
-      <li>執行 country rule 驗證、年齡檢查、重複 hash 檢查、自排除名單命中。</li>
-      <li>驗證通過：寫入 <code>user_kyc_records</code>，狀態 <code>passed</code>，tier_1。</li>
-    </ul>
+    <section>
+      <h2>5. 流程與 API 契約</h2>
+      <h3>5.1 Tier 1 自驗流程</h3>
+      <ul>
+        <li>輸入欄位：姓名、生日、國家、文件號。</li>
+        <li>
+          執行 country rule 驗證、年齡檢查、重複 hash 檢查、自排除名單命中。
+        </li>
+        <li>
+          驗證通過：寫入 <code>user_kyc_records</code>，狀態
+          <code>passed</code>，tier_1。
+        </li>
+      </ul>
 
-    <h3>5.2 升級 API</h3>
-    <ul>
-      <li><code>POST /api/v1/kyc/users/{user_id}/upgrades</code>：建立 upgrade request，回 <code>sdk_token</code>、<code>target_tier</code>、<code>provider_applicant_id</code>、可選 <code>chain</code>。</li>
-      <li>可重放策略：idempotency key 由 server side 重建，避免 client 端可偽造。</li>
-      <li>重複請求回傳同一 token（已存在未完成的 pending request）。</li>
-    </ul>
+      <h3>5.2 升級 API</h3>
+      <ul>
+        <li>
+          <code>POST /api/v1/kyc/users/{user_id}/upgrades</code>：建立 upgrade
+          request，回
+          <code>sdk_token</code
+          >、<code>target_tier</code>、<code>provider_applicant_id</code>、可選
+          <code>chain</code>。
+        </li>
+        <li>
+          可重放策略：idempotency key 由 server side 重建，避免 client
+          端可偽造。
+        </li>
+        <li>重複請求回傳同一 token（已存在未完成的 pending request）。</li>
+      </ul>
 
-    <h3>5.3 Webhook 入口</h3>
-    <ul>
-      <li><code>POST /api/internal/webhooks/sumsub</code>：驗證 HMAC-SHA256（或供應商指定 hash），失敗 401。</li>
-      <li>狀態映射：<code>GREEN</code>→passed；<code>YELLOW</code>→pending；<code>RED</code>→frozen。</li>
-      <li>制裁/PEP 命中覆蓋 review_result。</li>
-      <li>事件發布：<code>kyc.events</code> 至 user-service 與審計通道。</li>
-    </ul>
+      <h3>5.3 Webhook 入口</h3>
+      <ul>
+        <li>
+          <code>POST /api/internal/webhooks/provider</code>：驗證
+          HMAC-SHA256（或供應商指定 hash），失敗 401。
+        </li>
+        <li>
+          狀態映射：<code>GREEN</code>→passed；<code>YELLOW</code>→pending；<code>RED</code>→frozen。
+        </li>
+        <li>制裁/PEP 命中覆蓋 review_result。</li>
+        <li>事件發布：<code>kyc.events</code> 至 user-service 與審計通道。</li>
+      </ul>
 
-    <h3>5.4 查詢 API</h3>
-    <ul>
-      <li><code>GET /api/v1/kyc/users/{user_id}/overview</code>：回傳有效 KYC 狀態、tier、sanction flag、申報收入。</li>
-      <li><code>GET /api/v1/kyc/users/{user_id}/events</code>：顯示最近審核歷程。</li>
-    </ul>
-  </section>
+      <h3>5.4 查詢 API</h3>
+      <ul>
+        <li>
+          <code>GET /api/v1/kyc/users/{user_id}/overview</code>：回傳有效 KYC
+          狀態、tier、sanction flag、申報收入。
+        </li>
+        <li>
+          <code>GET /api/v1/kyc/users/{user_id}/events</code
+          >：顯示最近審核歷程。
+        </li>
+      </ul>
+    </section>
 
-  <section>
-    <h2>5a. KYC 文件取圖鏈路</h2>
-    <p>本節對應 <a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005 §5.3</a>（即時取圖代理）與 <a href="../../specs/SPEC-005-kyc-aml.html">§5.4</a>（R2 歸檔）。詳細規格（鏈路設計、Binding Invariants、HMAC 簽名機制、R2 配置、wrangler.toml 拆遷說明）請以 SPEC-005 §5.3–5.4 為準；本節僅記錄實作排期。</p>
-    <ul>
-      <li><strong>（A）即時取圖代理（§5.3）</strong>：admin → api-gateway → kyc-service → SumSub 代理鏈路，含端點實作、HMAC 內部簽名、<code>kyc_review</code> 權限閘控。實作計畫見 <a href="./2026-05-19-kyc-document-review-chain-plan.md">2026-05-19-kyc-document-review-chain-plan.md</a>。</li>
-      <li><strong>（B）R2 歸檔批次（§5.4）</strong>：日批次下載、<code>kyc-documents</code> / <code>kyc-liveness</code> bucket 寫入、Object Lock 7 年、SSE-AES256。實作計畫同見 <a href="./2026-05-19-kyc-document-review-chain-plan.md">2026-05-19-kyc-document-review-chain-plan.md</a>。</li>
-    </ul>
-  </section>
+    <section>
+      <h2>5a. KYC 文件取圖鏈路</h2>
+      <p>
+        本節對應
+        <a href="../../specs/SPEC-005-kyc-aml.html">SPEC-005 §5.3</a
+        >（即時取圖代理）與
+        <a href="../../specs/SPEC-005-kyc-aml.html">§5.4</a>（R2
+        歸檔）。詳細規格（鏈路設計、Binding Invariants、HMAC 簽名機制、R2
+        配置、wrangler.toml 拆遷說明）請以 SPEC-005 §5.3–5.4
+        為準；本節僅記錄實作排期。
+      </p>
+      <ul>
+        <li>
+          <strong>（A）即時取圖代理（§5.3）</strong>：admin → api-gateway →
+          kyc-service → KYC provider 代理鏈路，含端點實作、HMAC 內部簽名、<code
+            >kyc_review</code
+          >
+          權限閘控。實作計畫見
+          <a href="./2026-05-19-kyc-document-review-chain-plan.md"
+            >2026-05-19-kyc-document-review-chain-plan.md</a
+          >。
+        </li>
+        <li>
+          <strong>（B）R2 歸檔批次（§5.4）</strong>：日批次下載、<code
+            >kyc-documents</code
+          >
+          / <code>kyc-liveness</code> bucket 寫入、Object Lock 7
+          年、SSE-AES256。實作計畫同見
+          <a href="./2026-05-19-kyc-document-review-chain-plan.md"
+            >2026-05-19-kyc-document-review-chain-plan.md</a
+          >。
+        </li>
+      </ul>
+    </section>
 
-  <section>
-    <h2>6. 前置規則（跨模組）</h2>
-    <ul>
-      <li>下游風控模組可讀取 <code>declared_monthly_income</code>：未申報時回傳 NULL。</li>
-      <li>SPEC-005a 會使用同一個 <code>start_upgrade</code> token contract。</li>
-      <li>SPEC-007 需要監控 webhook queue lag、kyc failure ratio、idempotent retry 次數。</li>
-    </ul>
-  </section>
+    <section>
+      <h2>6. 前置規則（跨模組）</h2>
+      <ul>
+        <li>
+          下游風控模組可讀取 <code>declared_monthly_income</code>：未申報時回傳
+          NULL。
+        </li>
+        <li>
+          SPEC-005a 會使用同一個 <code>start_upgrade</code> token contract。
+        </li>
+        <li>
+          SPEC-007 需要監控 webhook queue lag、kyc failure ratio、idempotent
+          retry 次數。
+        </li>
+      </ul>
+    </section>
 
-  <section>
-    <h2>7. 排程與作業</h2>
-    <ul>
-      <li>每日 UTC 02:00：制裁名單 batch 篩查 Tier 2+ 全部用戶，超過門檻自動標記 frozen。</li>
-      <li>每月 1 次：monthly KYC report 產檔並上傳到監管/稽核 bucket。</li>
-      <li>每日夜間：<code>declared_monthly_income</code> stale 標記更新。</li>
-      <li>異常告警：webhook 60 分鐘內無法處理 > N 筆則告警。</li>
-    </ul>
-  </section>
+    <section>
+      <h2>7. 排程與作業</h2>
+      <ul>
+        <li>
+          每日 UTC 02:00：制裁名單 batch 篩查 Tier 2+ 全部用戶，超過門檻自動標記
+          frozen。
+        </li>
+        <li>每月 1 次：monthly KYC report 產檔並上傳到監管/稽核 bucket。</li>
+        <li>每日夜間：<code>declared_monthly_income</code> stale 標記更新。</li>
+        <li>異常告警：webhook 60 分鐘內無法處理 > N 筆則告警。</li>
+      </ul>
+    </section>
 
-  <section>
-    <h2>8. 安全與 PII</h2>
-    <ul>
-      <li>證件號、不完整日誌不得寫 log。</li>
-      <li>PII hash 僅可於 hash 欄位與 audit 中保留少量 metadata。</li>
-      <li>KYC secret（sumsub webhook secret、SALT、JWT 相關）統一由 Vault 管理，不可硬編碼於 env file。</li>
-    </ul>
-  </section>
+    <section>
+      <h2>8. 安全與 PII</h2>
+      <ul>
+        <li>證件號、不完整日誌不得寫 log。</li>
+        <li>PII hash 僅可於 hash 欄位與 audit 中保留少量 metadata。</li>
+        <li>
+          KYC secret（provider webhook secret、SALT、JWT 相關）統一由 Vault
+          管理，不可硬編碼於 env file。
+        </li>
+      </ul>
+    </section>
 
-  <section>
-    <h2>9. 驗收清單</h2>
-    <ul>
-      <li>SumSub webhook 重播 5 次，僅第一筆生效。</li>
-      <li>重複 upgrade click 不產生第二筆 pending request。</li>
-      <li>Tier 1 自驗可在 1 分鐘內完成（模擬環境）。</li>
-      <li>RED / sanction 命中能封鎖下單與儲值。</li>
-      <li>AML daily scan 在 30 分鐘內完成並有對帳報告。</li>
-    </ul>
-  </section>
-</body>
+    <section>
+      <h2>9. 驗收清單</h2>
+      <ul>
+        <li>KYC provider webhook 重播 5 次，僅第一筆生效。</li>
+        <li>重複 upgrade click 不產生第二筆 pending request。</li>
+        <li>Tier 1 自驗可在 1 分鐘內完成（模擬環境）。</li>
+        <li>RED / sanction 命中能封鎖下單與儲值。</li>
+        <li>AML daily scan 在 30 分鐘內完成並有對帳報告。</li>
+      </ul>
+    </section>
+  </body>
 </html>

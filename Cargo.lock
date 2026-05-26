@@ -1833,7 +1833,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mock-sumsub"
+name = "mock-provider"
 version = "0.1.0"
 dependencies = [
  "anyhow",

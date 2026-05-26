@@ -1,138 +1,307 @@
 <!doctype html>
 <html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Public Beta Launch Gate Next Actions</title>
-  <style>
-    body { font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; margin: 24px; line-height: 1.65; color: #0f172a; }
-    h1, h2, h3 { color: #0f172a; }
-    h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
-    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-    th, td { border: 1px solid #d9e2ef; padding: 8px; vertical-align: top; }
-    th { background: #f1f5f9; text-align: left; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .warn { background: #fff7ed; border-left: 4px solid #f59e0b; padding: 10px; margin: 12px 0; }
-  </style>
-</head>
-<body>
-  <h1>Public Beta Launch Gate Next Actions</h1>
-  <p>
-    <strong>Last updated:</strong> 2026-05-09<br>
-    <strong>Source of truth:</strong> <a href="../../specs/SPEC-000-index.html">SPEC-000 §2 Public Beta Launch Gate</a><br>
-    <strong>Scope:</strong> This document turns LG-1 through LG-6 into an execution checklist. It does not replace the SPEC files.
-  </p>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Public Beta Launch Gate Next Actions</title>
+    <style>
+      body {
+        font-family:
+          "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+        margin: 24px;
+        line-height: 1.65;
+        color: #0f172a;
+      }
+      h1,
+      h2,
+      h3 {
+        color: #0f172a;
+      }
+      h1 {
+        border-bottom: 2px solid #2563eb;
+        padding-bottom: 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0;
+      }
+      th,
+      td {
+        border: 1px solid #d9e2ef;
+        padding: 8px;
+        vertical-align: top;
+      }
+      th {
+        background: #f1f5f9;
+        text-align: left;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      .warn {
+        background: #fff7ed;
+        border-left: 4px solid #f59e0b;
+        padding: 10px;
+        margin: 12px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Public Beta Launch Gate Next Actions</h1>
+    <p>
+      <strong>Last updated:</strong> 2026-05-09<br />
+      <strong>Source of truth:</strong>
+      <a href="../../specs/SPEC-000-index.html"
+        >SPEC-000 §2 Public Beta Launch Gate</a
+      ><br />
+      <strong>Scope:</strong> This document turns LG-1 through LG-6 into an
+      execution checklist. It does not replace the SPEC files.
+    </p>
 
-  <div class="warn">
-    Current status: internal alpha / sandbox demo only. Public Beta, real top-up, real order placement, production deployment mode finalization, and external marketing remain blocked until every gate below has evidence attached.
-  </div>
+    <div class="warn">
+      Current status: internal alpha / sandbox demo only. Public Beta, real
+      top-up, real order placement, production deployment mode finalization, and
+      external marketing remain blocked until every gate below has evidence
+      attached.
+    </div>
 
-  <h2>1. Execution Order</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Order</th>
-        <th>Gate</th>
-        <th>Why first</th>
-        <th>Done evidence</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>1</td>
-        <td>Documentation status sync</td>
-        <td>Prevent stale completion claims from driving engineering or compliance decisions.</td>
-        <td>README, SPEC-000, SPEC-005, SPEC-005a, and implementation plans agree on 🟡 status and blockers.</td>
-      </tr>
-      <tr>
-        <td>2</td>
-        <td>LG-3 KYC / AML production path</td>
-        <td>KYC blocks real top-up, real order placement, and payment provider review.</td>
-        <td>SumSub sandbox E2E log, webhook replay evidence, RED→Frozen proof, PEP / sanctions rescan proof, frontend screenshots.</td>
-      </tr>
-      <tr>
-        <td>3</td>
-        <td>LG-4 Platform PoC closure</td>
-        <td>Deployment mode and LIFF auth choices affect KYC and release architecture.</td>
-        <td><code>docs/poc/PRE-FLIGHT-POCS.md</code> §3.5 / §4.4 completed, or fallback ADR accepted.</td>
-      </tr>
-      <tr>
-        <td>4</td>
-        <td>LG-2 Payment acquiring</td>
-        <td>Provider acceptance and chargeback terms determine payment implementation limits.</td>
-        <td>Signed terms or LOI, sandbox webhook evidence, PCI scope note, refund / chargeback drill log.</td>
-      </tr>
-      <tr>
-        <td>5</td>
-        <td>LG-5 Release safety</td>
-        <td>Public Beta cannot ship without rollback, approval, and security evidence.</td>
-        <td>Release gate workflow exists; still needs staging release evidence, rollback drill, CI run URL, and approval audit log.</td>
-      </tr>
-      <tr>
-        <td>6</td>
-        <td>LG-6 Support / incident / audit</td>
-        <td>Operations must be able to handle blocked KYC, payment disputes, incidents, and evidence export.</td>
-        <td>Support queue URL, incident drill, evidence export sample, S0/S1 runbook links.</td>
-      </tr>
-      <tr>
-        <td>7</td>
-        <td>LG-1 Legal / licence</td>
-        <td>This is owner/legal led and can run in parallel, but it remains a hard external launch blocker.</td>
-        <td>Legal memo, jurisdiction decision, market category allow/deny matrix.</td>
-      </tr>
-    </tbody>
-  </table>
+    <h2>1. Execution Order</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Order</th>
+          <th>Gate</th>
+          <th>Why first</th>
+          <th>Done evidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>Documentation status sync</td>
+          <td>
+            Prevent stale completion claims from driving engineering or
+            compliance decisions.
+          </td>
+          <td>
+            README, SPEC-000, SPEC-005, SPEC-005a, and implementation plans
+            agree on 🟡 status and blockers.
+          </td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>LG-3 KYC / AML production path</td>
+          <td>
+            KYC blocks real top-up, real order placement, and payment provider
+            review.
+          </td>
+          <td>
+            KYC provider sandbox E2E log, webhook replay evidence, RED→Frozen
+            proof, PEP / sanctions rescan proof, frontend screenshots.
+          </td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>LG-4 Platform PoC closure</td>
+          <td>
+            Deployment mode and LIFF auth choices affect KYC and release
+            architecture.
+          </td>
+          <td>
+            <code>docs/poc/PRE-FLIGHT-POCS.md</code> §3.5 / §4.4 completed, or
+            fallback ADR accepted.
+          </td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>LG-2 Payment acquiring</td>
+          <td>
+            Provider acceptance and chargeback terms determine payment
+            implementation limits.
+          </td>
+          <td>
+            Signed terms or LOI, sandbox webhook evidence, PCI scope note,
+            refund / chargeback drill log.
+          </td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>LG-5 Release safety</td>
+          <td>
+            Public Beta cannot ship without rollback, approval, and security
+            evidence.
+          </td>
+          <td>
+            Release gate workflow exists; still needs staging release evidence,
+            rollback drill, CI run URL, and approval audit log.
+          </td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td>LG-6 Support / incident / audit</td>
+          <td>
+            Operations must be able to handle blocked KYC, payment disputes,
+            incidents, and evidence export.
+          </td>
+          <td>
+            Support queue URL, incident drill, evidence export sample, S0/S1
+            runbook links.
+          </td>
+        </tr>
+        <tr>
+          <td>7</td>
+          <td>LG-1 Legal / licence</td>
+          <td>
+            This is owner/legal led and can run in parallel, but it remains a
+            hard external launch blocker.
+          </td>
+          <td>
+            Legal memo, jurisdiction decision, market category allow/deny
+            matrix.
+          </td>
+        </tr>
+      </tbody>
+    </table>
 
-  <h2>2. LG-3 KYC / AML Tasks</h2>
-  <ol>
-    <li>Acquire SumSub sandbox credentials: <code>SUMSUB_APP_TOKEN</code>, <code>SUMSUB_SECRET_KEY</code>, webhook secret, and test applicant levels for Tier 2 / Tier 3.</li>
-      <li>Done 2026-05-09: add <code>PostgresKycStore</code> baseline and <code>KYC_STORE=postgres</code> binary selection. Covered paths: current record, Tier 1 verification, Tier 2/3 upgrade records, SumSub webhook replay table, AML / SAR persistence, monthly report counts, and screening rescan persistence.</li>
-      <li>Still pending: run the Postgres store against a real migrated database in CI/staging, refresh SQLx offline metadata if compile-time SQL is adopted, and add transaction-boundary tests for webhook update + event insert.</li>
-    <li>Replace mock-only SumSub behavior with a real adapter path guarded by environment selection; keep mock provider available for dev / test.</li>
-    <li>Run sandbox E2E: Tier 2 iframe mount, applicant submitted, GREEN promotion, YELLOW pending, RED freeze, webhook replay idempotency, and PEP / sanctions rescan.</li>
-    <li>Decide Tier 3 iProov path: implement real adapter with sandbox credentials or write fallback ADR that disables Tier 3 before Public Beta.</li>
-    <li>Attach evidence to SPEC-000 LG-3 and SPEC-005 / SPEC-005a changelog.</li>
-  </ol>
+    <h2>2. LG-3 KYC / AML Tasks</h2>
+    <ol>
+      <li>
+        Acquire KYC provider sandbox credentials:
+        <code>KYC_PROVIDER_APP_TOKEN</code>,
+        <code>KYC_PROVIDER_SECRET_KEY</code>, webhook secret, and test applicant
+        levels for Tier 2 / Tier 3.
+      </li>
+      <li>
+        Done 2026-05-09: add <code>PostgresKycStore</code> baseline and
+        <code>KYC_STORE=postgres</code> binary selection. Covered paths: current
+        record, Tier 1 verification, Tier 2/3 upgrade records, KYC provider
+        webhook replay table, AML / SAR persistence, monthly report counts, and
+        screening rescan persistence.
+      </li>
+      <li>
+        Still pending: run the Postgres store against a real migrated database
+        in CI/staging, refresh SQLx offline metadata if compile-time SQL is
+        adopted, and add transaction-boundary tests for webhook update + event
+        insert.
+      </li>
+      <li>
+        Replace mock-only KYC provider behavior with a real adapter path guarded
+        by environment selection; keep mock provider available for dev / test.
+      </li>
+      <li>
+        Run sandbox E2E: Tier 2 iframe mount, applicant submitted, GREEN
+        promotion, YELLOW pending, RED freeze, webhook replay idempotency, and
+        PEP / sanctions rescan.
+      </li>
+      <li>
+        Decide Tier 3 iProov path: implement real adapter with sandbox
+        credentials or write fallback ADR that disables Tier 3 before Public
+        Beta.
+      </li>
+      <li>
+        Attach evidence to SPEC-000 LG-3 and SPEC-005 / SPEC-005a changelog.
+      </li>
+    </ol>
 
-  <h2>3. LG-4 Platform PoC Tasks</h2>
-  <ol>
-    <li>Run PoC-A on real iOS and Android LINE LIFF devices using <code>docs/poc/eddsa/check-support.html</code>.</li>
-    <li>Record EdDSA support, cookie/token round-trip, and refresh rotation in <code>docs/poc/PRE-FLIGHT-POCS.md</code> §3.5.</li>
-    <li>Run PoC-B from Linux or CI so <code>@cloudflare/next-on-pages</code> can generate Pages output.</li>
-    <li>Provide a reachable <code>wss://</code> ws-gateway sandbox endpoint and SumSub sandbox token for PoC-B scenarios A and B.</li>
-    <li>Choose deployment mode: Cloudflare Pages Edge runtime, Node.js runtime fallback, or K8s BFF fallback; update SPEC-014 and ADR if the fallback is chosen.</li>
-  </ol>
+    <h2>3. LG-4 Platform PoC Tasks</h2>
+    <ol>
+      <li>
+        Run PoC-A on real iOS and Android LINE LIFF devices using
+        <code>docs/poc/eddsa/check-support.html</code>.
+      </li>
+      <li>
+        Record EdDSA support, cookie/token round-trip, and refresh rotation in
+        <code>docs/poc/PRE-FLIGHT-POCS.md</code> §3.5.
+      </li>
+      <li>
+        Run PoC-B from Linux or CI so <code>@cloudflare/next-on-pages</code> can
+        generate Pages output.
+      </li>
+      <li>
+        Provide a reachable <code>wss://</code> ws-gateway sandbox endpoint and
+        KYC provider sandbox token for PoC-B scenarios A and B.
+      </li>
+      <li>
+        Choose deployment mode: Cloudflare Pages Edge runtime, Node.js runtime
+        fallback, or K8s BFF fallback; update SPEC-014 and ADR if the fallback
+        is chosen.
+      </li>
+    </ol>
 
-  <h2>4. LG-2 Payment Tasks</h2>
-  <ol>
-    <li>Secure at least one payment provider written acceptance or LOI covering MCC, prediction-market / entertainment use case, chargeback terms, and webhook sandbox access.</li>
-    <li>Run payment sandbox E2E: intent creation, settled top-up, refund, chargeback / dispute created, retry, replay, and ledger reversal.</li>
-    <li>Write PCI SAQ A boundary note proving the platform does not touch PAN / CVV.</li>
-    <li>Attach refund / chargeback drill log to SPEC-000 LG-2 and SPEC-016.</li>
-  </ol>
+    <h2>4. LG-2 Payment Tasks</h2>
+    <ol>
+      <li>
+        Secure at least one payment provider written acceptance or LOI covering
+        MCC, prediction-market / entertainment use case, chargeback terms, and
+        webhook sandbox access.
+      </li>
+      <li>
+        Run payment sandbox E2E: intent creation, settled top-up, refund,
+        chargeback / dispute created, retry, replay, and ledger reversal.
+      </li>
+      <li>
+        Write PCI SAQ A boundary note proving the platform does not touch PAN /
+        CVV.
+      </li>
+      <li>
+        Attach refund / chargeback drill log to SPEC-000 LG-2 and SPEC-016.
+      </li>
+    </ol>
 
-  <h2>5. LG-5 Release Safety Tasks</h2>
-  <ol>
-    <li>Done 2026-05-09: replace release workflow placeholder with a release gate workflow that runs frontend / Rust gates, checks generated proto drift, writes release evidence, and requires GitHub production environment approval.</li>
-    <li>Add prod-targeting gates: secret scan, SAST, SCA, image scan, IaC lint, migration dry-run, and E2E smoke.</li>
-    <li>Run rollback drill within 30 minutes and store evidence.</li>
-    <li>Record SPEC-010 MS-12 production approval snapshot with release artifact checksum.</li>
-  </ol>
+    <h2>5. LG-5 Release Safety Tasks</h2>
+    <ol>
+      <li>
+        Done 2026-05-09: replace release workflow placeholder with a release
+        gate workflow that runs frontend / Rust gates, checks generated proto
+        drift, writes release evidence, and requires GitHub production
+        environment approval.
+      </li>
+      <li>
+        Add prod-targeting gates: secret scan, SAST, SCA, image scan, IaC lint,
+        migration dry-run, and E2E smoke.
+      </li>
+      <li>Run rollback drill within 30 minutes and store evidence.</li>
+      <li>
+        Record SPEC-010 MS-12 production approval snapshot with release artifact
+        checksum.
+      </li>
+    </ol>
 
-  <h2>6. LG-6 Support / Incident / Audit Tasks</h2>
-  <ol>
-    <li>Implement or integrate a support queue with ticket id, category routing, SLA due time, and audit trail.</li>
-    <li>Run S0/S1 incident drill and publish internal status update cadence evidence.</li>
-    <li>Generate evidence pack sample for ledger, payment, and KYC events with hash manifest.</li>
-    <li>Link runbooks and evidence samples from SPEC-000 LG-6.</li>
-  </ol>
+    <h2>6. LG-6 Support / Incident / Audit Tasks</h2>
+    <ol>
+      <li>
+        Implement or integrate a support queue with ticket id, category routing,
+        SLA due time, and audit trail.
+      </li>
+      <li>
+        Run S0/S1 incident drill and publish internal status update cadence
+        evidence.
+      </li>
+      <li>
+        Generate evidence pack sample for ledger, payment, and KYC events with
+        hash manifest.
+      </li>
+      <li>Link runbooks and evidence samples from SPEC-000 LG-6.</li>
+    </ol>
 
-  <h2>7. External Blockers</h2>
-  <ul>
-    <li>LG-1 legal memo and jurisdiction decision require owner/legal input.</li>
-    <li>LG-2 payment acceptance requires provider documents and sandbox credentials.</li>
-    <li>LG-3 real SumSub / iProov verification requires vendor sandbox credentials.</li>
-    <li>LG-4 LIFF verification requires physical iOS / Android LINE devices and a live preview endpoint.</li>
-  </ul>
-</body>
+    <h2>7. External Blockers</h2>
+    <ul>
+      <li>
+        LG-1 legal memo and jurisdiction decision require owner/legal input.
+      </li>
+      <li>
+        LG-2 payment acceptance requires provider documents and sandbox
+        credentials.
+      </li>
+      <li>
+        LG-3 real KYC provider / iProov verification requires vendor sandbox
+        credentials.
+      </li>
+      <li>
+        LG-4 LIFF verification requires physical iOS / Android LINE devices and
+        a live preview endpoint.
+      </li>
+    </ul>
+  </body>
 </html>

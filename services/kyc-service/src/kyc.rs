@@ -99,7 +99,7 @@ pub struct TierOneVerificationOutcome {
 }
 
 #[derive(Debug, Clone)]
-pub struct SumsubWebhookDraft {
+pub struct ProviderWebhookDraft {
     pub applicant_id: String,
     pub external_user_id: String,
     pub review_answer: ReviewAnswer,
@@ -109,7 +109,7 @@ pub struct SumsubWebhookDraft {
 }
 
 #[derive(Debug, Clone)]
-pub struct SumsubWebhookOutcome {
+pub struct ProviderWebhookOutcome {
     pub record: KycRecord,
     pub replayed: bool,
 }
@@ -221,10 +221,10 @@ pub trait KycStore: Clone + Send + Sync + 'static {
         draft: TierOneVerificationDraft,
     ) -> Result<TierOneVerificationOutcome, KycStoreError>;
 
-    async fn apply_sumsub_webhook(
+    async fn apply_provider_webhook(
         &self,
-        draft: SumsubWebhookDraft,
-    ) -> Result<Option<SumsubWebhookOutcome>, KycStoreError>;
+        draft: ProviderWebhookDraft,
+    ) -> Result<Option<ProviderWebhookOutcome>, KycStoreError>;
 
     async fn record_aml_event(
         &self,
@@ -248,7 +248,7 @@ pub trait KycStore: Clone + Send + Sync + 'static {
         draft: StartUpgradeDraft,
     ) -> Result<StartUpgradeOutcome, KycStoreError>;
 
-    /// Resolves the SumSub applicant id for the user's current KYC record.
+    /// Resolves the KYC provider applicant id for the user's current KYC record.
     async fn applicant_id_for_user(&self, user_id: &str) -> Result<Option<String>, KycStoreError>;
 
     /// Appends one KYC document access audit entry.
@@ -261,7 +261,7 @@ pub struct InMemoryKycStore {
     records: Arc<Mutex<Vec<KycRecord>>>,
     idempotency: Arc<Mutex<HashMap<String, StartUpgradeOutcome>>>,
     tier_one_idempotency: Arc<Mutex<HashMap<String, TierOneVerificationOutcome>>>,
-    webhook_idempotency: Arc<Mutex<HashMap<String, SumsubWebhookOutcome>>>,
+    webhook_idempotency: Arc<Mutex<HashMap<String, ProviderWebhookOutcome>>>,
     sar_counts: Arc<Mutex<HashMap<String, i64>>>,
     next_id: Arc<AtomicI64>,
     document_hash_salt: Arc<str>,
@@ -432,10 +432,10 @@ impl KycStore for PostgresKycStore {
         })
     }
 
-    async fn apply_sumsub_webhook(
+    async fn apply_provider_webhook(
         &self,
-        draft: SumsubWebhookDraft,
-    ) -> Result<Option<SumsubWebhookOutcome>, KycStoreError> {
+        draft: ProviderWebhookDraft,
+    ) -> Result<Option<ProviderWebhookOutcome>, KycStoreError> {
         if let Some(existing) = sqlx::query(
             r"
             SELECT r.id, r.user_id, r.tier, r.status, r.provider, r.provider_applicant_id,
@@ -453,7 +453,7 @@ impl KycStore for PostgresKycStore {
         .await
         .map_err(sqlx_store_error)?
         {
-            return Ok(Some(SumsubWebhookOutcome {
+            return Ok(Some(ProviderWebhookOutcome {
                 record: row_to_kyc_record(&existing)?,
                 replayed: true,
             }));
@@ -501,7 +501,7 @@ impl KycStore for PostgresKycStore {
             INSERT INTO kyc_webhook_events (
                 provider, provider_event_id, raw_payload_sha256, payload, record_id
             )
-            VALUES ('sumsub', NULL, $1, $2, $3)
+            VALUES ('provider', NULL, $1, $2, $3)
             ON CONFLICT (raw_payload_sha256) DO NOTHING
             ",
         )
@@ -516,7 +516,7 @@ impl KycStore for PostgresKycStore {
         .await
         .map_err(sqlx_store_error)?;
 
-        Ok(Some(SumsubWebhookOutcome {
+        Ok(Some(ProviderWebhookOutcome {
             record,
             replayed: false,
         }))
@@ -740,7 +740,7 @@ impl KycStore for PostgresKycStore {
     ) -> Result<StartUpgradeOutcome, KycStoreError> {
         if let Some(existing) = self.find_by_idempotency_key(&draft.idempotency_key).await? {
             let sdk_token = format!(
-                "sumsub_sandbox_{}_{}_{}",
+                "iproov_sandbox_{}_{}_{}",
                 existing.user_id,
                 existing.tier.as_str(),
                 existing.id
@@ -794,7 +794,7 @@ impl KycStore for PostgresKycStore {
         .map_err(sqlx_store_error)?;
         record = row_to_kyc_record(&updated)?;
         let sdk_token = format!(
-            "sumsub_sandbox_{}_{}_{}",
+            "iproov_sandbox_{}_{}_{}",
             record.user_id,
             record.tier.as_str(),
             record.id
@@ -937,10 +937,10 @@ impl KycStore for InMemoryKycStore {
         Ok(outcome)
     }
 
-    async fn apply_sumsub_webhook(
+    async fn apply_provider_webhook(
         &self,
-        draft: SumsubWebhookDraft,
-    ) -> Result<Option<SumsubWebhookOutcome>, KycStoreError> {
+        draft: ProviderWebhookDraft,
+    ) -> Result<Option<ProviderWebhookOutcome>, KycStoreError> {
         if let Some(existing) = self
             .webhook_idempotency
             .lock()
@@ -948,7 +948,7 @@ impl KycStore for InMemoryKycStore {
             .get(&draft.raw_payload_sha256)
             .cloned()
         {
-            return Ok(Some(SumsubWebhookOutcome {
+            return Ok(Some(ProviderWebhookOutcome {
                 replayed: true,
                 ..existing
             }));
@@ -978,7 +978,7 @@ impl KycStore for InMemoryKycStore {
             KycStatus::Frozen
         };
         record.reviewed_at = Some(iso_like_now());
-        let outcome = SumsubWebhookOutcome {
+        let outcome = ProviderWebhookOutcome {
             record: record.clone(),
             replayed: false,
         };
@@ -1174,7 +1174,7 @@ impl KycStore for InMemoryKycStore {
             idempotency_key: draft.idempotency_key.clone(),
         };
         let sdk_token = format!(
-            "sumsub_sandbox_{}_{}_{id}",
+            "iproov_sandbox_{}_{}_{id}",
             record.user_id,
             record.tier.as_str()
         );
@@ -1313,7 +1313,7 @@ fn provider_for(tier: KycTier) -> &'static str {
     match tier {
         KycTier::Tier0 => "system",
         KycTier::Tier1 => "manual",
-        KycTier::Tier2 | KycTier::Tier3 => "sumsub",
+        KycTier::Tier2 | KycTier::Tier3 => "iproov",
     }
 }
 

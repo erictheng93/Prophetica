@@ -7,8 +7,6 @@ import { KycSdkError } from "./types.js";
 import { createIproovMockProvider } from "./iproov-mock-provider.js";
 import { createRealIproovProvider } from "./iproov-provider.js";
 import { createMockKycProvider } from "./mock-provider.js";
-import { createSumsubMockProvider } from "./sumsub-mock-provider.js";
-import { createRealSumsubProvider } from "./sumsub-provider.js";
 
 export interface SelectKycProviderOptions {
   sdkToken: string;
@@ -21,11 +19,11 @@ export function selectKycProvider(
   if (opts.override) {
     return singleStageChain(opts.override.name);
   }
-  if (opts.sdkToken.startsWith("sumsub_sandbox_")) {
-    return sumsubChain(opts.sdkToken);
+  if (opts.sdkToken.startsWith("iproov_sandbox_")) {
+    return singleStageChain("iproov");
   }
-  if (opts.sdkToken.startsWith("sumsub_")) {
-    return sumsubChain(opts.sdkToken);
+  if (opts.sdkToken.startsWith("iproov_")) {
+    return singleStageChain("iproov");
   }
   if (opts.sdkToken.startsWith("mock_")) {
     return singleStageChain("mock");
@@ -41,12 +39,8 @@ export function createKycProviderForStage(
   sdkToken: string,
 ): KycIdentityProvider {
   switch (stage.name) {
-    case "sumsub":
-      return sdkToken.startsWith("sumsub_sandbox_")
-        ? createSumsubMockProvider()
-        : createRealSumsubProvider();
     case "iproov":
-      return sdkToken.startsWith("sumsub_sandbox_")
+      return sdkToken.startsWith("iproov_sandbox_")
         ? createIproovMockProvider()
         : createRealIproovProvider();
     case "mock":
@@ -58,19 +52,6 @@ export function createKycProviderForStage(
         `KYC provider ${stage.name} is not implemented yet.`,
       );
   }
-}
-
-function sumsubChain(sdkToken: string): KycAdapterChain {
-  if (sdkToken.includes("_TIER_3_")) {
-    return {
-      mountStrategy: "sequential",
-      stages: [
-        { name: "sumsub", required: true, continueAfterSubmit: true },
-        { name: "iproov", required: true, continueAfterSubmit: false },
-      ],
-    };
-  }
-  return singleStageChain("sumsub");
 }
 
 function singleStageChain(

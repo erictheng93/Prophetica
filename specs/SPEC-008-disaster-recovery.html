@@ -1,526 +1,802 @@
 ﻿<!doctype html>
 <html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SPEC-008-disaster-recovery</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
-      margin: 2rem;
-      line-height: 1.5;
-    }
-    img { max-width: 100%; }
-    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-    pre {
-      overflow: auto;
-      padding: 1rem;
-      background: #f6f8fa;
-      border: 1px solid #d8dee3;
-    }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
-    a { color: #0969da; }
-    .changelog-list { margin-top: 1rem; display: grid; gap: 1rem; }
-    .changelog-entry { border: 1px solid #d0d7de; padding: 0.75rem; border-radius: 0.25rem; }
-    .changelog-entry h3 { margin: 0 0 0.5rem; font-size: 1rem; }
-    .changelog-entry p,
-    .changelog-entry ul { margin: 0.35rem 0; }
-    .changelog-entry ul { padding-left: 1.15rem; }
-    .changelog-entry li { margin-bottom: 0.35rem; }
-  </style>
-</head>
-<body>
-<h1>SPEC-008 — 災備與高可用（Disaster Recovery &amp; HA）</h1>
-<blockquote>
-<p>優先級：<strong>P1</strong>
-版本：v0.2.1 · 最後更新：2026-05-07
-依賴：SPEC-002, SPEC-003, SPEC-007, SPEC-010
-被依賴：SPEC-013</p>
-</blockquote>
-<section class="changelog">
-<div class="changelog-list">
-  <article class="changelog-entry">
-    <h3>v0.2.1 變更（F-1 ~ F-5 縫補）</h3>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPEC-008-disaster-recovery</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+        margin: 2rem;
+        line-height: 1.5;
+      }
+      img {
+        max-width: 100%;
+      }
+      code,
+      pre {
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+      pre {
+        overflow: auto;
+        padding: 1rem;
+        background: #f6f8fa;
+        border: 1px solid #d8dee3;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #d0d7de;
+        padding: 0.4rem;
+        vertical-align: top;
+      }
+      a {
+        color: #0969da;
+      }
+      .changelog-list {
+        margin-top: 1rem;
+        display: grid;
+        gap: 1rem;
+      }
+      .changelog-entry {
+        border: 1px solid #d0d7de;
+        padding: 0.75rem;
+        border-radius: 0.25rem;
+      }
+      .changelog-entry h3 {
+        margin: 0 0 0.5rem;
+        font-size: 1rem;
+      }
+      .changelog-entry p,
+      .changelog-entry ul {
+        margin: 0.35rem 0;
+      }
+      .changelog-entry ul {
+        padding-left: 1.15rem;
+      }
+      .changelog-entry li {
+        margin-bottom: 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SPEC-008 — 災備與高可用（Disaster Recovery &amp; HA）</h1>
+    <blockquote>
+      <p>
+        優先級：<strong>P1</strong> 版本：v0.2.1 · 最後更新：2026-05-07
+        依賴：SPEC-002, SPEC-003, SPEC-007, SPEC-010 被依賴：SPEC-013
+      </p>
+    </blockquote>
+    <section class="changelog">
+      <div class="changelog-list">
+        <article class="changelog-entry">
+          <h3>v0.2.1 變更（F-1 ~ F-5 縫補）</h3>
+          <ul>
+            <li>
+              <strong>F-1</strong>：§9.3 Kill switch 解除明示 cross-ref 至
+              SPEC-010 §9.3 <strong>MS-9</strong>（multi-sig
+              中央表為單一真相來源），admin UI 不得自刻一套流程。
+            </li>
+            <li>
+              <strong>F-2</strong>：§7.1 / §7.2
+              客戶端容錯由「描述性敘述」升級為<strong>可執行技術契約</strong>（exponential
+              backoff 上下限 + jitter、sequence-number
+              reconcile、Idempotency-Key 對齊 SPEC-002 §6.1、retry budget 呼應
+              SPEC-007 §6.4.4 反 pattern）。
+            </li>
+            <li>
+              <strong>F-3</strong>：§13 OQ #5 移除（備份保留期改由本檔 §6.1 cold
+              archive 策略與業主 / 運營要求覆蓋）。
+            </li>
+            <li>
+              <strong>F-4</strong>：§5.2 補 inline 註明「Lock / Idempotency 落
+              PG，<strong>不</strong>存 Redis」呼應 SPEC-002 §6.1。
+            </li>
+            <li>
+              <strong>F-5</strong>：§3.1 補 Cloudflare Edge layer 的 fallback
+              semantics 待 PoC-B 完成後回填。
+            </li>
+          </ul>
+        </article>
+        <article class="changelog-entry">
+          <h3>v0.2.0 變更（T-2 RPO 拆兩層）</h3>
+          <p>
+            §2 RTO/RPO 表將 RPO 拆為「Region-local RPO（Tokyo 同 region
+            synchronous standby + WAL fdatasync + Kafka
+            acks=all）」+「Cross-region RPO ≤ 5 秒（async streaming replication
+            至 Singapore DR）」雙欄，消除原 v0.1「RPO=0」與 §3 跨區 async
+            replication 之物理矛盾；新增 §2.1 Region-local RPO=0
+            三重保證實作要求 + §2.2 Cross-region RPO ≤ 5 秒 SLA
+            邊界與玩家通知策略。
+          </p>
+        </article>
+      </div>
+    </section>
+    <hr />
+    <h2>1. Objective</h2>
+    <p>
+      確保任一單點故障（機器、機房、區域、第三方供應商）不會造成資料遺失或長時間服務中斷，並建立可被監管稽核的災備演練紀錄。
+    </p>
+    <h2>2. RTO / RPO 目標</h2>
+    <blockquote>
+      <p>
+        <strong>RPO 分兩層</strong>（T-2，2026-05-07 修正）：原本「帳本 RPO =
+        0」與 §3.1 / §5.1 之 async streaming replication（跨區延遲
+        ~70-100ms）物理矛盾；本表將 RPO 拆為「<strong>Region-local RPO</strong
+        >」與「<strong>Cross-region RPO</strong>」兩欄。Tokyo Primary 之同
+        region synchronous standby 提供 RPO=0，跨區 Singapore DR 為 async
+        replication 提供 RPO ≤ 5 秒。Failover 至 DR 區接受最多 5 秒資料丟失之
+        SLA。
+      </p>
+    </blockquote>
+    <table>
+      <thead>
+        <tr>
+          <th>服務</th>
+          <th>Region-local RPO（Tokyo 同 region）</th>
+          <th>Cross-region RPO（Tokyo → Singapore DR）</th>
+          <th>RTO（恢復時間）</th>
+          <th>優先級</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>帳本（Ledger）</td>
+          <td>
+            <strong>0</strong>（synchronous standby + WAL fdatasync + Kafka
+            acks=all）
+          </td>
+          <td><strong>≤ 5 秒</strong>（async streaming replication）</td>
+          <td>&lt; 5 分鐘</td>
+          <td>P0</td>
+        </tr>
+        <tr>
+          <td>撮合引擎</td>
+          <td>&lt; 1 秒（per-market WAL + Kafka acks=all）</td>
+          <td>≤ 5 秒（Kafka MirrorMaker 2 lag）</td>
+          <td>&lt; 30 秒 / 市場</td>
+          <td>P0</td>
+        </tr>
+        <tr>
+          <td>玩家錢包</td>
+          <td><strong>0</strong>（同 ledger）</td>
+          <td><strong>≤ 5 秒</strong>（同 ledger）</td>
+          <td>&lt; 5 分鐘</td>
+          <td>P0</td>
+        </tr>
+        <tr>
+          <td>結算服務</td>
+          <td>&lt; 1 分鐘（saga checkpoints）</td>
+          <td>≤ 5 分鐘</td>
+          <td>&lt; 30 分鐘</td>
+          <td>P1</td>
+        </tr>
+        <tr>
+          <td>客戶 KYC 資料</td>
+          <td><strong>0</strong>（R2 Object Lock 雙寫 EU + Singapore）</td>
+          <td><strong>0</strong>（R2 全球複製）</td>
+          <td>&lt; 1 小時</td>
+          <td>P1</td>
+        </tr>
+        <tr>
+          <td>撮合事件流（WAL）</td>
+          <td><strong>0</strong>（fdatasync 每 100 events 或 50ms）</td>
+          <td>≤ 5 秒（Kafka MirrorMaker）</td>
+          <td>&lt; 5 分鐘</td>
+          <td>P0</td>
+        </tr>
+        <tr>
+          <td>WebSocket 推播</td>
+          <td>&lt; 5 秒（in-memory subscriber state）</td>
+          <td>&lt; 30 秒（reconnect + gap detect）</td>
+          <td>&lt; 5 分鐘</td>
+          <td>P1</td>
+        </tr>
+        <tr>
+          <td>行銷頁面</td>
+          <td>&lt; 1 小時</td>
+          <td>&lt; 1 小時</td>
+          <td>&lt; 2 小時</td>
+          <td>P3</td>
+        </tr>
+        <tr>
+          <td>報表 / 分析</td>
+          <td>&lt; 24 小時</td>
+          <td>&lt; 24 小時</td>
+          <td>&lt; 24 小時</td>
+          <td>P3</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>2.1 Region-local RPO=0 實作要求（撮合 + ledger + wallet）</h3>
+    <p>「Region-local RPO=0」之達成需要<strong>雙重保證</strong>，缺一不可：</p>
+    <ol>
+      <li>
+        <strong>PostgreSQL synchronous standby（同 region）</strong>：Tokyo
+        Primary 至少配置一個 same-region synchronous standby（<code
+          >synchronous_commit = on</code
+        >
+        + <code>synchronous_standby_names = &#39;standby1&#39;</code>），commit
+        必須等該 standby 確認 WAL 接收才返回。失去 standby 時系統進入
+        fail-closed（Primary 拒寫）而非 fail-open。
+      </li>
+      <li>
+        <strong>撮合引擎 WAL fdatasync</strong>：per-market WAL 每 100 events 或
+        50ms（取先到者）<code>fdatasync()</code>，呼應 SPEC-003 §8.2。
+      </li>
+      <li>
+        <strong>Kafka acks=all + replication.factor=3</strong>：撮合事件 publish
+        至 Kafka 採同步多副本確認，呼應 SPEC-003 §8.1。
+      </li>
+    </ol>
+    <p>
+      任一機制失效 → P0 告警 + Primary 進入 read-only mode
+      等待修復；不允許「降級為 RPO ≤ 5 秒同 region」之操作。
+    </p>
+    <h3>2.2 Cross-region RPO ≤ 5 秒之 SLA 邊界</h3>
     <ul>
-      <li><strong>F-1</strong>：§9.3 Kill switch 解除明示 cross-ref 至 SPEC-010 §9.3 <strong>MS-9</strong>（multi-sig 中央表為單一真相來源），admin UI 不得自刻一套流程。</li>
-      <li><strong>F-2</strong>：§7.1 / §7.2 客戶端容錯由「描述性敘述」升級為<strong>可執行技術契約</strong>（exponential backoff 上下限 + jitter、sequence-number reconcile、Idempotency-Key 對齊 SPEC-002 §6.1、retry budget 呼應 SPEC-007 §6.4.4 反 pattern）。</li>
-      <li><strong>F-3</strong>：§13 OQ #5 移除（備份保留期改由本檔 §6.1 cold archive 策略與業主 / 運營要求覆蓋）。</li>
-      <li><strong>F-4</strong>：§5.2 補 inline 註明「Lock / Idempotency 落 PG，<strong>不</strong>存 Redis」呼應 SPEC-002 §6.1。</li>
-      <li><strong>F-5</strong>：§3.1 補 Cloudflare Edge layer 的 fallback semantics 待 PoC-B 完成後回填。</li>
+      <li>
+        DR failover 至 Singapore 時，<strong>接受</strong>最近 ≤ 5 秒之撮合事件
+        / ledger entries / wallet 異動丟失
+      </li>
+      <li>
+        對玩家通知策略：failover 後若偵測到丟失，自動寄出「事故說明 +
+        受影響交易明細」郵件，並由客服 follow up 個案處理
+      </li>
+      <li>
+        此 5 秒 RPO 為<strong>業務 SLA 上限</strong>；技術 SLO（async
+        replication lag）平時應 &lt; 1 秒，&gt; 3 秒觸發 P1 告警，&gt; 5
+        秒持續觸發 P0 + DR 區介入
+      </li>
     </ul>
-  </article>
-  <article class="changelog-entry">
-    <h3>v0.2.0 變更（T-2 RPO 拆兩層）</h3>
-    <p>§2 RTO/RPO 表將 RPO 拆為「Region-local RPO（Tokyo 同 region synchronous standby + WAL fdatasync + Kafka acks=all）」+「Cross-region RPO ≤ 5 秒（async streaming replication 至 Singapore DR）」雙欄，消除原 v0.1「RPO=0」與 §3 跨區 async replication 之物理矛盾；新增 §2.1 Region-local RPO=0 三重保證實作要求 + §2.2 Cross-region RPO ≤ 5 秒 SLA 邊界與玩家通知策略。</p>
-  </article>
-</div>
-</section>
-<hr>
-<h2>1. Objective</h2>
-<p>確保任一單點故障（機器、機房、區域、第三方供應商）不會造成資料遺失或長時間服務中斷，並建立可被監管稽核的災備演練紀錄。</p>
-<h2>2. RTO / RPO 目標</h2>
-<blockquote>
-<p><strong>RPO 分兩層</strong>（T-2，2026-05-07 修正）：原本「帳本 RPO = 0」與 §3.1 / §5.1 之 async streaming replication（跨區延遲 ~70-100ms）物理矛盾；本表將 RPO 拆為「<strong>Region-local RPO</strong>」與「<strong>Cross-region RPO</strong>」兩欄。Tokyo Primary 之同 region synchronous standby 提供 RPO=0，跨區 Singapore DR 為 async replication 提供 RPO ≤ 5 秒。Failover 至 DR 區接受最多 5 秒資料丟失之 SLA。</p>
-</blockquote>
-<table>
-<thead>
-<tr>
-<th>服務</th>
-<th>Region-local RPO（Tokyo 同 region）</th>
-<th>Cross-region RPO（Tokyo → Singapore DR）</th>
-<th>RTO（恢復時間）</th>
-<th>優先級</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>帳本（Ledger）</td>
-<td><strong>0</strong>（synchronous standby + WAL fdatasync + Kafka acks=all）</td>
-<td><strong>≤ 5 秒</strong>（async streaming replication）</td>
-<td>&lt; 5 分鐘</td>
-<td>P0</td>
-</tr>
-<tr>
-<td>撮合引擎</td>
-<td>&lt; 1 秒（per-market WAL + Kafka acks=all）</td>
-<td>≤ 5 秒（Kafka MirrorMaker 2 lag）</td>
-<td>&lt; 30 秒 / 市場</td>
-<td>P0</td>
-</tr>
-<tr>
-<td>玩家錢包</td>
-<td><strong>0</strong>（同 ledger）</td>
-<td><strong>≤ 5 秒</strong>（同 ledger）</td>
-<td>&lt; 5 分鐘</td>
-<td>P0</td>
-</tr>
-<tr>
-<td>結算服務</td>
-<td>&lt; 1 分鐘（saga checkpoints）</td>
-<td>≤ 5 分鐘</td>
-<td>&lt; 30 分鐘</td>
-<td>P1</td>
-</tr>
-<tr>
-<td>客戶 KYC 資料</td>
-<td><strong>0</strong>（R2 Object Lock 雙寫 EU + Singapore）</td>
-<td><strong>0</strong>（R2 全球複製）</td>
-<td>&lt; 1 小時</td>
-<td>P1</td>
-</tr>
-<tr>
-<td>撮合事件流（WAL）</td>
-<td><strong>0</strong>（fdatasync 每 100 events 或 50ms）</td>
-<td>≤ 5 秒（Kafka MirrorMaker）</td>
-<td>&lt; 5 分鐘</td>
-<td>P0</td>
-</tr>
-<tr>
-<td>WebSocket 推播</td>
-<td>&lt; 5 秒（in-memory subscriber state）</td>
-<td>&lt; 30 秒（reconnect + gap detect）</td>
-<td>&lt; 5 分鐘</td>
-<td>P1</td>
-</tr>
-<tr>
-<td>行銷頁面</td>
-<td>&lt; 1 小時</td>
-<td>&lt; 1 小時</td>
-<td>&lt; 2 小時</td>
-<td>P3</td>
-</tr>
-<tr>
-<td>報表 / 分析</td>
-<td>&lt; 24 小時</td>
-<td>&lt; 24 小時</td>
-<td>&lt; 24 小時</td>
-<td>P3</td>
-</tr>
-</tbody></table>
-<h3>2.1 Region-local RPO=0 實作要求（撮合 + ledger + wallet）</h3>
-<p>「Region-local RPO=0」之達成需要<strong>雙重保證</strong>，缺一不可：</p>
-<ol>
-<li><strong>PostgreSQL synchronous standby（同 region）</strong>：Tokyo Primary 至少配置一個 same-region synchronous standby（<code>synchronous_commit = on</code> + <code>synchronous_standby_names = &#39;standby1&#39;</code>），commit 必須等該 standby 確認 WAL 接收才返回。失去 standby 時系統進入 fail-closed（Primary 拒寫）而非 fail-open。</li>
-<li><strong>撮合引擎 WAL fdatasync</strong>：per-market WAL 每 100 events 或 50ms（取先到者）<code>fdatasync()</code>，呼應 SPEC-003 §8.2。</li>
-<li><strong>Kafka acks=all + replication.factor=3</strong>：撮合事件 publish 至 Kafka 採同步多副本確認，呼應 SPEC-003 §8.1。</li>
-</ol>
-<p>任一機制失效 → P0 告警 + Primary 進入 read-only mode 等待修復；不允許「降級為 RPO ≤ 5 秒同 region」之操作。</p>
-<h3>2.2 Cross-region RPO ≤ 5 秒之 SLA 邊界</h3>
-<ul>
-<li>DR failover 至 Singapore 時，<strong>接受</strong>最近 ≤ 5 秒之撮合事件 / ledger entries / wallet 異動丟失</li>
-<li>對玩家通知策略：failover 後若偵測到丟失，自動寄出「事故說明 + 受影響交易明細」郵件，並由客服 follow up 個案處理</li>
-<li>此 5 秒 RPO 為<strong>業務 SLA 上限</strong>；技術 SLO（async replication lag）平時應 &lt; 1 秒，&gt; 3 秒觸發 P1 告警，&gt; 5 秒持續觸發 P0 + DR 區介入</li>
-</ul>
-<h2>3. 多區架構</h2>
-<h3>3.1 區域佈局</h3>
-<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-008-disaster-recovery-implementation-plan.html">SPEC-008-disaster-recovery-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-<blockquote>
-<p><strong>F-5 待補</strong>：Cloudflare Edge runtime（SPEC-014 §3.2.1 PoC-B）通過後，需回填以下 fallback semantics：(a) 行銷頁面 / 公開市場列表之 Edge cache → Origin 退路；(b) Edge KV 與 Origin DB 之 staleness window；(c) Edge runtime 服務不可用時是否降級至直連 Origin。低優先；可隨 PoC-B 實機驗證結果一同 commit。</p>
-</blockquote>
-<h3>3.2 Active-Active vs Active-Passive</h3>
-<p>決策：<strong>Active-Passive</strong>（DR 為熱備，不接生產流量）</p>
-<p>理由：</p>
-<ul>
-<li>撮合引擎為單寫者，雙寫會破壞順序保證</li>
-<li>帳本必須單一真相來源</li>
-<li>跨區一致性成本高於切換成本</li>
-</ul>
-<p>DR 區仍持續：</p>
-<ul>
-<li>PostgreSQL streaming replication（&lt; 1 秒延遲）</li>
-<li>Kafka MirrorMaker 2 同步</li>
-<li>應用層 standby 不啟動 ingress</li>
-</ul>
-<h3>3.3 Failover 演練</h3>
-<p>每季一次計畫性切換，演練：</p>
-<ol>
-<li><strong>計畫性切換</strong>：通告維護窗、切流量、切 DB primary、驗證</li>
-<li><strong>災難演練</strong>：模擬 Tokyo 區域不可用，自動 failover、驗證 RTO</li>
-</ol>
-<h2>4. 撮合引擎災備</h2>
-<h3>4.1 寫入路徑（持久性層級）</h3>
-<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-008-disaster-recovery-implementation-plan.html">SPEC-008-disaster-recovery-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-<h3>4.2 故障情境與恢復</h3>
-<table>
-<thead>
-<tr>
-<th>情境</th>
-<th>恢復步驟</th>
-<th>RTO</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Engine pod crash</td>
-<td>K8s 重啟 → 從 snapshot + WAL 恢復 → ingress 開放</td>
-<td>&lt; 30 秒</td>
-</tr>
-<tr>
-<td>整機停電</td>
-<td>hostNetwork pod 在另一節點重啟 → 從 Kafka replay</td>
-<td>&lt; 60 秒</td>
-</tr>
-<tr>
-<td>整機房故障</td>
-<td>DR 區的 standby engine 啟動 → 從 Kafka MirrorMaker replay</td>
-<td>&lt; 5 分鐘</td>
-</tr>
-<tr>
-<td>WAL 磁碟故障</td>
-<td>engine 拒收新 order → 從 Kafka 重建 in-memory state</td>
-<td>&lt; 10 分鐘</td>
-</tr>
-<tr>
-<td>Kafka 集群整體故障</td>
-<td>engine 進入 read-only mode → 等待 Kafka 恢復</td>
-<td>depends</td>
-</tr>
-</tbody></table>
-<h3>4.3 為何 WAL + Kafka 雙寫？</h3>
-<ul>
-<li>WAL 提供本地零延遲持久性（不依賴網路）</li>
-<li>Kafka 提供跨機器、跨區持久性</li>
-<li>任一單點故障不會丟資料</li>
-</ul>
-<h2>5. 資料庫災備</h2>
-<h3>5.1 PostgreSQL 配置</h3>
-<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-008-disaster-recovery-implementation-plan.html">SPEC-008-disaster-recovery-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-<ul>
-<li>WAL 連續歸檔至 R2（保留 30 天）</li>
-<li>快照（pg_basebackup）每日，保留 14 天</li>
-<li>PITR（Point-in-Time Recovery）能力：可回到任一時間點</li>
-</ul>
-<h3>5.2 Redis 配置</h3>
-<p><strong>工程實作細節已抽離至</strong> <a href="../docs/implementation-plans/SPEC-008-disaster-recovery-implementation-plan.html">SPEC-008-disaster-recovery-implementation-plan.html</a>（涵蓋 schema、API、流程、部署與驗收）。</p>
-<ul>
-<li>AOF + RDB 雙重持久化</li>
-<li>AOF fsync=everysec（性能與持久性平衡）</li>
-<li>快取資料丟失可接受（重建自 PG）</li>
-<li><strong>Lock / Idempotency key 不存 Redis</strong>：呼應 SPEC-002 §6.1，所有 <code>Idempotency-Key</code> 與分散式 lock 落 PostgreSQL <code>idempotency_records</code> 表 / <code>pg_advisory_lock</code>；Redis <strong>僅</strong>作為熱資料 cache（市場列表 / WS subscriber state / leaderboard）。理由：Redis AOF fsync=everysec 在 worst case 可丟失最近 1 秒寫入，與 SPEC-002 §6 帳本入口的「精確一次」契約不相容</li>
-</ul>
-<h3>5.3 對帳</h3>
-<p>DR 區每日對帳：</p>
-<ul>
-<li>DR PG 與 Primary PG 的 entries 數一致</li>
-<li>DR Kafka offsets 進度差異 &lt; 1 秒</li>
-<li>不一致 → P0 告警</li>
-</ul>
-<h2>6. 備份策略</h2>
-<h3>6.1 三層備份</h3>
-<table>
-<thead>
-<tr>
-<th>層級</th>
-<th>物件</th>
-<th>頻率</th>
-<th>保留</th>
-<th>儲存位置</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Hot Standby</td>
-<td>DB / Redis / Kafka</td>
-<td>即時</td>
-<td>持續</td>
-<td>DR 區</td>
-</tr>
-<tr>
-<td>Daily Snapshot</td>
-<td>DB pg_basebackup</td>
-<td>每日</td>
-<td>30 天</td>
-<td>R2 + S3 雙寫</td>
-</tr>
-<tr>
-<td>Cold Archive</td>
-<td>Critical 帳本快照</td>
-<td>每月</td>
-<td>7 年</td>
-<td>R2 Object Lock + Glacier</td>
-</tr>
-</tbody></table>
-<h3>6.2 備份驗證</h3>
-<ul>
-<li>每週一次自動 restore 驗證（取最新備份至沙盒環境，跑 schema check）</li>
-<li>每月一次完整 restore 演練</li>
-<li>不通過驗證的備份標記為 INVALID，告警</li>
-</ul>
-<h2>7. 客戶端容錯</h2>
-<blockquote>
-<p><strong>v0.2.1 升級</strong>：本節由 v0.2.0 之描述性敘述（exponential backoff / reconcile / idempotency-key 三個名詞）升級為<strong>可執行技術契約</strong>。前端實作（apps/web、apps/liff）必須照本節 §7.1 / §7.2 / §7.3 落地，禁止三人三套；契約變更須 PR 修改本節 + 對應前端 lib 同步更新。</p>
-</blockquote>
-<h3>7.1 Web 客戶端 — WebSocket 重連契約</h3>
-<table>
-<thead>
-<tr>
-<th>項目</th>
-<th>契約</th>
-<th>理由</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>演算法</td>
-<td>Exponential backoff with full jitter</td>
-<td>避免 thundering herd（後端故障恢復時）</td>
-</tr>
-<tr>
-<td>初始延遲</td>
-<td><strong>500 ms</strong></td>
-<td>短於人眼可感知斷線（&lt; 1s）</td>
-</tr>
-<tr>
-<td>倍率</td>
-<td><strong>2.0</strong></td>
-<td>標準 binary backoff</td>
-</tr>
-<tr>
-<td>Jitter</td>
-<td><strong>±20%（uniform random）</strong></td>
-<td>分散重連 spike</td>
-</tr>
-<tr>
-<td>Cap（單次最大延遲）</td>
-<td><strong>30 s</strong></td>
-<td>對齊 §8 第三方 DR 切換 TTL；超過此值已脫離「容錯」進入「降級」</td>
-</tr>
-<tr>
-<td>Max attempts</td>
-<td><strong>30 次</strong></td>
-<td>約 ~10 分鐘總預算（含 jitter）；超過後進入 §7.3 fail-soft 模式</td>
-</tr>
-<tr>
-<td>Heartbeat</td>
-<td>client → server <code>ping</code> 每 <strong>15 s</strong>；server 30 s 無 pong → 主動關閉 + 觸發重連</td>
-<td>偵測「TCP 半開連線」（NAT timeout / network partition）</td>
-</tr>
-</tbody></table>
-<p>實作參考：<code>apps/web/lib/ws-client.ts</code>（v0.2.1 隨 SPEC patch 落地）。</p>
-<h3>7.2 Web 客戶端 — API retry 與 Idempotency-Key 契約</h3>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>retry 行為</th>
-<th>Idempotency-Key 要求</th>
-</tr>
-</thead>
-<tbody><tr>
-<td><code>GET</code></td>
-<td>自動 retry up to <strong>3 次</strong>（連線級錯誤 / 5xx）；exponential 200ms / 400ms / 800ms</td>
-<td>不需要（讀操作天然冪等）</td>
-</tr>
-<tr>
-<td><code>POST</code> / <code>PUT</code> / <code>DELETE</code>（寫帳本）</td>
-<td><strong>必須</strong>帶 <code>Idempotency-Key</code> header；retry 行為由 SPEC-002 §6.1 backend <code>idempotency_records</code> 處理；client 端 retry up to <strong>3 次</strong>，<strong>重用同一 key</strong></td>
-<td><strong>必須</strong>：UUID v7（client-generated，128 bit）</td>
-</tr>
-<tr>
-<td><code>POST</code> 非帳本（如 health probe）</td>
-<td>不 retry</td>
-<td>不需要</td>
-</tr>
-</tbody></table>
-<p>Idempotency-Key 格式：</p>
-<ul>
-<li><strong>算法</strong>：UUID v7（time-ordered，48 bit unix ms timestamp + 74 bit randomness）</li>
-<li><strong>格式</strong>：標準 RFC 4122 字串（36 字元含 hyphen）</li>
-<li><strong>生命週期</strong>：每個玩家行為（單次下單、單次儲值、單次申訴）生成 1 個 key，retry 全程重用</li>
-<li><strong>觀測性</strong>：寫入 OTel span attribute <code>idempotency.key</code>，呼應 SPEC-007 §6.4 latency budget 追蹤</li>
-</ul>
-<h3>7.3 Web 客戶端 — Reconcile 與 fail-soft</h3>
-<p><strong>Reconcile 機制</strong>（重連成功後）：</p>
-<ol>
-<li>WS 訊息 payload 必須帶 monotonic <code>seq</code> field（per-subscription 連續整數）</li>
-<li>Client 偵測 <code>seq</code> gap → 主動發 <code>GET /api/markets/{id}/snapshot?from_seq=N</code> 補洞</li>
-<li>Backend 應在 60 秒內保留 per-subscription event tail（用於 reconcile）</li>
-<li>Reconcile 失敗（gap 過大 / tail 過期）→ 客戶端強制重新訂閱</li>
-</ol>
-<p><strong>Fail-soft 模式</strong>（max attempts 用盡後）：</p>
-<ul>
-<li>顯示「<strong>連線已中斷</strong>」橫幅（呼應 §9.2 HALTED 狀態 UI 同一 component；SPEC-008 v0.2.1 收斂為單一 <code>&lt;ConnectionStatusBanner&gt;</code>）</li>
-<li>自動降級為 polling：<code>GET /api/markets/{id}/book</code> 每 5 秒</li>
-<li><strong>禁止</strong>繼續送下單請求（client 主動 disable 下單按鈕，避免 backend 故障期間累積大量待 retry POST）</li>
-<li>提供「<strong>手動重試連線</strong>」按鈕讓玩家主動觸發新一輪 reconnect</li>
-</ul>
-<p><strong>Retry budget 反 pattern 警示</strong>（呼應 SPEC-007 §6.4.4）：</p>
-<ul>
-<li>❌ 禁止：「永久重試」「無上限 retry」「retry 失敗時把延遲歸零重新算」</li>
-<li>❌ 禁止：retry storm — 同一玩家同一秒內超過 3 個 retry POST（client 端 token bucket 限流）</li>
-<li>❌ 禁止：對 4xx 錯誤 retry（這是 client bug，不是網路問題）</li>
-</ul>
-<h3>7.4 行動端（LIFF）</h3>
-<ul>
-<li>WebSocket 重連契約<strong>完全繼承</strong> §7.1</li>
-<li>Idempotency-Key 契約<strong>完全繼承</strong> §7.2（LIFF SDK 由 <code>apps/liff/lib/</code> 共用 <code>apps/web/lib/idempotency.ts</code>）</li>
-<li>LINE app 切到背景 → WS 由 OS 自動斷開；返回前景時觸發重連，<strong>不</strong>累計成 max attempts</li>
-<li>離線狀態 UI 提示：用 <code>navigator.onLine</code> 偵測；offline 時直接進入 §7.3 fail-soft，不消耗 retry budget</li>
-<li><strong>訂單操作必透過 server，不在 client 擱置</strong></li>
-</ul>
-<h2>8. 第三方依賴災備</h2>
-<table>
-<thead>
-<tr>
-<th>依賴</th>
-<th>替代方案</th>
-<th>切換策略</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Cloudflare</td>
-<td>AWS CloudFront</td>
-<td>DNS 切換，TTL 60s</td>
-</tr>
-<tr>
-<td>Linode</td>
-<td>AWS / GCP Tokyo</td>
-<td>已部署 Singapore，可立即接管</td>
-</tr>
-<tr>
-<td>支付 Gateway（綠界）</td>
-<td>藍新 / Stripe</td>
-<td>玩家可選通路；自動降級至備援</td>
-</tr>
-<tr>
-<td>KYC SaaS（SumSub）</td>
-<td>Onfido</td>
-<td>同時整合 2 家，主備切換</td>
-</tr>
-<tr>
-<td>Email（SendGrid）</td>
-<td>AWS SES</td>
-<td>配置 fallback</td>
-</tr>
-<tr>
-<td>SMS（Twilio）</td>
-<td>任一備援</td>
-<td>同上</td>
-</tr>
-</tbody></table>
-<h2>9. 緊急停盤（Kill Switch）</h2>
-<h3>9.1 觸發條件</h3>
-<ul>
-<li>帳本失衡偵測</li>
-<li>大量異常下注（疑似系統 bug 或攻擊）</li>
-<li>監管緊急要求</li>
-<li>平台主動公告維護</li>
-</ul>
-<h3>9.2 停盤動作</h3>
-<p><code>POST /api/internal/admin/halt</code> → 設定 feature flag <code>engine.halted=true</code></p>
-<ul>
-<li>撮合引擎拒收新 order，但繼續 broadcast 既有狀態</li>
-<li>WS 推播狀態為 HALTED</li>
-<li>結算暫停</li>
-<li>通知所有玩家 + 公告原因</li>
-<li>預期恢復時間</li>
-</ul>
-<h3>9.3 解除</h3>
-<p><strong>呼應 SPEC-010 §9.3 MS-9</strong>（multi-sig 治理中央表）：Kill switch 解除需 <strong>2-of-3</strong> CTO / Compliance / Senior Engineer 共同簽核。</p>
-<blockquote>
-<p><strong>重要 governance 約束</strong>（v0.2.1 補）：admin / Compliance UI <strong>不得</strong>為 MS-9 自刻一套簽核流程；必須使用 SPEC-010 §9.3.3 規範之<strong>單一</strong> multi-sig component（schema 由 §9.3.1 規則總表驅動）。簽核者強制 hardware MFA（YubiKey / Passkey），對應 step-up MFA 過去 30 分鐘內仍有效。任何對 MS-9 簽核要求之變更（如改成 3-of-3、加入 Risk Officer），須先 PR 修 SPEC-010 §9.3.1，本節僅為呼應引用。</p>
-</blockquote>
-<p>解除動作必須寫入 <code>audit_logs</code>（呼應 SPEC-012 §5.3），<code>metadata.ms_id = &quot;MS-9&quot;</code>、<code>action = &quot;kill_switch_release&quot;</code>、<code>subject_id</code> 為觸發停盤之事故 ID。</p>
-<h2>10. 演練計畫（Drill Schedule）</h2>
-<table>
-<thead>
-<tr>
-<th>演練類型</th>
-<th>頻率</th>
-<th>內容</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>Engine pod kill</td>
-<td>每週</td>
-<td>K8s 隨機 kill 一個 engine pod</td>
-</tr>
-<tr>
-<td>DB primary failover</td>
-<td>每月</td>
-<td>切換 primary，驗證 &lt; 30 秒 RTO</td>
-</tr>
-<tr>
-<td>區域切換</td>
-<td>每季</td>
-<td>演練 Tokyo → Singapore</td>
-</tr>
-<tr>
-<td>完整 DR 演練</td>
-<td>每年</td>
-<td>模擬 Tokyo 全毀，從 zero 重建</td>
-</tr>
-<tr>
-<td>Tabletop 演練</td>
-<td>每月</td>
-<td>工程 + 法務 + 客服紙上推演</td>
-</tr>
-</tbody></table>
-<h2>11. 演練紀錄要求</h2>
-<p>每次演練須產出：</p>
-<ul>
-<li>演練計畫文件（事前）</li>
-<li>實際執行紀錄（含時間軸、命中 / 偏離計畫）</li>
-<li>改進建議（事後 24h 內）</li>
-<li>監管可查閱（必要時）</li>
-</ul>
-<h2>12. 驗收條件</h2>
-<ul>
-<li><input disabled="" type="checkbox"> 雙區部署完成，DR 區可獨立運行（無 Primary 仍可服務）</li>
-<li><input disabled="" type="checkbox"> PostgreSQL streaming replication 延遲 P99 &lt; 1 秒</li>
-<li><input disabled="" type="checkbox"> Engine 從 snapshot + WAL 恢復演練通過 RTO</li>
-<li><input disabled="" type="checkbox"> 跨區 failover 演練通過 RTO</li>
-<li><input disabled="" type="checkbox"> Kill switch 完整測試（觸發、停盤行為、解除）</li>
-<li><input disabled="" type="checkbox"> 每週備份驗證腳本自動運行 + 失敗告警</li>
-</ul>
-<h2>13. Open Questions</h2>
-<ol>
-<li>DR 區是否使用 AWS（與 Linode 異質供應商）還是 Linode Singapore？同質風險 vs 維運複雜度</li>
-<li>PostgreSQL 物理複製還是邏輯複製？跨雲建議邏輯複製</li>
-<li>Kafka MirrorMaker 2 vs Confluent Replicator？</li>
-<li>緊急停盤是否同時影響 KYC / 客服流程？預設不影響，但需確認</li>
-</ol>
-<blockquote>
-<p><strong>OQ #5 已 Resolved（v0.2.1，2026-05-07）</strong>：「最低備份保留期」由本檔 §6.1 cold archive 策略與 SPEC-000 §5 Q-2 業主 / 運營最終意見覆蓋；現有設計 §6.1 cold archive 7 年留有上修空間。本檔不再追蹤此議題。</p>
-</blockquote>
-
-</body>
+    <h2>3. 多區架構</h2>
+    <h3>3.1 區域佈局</h3>
+    <p>
+      <strong>工程實作細節已抽離至</strong>
+      <a
+        href="../docs/implementation-plans/SPEC-008-disaster-recovery-implementation-plan.html"
+        >SPEC-008-disaster-recovery-implementation-plan.html</a
+      >（涵蓋 schema、API、流程、部署與驗收）。
+    </p>
+    <blockquote>
+      <p>
+        <strong>F-5 待補</strong>：Cloudflare Edge runtime（SPEC-014 §3.2.1
+        PoC-B）通過後，需回填以下 fallback semantics：(a) 行銷頁面 /
+        公開市場列表之 Edge cache → Origin 退路；(b) Edge KV 與 Origin DB 之
+        staleness window；(c) Edge runtime 服務不可用時是否降級至直連
+        Origin。低優先；可隨 PoC-B 實機驗證結果一同 commit。
+      </p>
+    </blockquote>
+    <h3>3.2 Active-Active vs Active-Passive</h3>
+    <p>決策：<strong>Active-Passive</strong>（DR 為熱備，不接生產流量）</p>
+    <p>理由：</p>
+    <ul>
+      <li>撮合引擎為單寫者，雙寫會破壞順序保證</li>
+      <li>帳本必須單一真相來源</li>
+      <li>跨區一致性成本高於切換成本</li>
+    </ul>
+    <p>DR 區仍持續：</p>
+    <ul>
+      <li>PostgreSQL streaming replication（&lt; 1 秒延遲）</li>
+      <li>Kafka MirrorMaker 2 同步</li>
+      <li>應用層 standby 不啟動 ingress</li>
+    </ul>
+    <h3>3.3 Failover 演練</h3>
+    <p>每季一次計畫性切換，演練：</p>
+    <ol>
+      <li>
+        <strong>計畫性切換</strong>：通告維護窗、切流量、切 DB primary、驗證
+      </li>
+      <li>
+        <strong>災難演練</strong>：模擬 Tokyo 區域不可用，自動 failover、驗證
+        RTO
+      </li>
+    </ol>
+    <h2>4. 撮合引擎災備</h2>
+    <h3>4.1 寫入路徑（持久性層級）</h3>
+    <p>
+      <strong>工程實作細節已抽離至</strong>
+      <a
+        href="../docs/implementation-plans/SPEC-008-disaster-recovery-implementation-plan.html"
+        >SPEC-008-disaster-recovery-implementation-plan.html</a
+      >（涵蓋 schema、API、流程、部署與驗收）。
+    </p>
+    <h3>4.2 故障情境與恢復</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>情境</th>
+          <th>恢復步驟</th>
+          <th>RTO</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Engine pod crash</td>
+          <td>K8s 重啟 → 從 snapshot + WAL 恢復 → ingress 開放</td>
+          <td>&lt; 30 秒</td>
+        </tr>
+        <tr>
+          <td>整機停電</td>
+          <td>hostNetwork pod 在另一節點重啟 → 從 Kafka replay</td>
+          <td>&lt; 60 秒</td>
+        </tr>
+        <tr>
+          <td>整機房故障</td>
+          <td>DR 區的 standby engine 啟動 → 從 Kafka MirrorMaker replay</td>
+          <td>&lt; 5 分鐘</td>
+        </tr>
+        <tr>
+          <td>WAL 磁碟故障</td>
+          <td>engine 拒收新 order → 從 Kafka 重建 in-memory state</td>
+          <td>&lt; 10 分鐘</td>
+        </tr>
+        <tr>
+          <td>Kafka 集群整體故障</td>
+          <td>engine 進入 read-only mode → 等待 Kafka 恢復</td>
+          <td>depends</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>4.3 為何 WAL + Kafka 雙寫？</h3>
+    <ul>
+      <li>WAL 提供本地零延遲持久性（不依賴網路）</li>
+      <li>Kafka 提供跨機器、跨區持久性</li>
+      <li>任一單點故障不會丟資料</li>
+    </ul>
+    <h2>5. 資料庫災備</h2>
+    <h3>5.1 PostgreSQL 配置</h3>
+    <p>
+      <strong>工程實作細節已抽離至</strong>
+      <a
+        href="../docs/implementation-plans/SPEC-008-disaster-recovery-implementation-plan.html"
+        >SPEC-008-disaster-recovery-implementation-plan.html</a
+      >（涵蓋 schema、API、流程、部署與驗收）。
+    </p>
+    <ul>
+      <li>WAL 連續歸檔至 R2（保留 30 天）</li>
+      <li>快照（pg_basebackup）每日，保留 14 天</li>
+      <li>PITR（Point-in-Time Recovery）能力：可回到任一時間點</li>
+    </ul>
+    <h3>5.2 Redis 配置</h3>
+    <p>
+      <strong>工程實作細節已抽離至</strong>
+      <a
+        href="../docs/implementation-plans/SPEC-008-disaster-recovery-implementation-plan.html"
+        >SPEC-008-disaster-recovery-implementation-plan.html</a
+      >（涵蓋 schema、API、流程、部署與驗收）。
+    </p>
+    <ul>
+      <li>AOF + RDB 雙重持久化</li>
+      <li>AOF fsync=everysec（性能與持久性平衡）</li>
+      <li>快取資料丟失可接受（重建自 PG）</li>
+      <li>
+        <strong>Lock / Idempotency key 不存 Redis</strong>：呼應 SPEC-002
+        §6.1，所有 <code>Idempotency-Key</code> 與分散式 lock 落 PostgreSQL
+        <code>idempotency_records</code> 表 /
+        <code>pg_advisory_lock</code>；Redis <strong>僅</strong>作為熱資料
+        cache（市場列表 / WS subscriber state / leaderboard）。理由：Redis AOF
+        fsync=everysec 在 worst case 可丟失最近 1 秒寫入，與 SPEC-002 §6
+        帳本入口的「精確一次」契約不相容
+      </li>
+    </ul>
+    <h3>5.3 對帳</h3>
+    <p>DR 區每日對帳：</p>
+    <ul>
+      <li>DR PG 與 Primary PG 的 entries 數一致</li>
+      <li>DR Kafka offsets 進度差異 &lt; 1 秒</li>
+      <li>不一致 → P0 告警</li>
+    </ul>
+    <h2>6. 備份策略</h2>
+    <h3>6.1 三層備份</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>層級</th>
+          <th>物件</th>
+          <th>頻率</th>
+          <th>保留</th>
+          <th>儲存位置</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Hot Standby</td>
+          <td>DB / Redis / Kafka</td>
+          <td>即時</td>
+          <td>持續</td>
+          <td>DR 區</td>
+        </tr>
+        <tr>
+          <td>Daily Snapshot</td>
+          <td>DB pg_basebackup</td>
+          <td>每日</td>
+          <td>30 天</td>
+          <td>R2 + S3 雙寫</td>
+        </tr>
+        <tr>
+          <td>Cold Archive</td>
+          <td>Critical 帳本快照</td>
+          <td>每月</td>
+          <td>7 年</td>
+          <td>R2 Object Lock + Glacier</td>
+        </tr>
+      </tbody>
+    </table>
+    <h3>6.2 備份驗證</h3>
+    <ul>
+      <li>
+        每週一次自動 restore 驗證（取最新備份至沙盒環境，跑 schema check）
+      </li>
+      <li>每月一次完整 restore 演練</li>
+      <li>不通過驗證的備份標記為 INVALID，告警</li>
+    </ul>
+    <h2>7. 客戶端容錯</h2>
+    <blockquote>
+      <p>
+        <strong>v0.2.1 升級</strong>：本節由 v0.2.0 之描述性敘述（exponential
+        backoff / reconcile / idempotency-key
+        三個名詞）升級為<strong>可執行技術契約</strong>。前端實作（apps/web、apps/liff）必須照本節
+        §7.1 / §7.2 / §7.3 落地，禁止三人三套；契約變更須 PR 修改本節 + 對應前端
+        lib 同步更新。
+      </p>
+    </blockquote>
+    <h3>7.1 Web 客戶端 — WebSocket 重連契約</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>項目</th>
+          <th>契約</th>
+          <th>理由</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>演算法</td>
+          <td>Exponential backoff with full jitter</td>
+          <td>避免 thundering herd（後端故障恢復時）</td>
+        </tr>
+        <tr>
+          <td>初始延遲</td>
+          <td><strong>500 ms</strong></td>
+          <td>短於人眼可感知斷線（&lt; 1s）</td>
+        </tr>
+        <tr>
+          <td>倍率</td>
+          <td><strong>2.0</strong></td>
+          <td>標準 binary backoff</td>
+        </tr>
+        <tr>
+          <td>Jitter</td>
+          <td><strong>±20%（uniform random）</strong></td>
+          <td>分散重連 spike</td>
+        </tr>
+        <tr>
+          <td>Cap（單次最大延遲）</td>
+          <td><strong>30 s</strong></td>
+          <td>
+            對齊 §8 第三方 DR 切換 TTL；超過此值已脫離「容錯」進入「降級」
+          </td>
+        </tr>
+        <tr>
+          <td>Max attempts</td>
+          <td><strong>30 次</strong></td>
+          <td>
+            約 ~10 分鐘總預算（含 jitter）；超過後進入 §7.3 fail-soft 模式
+          </td>
+        </tr>
+        <tr>
+          <td>Heartbeat</td>
+          <td>
+            client → server <code>ping</code> 每 <strong>15 s</strong>；server
+            30 s 無 pong → 主動關閉 + 觸發重連
+          </td>
+          <td>偵測「TCP 半開連線」（NAT timeout / network partition）</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      實作參考：<code>apps/web/lib/ws-client.ts</code>（v0.2.1 隨 SPEC patch
+      落地）。
+    </p>
+    <h3>7.2 Web 客戶端 — API retry 與 Idempotency-Key 契約</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>方法</th>
+          <th>retry 行為</th>
+          <th>Idempotency-Key 要求</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>GET</code></td>
+          <td>
+            自動 retry up to <strong>3 次</strong>（連線級錯誤 /
+            5xx）；exponential 200ms / 400ms / 800ms
+          </td>
+          <td>不需要（讀操作天然冪等）</td>
+        </tr>
+        <tr>
+          <td>
+            <code>POST</code> / <code>PUT</code> / <code>DELETE</code>（寫帳本）
+          </td>
+          <td>
+            <strong>必須</strong>帶 <code>Idempotency-Key</code> header；retry
+            行為由 SPEC-002 §6.1 backend
+            <code>idempotency_records</code> 處理；client 端 retry up to
+            <strong>3 次</strong>，<strong>重用同一 key</strong>
+          </td>
+          <td><strong>必須</strong>：UUID v7（client-generated，128 bit）</td>
+        </tr>
+        <tr>
+          <td><code>POST</code> 非帳本（如 health probe）</td>
+          <td>不 retry</td>
+          <td>不需要</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Idempotency-Key 格式：</p>
+    <ul>
+      <li>
+        <strong>算法</strong>：UUID v7（time-ordered，48 bit unix ms timestamp +
+        74 bit randomness）
+      </li>
+      <li><strong>格式</strong>：標準 RFC 4122 字串（36 字元含 hyphen）</li>
+      <li>
+        <strong>生命週期</strong
+        >：每個玩家行為（單次下單、單次儲值、單次申訴）生成 1 個 key，retry
+        全程重用
+      </li>
+      <li>
+        <strong>觀測性</strong>：寫入 OTel span attribute
+        <code>idempotency.key</code>，呼應 SPEC-007 §6.4 latency budget 追蹤
+      </li>
+    </ul>
+    <h3>7.3 Web 客戶端 — Reconcile 與 fail-soft</h3>
+    <p><strong>Reconcile 機制</strong>（重連成功後）：</p>
+    <ol>
+      <li>
+        WS 訊息 payload 必須帶 monotonic
+        <code>seq</code> field（per-subscription 連續整數）
+      </li>
+      <li>
+        Client 偵測 <code>seq</code> gap → 主動發
+        <code>GET /api/markets/{id}/snapshot?from_seq=N</code> 補洞
+      </li>
+      <li>
+        Backend 應在 60 秒內保留 per-subscription event tail（用於 reconcile）
+      </li>
+      <li>Reconcile 失敗（gap 過大 / tail 過期）→ 客戶端強制重新訂閱</li>
+    </ol>
+    <p><strong>Fail-soft 模式</strong>（max attempts 用盡後）：</p>
+    <ul>
+      <li>
+        顯示「<strong>連線已中斷</strong>」橫幅（呼應 §9.2 HALTED 狀態 UI 同一
+        component；SPEC-008 v0.2.1 收斂為單一
+        <code>&lt;ConnectionStatusBanner&gt;</code>）
+      </li>
+      <li>
+        自動降級為 polling：<code>GET /api/markets/{id}/book</code> 每 5 秒
+      </li>
+      <li>
+        <strong>禁止</strong>繼續送下單請求（client 主動 disable 下單按鈕，避免
+        backend 故障期間累積大量待 retry POST）
+      </li>
+      <li>
+        提供「<strong>手動重試連線</strong>」按鈕讓玩家主動觸發新一輪 reconnect
+      </li>
+    </ul>
+    <p>
+      <strong>Retry budget 反 pattern 警示</strong>（呼應 SPEC-007 §6.4.4）：
+    </p>
+    <ul>
+      <li>
+        ❌ 禁止：「永久重試」「無上限 retry」「retry 失敗時把延遲歸零重新算」
+      </li>
+      <li>
+        ❌ 禁止：retry storm — 同一玩家同一秒內超過 3 個 retry POST（client 端
+        token bucket 限流）
+      </li>
+      <li>❌ 禁止：對 4xx 錯誤 retry（這是 client bug，不是網路問題）</li>
+    </ul>
+    <h3>7.4 行動端（LIFF）</h3>
+    <ul>
+      <li>WebSocket 重連契約<strong>完全繼承</strong> §7.1</li>
+      <li>
+        Idempotency-Key 契約<strong>完全繼承</strong> §7.2（LIFF SDK 由
+        <code>apps/liff/lib/</code> 共用
+        <code>apps/web/lib/idempotency.ts</code>）
+      </li>
+      <li>
+        LINE app 切到背景 → WS 由 OS
+        自動斷開；返回前景時觸發重連，<strong>不</strong>累計成 max attempts
+      </li>
+      <li>
+        離線狀態 UI 提示：用 <code>navigator.onLine</code> 偵測；offline
+        時直接進入 §7.3 fail-soft，不消耗 retry budget
+      </li>
+      <li><strong>訂單操作必透過 server，不在 client 擱置</strong></li>
+    </ul>
+    <h2>8. 第三方依賴災備</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>依賴</th>
+          <th>替代方案</th>
+          <th>切換策略</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Cloudflare</td>
+          <td>AWS CloudFront</td>
+          <td>DNS 切換，TTL 60s</td>
+        </tr>
+        <tr>
+          <td>Linode</td>
+          <td>AWS / GCP Tokyo</td>
+          <td>已部署 Singapore，可立即接管</td>
+        </tr>
+        <tr>
+          <td>支付 Gateway（綠界）</td>
+          <td>藍新 / Stripe</td>
+          <td>玩家可選通路；自動降級至備援</td>
+        </tr>
+        <tr>
+          <td>KYC SaaS（KYC provider）</td>
+          <td>Onfido</td>
+          <td>同時整合 2 家，主備切換</td>
+        </tr>
+        <tr>
+          <td>Email（SendGrid）</td>
+          <td>AWS SES</td>
+          <td>配置 fallback</td>
+        </tr>
+        <tr>
+          <td>SMS（Twilio）</td>
+          <td>任一備援</td>
+          <td>同上</td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>9. 緊急停盤（Kill Switch）</h2>
+    <h3>9.1 觸發條件</h3>
+    <ul>
+      <li>帳本失衡偵測</li>
+      <li>大量異常下注（疑似系統 bug 或攻擊）</li>
+      <li>監管緊急要求</li>
+      <li>平台主動公告維護</li>
+    </ul>
+    <h3>9.2 停盤動作</h3>
+    <p>
+      <code>POST /api/internal/admin/halt</code> → 設定 feature flag
+      <code>engine.halted=true</code>
+    </p>
+    <ul>
+      <li>撮合引擎拒收新 order，但繼續 broadcast 既有狀態</li>
+      <li>WS 推播狀態為 HALTED</li>
+      <li>結算暫停</li>
+      <li>通知所有玩家 + 公告原因</li>
+      <li>預期恢復時間</li>
+    </ul>
+    <h3>9.3 解除</h3>
+    <p>
+      <strong>呼應 SPEC-010 §9.3 MS-9</strong>（multi-sig 治理中央表）：Kill
+      switch 解除需 <strong>2-of-3</strong> CTO / Compliance / Senior Engineer
+      共同簽核。
+    </p>
+    <blockquote>
+      <p>
+        <strong>重要 governance 約束</strong>（v0.2.1 補）：admin / Compliance
+        UI <strong>不得</strong>為 MS-9 自刻一套簽核流程；必須使用 SPEC-010
+        §9.3.3 規範之<strong>單一</strong> multi-sig component（schema 由 §9.3.1
+        規則總表驅動）。簽核者強制 hardware MFA（YubiKey / Passkey），對應
+        step-up MFA 過去 30 分鐘內仍有效。任何對 MS-9 簽核要求之變更（如改成
+        3-of-3、加入 Risk Officer），須先 PR 修 SPEC-010
+        §9.3.1，本節僅為呼應引用。
+      </p>
+    </blockquote>
+    <p>
+      解除動作必須寫入 <code>audit_logs</code>（呼應 SPEC-012 §5.3），<code
+        >metadata.ms_id = &quot;MS-9&quot;</code
+      >、<code>action = &quot;kill_switch_release&quot;</code>、<code
+        >subject_id</code
+      >
+      為觸發停盤之事故 ID。
+    </p>
+    <h2>10. 演練計畫（Drill Schedule）</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>演練類型</th>
+          <th>頻率</th>
+          <th>內容</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Engine pod kill</td>
+          <td>每週</td>
+          <td>K8s 隨機 kill 一個 engine pod</td>
+        </tr>
+        <tr>
+          <td>DB primary failover</td>
+          <td>每月</td>
+          <td>切換 primary，驗證 &lt; 30 秒 RTO</td>
+        </tr>
+        <tr>
+          <td>區域切換</td>
+          <td>每季</td>
+          <td>演練 Tokyo → Singapore</td>
+        </tr>
+        <tr>
+          <td>完整 DR 演練</td>
+          <td>每年</td>
+          <td>模擬 Tokyo 全毀，從 zero 重建</td>
+        </tr>
+        <tr>
+          <td>Tabletop 演練</td>
+          <td>每月</td>
+          <td>工程 + 法務 + 客服紙上推演</td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>11. 演練紀錄要求</h2>
+    <p>每次演練須產出：</p>
+    <ul>
+      <li>演練計畫文件（事前）</li>
+      <li>實際執行紀錄（含時間軸、命中 / 偏離計畫）</li>
+      <li>改進建議（事後 24h 內）</li>
+      <li>監管可查閱（必要時）</li>
+    </ul>
+    <h2>12. 驗收條件</h2>
+    <ul>
+      <li>
+        <input disabled="" type="checkbox" /> 雙區部署完成，DR 區可獨立運行（無
+        Primary 仍可服務）
+      </li>
+      <li>
+        <input disabled="" type="checkbox" /> PostgreSQL streaming replication
+        延遲 P99 &lt; 1 秒
+      </li>
+      <li>
+        <input disabled="" type="checkbox" /> Engine 從 snapshot + WAL
+        恢復演練通過 RTO
+      </li>
+      <li><input disabled="" type="checkbox" /> 跨區 failover 演練通過 RTO</li>
+      <li>
+        <input disabled="" type="checkbox" /> Kill switch
+        完整測試（觸發、停盤行為、解除）
+      </li>
+      <li>
+        <input disabled="" type="checkbox" /> 每週備份驗證腳本自動運行 +
+        失敗告警
+      </li>
+    </ul>
+    <h2>13. Open Questions</h2>
+    <ol>
+      <li>
+        DR 區是否使用 AWS（與 Linode 異質供應商）還是 Linode Singapore？同質風險
+        vs 維運複雜度
+      </li>
+      <li>PostgreSQL 物理複製還是邏輯複製？跨雲建議邏輯複製</li>
+      <li>Kafka MirrorMaker 2 vs Confluent Replicator？</li>
+      <li>緊急停盤是否同時影響 KYC / 客服流程？預設不影響，但需確認</li>
+    </ol>
+    <blockquote>
+      <p>
+        <strong>OQ #5 已 Resolved（v0.2.1，2026-05-07）</strong
+        >：「最低備份保留期」由本檔 §6.1 cold archive 策略與 SPEC-000 §5 Q-2
+        業主 / 運營最終意見覆蓋；現有設計 §6.1 cold archive 7
+        年留有上修空間。本檔不再追蹤此議題。
+      </p>
+    </blockquote>
+  </body>
 </html>
-

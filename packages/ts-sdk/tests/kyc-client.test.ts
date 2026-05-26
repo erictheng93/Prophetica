@@ -16,7 +16,7 @@ test("kyc client reads current user status with auth context", async () => {
       user_id: "user_42",
       current_tier: "TIER_2",
       status: "pending",
-      provider: "sumsub",
+      provider: "iproov",
       provider_applicant_id: "applicant_42",
       country: "TW",
       tier1_record_id: "tier1_record_42",
@@ -34,7 +34,10 @@ test("kyc client reads current user status with auth context", async () => {
 
   const status = await client.getStatus("user_42");
 
-  assert.equal(calls[0]?.url, "http://kyc.local/api/v1/kyc/users/user_42/status");
+  assert.equal(
+    calls[0]?.url,
+    "http://kyc.local/api/v1/kyc/users/user_42/status",
+  );
   assert.equal(calls[0]?.headers["x-user-id"], "user_42");
   assert.equal(status.currentTier, "TIER_2");
   assert.equal(status.status, "pending");
@@ -70,9 +73,9 @@ test("kyc client starts upgrade and verifies tier one with idempotency keys", as
         user_id: "user_42",
         target_tier: "TIER_2",
         status: "pending",
-        provider: "sumsub",
+        provider: "iproov",
         provider_applicant_id: "applicant_42",
-        sdk_token: "sumsub_sandbox_user_42_TIER_2_1",
+        sdk_token: "iproov_sandbox_user_42_TIER_2_1",
         expires_at: null,
         replayed: false,
       },
@@ -102,7 +105,7 @@ test("kyc client starts upgrade and verifies tier one with idempotency keys", as
 
   assert.equal(tierOne.status, "passed");
   assert.equal(tierOne.documentIdHash.length, 64);
-  assert.equal(upgrade.sdkToken, "sumsub_sandbox_user_42_TIER_2_1");
+  assert.equal(upgrade.sdkToken, "iproov_sandbox_user_42_TIER_2_1");
   assert.deepEqual(calls[0]?.body, {
     idempotency_key: "kyc:user_42:tier1:001",
     legal_name: "Test User",

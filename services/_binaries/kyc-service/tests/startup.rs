@@ -11,7 +11,7 @@ fn production_without_required_secrets_exits_nonzero() {
         .env("KYC_SERVICE_PORT", "0")
         .env_remove("KYC_STORE")
         .env_remove("DATABASE_URL")
-        .env("SUMSUB_WEBHOOK_SECRET", "")
+        .env("KYC_PROVIDER_WEBHOOK_SECRET", "")
         .env("KYC_DOCUMENT_HASH_SALT", "")
         .env("INTERNAL_CALL_HMAC_SECRET", "")
         .spawn()

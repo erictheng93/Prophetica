@@ -188,7 +188,7 @@
           "kyc": {
             "kicker": "KYC",
             "title": "身份驗證",
-            "body": "Tier 升級失敗、SumSub 流程、證件保存疑問。"
+            "body": "Tier 升級失敗、KYC provider 流程、證件保存疑問。"
           },
           "settlement": {
             "kicker": "結算",
@@ -277,11 +277,11 @@
             },
             "failed": {
               "q": "KYC 失敗了怎麼辦？",
-              "a": "24 小時內最多 5 次嘗試。多次失敗會自動引導至 Tier 2 SumSub 完整流程；仍無法通過請聯繫客服。"
+              "a": "24 小時內最多 5 次嘗試。多次失敗會自動引導至 Tier 2 KYC provider 完整流程；仍無法通過請聯繫客服。"
             },
             "documentImages": {
               "q": "我的證件影像如何處理？",
-              "a": "由 SumSub Cloud（EU region）與 Cloudflare R2（EU region）Object Lock 加密儲存。<strong>客服無法直接讀取證件影像</strong>，只有 Compliance Officer 在通過簽核後可申請查閱。完整說明見 <kycPrivacyLink>KYC 隱私說明</kycPrivacyLink>。"
+              "a": "由 KYC provider Cloud（EU region）與 Cloudflare R2（EU region）Object Lock 加密儲存。<strong>客服無法直接讀取證件影像</strong>，只有 Compliance Officer 在通過簽核後可申請查閱。完整說明見 <kycPrivacyLink>KYC 隱私說明</kycPrivacyLink>。"
             }
           }
         },
@@ -430,7 +430,7 @@
           "kyc": {
             "label": "KYC 異議",
             "sla": "24 小時內首次回應",
-            "body": "Tier 升級被拒、SumSub 流程多次失敗、證件被誤判。客服會在審核後安排重啟流程或人工 review。"
+            "body": "Tier 升級被拒、KYC provider 流程多次失敗、證件被誤判。客服會在審核後安排重啟流程或人工 review。"
           },
           "topup": {
             "label": "儲值問題",
@@ -1568,7 +1568,7 @@
           },
           "tier2": {
             "title": "Tier 2 標準",
-            "bullet": "通過 SumSub 證件驗證",
+            "bullet": "通過 KYC provider 證件驗證",
             "requirements": {
               "0": "證件 OCR + 自拍人臉比對",
               "1": "Liveness Detection（眨眼 / 轉頭）",
@@ -1685,12 +1685,12 @@
     "tier2": {
       "metadata": {
         "title": "Tier 2 標準驗證 — KYC — prophetica",
-        "description": "證件 OCR + 人臉比對 + Liveness。透過 SumSub Web SDK 完成，2-15 分鐘審核。"
+        "description": "證件 OCR + 人臉比對 + Liveness。透過 KYC provider Web SDK 完成，2-15 分鐘審核。"
       },
       "hero": {
         "kicker": "KYC / Tier 2 標準",
         "headline": "證件 + 自拍 + Liveness，2-15 分鐘審核。",
-        "tagline": "本層級透過 SumSub Web SDK 完成。流程在獨立 iframe 內進行，prophetica 不接觸你的證件影像；審核結果以 webhook 回傳後端，並更新你的帳戶層級。"
+        "tagline": "本層級透過 KYC provider Web SDK 完成。流程在獨立 iframe 內進行，prophetica 不接觸你的證件影像；審核結果以 webhook 回傳後端，並更新你的帳戶層級。"
       },
       "requirements": {
         "heading": "你需要準備",
@@ -1709,12 +1709,12 @@
           }
         }
       },
-      "sumsub": {
-        "heading": "啟動 SumSub 驗證",
-        "intro": "點擊下方開始後，系統會向 kyc-service 建立 SumSub 申請並回到審核狀態頁。實際文件拍攝、自拍、Liveness 與地址證明由 SumSub 流程承接。",
-        "launchKicker": "SumSub 申請啟動",
+      "iproov": {
+        "heading": "啟動 KYC provider 驗證",
+        "intro": "點擊下方開始後，系統會向 kyc-service 建立 KYC provider 申請並回到審核狀態頁。實際文件拍攝、自拍、Liveness 與地址證明由 KYC provider 流程承接。",
+        "launchKicker": "KYC provider 申請啟動",
         "launchTitle": "建立短效審核工作階段",
-        "submit": "開始 SumSub 流程"
+        "submit": "開始 KYC provider 流程"
       },
       "income": {
         "kicker": "可選",
@@ -1734,8 +1734,8 @@
       "phase": {
         "idle": "待你確認後開始",
         "initializing": "建立審核工作階段中…",
-        "mounting": "載入 SumSub 安全環境中…",
-        "inProgress": "請依 SumSub 視窗指示完成驗證。",
+        "mounting": "載入 KYC provider 安全環境中…",
+        "inProgress": "請依 KYC provider 視窗指示完成驗證。",
         "awaitingWebhook": "已送出，審核中。可離開頁面，結果以 Email 通知。",
         "done": "審核已通過，Tier 2 已啟用。",
         "failed": {
@@ -1743,7 +1743,7 @@
           "frozen": "帳戶已暫停。請聯繫客服以了解原因。",
           "expired": "審核工作階段已過期，請重新發起。"
         },
-        "abandoned": "你關閉了 SumSub 視窗。可重新驗證。",
+        "abandoned": "你關閉了 KYC provider 視窗。可重新驗證。",
         "errorRecoverable": "驗證流程遇到可還原的錯誤，請重試。",
         "errorTerminal": "驗證流程遇到無法還原的錯誤，請改以桌面瀏覽器或聯繫客服。",
         "pollingPending": "審核時間較長，已寄信通知。可離開頁面，完成時會收到 Email 與站內訊息。",
@@ -1813,8 +1813,8 @@
         "statusLabel": "目前狀態",
         "idle": "待你確認後開始",
         "initializing": "建立 Compliance 工單中…",
-        "mounting": "載入 SumSub 安全環境中…",
-        "inProgress": "請依 SumSub 視窗指示完成驗證。",
+        "mounting": "載入 KYC provider 安全環境中…",
+        "inProgress": "請依 KYC provider 視窗指示完成驗證。",
         "awaitingWebhook": "已送出，Compliance 審核中。結果以 Email 與站內訊息通知。",
         "done": "審核已通過，Tier 3 已啟用。",
         "failed": {
@@ -1822,7 +1822,7 @@
           "frozen": "帳戶已暫停。請聯繫客服以了解原因。",
           "expired": "審核工作階段已過期，請重新發起。"
         },
-        "abandoned": "你關閉了 SumSub 視窗。可重新驗證。",
+        "abandoned": "你關閉了 KYC provider 視窗。可重新驗證。",
         "errorRecoverable": "驗證流程遇到可還原的錯誤，請重試。",
         "errorTerminal": "驗證流程遇到無法還原的錯誤，請改以桌面瀏覽器或聯繫客服。",
         "pollingPending": "Compliance 審核仍在進行，預計 5-10 個工作天完成。可離開頁面，結果以 Email 與站內訊息通知。",
@@ -1870,10 +1870,10 @@
           },
           "documentImage": {
             "field": "證件影像",
-            "collected": "Tier 2 / 3（透過 SumSub）",
+            "collected": "Tier 2 / 3（透過 KYC provider）",
             "purpose": "OCR 抽取資訊；審核時的真偽判定。",
-            "retention": "SumSub Cloud（EU region）+ 我方 R2（EU）每日批次副本，AES-256 at-rest 加密，Object Lock 7 年。",
-            "access": "Compliance Officer + SumSub 審核員 + 授權稽核人員。客服無法直接存取原始影像。"
+            "retention": "KYC provider Cloud（EU region）+ 我方 R2（EU）每日批次副本，AES-256 at-rest 加密，Object Lock 7 年。",
+            "access": "Compliance Officer + KYC provider 審核員 + 授權稽核人員。客服無法直接存取原始影像。"
           },
           "selfie": {
             "field": "自拍 + Liveness",
@@ -1925,7 +1925,7 @@
       "hero": {
         "kicker": "KYC / 審核狀態",
         "headline": "你的審核進度，一目了然。",
-        "tagline": "所有 KYC 提交與審核步驟在這裡公開追蹤。SumSub 通常 2-15 分鐘完成；完成時會發 Email + 站內訊息，不需停留在這頁等。"
+        "tagline": "所有 KYC 提交與審核步驟在這裡公開追蹤。KYC provider 通常 2-15 分鐘完成；完成時會發 Email + 站內訊息，不需停留在這頁等。"
       },
       "timeline": {
         "heading": "最近一次審核",
@@ -1945,8 +1945,8 @@
             "label": "Tier 2 提交",
             "detail": "已上傳證件 + 自拍 + 地址證明"
           },
-          "sumsub": {
-            "label": "SumSub 審核中",
+          "providerReview": {
+            "label": "KYC provider 審核中",
             "detail": "預估完成時間 5-15 分鐘"
           },
           "notification": {

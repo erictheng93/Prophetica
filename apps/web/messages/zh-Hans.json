@@ -188,7 +188,7 @@
           "kyc": {
             "kicker": "KYC",
             "title": "身份验证",
-            "body": "Tier 升级失败、SumSub 流程与证件保存疑问。"
+            "body": "Tier 升级失败、KYC provider 流程与证件保存疑问。"
           },
           "settlement": {
             "kicker": "结算",
@@ -674,10 +674,10 @@
           },
           "documentImage": {
             "field": "证件影像",
-            "collected": "Tier 2 / 3（通过 SumSub）",
+            "collected": "Tier 2 / 3（通过 KYC provider）",
             "purpose": "OCR 抽取信息；审核时判断证件真伪。",
-            "retention": "SumSub Cloud（EU region）+ 我方 R2（EU）每日批次副本，AES-256 at-rest 加密，Object Lock 7 年。",
-            "access": "Compliance Officer + SumSub 审核员 + 授权稽核人员。客服无法直接访问原始影像。"
+            "retention": "KYC provider Cloud（EU region）+ 我方 R2（EU）每日批次副本，AES-256 at-rest 加密，Object Lock 7 年。",
+            "access": "Compliance Officer + KYC provider 审核员 + 授权稽核人员。客服无法直接访问原始影像。"
           },
           "selfie": {
             "field": "自拍 + Liveness",

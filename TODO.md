@@ -74,11 +74,11 @@ losing the remaining launch work.
 
 - Run `PostgresKycStore` against a real migrated PostgreSQL database in CI or
   staging, not only unit-contract coverage.
-- Add transaction-boundary tests for SumSub webhook record updates plus
+- Add transaction-boundary tests for KYC provider webhook record updates plus
   screening-event inserts.
 - Refresh SQLx offline metadata if the KYC service adopts compile-time checked
   SQL queries.
-- Finish SumSub sandbox credentials and Tier 2 iframe E2E coverage.
+- Finish KYC provider sandbox credentials and Tier 2 iframe E2E coverage.
 - Capture webhook evidence for HMAC validation, GREEN / RED / PENDING replay,
   RED-to-Frozen handling, and PEP / sanctions rescan behavior.
 - Complete iProov real adapter readiness, or publish a fallback ADR before
@@ -87,7 +87,7 @@ losing the remaining launch work.
 ### LG-4: PoC Evidence
 
 - Complete PoC-A live EdDSA / LIFF verification on iOS and Android devices.
-- Retry PoC-B on Linux or CI with reachable `ws-gateway`, SumSub sandbox, and
+- Retry PoC-B on Linux or CI with reachable `ws-gateway`, KYC provider sandbox, and
   `next-on-pages` build path.
 
 ### LG-2: Payment Provider Readiness

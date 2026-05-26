@@ -188,7 +188,7 @@
           "kyc": {
             "kicker": "KYC",
             "title": "Xác minh danh tính",
-            "body": "Lỗi nâng tier, quy trình SumSub và lưu trữ tài liệu."
+            "body": "Lỗi nâng tier, quy trình KYC provider và lưu trữ tài liệu."
           },
           "settlement": {
             "kicker": "Thanh toán",
@@ -674,10 +674,10 @@
           },
           "documentImage": {
             "field": "Ảnh giấy tờ",
-            "collected": "Tier 2 / 3 thông qua SumSub",
+            "collected": "Tier 2 / 3 thông qua KYC provider",
             "purpose": "Trích xuất dữ liệu bằng OCR và giúp reviewer đánh giá tính xác thực của giấy tờ.",
-            "retention": "SumSub Cloud tại region EU + bản sao lưu R2 EU hằng ngày của chúng tôi, mã hóa AES-256 at rest và bảo vệ bằng Object Lock 7 năm.",
-            "access": "Compliance Officer + reviewer SumSub + kiểm toán viên được ủy quyền. Nhân viên hỗ trợ không thể truy cập trực tiếp ảnh gốc."
+            "retention": "KYC provider Cloud tại region EU + bản sao lưu R2 EU hằng ngày của chúng tôi, mã hóa AES-256 at rest và bảo vệ bằng Object Lock 7 năm.",
+            "access": "Compliance Officer + reviewer KYC provider + kiểm toán viên được ủy quyền. Nhân viên hỗ trợ không thể truy cập trực tiếp ảnh gốc."
           },
           "selfie": {
             "field": "Selfie + kiểm tra liveness",

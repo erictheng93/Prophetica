@@ -28,7 +28,7 @@ test("validateKycMetricEvent enforces enum-bounded labels (PII gate)", () => {
   assert.deepEqual(
     validateKycMetricEvent({
       name: "proph_kyc_session_started_total",
-      labels: { tier: "TIER_1", provider: "sumsub" },
+      labels: { tier: "TIER_1", provider: "iproov" },
     }),
     { error: "label tier invalid" },
   );
@@ -44,7 +44,7 @@ test("validateKycMetricEvent enforces enum-bounded labels (PII gate)", () => {
   assert.deepEqual(
     validateKycMetricEvent({
       name: "proph_kyc_session_completed_total",
-      labels: { tier: "TIER_2", provider: "sumsub", outcome: "ok" },
+      labels: { tier: "TIER_2", provider: "iproov", outcome: "ok" },
     }),
     { error: "label outcome invalid" },
   );
@@ -54,7 +54,7 @@ test("validateKycMetricEvent enforces enum-bounded labels (PII gate)", () => {
       name: "proph_kyc_session_abandoned_total",
       labels: {
         tier: "TIER_2",
-        provider: "sumsub",
+        provider: "iproov",
         step_at_abandon: "scrubbing-pii-here",
       },
     }),
@@ -66,7 +66,7 @@ test("validateKycMetricEvent enforces enum-bounded labels (PII gate)", () => {
       name: "proph_kyc_session_error_total",
       labels: {
         tier: "TIER_2",
-        provider: "sumsub",
+        provider: "iproov",
         code: "free text leak",
         recoverable: "true",
       },
@@ -79,7 +79,7 @@ test("validateKycMetricEvent enforces enum-bounded labels (PII gate)", () => {
       name: "proph_kyc_session_error_total",
       labels: {
         tier: "TIER_2",
-        provider: "sumsub",
+        provider: "iproov",
         code: "network_lost",
         recoverable: "yes",
       },
@@ -106,7 +106,7 @@ test("validateKycMetricEvent accepts every well-formed payload shape", () => {
       name: "proph_kyc_session_error_total",
       labels: {
         tier: "TIER_2",
-        provider: "sumsub",
+        provider: "iproov",
         code: "polling_timeout",
         recoverable: "true",
       },
@@ -142,11 +142,11 @@ test("createKycMetrics records counter increments and Histogram observations", (
 
   metrics.record({
     name: "proph_kyc_session_started_total",
-    labels: { tier: "TIER_2", provider: "sumsub" },
+    labels: { tier: "TIER_2", provider: "iproov" },
   });
   metrics.record({
     name: "proph_kyc_session_started_total",
-    labels: { tier: "TIER_2", provider: "sumsub" },
+    labels: { tier: "TIER_2", provider: "iproov" },
   });
   metrics.record({
     name: "proph_kyc_webhook_wait_seconds",
@@ -157,7 +157,7 @@ test("createKycMetrics records counter increments and Histogram observations", (
   const text = metrics.registry.exposition();
   assert.match(
     text,
-    /proph_kyc_session_started_total\{tier="TIER_2",provider="sumsub"\} 2/,
+    /proph_kyc_session_started_total\{tier="TIER_2",provider="iproov"\} 2/,
   );
   assert.match(
     text,
@@ -170,9 +170,10 @@ test("createKycMetrics records counter increments and Histogram observations", (
 });
 
 test("histogram buckets match SPEC-005a section 7.3 defaults", () => {
-  assert.deepEqual(KYC_WEBHOOK_WAIT_BUCKETS_SECONDS, [
-    1, 5, 15, 30, 60, 120, 300,
-  ]);
+  assert.deepEqual(
+    KYC_WEBHOOK_WAIT_BUCKETS_SECONDS,
+    [1, 5, 15, 30, 60, 120, 300],
+  );
 });
 
 test("emitKycMetric POSTs JSON to /api/metrics/kyc with credentials omitted", async () => {
@@ -188,7 +189,7 @@ test("emitKycMetric POSTs JSON to /api/metrics/kyc with credentials omitted", as
   await emitKycMetric(
     {
       name: "proph_kyc_session_started_total",
-      labels: { tier: "TIER_2", provider: "sumsub" },
+      labels: { tier: "TIER_2", provider: "iproov" },
     },
     { fetcher: fakeFetch },
   );
@@ -199,7 +200,7 @@ test("emitKycMetric POSTs JSON to /api/metrics/kyc with credentials omitted", as
   assert.equal(calls[0]?.init?.credentials, "omit");
   assert.equal(
     JSON.parse(String(calls[0]?.init?.body)).labels.provider,
-    "sumsub",
+    "iproov",
   );
 });
 
@@ -214,7 +215,7 @@ test("emitKycMetric never throws even when fetcher rejects", async () => {
       name: "proph_kyc_session_error_total",
       labels: {
         tier: "TIER_2",
-        provider: "sumsub",
+        provider: "iproov",
         code: "network_lost",
         recoverable: "true",
       },

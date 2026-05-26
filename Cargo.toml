@@ -25,7 +25,7 @@ members = [
     "services/_binaries/notification-and-risk",
     "crates/sdk",
     "crates/proto",
-    "tools/mocks/sumsub",
+    "tools/mocks/provider",
     "tools/mocks/payment",
 ]
 

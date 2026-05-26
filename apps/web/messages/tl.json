@@ -188,7 +188,7 @@
           "kyc": {
             "kicker": "KYC",
             "title": "Identity verification",
-            "body": "Tier upgrade failures, SumSub flow questions, at document retention."
+            "body": "Tier upgrade failures, KYC provider flow questions, at document retention."
           },
           "settlement": {
             "kicker": "Settlement",
@@ -674,10 +674,10 @@
           },
           "documentImage": {
             "field": "Document image",
-            "collected": "Tier 2 / 3 sa pamamagitan ng SumSub",
+            "collected": "Tier 2 / 3 sa pamamagitan ng KYC provider",
             "purpose": "Kumuha ng data gamit ang OCR at tulungan ang reviewers na suriin ang authenticity ng dokumento.",
-            "retention": "SumSub Cloud sa EU region + araw-araw na R2 EU backup namin, encrypted gamit ang AES-256 at rest at protektado ng 7-year Object Lock.",
-            "access": "Compliance Officer + SumSub reviewers + authorized auditors. Hindi direktang maa-access ng support staff ang raw images."
+            "retention": "KYC provider Cloud sa EU region + araw-araw na R2 EU backup namin, encrypted gamit ang AES-256 at rest at protektado ng 7-year Object Lock.",
+            "access": "Compliance Officer + KYC provider reviewers + authorized auditors. Hindi direktang maa-access ng support staff ang raw images."
           },
           "selfie": {
             "field": "Selfie + liveness check",

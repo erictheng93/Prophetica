@@ -6,8 +6,18 @@
 // @generated from file v1/kyc.proto (package proph.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+  GenEnum,
+  GenFile,
+  GenMessage,
+  GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+  enumDesc,
+  fileDesc,
+  messageDesc,
+  serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { AuditMeta, UserID } from "./common_pb";
@@ -17,8 +27,12 @@ import type { Message } from "@bufbuild/protobuf";
 /**
  * Describes the file v1/kyc.proto.
  */
-export const file_v1_kyc: GenFile = /*@__PURE__*/
-  fileDesc("Cgx2MS9reWMucHJvdG8SCHByb3BoLnYxIo0DCglLeWNSZWNvcmQSCgoCaWQYASABKAMSHgoEdXNlchgCIAEoCzIQLnByb3BoLnYxLlVzZXJJRBIfCgR0aWVyGAMgASgOMhEucHJvcGgudjEuS3ljVGllchIjCgZzdGF0dXMYBCABKA4yEy5wcm9waC52MS5LeWNTdGF0dXMSEAoIcHJvdmlkZXIYBSABKAkSHQoVcHJvdmlkZXJfYXBwbGljYW50X2lkGAYgASgJEhgKEGRvY3VtZW50X2lkX2hhc2gYByABKAkSDwoHY291bnRyeRgIIAEoCRIwCgxzdWJtaXR0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi8KC3Jldmlld2VkX2F0GAogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIuCgpleHBpcmVzX2F0GAsgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIfChdkZWNsYXJlZF9tb250aGx5X2luY29tZRgMIAEoAyKEAQoWU3RhcnRLeWNVcGdyYWRlUmVxdWVzdBIiCgVhdWRpdBgBIAEoCzITLnByb3BoLnYxLkF1ZGl0TWV0YRIeCgR1c2VyGAIgASgLMhAucHJvcGgudjEuVXNlcklEEiYKC3RhcmdldF90aWVyGAMgASgOMhEucHJvcGgudjEuS3ljVGllciJcChdTdGFydEt5Y1VwZ3JhZGVSZXNwb25zZRIRCglzZGtfdG9rZW4YASABKAkSLgoKZXhwaXJlc19hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAikgIKElN1bXN1YldlYmhvb2tFdmVudBIUCgxhcHBsaWNhbnRfaWQYASABKAkSGAoQZXh0ZXJuYWxfdXNlcl9pZBgCIAEoCRISCgpldmVudF90eXBlGAMgASgJEi0KDXJldmlld19hbnN3ZXIYBCABKA4yFi5wcm9waC52MS5SZXZpZXdBbnN3ZXISEgoKa3ljX3JlYXNvbhgFIAEoCRIxChBzYW5jdGlvbl9tYXRjaGVzGAYgAygLMhcucHJvcGgudjEuU2FuY3Rpb25NYXRjaBImCgJhdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASGgoScmF3X3BheWxvYWRfc2hhMjU2GAggASgJIkwKDVNhbmN0aW9uTWF0Y2gSEQoJbGlzdF9uYW1lGAEgASgJEhQKDG1hdGNoZWRfbmFtZRgCIAEoCRISCgpzaW1pbGFyaXR5GAMgASgBIjUKE0NoZWNrS3ljVGllclJlcXVlc3QSHgoEdXNlchgBIAEoCzIQLnByb3BoLnYxLlVzZXJJRCK1AQoUQ2hlY2tLeWNUaWVyUmVzcG9uc2USJwoMY3VycmVudF90aWVyGAEgASgOMhEucHJvcGgudjEuS3ljVGllchIjCgZzdGF0dXMYAiABKA4yEy5wcm9waC52MS5LeWNTdGF0dXMSHwoXZGVjbGFyZWRfbW9udGhseV9pbmNvbWUYAyABKAMSLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiVgoTR2V0S3ljUmVjb3JkUmVxdWVzdBIeCgR1c2VyGAEgASgLMhAucHJvcGgudjEuVXNlcklEEh8KBHRpZXIYAiABKA4yES5wcm9waC52MS5LeWNUaWVyKmMKB0t5Y1RpZXISGAoUS1lDX1RJRVJfVU5TUEVDSUZJRUQQABIOCgpLWUNfVElFUl8wEAESDgoKS1lDX1RJRVJfMRACEg4KCktZQ19USUVSXzIQAxIOCgpLWUNfVElFUl8zEAQqngEKCUt5Y1N0YXR1cxIaChZLWUNfU1RBVFVTX1VOU1BFQ0lGSUVEEAASFgoSS1lDX1NUQVRVU19QRU5ESU5HEAESFQoRS1lDX1NUQVRVU19QQVNTRUQQAhIXChNLWUNfU1RBVFVTX1JFSkVDVEVEEAMSFgoSS1lDX1NUQVRVU19FWFBJUkVEEAQSFQoRS1lDX1NUQVRVU19GUk9aRU4QBSp3CgxSZXZpZXdBbnN3ZXISHQoZUkVWSUVXX0FOU1dFUl9VTlNQRUNJRklFRBAAEhcKE1JFVklFV19BTlNXRVJfR1JFRU4QARIVChFSRVZJRVdfQU5TV0VSX1JFRBACEhgKFFJFVklFV19BTlNXRVJfWUVMTE9XEAMy9wEKCkt5Y1NlcnZpY2USVgoPU3RhcnRLeWNVcGdyYWRlEiAucHJvcGgudjEuU3RhcnRLeWNVcGdyYWRlUmVxdWVzdBohLnByb3BoLnYxLlN0YXJ0S3ljVXBncmFkZVJlc3BvbnNlEk0KDENoZWNrS3ljVGllchIdLnByb3BoLnYxLkNoZWNrS3ljVGllclJlcXVlc3QaHi5wcm9waC52MS5DaGVja0t5Y1RpZXJSZXNwb25zZRJCCgxHZXRLeWNSZWNvcmQSHS5wcm9waC52MS5HZXRLeWNSZWNvcmRSZXF1ZXN0GhMucHJvcGgudjEuS3ljUmVjb3JkQkRaQmdpdGh1Yi5jb20vZXJpY3RoZW5nOTMvcHJvcGhldGljYS9wYWNrYWdlcy9wcm90by9nZW4vZ28vdjE7cHJvdG92MWIGcHJvdG8z", [file_google_protobuf_timestamp, file_v1_common]);
+export const file_v1_kyc: GenFile =
+  /*@__PURE__*/
+  fileDesc(
+    "Cgx2MS9reWMucHJvdG8SCHByb3BoLnYxIo0DCglLeWNSZWNvcmQSCgoCaWQYASABKAMSHgoEdXNlchgCIAEoCzIQLnByb3BoLnYxLlVzZXJJRBIfCgR0aWVyGAMgASgOMhEucHJvcGgudjEuS3ljVGllchIjCgZzdGF0dXMYBCABKA4yEy5wcm9waC52MS5LeWNTdGF0dXMSEAoIcHJvdmlkZXIYBSABKAkSHQoVcHJvdmlkZXJfYXBwbGljYW50X2lkGAYgASgJEhgKEGRvY3VtZW50X2lkX2hhc2gYByABKAkSDwoHY291bnRyeRgIIAEoCRIwCgxzdWJtaXR0ZWRfYXQYCSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi8KC3Jldmlld2VkX2F0GAogASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIuCgpleHBpcmVzX2F0GAsgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIfChdkZWNsYXJlZF9tb250aGx5X2luY29tZRgMIAEoAyKEAQoWU3RhcnRLeWNVcGdyYWRlUmVxdWVzdBIiCgVhdWRpdBgBIAEoCzITLnByb3BoLnYxLkF1ZGl0TWV0YRIeCgR1c2VyGAIgASgLMhAucHJvcGgudjEuVXNlcklEEiYKC3RhcmdldF90aWVyGAMgASgOMhEucHJvcGgudjEuS3ljVGllciJcChdTdGFydEt5Y1VwZ3JhZGVSZXNwb25zZRIRCglzZGtfdG9rZW4YASABKAkSLgoKZXhwaXJlc19hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAikgIKElN1bXN1YldlYmhvb2tFdmVudBIUCgxhcHBsaWNhbnRfaWQYASABKAkSGAoQZXh0ZXJuYWxfdXNlcl9pZBgCIAEoCRISCgpldmVudF90eXBlGAMgASgJEi0KDXJldmlld19hbnN3ZXIYBCABKA4yFi5wcm9waC52MS5SZXZpZXdBbnN3ZXISEgoKa3ljX3JlYXNvbhgFIAEoCRIxChBzYW5jdGlvbl9tYXRjaGVzGAYgAygLMhcucHJvcGgudjEuU2FuY3Rpb25NYXRjaBImCgJhdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASGgoScmF3X3BheWxvYWRfc2hhMjU2GAggASgJIkwKDVNhbmN0aW9uTWF0Y2gSEQoJbGlzdF9uYW1lGAEgASgJEhQKDG1hdGNoZWRfbmFtZRgCIAEoCRISCgpzaW1pbGFyaXR5GAMgASgBIjUKE0NoZWNrS3ljVGllclJlcXVlc3QSHgoEdXNlchgBIAEoCzIQLnByb3BoLnYxLlVzZXJJRCK1AQoUQ2hlY2tLeWNUaWVyUmVzcG9uc2USJwoMY3VycmVudF90aWVyGAEgASgOMhEucHJvcGgudjEuS3ljVGllchIjCgZzdGF0dXMYAiABKA4yEy5wcm9waC52MS5LeWNTdGF0dXMSHwoXZGVjbGFyZWRfbW9udGhseV9pbmNvbWUYAyABKAMSLgoKZXhwaXJlc19hdBgEIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiVgoTR2V0S3ljUmVjb3JkUmVxdWVzdBIeCgR1c2VyGAEgASgLMhAucHJvcGgudjEuVXNlcklEEh8KBHRpZXIYAiABKA4yES5wcm9waC52MS5LeWNUaWVyKmMKB0t5Y1RpZXISGAoUS1lDX1RJRVJfVU5TUEVDSUZJRUQQABIOCgpLWUNfVElFUl8wEAESDgoKS1lDX1RJRVJfMRACEg4KCktZQ19USUVSXzIQAxIOCgpLWUNfVElFUl8zEAQqngEKCUt5Y1N0YXR1cxIaChZLWUNfU1RBVFVTX1VOU1BFQ0lGSUVEEAASFgoSS1lDX1NUQVRVU19QRU5ESU5HEAESFQoRS1lDX1NUQVRVU19QQVNTRUQQAhIXChNLWUNfU1RBVFVTX1JFSkVDVEVEEAMSFgoSS1lDX1NUQVRVU19FWFBJUkVEEAQSFQoRS1lDX1NUQVRVU19GUk9aRU4QBSp3CgxSZXZpZXdBbnN3ZXISHQoZUkVWSUVXX0FOU1dFUl9VTlNQRUNJRklFRBAAEhcKE1JFVklFV19BTlNXRVJfR1JFRU4QARIVChFSRVZJRVdfQU5TV0VSX1JFRBACEhgKFFJFVklFV19BTlNXRVJfWUVMTE9XEAMy9wEKCkt5Y1NlcnZpY2USVgoPU3RhcnRLeWNVcGdyYWRlEiAucHJvcGgudjEuU3RhcnRLeWNVcGdyYWRlUmVxdWVzdBohLnByb3BoLnYxLlN0YXJ0S3ljVXBncmFkZVJlc3BvbnNlEk0KDENoZWNrS3ljVGllchIdLnByb3BoLnYxLkNoZWNrS3ljVGllclJlcXVlc3QaHi5wcm9waC52MS5DaGVja0t5Y1RpZXJSZXNwb25zZRJCCgxHZXRLeWNSZWNvcmQSHS5wcm9waC52MS5HZXRLeWNSZWNvcmRSZXF1ZXN0GhMucHJvcGgudjEuS3ljUmVjb3JkQkRaQmdpdGh1Yi5jb20vZXJpY3RoZW5nOTMvcHJvcGhldGljYS9wYWNrYWdlcy9wcm90by9nZW4vZ28vdjE7cHJvdG92MWIGcHJvdG8z",
+    [file_google_protobuf_timestamp, file_v1_common],
+  );
 
 /**
  * KycRecord 對應 SPEC-005 §4 user_kyc_records。
@@ -47,7 +61,7 @@ export type KycRecord = Message<"proph.v1.KycRecord"> & {
   status: KycStatus;
 
   /**
-   * 'sumsub' / 'iproov' / 'manual'
+   * 'iproov' / 'manual'
    *
    * @generated from field: string provider = 5;
    */
@@ -99,7 +113,8 @@ export type KycRecord = Message<"proph.v1.KycRecord"> & {
  * Describes the message proph.v1.KycRecord.
  * Use `create(KycRecordSchema)` to create a new message.
  */
-export const KycRecordSchema: GenMessage<KycRecord> = /*@__PURE__*/
+export const KycRecordSchema: GenMessage<KycRecord> =
+  /*@__PURE__*/
   messageDesc(file_v1_kyc, 0);
 
 /**
@@ -107,60 +122,64 @@ export const KycRecordSchema: GenMessage<KycRecord> = /*@__PURE__*/
  *
  * @generated from message proph.v1.StartKycUpgradeRequest
  */
-export type StartKycUpgradeRequest = Message<"proph.v1.StartKycUpgradeRequest"> & {
-  /**
-   * @generated from field: proph.v1.AuditMeta audit = 1;
-   */
-  audit?: AuditMeta | undefined;
+export type StartKycUpgradeRequest =
+  Message<"proph.v1.StartKycUpgradeRequest"> & {
+    /**
+     * @generated from field: proph.v1.AuditMeta audit = 1;
+     */
+    audit?: AuditMeta | undefined;
 
-  /**
-   * @generated from field: proph.v1.UserID user = 2;
-   */
-  user?: UserID | undefined;
+    /**
+     * @generated from field: proph.v1.UserID user = 2;
+     */
+    user?: UserID | undefined;
 
-  /**
-   * @generated from field: proph.v1.KycTier target_tier = 3;
-   */
-  targetTier: KycTier;
-};
+    /**
+     * @generated from field: proph.v1.KycTier target_tier = 3;
+     */
+    targetTier: KycTier;
+  };
 
 /**
  * Describes the message proph.v1.StartKycUpgradeRequest.
  * Use `create(StartKycUpgradeRequestSchema)` to create a new message.
  */
-export const StartKycUpgradeRequestSchema: GenMessage<StartKycUpgradeRequest> = /*@__PURE__*/
+export const StartKycUpgradeRequestSchema: GenMessage<StartKycUpgradeRequest> =
+  /*@__PURE__*/
   messageDesc(file_v1_kyc, 1);
 
 /**
  * @generated from message proph.v1.StartKycUpgradeResponse
  */
-export type StartKycUpgradeResponse = Message<"proph.v1.StartKycUpgradeResponse"> & {
-  /**
-   * SumSub Web SDK token
-   *
-   * @generated from field: string sdk_token = 1;
-   */
-  sdkToken: string;
+export type StartKycUpgradeResponse =
+  Message<"proph.v1.StartKycUpgradeResponse"> & {
+    /**
+     * KYC provider SDK token
+     *
+     * @generated from field: string sdk_token = 1;
+     */
+    sdkToken: string;
 
-  /**
-   * @generated from field: google.protobuf.Timestamp expires_at = 2;
-   */
-  expiresAt?: Timestamp | undefined;
-};
+    /**
+     * @generated from field: google.protobuf.Timestamp expires_at = 2;
+     */
+    expiresAt?: Timestamp | undefined;
+  };
 
 /**
  * Describes the message proph.v1.StartKycUpgradeResponse.
  * Use `create(StartKycUpgradeResponseSchema)` to create a new message.
  */
-export const StartKycUpgradeResponseSchema: GenMessage<StartKycUpgradeResponse> = /*@__PURE__*/
+export const StartKycUpgradeResponseSchema: GenMessage<StartKycUpgradeResponse> =
+  /*@__PURE__*/
   messageDesc(file_v1_kyc, 2);
 
 /**
- * SumsubWebhookEvent — 對應 SPEC-005 §3.3 webhook payload 之內部 normalized 形式。
+ * ProviderWebhookEvent — 對應 SPEC-005 §3.3 webhook payload 之內部 normalized 形式。
  *
- * @generated from message proph.v1.SumsubWebhookEvent
+ * @generated from message proph.v1.ProviderWebhookEvent
  */
-export type SumsubWebhookEvent = Message<"proph.v1.SumsubWebhookEvent"> & {
+export type ProviderWebhookEvent = Message<"proph.v1.ProviderWebhookEvent"> & {
   /**
    * @generated from field: string applicant_id = 1;
    */
@@ -209,10 +228,11 @@ export type SumsubWebhookEvent = Message<"proph.v1.SumsubWebhookEvent"> & {
 };
 
 /**
- * Describes the message proph.v1.SumsubWebhookEvent.
- * Use `create(SumsubWebhookEventSchema)` to create a new message.
+ * Describes the message proph.v1.ProviderWebhookEvent.
+ * Use `create(ProviderWebhookEventSchema)` to create a new message.
  */
-export const SumsubWebhookEventSchema: GenMessage<SumsubWebhookEvent> = /*@__PURE__*/
+export const ProviderWebhookEventSchema: GenMessage<ProviderWebhookEvent> =
+  /*@__PURE__*/
   messageDesc(file_v1_kyc, 3);
 
 /**
@@ -241,7 +261,8 @@ export type SanctionMatch = Message<"proph.v1.SanctionMatch"> & {
  * Describes the message proph.v1.SanctionMatch.
  * Use `create(SanctionMatchSchema)` to create a new message.
  */
-export const SanctionMatchSchema: GenMessage<SanctionMatch> = /*@__PURE__*/
+export const SanctionMatchSchema: GenMessage<SanctionMatch> =
+  /*@__PURE__*/
   messageDesc(file_v1_kyc, 4);
 
 /**
@@ -262,7 +283,8 @@ export type CheckKycTierRequest = Message<"proph.v1.CheckKycTierRequest"> & {
  * Describes the message proph.v1.CheckKycTierRequest.
  * Use `create(CheckKycTierRequestSchema)` to create a new message.
  */
-export const CheckKycTierRequestSchema: GenMessage<CheckKycTierRequest> = /*@__PURE__*/
+export const CheckKycTierRequestSchema: GenMessage<CheckKycTierRequest> =
+  /*@__PURE__*/
   messageDesc(file_v1_kyc, 5);
 
 /**
@@ -296,7 +318,8 @@ export type CheckKycTierResponse = Message<"proph.v1.CheckKycTierResponse"> & {
  * Describes the message proph.v1.CheckKycTierResponse.
  * Use `create(CheckKycTierResponseSchema)` to create a new message.
  */
-export const CheckKycTierResponseSchema: GenMessage<CheckKycTierResponse> = /*@__PURE__*/
+export const CheckKycTierResponseSchema: GenMessage<CheckKycTierResponse> =
+  /*@__PURE__*/
   messageDesc(file_v1_kyc, 6);
 
 /**
@@ -320,7 +343,8 @@ export type GetKycRecordRequest = Message<"proph.v1.GetKycRecordRequest"> & {
  * Describes the message proph.v1.GetKycRecordRequest.
  * Use `create(GetKycRecordRequestSchema)` to create a new message.
  */
-export const GetKycRecordRequestSchema: GenMessage<GetKycRecordRequest> = /*@__PURE__*/
+export const GetKycRecordRequestSchema: GenMessage<GetKycRecordRequest> =
+  /*@__PURE__*/
   messageDesc(file_v1_kyc, 7);
 
 /**
@@ -366,7 +390,8 @@ export enum KycTier {
 /**
  * Describes the enum proph.v1.KycTier.
  */
-export const KycTierSchema: GenEnum<KycTier> = /*@__PURE__*/
+export const KycTierSchema: GenEnum<KycTier> =
+  /*@__PURE__*/
   enumDesc(file_v1_kyc, 0);
 
 /**
@@ -411,7 +436,8 @@ export enum KycStatus {
 /**
  * Describes the enum proph.v1.KycStatus.
  */
-export const KycStatusSchema: GenEnum<KycStatus> = /*@__PURE__*/
+export const KycStatusSchema: GenEnum<KycStatus> =
+  /*@__PURE__*/
   enumDesc(file_v1_kyc, 1);
 
 /**
@@ -448,7 +474,8 @@ export enum ReviewAnswer {
 /**
  * Describes the enum proph.v1.ReviewAnswer.
  */
-export const ReviewAnswerSchema: GenEnum<ReviewAnswer> = /*@__PURE__*/
+export const ReviewAnswerSchema: GenEnum<ReviewAnswer> =
+  /*@__PURE__*/
   enumDesc(file_v1_kyc, 2);
 
 /**
@@ -462,7 +489,7 @@ export const KycService: GenService<{
     methodKind: "unary";
     input: typeof StartKycUpgradeRequestSchema;
     output: typeof StartKycUpgradeResponseSchema;
-  },
+  };
   /**
    * @generated from rpc proph.v1.KycService.CheckKycTier
    */
@@ -470,7 +497,7 @@ export const KycService: GenService<{
     methodKind: "unary";
     input: typeof CheckKycTierRequestSchema;
     output: typeof CheckKycTierResponseSchema;
-  },
+  };
   /**
    * @generated from rpc proph.v1.KycService.GetKycRecord
    */
@@ -478,7 +505,5 @@ export const KycService: GenService<{
     methodKind: "unary";
     input: typeof GetKycRecordRequestSchema;
     output: typeof KycRecordSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_v1_kyc, 0);
-
+  };
+}> = /*@__PURE__*/ serviceDesc(file_v1_kyc, 0);

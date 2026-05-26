@@ -63,10 +63,10 @@ services:
       timeout: 3s
       retries: 10
 
-  mock-sumsub:
+  mock-provider:
     build:
       context: ..
-      dockerfile: tools/mocks/sumsub/Dockerfile
+      dockerfile: tools/mocks/provider/Dockerfile
     env_file: ../.env
     environment:
       PROPHETICA_ENV: dev

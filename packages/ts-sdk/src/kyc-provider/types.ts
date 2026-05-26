@@ -1,9 +1,4 @@
-export type KycProviderName =
-  | "sumsub"
-  | "iproov"
-  | "onfido"
-  | "jumio"
-  | "mock";
+export type KycProviderName = "iproov" | "onfido" | "jumio" | "mock";
 
 export type KycTargetTier = "TIER_2" | "TIER_3";
 

@@ -3,7 +3,7 @@
 // All label values are bound to enums (KycTargetTier, KycProviderName,
 // KycErrorCode, KycStep) so a free-text PII leak into Prometheus cardinality
 // is impossible by construction. SPEC-005a section 7.1 explicitly forbids
-// sensitive provider identifiers or raw SumSub event payloads; none of those
+// sensitive provider identifiers or raw iProov event payloads; none of those
 // are in the label set below.
 
 import type {
@@ -79,7 +79,7 @@ export const KYC_METRIC_NAMES: ReadonlyArray<KycMetricEvent["name"]> = [
 
 const TIER_VALUES: ReadonlySet<string> = new Set(["TIER_2", "TIER_3"]);
 const PROVIDER_VALUES: ReadonlySet<string> = new Set([
-  "sumsub",
+  "iproov",
   "iproov",
   "onfido",
   "jumio",
@@ -145,9 +145,15 @@ export function validateKycMetricEvent(
   }
   switch (name) {
     case "proph_kyc_session_started_total":
-      return { name, labels: { tier: labelObj.tier, provider: labelObj.provider } } as KycMetricEvent;
+      return {
+        name,
+        labels: { tier: labelObj.tier, provider: labelObj.provider },
+      } as KycMetricEvent;
     case "proph_kyc_session_completed_total": {
-      if (!isString(labelObj.outcome) || !OUTCOME_VALUES.has(labelObj.outcome)) {
+      if (
+        !isString(labelObj.outcome) ||
+        !OUTCOME_VALUES.has(labelObj.outcome)
+      ) {
         return { error: "label outcome invalid" };
       }
       return {
@@ -160,7 +166,10 @@ export function validateKycMetricEvent(
       } as KycMetricEvent;
     }
     case "proph_kyc_session_abandoned_total": {
-      if (!isString(labelObj.step_at_abandon) || !STEP_VALUES.has(labelObj.step_at_abandon)) {
+      if (
+        !isString(labelObj.step_at_abandon) ||
+        !STEP_VALUES.has(labelObj.step_at_abandon)
+      ) {
         return { error: "label step_at_abandon invalid" };
       }
       return {
@@ -176,10 +185,7 @@ export function validateKycMetricEvent(
       if (!isString(labelObj.code) || !ERROR_CODE_VALUES.has(labelObj.code)) {
         return { error: "label code invalid" };
       }
-      if (
-        labelObj.recoverable !== "true" &&
-        labelObj.recoverable !== "false"
-      ) {
+      if (labelObj.recoverable !== "true" && labelObj.recoverable !== "false") {
         return { error: "label recoverable must be 'true' or 'false'" };
       }
       return {
@@ -193,11 +199,18 @@ export function validateKycMetricEvent(
       } as KycMetricEvent;
     }
     case "proph_kyc_webhook_wait_seconds": {
-      if (!isString(labelObj.outcome) || !OUTCOME_VALUES.has(labelObj.outcome)) {
+      if (
+        !isString(labelObj.outcome) ||
+        !OUTCOME_VALUES.has(labelObj.outcome)
+      ) {
         return { error: "label outcome invalid" };
       }
       const observation = (event as Record<string, unknown>).observation;
-      if (typeof observation !== "number" || !Number.isFinite(observation) || observation < 0) {
+      if (
+        typeof observation !== "number" ||
+        !Number.isFinite(observation) ||
+        observation < 0
+      ) {
         return { error: "observation must be a non-negative finite number" };
       }
       return {
@@ -218,7 +231,7 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
-// SPEC-005a section 7.3 default buckets for SumSub webhook wait time.
+// SPEC-005a section 7.3 default buckets for iProov webhook wait time.
 export const KYC_WEBHOOK_WAIT_BUCKETS_SECONDS: ReadonlyArray<number> = [
   1, 5, 15, 30, 60, 120, 300,
 ];

@@ -31,8 +31,6 @@ export {
   createKycProviderForStage,
   createMockKycProvider,
   createRealIproovProvider,
-  createRealSumsubProvider,
-  createSumsubMockProvider,
   selectKycProvider,
 } from "./kyc-provider/index.js";
 export type {
@@ -51,9 +49,7 @@ export type {
   KycStep,
   KycTargetTier,
   MockKycProviderOptions,
-  RealSumsubProviderOptions,
   SelectKycProviderOptions,
-  SumsubMockProviderOptions,
 } from "./kyc-provider/index.js";
 export { createWalletClient, type WalletClient } from "./wallet/client.js";
 export { createEngineClient, type EngineClient } from "./engine/client.js";
