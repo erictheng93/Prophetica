@@ -1048,8 +1048,7 @@ mod tests {
 
     #[test]
     fn inv6_redemption_carveout_requires_purchase_metadata() {
-        let migration =
-            include_str!("../../migrations/202605270002_inv6_redemption_carveout.sql");
+        let migration = include_str!("../../migrations/202605270002_inv6_redemption_carveout.sql");
 
         assert!(migration.contains("Liability.UnredeemedEntitlement.%"));
         assert!(migration.contains("redemption_purchase"));
@@ -1065,8 +1064,7 @@ mod tests {
 
     #[test]
     fn inv7_trigger_covers_all_redemption_family_txn_types() {
-        let migration =
-            include_str!("../../migrations/202605270003_inv7_redemption_same_user.sql");
+        let migration = include_str!("../../migrations/202605270003_inv7_redemption_same_user.sql");
 
         assert!(migration.contains("redemption_purchase"));
         assert!(migration.contains("entitlement_fulfillment"));
