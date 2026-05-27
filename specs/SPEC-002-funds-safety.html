@@ -62,12 +62,30 @@
     <h1>SPEC-002 — 資金安全與虛擬銅幣帳本</h1>
     <blockquote>
       <p>
-        優先級：<strong>P0</strong><br />版本：v0.1.12 · 最後更新：2026-05-27<br />依賴：無<br />被依賴：SPEC-003,
-        SPEC-004, SPEC-005, SPEC-011, SPEC-012
+        優先級：<strong>P0</strong><br />版本：v0.1.13 · 最後更新：2026-05-27<br />依賴：無<br />被依賴：SPEC-003,
+        SPEC-004, SPEC-005, SPEC-011, SPEC-012, SPEC-024
       </p>
     </blockquote>
     <section class="changelog">
       <h2>變更紀錄</h2>
+      <article class="changelog-item">
+        <h3>v0.1.13</h3>
+        <p>
+          §4.4.7 文末補
+          <a href="./SPEC-024-redemption-entitlement.html">SPEC-024</a>
+          cross-link，正面流程（銅幣兌換虛擬商品 / 服務、entitlement 生命週期、退款
+          / 過期 / breakage）由 SPEC-024 v0.1.0 規格化；對應 governance 由
+          <a
+            href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+            >ADR-0007</a
+          >
+          （Proposed）追認。本版本<strong>不</strong>動 §4.2 Chart of Accounts、§5
+          INV 表或 §4.4.1~§4.4.6 既有分錄；ADR-0007 Accepted 後另出 v0.1.14
+          擴展 INV-2 / INV-4 公式含 <code>Liability.UnredeemedEntitlement.*</code>
+          並新增 INV-7（redemption-family txn 之 user_id 同人綁定）。被依賴清單加
+          SPEC-024。
+        </p>
+      </article>
       <article class="changelog-item">
         <h3>v0.1.12</h3>
         <p>
@@ -980,7 +998,17 @@ metadata: {
     </blockquote>
     <ul>
       <li>
-        銅幣點數用途僅限平台內購買虛擬商品或兌換特定服務；不得作為會員間可轉讓資產。
+        銅幣點數用途僅限平台內購買虛擬商品或兌換特定服務；不得作為會員間可轉讓資產。正面流程之
+        catalog / SKU、redemption order 生命週期、entitlement 狀態機、退款 /
+        過期 / breakage 由
+        <a href="./SPEC-024-redemption-entitlement.html">SPEC-024</a>
+        規格化；對應 ledger 之 INV-6 (g) carve-out 與新增 INV-7（redemption-family
+        txn 之 user_id 同人綁定）governance 由
+        <a
+          href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+          >ADR-0007</a
+        >
+        承接。
       </li>
       <li>
         已兌換出的虛擬商品、服務權益、票券或等價 entitlement，可由各商品 /

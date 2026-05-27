@@ -34,12 +34,16 @@
 <h1>SPEC-009 — DMM 計畫與流動性策略</h1>
 <blockquote>
 <p>優先級：<strong>P1</strong>
-版本：v0.2.2 · 最後更新：2026-05-24
+版本：v0.2.3 · 最後更新：2026-05-27
 依賴：SPEC-002, SPEC-003, SPEC-005
 被依賴：SPEC-011</p>
 </blockquote>
 <section class="changelog">
 <div class="changelog-list">
+  <article class="changelog-entry">
+    <h3>v0.2.3 變更（與 Q-10 名詞釐清）</h3>
+    <p>§1 新增註腳，明確區別「P2P 訂單簿撮合（合約 YES/NO 對手方為其他玩家或 DMM，合法）」、「玩家對平台之 redemption / 兌換虛擬商品（合法，由 <a href="./SPEC-024-redemption-entitlement.html">SPEC-024</a> 規格化）」、「會員間銅幣 wallet-to-wallet 轉移 / 贈點（永遠禁止，<a href="./SPEC-000-index.html#cross-cutting-q10">Q-10</a> / <a href="./SPEC-002-funds-safety.html">SPEC-002 §4.4.7</a>）」三者，避免「P2P」字面引起的混淆。本版本不動 §3 ~ §5 既有 DMM / LM 機制。</p>
+  </article>
   <article class="changelog-entry">
     <h3>v0.2.2 變更（適配 taker-only 曲線費率）</h3>
     <p>§3.3 福利表 maker rebate / taker fee 折扣描述對齊 SPEC-003 §14.2 曲線模型：DMM rebate / 折扣以 per-DMM <code>fee_bps</code> override 實現，<strong>不</strong>採固定 % 折扣（因曲線在不同 p 之有效費率不一致）；具體 bps 待 Phase 2 財務模型量化。§4.2 LM 提撥基數明示為 <code>Revenue.TradingFee</code> 當日 ledger 入帳總額（已套用曲線），<strong>不</strong>得用 matching engine Trade event 重算（呼應 SPEC-003 §14.2 ground truth 註記）。Maker rebate (negative bps) 若於 Phase 2 引入，需 ADR 追認 INV-6 carve-out（<code>Revenue.TradingFee → Player.Wallet.{maker}</code>）。</p>
@@ -63,6 +67,9 @@
 </ul>
 <blockquote>
 <p>⚠️ <strong>不可越線的紅線</strong>：平台、平台子公司、平台員工、平台直接控制之機器人帳戶<strong>永遠不得</strong>在自家訂單簿掛單。任何「自動造市腳本」、「對沖機器人」、「概率對稱腳本」均不允許實作。</p>
+</blockquote>
+<blockquote>
+<p>📎 <strong>名詞釐清</strong>（v0.2.3）：本 SPEC 之「<strong>P2P 訂單簿</strong>」指合約 YES/NO 之 peer-to-peer 撮合 — 對手方為其他玩家或 DMM，由撮合引擎自動匹配，<strong>合法</strong>。請勿與下列兩條混淆：(1)「玩家對平台之 redemption / 兌換虛擬商品」由 <a href="./SPEC-024-redemption-entitlement.html">SPEC-024</a> 規格化，亦為合法；(2)「會員間銅幣 wallet-to-wallet 轉移、贈點、紅包、待領 escrow」為<strong>永久禁止</strong>之路徑（<a href="./SPEC-000-index.html#cross-cutting-q10">Q-10</a> / <a href="./SPEC-002-funds-safety.html">SPEC-002 §4.4.7</a> / <a href="./SPEC-002-funds-safety.html">§5 INV-6</a>）。撮合層的 P2P 與銅幣轉移的 P2P 是<strong>不同層</strong>之概念，不可互相援引。</p>
 </blockquote>
 <h2>2. 為何 Order Book + DMM 取代 LMSR / 概率對稱？</h2>
 <table>

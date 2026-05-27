@@ -398,6 +398,28 @@
           <td>玩家/營運/風控報表、授權導出、版本化與留存規範</td>
           <td>🟢 v0.1.0</td>
         </tr>
+        <tr>
+          <td>
+            <a href="./SPEC-024-redemption-entitlement.html">SPEC-024</a>
+          </td>
+          <td>銅幣兌換、虛擬商品與會員 Entitlement</td>
+          <td>
+            <a href="#cross-cutting-q10">Q-10</a> 正面流程規格：catalog / SKU、
+            redemption order 生命週期、entitlement 狀態機（v1
+            不可轉贈）、退款窗口、過期 + breakage；ledger 端 INV-6 (g) carve-out
+            + 新增 INV-7（redemption-family txn 之 user_id 同人綁定）由
+            <a
+              href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+              >ADR-0007</a
+            >
+            (Proposed) 簽核；實作計畫見
+            <a
+              href="../docs/implementation-plans/SPEC-024-redemption-entitlement-implementation-plan.html"
+              >SPEC-024 implementation plan</a
+            >
+          </td>
+          <td>🟡 v0.1.0（規格骨架；ADR-0007 待 Accepted 後動工）</td>
+        </tr>
       </tbody>
     </table>
     <h3>跨章節文件</h3>
@@ -1778,7 +1800,16 @@
             會員間點數轉移：是否允許 wallet-to-wallet
             主動流通？點數、虛擬商品、服務權益的轉贈邊界為何？
           </td>
-          <td>SPEC-002 §4.4.7 §5 INV-6 / SPEC-005 v0.1.7 / SPEC-010 v0.2.4</td>
+          <td>
+            SPEC-002 §4.4.7 §5 INV-6 / SPEC-005 v0.1.7 / SPEC-010 v0.2.4 /
+            <a href="./SPEC-024-redemption-entitlement.html">SPEC-024</a> v0.1.0
+            （正面流程）/
+            <a
+              href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+              >ADR-0007</a
+            >
+            (Proposed)
+          </td>
           <td>✅ Resolved</td>
           <td>業主決議 2026-05-27</td>
           <td>

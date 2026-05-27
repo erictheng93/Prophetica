@@ -132,6 +132,27 @@ FOR EACH ROW EXECUTE FUNCTION fn_ledger_balance_check();
       <li>實作依賴 <code>is_inv6_whitelisted_target()</code>（位於 <a href="../../crates/sdk/src/ledger/mod.rs">crates/sdk/src/ledger/mod.rs</a>）。</li>
       <li>Trigger 腳本實作參考：<a href="../../services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql">services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql</a></li>
       <li>規格治理依據：<a href="../architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md">ADR-0006</a></li>
+      <li>
+        <strong>CI sentinel-scan gate</strong>（ADR-0006 §4.2.3）：規劃路徑
+        <code>.github/workflows/wallet-invariant-scan.yml</code>；落地內容對齊
+        <a href="./SPEC-024-redemption-entitlement-implementation-plan.html"
+          >SPEC-024 implementation plan §7</a
+        >（同 PR 一併落地 INV-6 R-1 紅線檢查 + Q-10 peer-transfer 黑名單檢查），
+        避免兩處規則漂移。
+      </li>
+      <li>
+        <strong>後續擴展</strong>：INV-6 white-list 之 (g)
+        <code>Liability.UnredeemedEntitlement.*</code> carve-out + 新增 INV-7
+        （redemption-family txn 之 user_id 同人綁定）由
+        <a
+          href="../architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+          >ADR-0007</a
+        >
+        簽核；落地細節（SQL / SDK / migration 命名）見
+        <a href="./SPEC-024-redemption-entitlement-implementation-plan.html"
+          >SPEC-024 implementation plan §4 / §5 / §6</a
+        >。
+      </li>
     </ul>
   </section>
 
