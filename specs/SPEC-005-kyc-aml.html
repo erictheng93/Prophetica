@@ -69,8 +69,8 @@
     <h1>SPEC-005 — KYC / AML 整合</h1>
     <blockquote>
       <p>
-        優先級：<strong>P1</strong> 版本：v0.1.6 · 最後更新：2026-05-26 依賴：無
-        被依賴：SPEC-002, SPEC-010, SPEC-011 實作狀態：🟡
+        優先級：<strong>P1</strong> 版本：v0.1.7 · 最後更新：2026-05-27 依賴：無
+        被依賴：SPEC-010, SPEC-011 實作狀態：🟡
         <strong
           >Backend Postgres wiring baseline 已落地（2026-05-09）/ Secret
           hardening 完成 / Frontend 主路徑已落地（PR #2 merged
@@ -99,18 +99,19 @@
     <section class="changelog">
       <div class="changelog-list">
         <article class="changelog-entry">
+          <h3>v0.1.7 變更</h3>
+          <p>
+            依 2026-05-27 Q-10 決議移除 §2.1.3 peer_transfer
+            准入規則。會員間點數不可轉移，不再需要發送方 / 接收方 KYC
+            門檻、轉出上限或 PendingTransfer 凍結處置；KYC / AML
+            規則回到儲值、交易、凍結、EDD 與既有風控流程。
+          </p>
+        </article>
+        <article class="changelog-entry">
           <h3>v0.1.6 變更</h3>
           <p>
-            新增 §2.1.3「peer_transfer 准入規則」：呼應
-            <a href="./SPEC-002-funds-safety.html">SPEC-002 v0.1.12 §4.4.7</a>
-            之會員間轉點 / 贈點功能，定義發送方與接收方<strong
-              >皆需 ≥ <code>TIER_1</code></strong
-            >
-            之 KYC 門檻、單日 / 單月轉出總額之 tier 階梯上限（與 §2.1
-            儲值上限同源拆分），以及 KYC 中途降級 / 凍結對既存 PendingTransfer
-            之處置（保留 pending 等待 24h 自動退回，禁止新 send / accept）。本
-            SPEC 之「被依賴」列表新增 SPEC-002（peer_transfer 為 SPEC-002
-            主機制，但准入閘門落在本檔 §2.1.3）。
+            歷史紀錄：曾新增 §2.1.3「peer_transfer 准入規則」，已由 v0.1.7 依
+            Q-10 決議移除；現行規格不允許會員間點數轉移。
           </p>
         </article>
         <article class="changelog-entry">
@@ -514,145 +515,6 @@
       申報月收入」維度視為<strong>中性</strong>（不加分，但若該玩家儲值 &gt;
       金幣 30,000 / 月直接觸發 Tier 2 升級流程，間接強制申報）。
     </p>
-    <h3>2.1.3 peer_transfer 准入規則</h3>
-    <blockquote>
-      <p>
-        本節定義<strong>會員 → 會員轉點 / 贈點</strong>（<a
-          href="./SPEC-002-funds-safety.html"
-          >SPEC-002 §4.4.7</a
-        >
-        <code>peer_transfer_*</code>）之 KYC 准入閘門與 tier
-        階梯上限。產品定位提醒：平台僅提供儲值入金通道、<strong>無</strong>任何銅幣兌換
-        / 贖回 / 退費出口；會員間轉點 / 贈點為唯一的會員間 wallet-to-wallet
-        主動流通機制（非撮合），因此 KYC + AML 兩道閘門皆收緊。
-      </p>
-    </blockquote>
-    <h4>KYC tier 門檻</h4>
-    <table>
-      <thead>
-        <tr>
-          <th>角色</th>
-          <th>最低 tier</th>
-          <th>說明</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>發送方（sender）</td>
-          <td>
-            <strong><code>TIER_1</code></strong>
-          </td>
-          <td>
-            避免 Tier 0 訪客觸發 peer_transfer 製造 fake wallet 來源；Tier 1
-            已含手機 OTP + 證件驗證 + 18 歲 gate
-          </td>
-        </tr>
-        <tr>
-          <td>接收方（recipient）</td>
-          <td>
-            <strong><code>TIER_1</code></strong>
-          </td>
-          <td>
-            避免 Tier 0 / 殭屍帳號被當 layering 終點；接收方為 Tier 0 → 平台回
-            <code>recipient_kyc_tier_insufficient</code>，UI 引導對方先升級 Tier
-            1 再領取
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p>
-      任一方未達 <code>TIER_1</code> → SPEC-002 §4.4.7.1 之准入檢查回
-      <code>kyc_tier_insufficient</code>，<strong>不寫入帳本</strong>。
-    </p>
-    <h4>單日 / 單月轉出上限（依發送方 KYC tier 階梯）</h4>
-    <table>
-      <thead>
-        <tr>
-          <th>發送方 tier</th>
-          <th>單日 peer_transfer 轉出累計上限</th>
-          <th>單月 peer_transfer 轉出累計上限</th>
-          <th>備註</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>TIER_0</code></td>
-          <td>—</td>
-          <td>—</td>
-          <td>禁止使用（見上表）</td>
-        </tr>
-        <tr>
-          <td><code>TIER_1</code></td>
-          <td>金幣 1,000</td>
-          <td>金幣 10,000</td>
-          <td>
-            對齊 Tier 1 之儲值上限（單筆 &lt; 金幣 5,000 / 累計儲值 &lt; 金幣
-            30,000）之安全比例（單日 ≈ 20%、單月 ≈ 33% 儲值上限）
-          </td>
-        </tr>
-        <tr>
-          <td><code>TIER_2</code> 未申報</td>
-          <td>金幣 10,000</td>
-          <td>金幣 50,000</td>
-          <td>對齊 Tier 2（未申報）之 金幣 100,000 / 月儲值上限的 50%</td>
-        </tr>
-        <tr>
-          <td><code>TIER_2</code> 已申報</td>
-          <td>金幣 30,000</td>
-          <td>金幣 150,000</td>
-          <td>對齊 Tier 2（已申報）之 金幣 300,000 / 月儲值上限的 50%</td>
-        </tr>
-        <tr>
-          <td><code>TIER_3</code></td>
-          <td>個案核定</td>
-          <td>個案核定</td>
-          <td>由 Compliance + admin console 設定個別玩家上限</td>
-        </tr>
-      </tbody>
-    </table>
-    <ul>
-      <li>
-        <strong>累計口徑</strong>：以 <code>peer_transfer_send</code> 已 commit
-        之 <code>amount</code>（不含手續費）為準；自動退回（24h
-        timeout）與接收方主動拒收<strong>已退回之金額不計入</strong>累計上限（手續費仍計入平台收入，與本表無關）。
-      </li>
-      <li>
-        <strong>滑動窗口</strong>：「單日」= 過去 24 小時 rolling
-        window；「單月」= 過去 30 天 rolling window；非自然日 /
-        自然月切分，避免月底 / 跨日繞過。
-      </li>
-      <li>
-        <strong>超額處置</strong>：超過上限 → SPEC-002 §4.4.7.1 之准入檢查回
-        <code>peer_transfer_limit_exceeded</code>，提示玩家升級 tier
-        或等待窗口刷新。
-      </li>
-      <li>
-        <strong>接收方上限</strong>：v1
-        不對接收方設累計上限（接收為被動行為），但 SPEC-010 §4.2.5 PT-1 / PT-2 /
-        PT-3 之 post-transfer 偵測仍會抓異常入帳模式。
-      </li>
-    </ul>
-    <h4>KYC 中途降級 / 凍結之既存 PendingTransfer 處置</h4>
-    <ul>
-      <li>
-        <strong>發送方</strong>於 PendingTransfer 期間進入
-        <code>Player.Frozen.*</code> 或 KYC tier 被人工降至
-        <code>TIER_0</code> → 既有 pending 等待原 24h
-        自動退回路徑（<code>peer_transfer_refund</code>），<strong>不</strong>提前強制退回（避免
-        race 與重複 entry）；新 <code>peer_transfer_send</code> 直接拒絕。
-      </li>
-      <li>
-        <strong>接收方</strong>於 PendingTransfer 期間進入
-        <code>Player.Frozen.*</code> 或 KYC tier 被人工降至
-        <code>TIER_0</code> → 既有 pending 立即觸發
-        <code>peer_transfer_refund</code>（<code
-          >refund_reason = 'compliance_block'</code
-        >，呼應 SPEC-002 §4.4.7.3 Phase 2b）。
-      </li>
-      <li>
-        <strong>雙方</strong>同時凍結 → 接收方優先規則勝出（強制 refund）。
-      </li>
-    </ul>
     <h3>2.2 升級觸發條件</h3>
     <p>
       <strong>工程實作細節已抽離至</strong>

@@ -69,29 +69,29 @@
     <h1>SPEC-010 — 安全與反作弊（Security &amp; Anti-Fraud）</h1>
     <blockquote>
       <p>
-        優先級：<strong>P1</strong> 版本：v0.2.3 · 最後更新：2026-05-26
-        依賴：SPEC-005 被依賴：SPEC-009, SPEC-002, SPEC-004, SPEC-008, SPEC-012,
-        SPEC-013, SPEC-015, SPEC-016, SPEC-017
+        優先級：<strong>P1</strong> 版本：v0.2.4 · 最後更新：2026-05-27
+        依賴：SPEC-005 被依賴：SPEC-009, SPEC-004, SPEC-008, SPEC-012, SPEC-013,
+        SPEC-015, SPEC-016, SPEC-017
       </p>
     </blockquote>
     <section class="changelog">
       <div class="changelog-list">
         <article class="changelog-entry">
+          <h3>v0.2.4 變更</h3>
+          <p>
+            依 2026-05-27 Q-10 決議撤回 peer_transfer
+            產品方向：會員間點數不可轉移，移除 §4.2.5 會員間轉點異常偵測與
+            §4.2.2 對 peer_transfer 金額的 wash-trading
+            擴展。反作弊規則回到成交、持倉、裝置、登入與既有支付 / chargeback
+            風險偵測。
+          </p>
+        </article>
+        <article class="changelog-entry">
           <h3>v0.2.3 變更</h3>
           <p>
-            新增 peer_transfer（會員間轉點 / 贈點）反洗錢規則，呼應
-            <a href="./SPEC-002-funds-safety.html">SPEC-002 v0.1.12 §4.4.7</a
-            >。§4.2.2「自我成交偵測」之「24h 內彼此貢獻 &gt; 50%
-            對方成交量」規則語意由「成交量」擴展為「成交量 + 轉點量（含
-            peer_transfer_send 完成且 accept 之金額）」，避免透過轉點繞過 wash
-            trading 偵測。§4.2 新增
-            §4.2.5「會員間轉點異常偵測（peer_transfer）」：三條規則
-            PT-1（爆量贈點：單日轉出 ≥ N 筆或累計 ≥ X 金額觸發 EDD）/
-            PT-2（受贈方 outbound cooldown：受贈方收到後 N 小時內再對外 outbound
-            達 ≥ 70% 收受金額視為洗錢 layering 模式）/
-            PT-3（三方循環贈點：A→B→C→A 之 24h 閉環）。任一規則命中即進入
-            SPEC-010 §4.4「處置流程」 + SPEC-010 §9.3 multi-sig 治理表
-            MS-N（multi-sig 編號於 implementation plan 落地時補入）。
+            歷史紀錄：曾新增 peer_transfer 反洗錢規則，已由 v0.2.4 依 Q-10
+            決議移除；現行規格不允許會員間點數轉移，wash-trading
+            偵測回到成交量與交易行為本身。
           </p>
         </article>
         <article class="changelog-entry">
@@ -543,16 +543,9 @@
     <p>呼應 SPEC-003 的 STP（pre-trade），加上 post-trade 偵測：</p>
     <ul>
       <li>
-        過去 24 小時，user A 與 user B 若彼此貢獻 &gt; 50% 對方<strong
-          >「成交量 + peer_transfer 已 accept 金額」</strong
-        >之合計 → 標記。v0.2.3 起將 peer_transfer 已 accept
-        金額納入規則語意，避免透過轉點繞過 wash trading 偵測（呼應 SPEC-002
-        §4.4.7）。
+        過去 24 小時，user A 與 user B 若彼此貢獻 &gt; 50% 對方成交量 → 標記。
       </li>
-      <li>
-        三方循環交易（A→B→C→A）偵測；同樣將 peer_transfer 已 accept 金額納入 24h
-        閉環判定。
-      </li>
+      <li>三方循環交易（A→B→C→A）偵測。</li>
     </ul>
     <h4>4.2.3 Pump &amp; Dump 偵測</h4>
     <ul>
@@ -564,84 +557,6 @@
       <li>任一 Oracle / Admin / 員工的家屬 / 直屬下級的銅幣活動，全部留痕</li>
       <li>員工帳戶白名單，<strong>禁止</strong>在自己負責結算的市場下單</li>
       <li>違反 → 立即停權 + 民事索賠 + 刑事追訴</li>
-    </ul>
-    <h4>4.2.5 會員間轉點異常偵測（peer_transfer）</h4>
-    <p>
-      呼應 <a href="./SPEC-002-funds-safety.html">SPEC-002 §4.4.7</a> 之
-      peer_transfer。本規則為 post-trade / post-transfer 偵測，命中後進入 §4.4
-      處置流程；達高風險閾值者凍結雙方相關銅幣（SPEC-002 §4.2.1
-      <code>Player.Frozen.*</code>）並上 §9.3 multi-sig 治理表 4-eye review。
-    </p>
-    <table>
-      <thead>
-        <tr>
-          <th>規則 ID</th>
-          <th>偵測模式</th>
-          <th>觸發處置</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>PT-1</strong></td>
-          <td>
-            <strong>爆量贈點</strong>：單一用戶 24h 內
-            <code>peer_transfer_send</code> 已完成終態（含 accept 與
-            refund）總數 ≥ <code>peer_transfer_burst_count_threshold</code>，或
-            24h 累計 <code>peer_transfer_accept</code> 之 amount ≥
-            <code>peer_transfer_burst_amount_threshold</code>（具體閾值由
-            Compliance 配置於規則引擎，不入 SPEC）
-          </td>
-          <td>
-            進入 EDD（SPEC-005 §2.1 Tier 3
-            升級流程）；雙方銅幣暫不凍結但所有後續 peer_transfer_send
-            自動進入人工 review queue
-          </td>
-        </tr>
-        <tr>
-          <td><strong>PT-2</strong></td>
-          <td>
-            <strong>受贈方 outbound cooldown</strong>：用戶 B 收到
-            peer_transfer_accept 入帳後
-            <code>peer_transfer_outbound_cooldown_hours</code> 內（預設 N
-            由規則引擎配置），對外 outbound（任意 peer_transfer_send
-            或可疑下單）累計金額 ≥ 70% 該筆收受金額 → 視為
-            layering（洗錢分層）模式
-          </td>
-          <td>
-            B 之該筆 outbound 暫掛 <code>Suspense.Reconciliation</code> 並凍結 B
-            之 wallet（<code>Player.Frozen.B</code>）；A 帳戶同步進入 EDD review
-          </td>
-        </tr>
-        <tr>
-          <td><strong>PT-3</strong></td>
-          <td>
-            <strong>三方循環贈點</strong>：A → B → C → A 之 peer_transfer_accept
-            24h 閉環偵測（節點金額 ≥ 50%
-            對應入帳金額即視為同一資金流）；可擴展至 4 / 5 節點環
-          </td>
-          <td>
-            立即凍結環內所有用戶 wallet，全鏈條 peer_transfer 進
-            EDD；涉案金額累計達合規申報門檻時觸發 SAR（Suspicious Activity
-            Report）流程
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <ul>
-      <li>
-        <strong>pre-write 風控</strong>：SPEC-002 §4.4.7.1 准入條件已要求
-        peer_transfer 之雙方關聯度風控於 send 階段觸發；本節 §4.2.5 為
-        post-write 之 sliding-window 行為分析，兩者互補：pre-write
-        擋顯性高風險、post-write 抓低頻長尾。
-      </li>
-      <li>
-        <strong>實作位置</strong>：由規則引擎（SPEC-010 §4.3）統一承載 PT-1 /
-        PT-2 / PT-3 配置；Compliance 可在 admin console 調整閾值，毋需工程介入。
-      </li>
-      <li>
-        <strong>處置工作流</strong>：呼應 §4.4 處置流程矩陣與 §9.3 multi-sig
-        治理表（multi-sig 編號於 implementation plan 落地時補入新的 MS-N）。
-      </li>
     </ul>
     <h3>4.3 行為分析整合</h3>
     <ul>

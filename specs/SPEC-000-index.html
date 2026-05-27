@@ -164,9 +164,8 @@
               v0.1.8、manual adjustment carve-out v0.1.9）</strong
             >、MVP 手動銅幣調整、§9.3 最終一致性窗口（T-5）、Phase 1 monthly
             partition（T-3）、<strong
-              >會員間轉點 / 贈點 peer_transfer（v0.1.12，Q-10；PendingTransfer
-              escrow + 24h pending、INV-6 part II carve-out 待 ADR-0006 v1.0.3
-              追認）</strong
+              >會員間點數轉移禁止規則（v0.1.12，Q-10；點數僅能購買虛擬商品或兌換服務，兌換物
+              / 服務權益可另規格化轉贈）</strong
             >
           </td>
           <td>🟢 v0.1.12</td>
@@ -231,13 +230,14 @@
           <td>KYC/AML 整合</td>
           <td>
             分層 KYC、SaaS 整合、制裁名單篩查、<strong
-              >§2.1.3 peer_transfer 准入規則（v0.1.6，Q-10）</strong
+              >v0.1.7 移除 peer_transfer 准入規則（Q-10
+              禁止會員間點數轉移）</strong
             >
           </td>
           <td>
             🟡 Backend Postgres wiring baseline done（2026-05-09）/ Frontend
             主路徑 done（PR #2 merged）；blocker:
-            <a href="#cross-cutting-q9">Q-9</a> KYC provider sandbox · v0.1.6
+            <a href="#cross-cutting-q9">Q-9</a> KYC provider sandbox · v0.1.7
           </td>
         </tr>
         <tr>
@@ -295,10 +295,11 @@
               >§9.3 Multi-sig 治理中央表</strong
             >、EdDSA mobile PoC（T-9，PoC plan 落地）、sqlx 編譯時
             SQL（H-4）、Chargeback ≥ 1（H-5）、<strong
-              >§4.2.5 peer_transfer 異常偵測 PT-1/2/3（v0.2.3，Q-10）</strong
+              >v0.2.4 移除 peer_transfer 異常偵測（Q-10
+              禁止會員間點數轉移）</strong
             >
           </td>
-          <td>🟢 v0.2.3</td>
+          <td>🟢 v0.2.4</td>
         </tr>
         <tr>
           <td><a href="./SPEC-012-customer-support.html">SPEC-012</a></td>
@@ -1774,53 +1775,45 @@
         <tr id="cross-cutting-q10">
           <td>Q-10</td>
           <td>
-            會員間轉點 / 贈點（peer_transfer）：是否允許 wallet-to-wallet
-            主動流通？官方角色邊界（只進不出）為何？
+            會員間點數轉移：是否允許 wallet-to-wallet
+            主動流通？點數、虛擬商品、服務權益的轉贈邊界為何？
           </td>
-          <td>
-            SPEC-002 §4.2 §4.4.7 §5 INV-2/4/6 / SPEC-005 §2.1.3 / SPEC-010
-            §4.2.2 §4.2.5 / ADR-0006 v1.0.3 待落地
-          </td>
+          <td>SPEC-002 §4.4.7 §5 INV-6 / SPEC-005 v0.1.7 / SPEC-010 v0.2.4</td>
           <td>✅ Resolved</td>
-          <td>業主決議 2026-05-26</td>
+          <td>業主決議 2026-05-27</td>
           <td>
-            <strong>允許會員間轉點 / 贈點，平台無贖回出口</strong
-            >：產品定位收斂為「平台只進不出（儲值入金 yes、贖回 / 兌現
-            no）、會員間自由流通」。<strong>(1)</strong> SPEC-002 v0.1.12 §4.4.7
-            新增三段式分錄 <code>peer_transfer_send</code> /
-            <code>peer_transfer_accept</code> /
-            <code>peer_transfer_refund</code>，PendingTransfer escrow + 24h
-            pending 半終態 + 受贈方主動 accept / reject 與系統自動 timeout
-            refund；<strong>(2)</strong> 手續費 taker-style 百分比（具體 bps 落
-            implementation plan），於 send 階段一次性扣費入
-            <code>Revenue.PeerTransferFee</code>，refund 不退費；<strong
+            <strong>禁止會員間點數轉移 / 贈點</strong
+            >：維持原產品邊界，點數不得作為會員間可轉讓資產，也不得提供
+            wallet-to-wallet、紅包、待領 escrow、群發或任何等價繞路機制。<strong
+              >(1)</strong
+            >
+            SPEC-002 v0.1.12 §4.4.7
+            明定點數僅可用於平台內購買虛擬商品或兌換特定服務；<strong
+              >(2)</strong
+            >
+            已兌換出的虛擬商品、服務權益、票券或等價 entitlement 可由各商品 /
+            服務規格另行定義轉贈規則，但不得兌回點數、不得形成點數二級市場；<strong
               >(3)</strong
             >
-            INV-2 / INV-4 含 <code>Player.PendingTransfer.*</code>，INV-6
-            carve-out (g)(h) + part (II) PendingTransfer outflow 白名單；<strong
+            不新增 <code>peer_transfer_*</code> txn_type、<code
+              >Player.PendingTransfer.*</code
+            >
+            子科目或 <code>Revenue.PeerTransferFee</code> 科目；<strong
               >(4)</strong
             >
-            SPEC-005 v0.1.6 §2.1.3 定義雙方皆需 <code>TIER_1</code> 之 KYC
-            准入閘門 + 依 tier 階梯之單日 / 單月轉出上限；<strong>(5)</strong>
-            SPEC-010 v0.2.3 §4.2.2 「24h 內彼此 &gt; 50%」規則語意擴展含
-            peer_transfer 量、§4.2.5 PT-1/PT-2/PT-3 三條洗錢偵測規則。<strong
+            SPEC-005 v0.1.7 移除 peer_transfer KYC 准入與轉出上限；<strong
+              >(5)</strong
+            >
+            SPEC-010 v0.2.4 移除 peer_transfer AML 偵測規則；<strong
               >(6)</strong
             >
-            既有平台 → 會員贈點路徑（<code>cs_compensation</code> /
-            <code>manual_points_adjustment</code> /
-            <code>affiliate_commission</code> / <code>dmm_rebate</code> /
-            <code>lm_reward</code>）<strong>本輪不動</strong>，scope
-            議題暫掛；其字面定位仍為「平台補償 / 激勵 /
-            合作方贈點」而非「贖回」，與「平台無贖回出口」並無衝突。<strong
-              >(7)</strong
+            既有平台 → 會員補償 / 激勵 / 合作方入點路徑（<code
+              >cs_compensation</code
             >
-            落地前置：ADR-0006 須先 bump v1.0.3 追認 INV-2 / INV-4 / INV-6
-            carve-out 與新增 <code>Player.PendingTransfer.*</code> outflow
-            whitelist；proto 須先新增 <code>TXN_TYPE_PEER_TRANSFER_SEND</code> /
-            <code>TXN_TYPE_PEER_TRANSFER_ACCEPT</code> /
-            <code>TXN_TYPE_PEER_TRANSFER_REFUND</code> +
-            <code>Player.PendingTransfer</code> /
-            <code>Revenue.PeerTransferFee</code> account-type。
+            / <code>manual_points_adjustment</code> /
+            <code>affiliate_commission</code> / <code>dmm_rebate</code> /
+            <code>lm_reward</code>）本輪不動，仍須遵守各自審批與 INV-6
+            guardrail。
           </td>
         </tr>
         <tr id="cross-cutting-q9">
