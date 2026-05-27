@@ -92,7 +92,7 @@ ADR-0003 + ADR-0006 + ADR-0007 之 union 構成最終 INV-1 ~ INV-7 集合。
 
 | ID | 不變式 | 機械化檢查 | 來源 |
 |----|--------|------------|------|
-| INV-6 (g) | `Liability.UnredeemedEntitlement.{user_id}` — **僅限** `txn_type = redemption_purchase`，且 metadata 必含 `order_id` / `sku_id` / `audit_log_id`；不得用於其他 txn_type 之 outflow 目的地 | DB CONSTRAINT TRIGGER（擴充 `fn_inv6_outflow_whitelist_check`）+ SDK `is_inv6_whitelisted_target` + CI sentinel-scan 三層 | **ADR-0007 新增**（呼應 SPEC-024 §4.3）|
+| INV-6 (g) | `Liability.UnredeemedEntitlement.{user_id}` — **僅限** `txn_type = redemption_purchase`，且 metadata 必含 `order_id`（ULID 形狀）/ `sku_id`（≥ 3 chars、`[A-Za-z0-9_-]`）/ `audit_log_id`（≥ 8 chars、`[A-Za-z0-9_:-]`）；不得用於其他 txn_type 之 outflow 目的地。**v1.1 收緊**：原 v1.0 只擋「非空字串」，被 codex review (P2) 指出可填 `"x"` 繞過；v1.1 trigger 改為 shape-realistic 格式檢查（migration 202605270004） | DB CONSTRAINT TRIGGER（擴充 `fn_inv6_outflow_whitelist_check`，v1.1 加 regex 形狀檢查）+ SDK `is_inv6_whitelisted_target`（**僅** 看 account-kind，未驗 metadata，見 §4.4） + CI sentinel-scan 三層 | **ADR-0007 新增**（呼應 SPEC-024 §4.3）|
 
 落地細節：見 [SPEC-024 implementation plan §4](../../implementation-plans/SPEC-024-redemption-entitlement-implementation-plan.html)。
 
@@ -125,9 +125,16 @@ ADR-0003 + ADR-0006 + ADR-0007 之 union 構成最終 INV-1 ~ INV-7 集合。
 
 ### 4.4 落地策略對齊 ADR-0006 §4.2 三層保護
 
-- **DB 層**：`fn_inv7_redemption_same_user_check` plpgsql trigger（plan §5 之 SQL template）
+- **DB 層**：`fn_inv7_redemption_same_user_check` plpgsql trigger（plan §5 之 SQL template）；INV-6 (g) metadata 形狀檢查（migration 202605270002 + 202605270004 v1.1 收緊）
 - **Application 層**：SDK `LedgerTransactionDraft::validate_redemption_same_user`，回傳 `LedgerError::Inv7Violation`
 - **CI 層**：sentinel-scan grep gate 加 `peer_transfer` / `Player.PendingTransfer` / `Revenue.PeerTransferFee` 黑名單；同 PR 落地 ADR-0006 §4.2.3 之 gate 檔案路徑（規劃為 `.github/workflows/wallet-invariant-scan.yml`）
+
+> **v1.1 已知限制（asymmetry, 由 codex review P2 surfaced）**：SDK `is_inv6_whitelisted_target`
+> 目前不接收 ledger transaction metadata，**只**檢查 account-kind 形狀；INV-6 (g) 的
+> `order_id` / `sku_id` / `audit_log_id` 形狀檢查**僅**由 DB trigger 強制。實務上不影響
+> 安全保證（DB trigger 為 zero-trust 最後一道閘），但代表 application 層送出非法 metadata
+> 的 PR 要等到 PG 拒絕才會發現，回饋圈長一格。SDK 補上 metadata-aware draft API 為日後
+> 獨立 ADR / SPEC-024 v0.2 範圍。
 
 ## 5. Consequences
 
@@ -226,3 +233,4 @@ INV-7 之違反代價同 INV-6：
 |------|------|------|------|
 | 2026-05-27 | v0.1 | Tech Lead | 首版 Proposed；INV-6 white-list 補 (g) `Liability.UnredeemedEntitlement` carve-out；INV-2 / INV-4 對齊含 UnredeemedEntitlement；新增 INV-7（redemption-family txn 同人綁定）。 |
 | 2026-05-27 | v1.0 | Founder | Accepted。業主自決；Compliance Counsel 之最終法律意見書（針對 §5.2 Negative #3 之 breakage dormancy period）為「正式上線前必出具」之 hard gate，但不阻擋 P1 ledger backbone 程式碼落地。SPEC-002 v0.1.14 同步擴展 §5 INV 表含 INV-7 + INV-2 / INV-4 公式對齊 `Liability.UnredeemedEntitlement.*`。 |
+| 2026-05-27 | v1.1 | Tech Lead | codex review P2 follow-up：INV-6 (g) metadata 形狀檢查從「非空字串」收緊為「ULID + 字元類 + 最短長度」。原條款被指出可填 `"x"` 繞過；migration 202605270004 以 `CREATE OR REPLACE` 重寫 `fn_inv6_outflow_whitelist_check` 加 PostgreSQL POSIX regex 形狀檢查（order_id ULID、sku_id ≥ 3 字元、audit_log_id ≥ 8 字元）。SDK 端因 `LedgerTransactionDraft` 目前不攜帶 metadata 仍只看 account-kind；本限制於 §4.4 v1.1 明列為已知 asymmetry，由 DB trigger zero-trust 兜底，不影響安全保證。屬實作層補強，主決策（INV-6 (g) carve-out 存在 + INV-7 user 綁定）方向未變。 |

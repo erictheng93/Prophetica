@@ -1080,6 +1080,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn inv6_redemption_metadata_format_check_uses_realistic_shapes() {
+        let migration =
+            include_str!("../../migrations/202605270004_inv6_redemption_metadata_format.sql");
+
+        // ULID shape for order_id — 26-char Crockford base32 (no I, L, O, U)
+        assert!(
+            migration.contains("^[0-9A-HJKMNP-TV-Z]{26}$"),
+            "order_id must be validated as a ULID, not just non-empty"
+        );
+        // sku_id must reject 1-2 char dummies like \"x\" / \"yz\"
+        assert!(
+            migration.contains("^[A-Za-z0-9_-]{3,64}$"),
+            "sku_id must require length ≥ 3 with restricted charset"
+        );
+        // audit_log_id must reject short dummies; real audit IDs are ≥ 8 chars
+        assert!(
+            migration.contains("^[A-Za-z0-9_:-]{8,160}$"),
+            "audit_log_id must require length ≥ 8 with restricted charset"
+        );
+    }
+
     #[tokio::test]
     async fn returns_account_balance_from_store() {
         let store = InMemoryLedgerStore::default();

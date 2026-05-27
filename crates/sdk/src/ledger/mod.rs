@@ -308,8 +308,13 @@ impl LedgerTransactionDraft {
             return matches!(self.txn_kind, LedgerTxnKind::ManualPointsAdjustment);
         }
         // Player.Wallet → Liability.UnredeemedEntitlement.{user_id} 限 redemption_purchase
-        // （SPEC-024 §4.3 / ADR-0007 §4.1 (g)）。user_id 同人綁定（X = Y）由 INV-7 強制，
-        // 不在本函式範圍 — 由 [`Self::validate_redemption_same_user`] 配合 DB trigger 承擔。
+        // （SPEC-024 §4.3 / ADR-0007 §4.1 (g)）。本函式只看 account-kind shape；
+        // 兩個額外不變式由其他層承擔：
+        //   - user_id 同人綁定（X = Y）→ [`Self::validate_redemption_same_user`] (INV-7)
+        //   - metadata order_id / sku_id / audit_log_id 形狀檢查（ULID / 長度 / 字元類）
+        //     → DB trigger fn_inv6_outflow_whitelist_check v1.1（ADR-0007 §4.4 v1.1
+        //     已知 asymmetry：SDK draft 目前不攜帶 metadata，無法在 application 層提前
+        //     攔截 metadata 形狀違規）。
         if code.starts_with("Liability.UnredeemedEntitlement.") {
             return matches!(self.txn_kind, LedgerTxnKind::RedemptionPurchase);
         }
