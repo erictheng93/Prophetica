@@ -2750,6 +2750,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "redemption-api-binary"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "redemption-service",
+ "sdk",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "redemption-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum 0.7.9",
+ "http-body-util",
+ "sdk",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tower 0.5.3",
+ "tracing",
+ "ulid",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
