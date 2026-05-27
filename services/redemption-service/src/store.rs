@@ -16,8 +16,8 @@ use thiserror::Error;
 
 use crate::{
     catalog::{CatalogItem, Sku, Stock},
-    entitlement::Entitlement,
-    order::RedemptionOrder,
+    entitlement::{Entitlement, EntitlementState},
+    order::{OrderState, RedemptionOrder},
 };
 
 #[async_trait]
@@ -26,13 +26,42 @@ pub trait RedemptionStore: Send + Sync {
     async fn upsert_sku(&self, sku: Sku) -> Result<(), StoreError>;
     async fn upsert_stock(&self, stock: Stock) -> Result<(), StoreError>;
 
+    /// SKU lookup used by the orchestrator (`RedemptionService::submit_order`)
+    /// to resolve price + fulfillment mode at submit time. Returns `None`
+    /// when the SKU is not in the catalog so the orchestrator can return a
+    /// 404 instead of leaking storage internals.
+    async fn get_sku(&self, sku_id: &str) -> Result<Option<Sku>, StoreError>;
+
     /// Persists an order. On idempotent replay (same `idempotency_key`),
     /// returns the previously persisted order without overwriting.
     async fn record_order(&self, order: RedemptionOrder) -> Result<RedemptionOrder, StoreError>;
 
+    /// Atomically updates an existing order's state. Returns
+    /// [`StoreError::OrderNotFound`] if the `order_id` is unknown. Required
+    /// by the orchestrator to advance Submitted -> Accepted -> Committed ->
+    /// Fulfilled without losing concurrent writes.
+    async fn update_order_state(
+        &self,
+        order_id: &str,
+        new_state: OrderState,
+    ) -> Result<(), StoreError>;
+
     async fn get_order(&self, order_id: &str) -> Result<Option<RedemptionOrder>, StoreError>;
 
     async fn record_entitlement(&self, entitlement: Entitlement) -> Result<(), StoreError>;
+
+    /// Atomically updates an existing entitlement's state. Returns
+    /// [`StoreError::EntitlementNotFound`] if the `entitlement_id` is unknown.
+    async fn update_entitlement_state(
+        &self,
+        entitlement_id: &str,
+        new_state: EntitlementState,
+    ) -> Result<(), StoreError>;
+
+    async fn get_entitlement_for_order(
+        &self,
+        order_id: &str,
+    ) -> Result<Option<Entitlement>, StoreError>;
 
     async fn list_entitlements_for_owner(
         &self,
@@ -91,6 +120,11 @@ impl RedemptionStore for InMemoryRedemptionStore {
         Ok(())
     }
 
+    async fn get_sku(&self, sku_id: &str) -> Result<Option<Sku>, StoreError> {
+        let guard = self.lock()?;
+        Ok(guard.skus.get(sku_id).cloned())
+    }
+
     async fn record_order(&self, order: RedemptionOrder) -> Result<RedemptionOrder, StoreError> {
         let mut guard = self.lock()?;
         if let Some(prior_id) = guard.orders_by_idempotency.get(&order.idempotency_key) {
@@ -105,6 +139,21 @@ impl RedemptionStore for InMemoryRedemptionStore {
         Ok(order)
     }
 
+    async fn update_order_state(
+        &self,
+        order_id: &str,
+        new_state: OrderState,
+    ) -> Result<(), StoreError> {
+        let mut guard = self.lock()?;
+        let Some(order) = guard.orders.get_mut(order_id) else {
+            return Err(StoreError::OrderNotFound {
+                order_id: order_id.to_owned(),
+            });
+        };
+        order.state = new_state;
+        Ok(())
+    }
+
     async fn get_order(&self, order_id: &str) -> Result<Option<RedemptionOrder>, StoreError> {
         let guard = self.lock()?;
         Ok(guard.orders.get(order_id).cloned())
@@ -116,6 +165,33 @@ impl RedemptionStore for InMemoryRedemptionStore {
             .entitlements
             .insert(entitlement.entitlement_id.clone(), entitlement);
         Ok(())
+    }
+
+    async fn update_entitlement_state(
+        &self,
+        entitlement_id: &str,
+        new_state: EntitlementState,
+    ) -> Result<(), StoreError> {
+        let mut guard = self.lock()?;
+        let Some(entitlement) = guard.entitlements.get_mut(entitlement_id) else {
+            return Err(StoreError::EntitlementNotFound {
+                entitlement_id: entitlement_id.to_owned(),
+            });
+        };
+        entitlement.state = new_state;
+        Ok(())
+    }
+
+    async fn get_entitlement_for_order(
+        &self,
+        order_id: &str,
+    ) -> Result<Option<Entitlement>, StoreError> {
+        let guard = self.lock()?;
+        Ok(guard
+            .entitlements
+            .values()
+            .find(|e| e.order_id == order_id)
+            .cloned())
     }
 
     async fn list_entitlements_for_owner(
@@ -138,6 +214,13 @@ pub enum StoreError {
     /// failure — callers should not silently swallow this.
     #[error("redemption store mutex poisoned (prior panic)")]
     Poisoned,
+    /// `update_order_state` was called for an order that does not exist.
+    #[error("redemption order not found: {order_id}")]
+    OrderNotFound { order_id: String },
+    /// `update_entitlement_state` was called for an entitlement that does not
+    /// exist.
+    #[error("entitlement not found: {entitlement_id}")]
+    EntitlementNotFound { entitlement_id: String },
 }
 
 #[cfg(test)]

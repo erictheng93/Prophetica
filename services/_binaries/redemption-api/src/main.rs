@@ -4,6 +4,11 @@
 //! redemption-service library crate. Future phases (P3 / P4 / P5 / P6) plug
 //! in fulfillment workers, refund jobs, and Postgres store wiring here.
 
+use std::sync::Arc;
+
+use redemption_service::{
+    ledger::InMemoryLedgerClient, service::RedemptionService, store::InMemoryRedemptionStore,
+};
 use sdk::{config::ServiceConfig, observability, service_stub};
 use tokio::{net::TcpListener, signal};
 
@@ -16,7 +21,19 @@ async fn main() -> anyhow::Result<()> {
     )?;
     tracing::info!(?config, "redemption-api service config loaded");
 
-    let app = service_stub::router(&config).merge(redemption_service::api::router());
+    // P3.1: in-memory store + in-memory ledger client. The HTTP-backed
+    // LedgerClient that calls wallet-ledger-service ships in P3.4; the
+    // Postgres-backed RedemptionStore ships alongside it. Until then, this
+    // binary boots a non-persistent dev instance — wired for local QA and
+    // contract tests, NOT production.
+    let store = Arc::new(InMemoryRedemptionStore::new());
+    let ledger = Arc::new(InMemoryLedgerClient::new());
+    let service = Arc::new(RedemptionService::new(store as Arc<_>, ledger as Arc<_>));
+    tracing::warn!(
+        "redemption-api using in-memory store + in-memory ledger client (P3.1 dev build; not production)"
+    );
+
+    let app = service_stub::router(&config).merge(redemption_service::api::router(service));
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "redemption-api listening");
 
