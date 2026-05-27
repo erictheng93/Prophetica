@@ -36,10 +36,20 @@ jobs:
       # Q-10 / INV-7: peer transfer of points between members is prohibited.
       # Catches the txn_type / account / identifier patterns explicitly banned
       # by SPEC-002 v0.1.12 §4.4.7.
+      #
+      # codex review P2 follow-up — broadened from `peer_transfer_` only to:
+      #   - peer_transfer_  (snake_case identifier prefix, e.g. peer_transfer_send)
+      #   - peer_transfer:: (Rust module path,       e.g. crate::peer_transfer::send)
+      #   - peer_transfer\. (field / dot access,     e.g. ctx.peer_transfer.send)
+      #   - peerTransfer   (camelCase variant,       e.g. peerTransfer.send)
+      #   - PeerTransfer   (PascalCase variant,      e.g. PeerTransfer struct/enum)
+      # Hyphen variants (`peer-transfer`) intentionally NOT matched because Rust
+      # identifiers don't use hyphens; this also avoids self-flagging on doc-prose
+      # mentions like "disguised peer-transfer attempt" inside SDK comments.
       - name: Q-10 / INV-7 red line (member-to-member peer transfer)
         run: |
           set -e
-          PATTERN='peer_transfer_|Player\.PendingTransfer\.|Revenue\.PeerTransferFee|wallet_to_wallet_gift|gift_points_to'
+          PATTERN='peer_transfer_|peer_transfer::|peer_transfer\.|peerTransfer|PeerTransfer|Player\.PendingTransfer\.|Revenue\.PeerTransferFee|wallet_to_wallet_gift|gift_points_to'
           if grep -REn --include='*.rs' --include='*.sql' --include='*.proto' "$PATTERN" services/ crates/ packages/proto/ ; then
             echo "::error::Q-10 / INV-7 violation detected: member-to-member point transfer is permanently forbidden (SPEC-002 §4.4.7 / SPEC-024 §5 / ADR-0007 §4.3)."
             exit 1
