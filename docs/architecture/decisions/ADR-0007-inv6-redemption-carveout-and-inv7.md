@@ -2,7 +2,7 @@
 
 | 欄位 | 內容 |
 |------|------|
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-05-27 |
 | **Deciders** | Tech Lead, Founder |
 | **Consulted** | Compliance Counsel（待法律意見書最終覆核）、財務主管、Codex 開發代理 |
@@ -224,4 +224,5 @@ INV-7 之違反代價同 INV-6：
 
 | 日期 | 版本 | 作者 | 變更 |
 |------|------|------|------|
-| 2026-05-27 | v0.1 | Tech Lead | 首版 Proposed；INV-6 white-list 補 (g) `Liability.UnredeemedEntitlement` carve-out；INV-2 / INV-4 對齊含 UnredeemedEntitlement；新增 INV-7（redemption-family txn 同人綁定）。狀態 = Proposed，待業主 + Compliance Counsel 覆核後改 Accepted。 |
+| 2026-05-27 | v0.1 | Tech Lead | 首版 Proposed；INV-6 white-list 補 (g) `Liability.UnredeemedEntitlement` carve-out；INV-2 / INV-4 對齊含 UnredeemedEntitlement；新增 INV-7（redemption-family txn 同人綁定）。 |
+| 2026-05-27 | v1.0 | Founder | Accepted。業主自決；Compliance Counsel 之最終法律意見書（針對 §5.2 Negative #3 之 breakage dormancy period）為「正式上線前必出具」之 hard gate，但不阻擋 P1 ledger backbone 程式碼落地。SPEC-002 v0.1.14 同步擴展 §5 INV 表含 INV-7 + INV-2 / INV-4 公式對齊 `Liability.UnredeemedEntitlement.*`。 |

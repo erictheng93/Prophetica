@@ -62,12 +62,39 @@
     <h1>SPEC-002 — 資金安全與虛擬銅幣帳本</h1>
     <blockquote>
       <p>
-        優先級：<strong>P0</strong><br />版本：v0.1.13 · 最後更新：2026-05-27<br />依賴：無<br />被依賴：SPEC-003,
+        優先級：<strong>P0</strong><br />版本：v0.1.14 · 最後更新：2026-05-27<br />依賴：無<br />被依賴：SPEC-003,
         SPEC-004, SPEC-005, SPEC-011, SPEC-012, SPEC-024
       </p>
     </blockquote>
     <section class="changelog">
       <h2>變更紀錄</h2>
+      <article class="changelog-item">
+        <h3>v0.1.14</h3>
+        <p>
+          <a
+            href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+            >ADR-0007</a
+          >
+          v1.0 Accepted，§5 INV 表同步擴展：INV-2 公式追加
+          <code>Σ(Liability.UnredeemedEntitlement.*)</code>；INV-4 範圍追加
+          <code>Liability.UnredeemedEntitlement.X ≥ 0</code>；新增
+          <strong>INV-7</strong>（<code>redemption_purchase</code> /
+          <code>entitlement_fulfillment</code> /
+          <code>redemption_refund</code> /
+          <code>entitlement_expiry</code> 系列 txn 中，所有
+          <code>Player.Wallet.{X}</code> 與
+          <code>Liability.UnredeemedEntitlement.{Y}</code> entries 之
+          user_id 字尾必須相同，禁止跨會員兌換偽裝為轉點）；§4.2 Chart of
+          Accounts 新增 <code>Liability.UnredeemedEntitlement.{user_id}</code>、<code
+            >Revenue.VirtualGoodsSales.{sku_kind}</code
+          >、<code>Revenue.EntitlementBreakage</code> 三個科目。實作落地見
+          <a
+            href="../docs/implementation-plans/SPEC-024-redemption-entitlement-implementation-plan.html"
+            >SPEC-024 implementation plan</a
+          >；分錄詳規見
+          <a href="./SPEC-024-redemption-entitlement.html">SPEC-024</a> §4。
+        </p>
+      </article>
       <article class="changelog-item">
         <h3>v0.1.13</h3>
         <p>
@@ -489,6 +516,7 @@
   └─ Player.Wallet.{user_id}     對玩家的銅幣負債（每個玩家一個帳戶）
   └─ Player.Locked.{user_id}     鎖倉中（掛單未成交、結算中）
   └─ Player.Frozen.{user_id}     已凍結（Compliance 凍結 / EDD 待審）— 詳見 §4.2.1
+  └─ Liability.UnredeemedEntitlement.{user_id}   會員已扣點但尚未 fulfilled 之憑證；本質仍是平台對玩家負債（呼應 SPEC-024 §4.1 / ADR-0007）
 
 負債 — 應付帳款（Liabilities — Accounts Payable）
   └─ Liability.AccountsPayable.{partner_id}   B2B 業務合約應付（與玩家錢包零交集，呼應 SPEC-011 §6.4）
@@ -496,6 +524,8 @@
 收入（Revenue）
   └─ Revenue.TradingFee          交易手續費收入
   └─ Revenue.SettlementFee       reserved；結算費永久 0，production 不得入帳
+  └─ Revenue.VirtualGoodsSales.{sku_kind}   虛擬商品 / 服務銷貨收入（按 SKU 分類聚合；呼應 SPEC-024 §4.1）
+  └─ Revenue.EntitlementBreakage 未消費過期 entitlement 之 breakage 收入（呼應 SPEC-024 §7；年報必須獨立揭露）
 
 費用（Expenses）
   └─ Expense.PaymentGatewayFee   支付通路手續費
@@ -1056,8 +1086,8 @@ metadata: {
           <td>INV-2</td>
           <td>
             <code
-              >Σ(Player.Wallet.*) + Σ(Player.Locked.*) + Σ(Player.Frozen.*) =
-              平台對玩家負債總額</code
+              >Σ(Player.Wallet.*) + Σ(Player.Locked.*) + Σ(Player.Frozen.*) +
+              Σ(Liability.UnredeemedEntitlement.*) = 平台對玩家負債總額</code
             >
           </td>
           <td>每 5 分鐘對帳腳本</td>
@@ -1077,7 +1107,7 @@ metadata: {
         <tr>
           <td>INV-4</td>
           <td>
-            <code>每個 Player.Wallet.X 任意時刻 ≥ 0</code>（chargeback 反沖外）
+            <code>每個 Player.Wallet.X、Player.Frozen.X、Liability.UnredeemedEntitlement.X 任意時刻 ≥ 0</code>（Player.Wallet 之 chargeback 反沖外）
           </td>
           <td>每筆變動</td>
           <td>拒絕交易並回傳資金不足；chargeback 例外流程由 §8.2 補充</td>
@@ -1111,7 +1141,12 @@ metadata: {
             <code>txn_type = manual_points_adjustment</code> 且
             <code>metadata.adjustment_direction = 'deduct'</code> 且
             <code>metadata.actor_role ∈ {'admin','manager'}</code
-            >；此為手動發點成本沖回，非對外付款）。<strong>禁止</strong>流向
+            >；此為手動發點成本沖回，非對外付款）、(g)
+            <code>Liability.UnredeemedEntitlement.{user_id}</code>（<strong>僅限</strong>
+            <code>txn_type = redemption_purchase</code> 且 metadata 含
+            <code>order_id</code> / <code>sku_id</code> /
+            <code>audit_log_id</code>，呼應 SPEC-024 §4.3 / ADR-0007 §4.1）。
+            <strong>禁止</strong>流向
             <code>Liability.AccountsPayable.*</code> /
             <code>Bank.OperatingAccount.*</code> /
             <code>Expense.AffiliatePartnerFee</code> / 任何其他銀行 / 支付通路 /
@@ -1120,6 +1155,26 @@ metadata: {
           </td>
           <td>每筆 commit</td>
           <td>該筆交易拒絕提交，需符合 governance 流程才可加入例外</td>
+        </tr>
+        <tr>
+          <td>INV-7</td>
+          <td>
+            <code>txn_type ∈ {redemption_purchase, entitlement_fulfillment, redemption_refund, entitlement_expiry}</code>
+            之 ledger transaction 中，所有
+            <code>Player.Wallet.{X}</code> 與
+            <code>Liability.UnredeemedEntitlement.{Y}</code> entries 之
+            user_id 字尾必須相同（去重後僅 1 個）；禁止跨會員兌換（防止借
+            redemption 之名行 peer transfer 之實）。呼應
+            <a href="./SPEC-000-index.html#cross-cutting-q10">SPEC-000 §5 Q-10</a>
+            禁令；governance 由
+            <a
+              href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+              >ADR-0007</a
+            >
+            §4.3 承接。
+          </td>
+          <td>每筆 commit</td>
+          <td>該筆交易拒絕提交；視同 INV-6 等級紅線（P0 告警 + fail-closed）</td>
         </tr>
       </tbody>
     </table>
@@ -1152,7 +1207,14 @@ metadata: {
         正式 governance 追認與新增。v0.1.9 之
         <code>manual_points_adjustment</code> carve-out 屬 MVP
         產品範圍變更，已由 ADR-0006 v1.0.2 追認並同步至 DB trigger / SDK
-        invariant。任何進一步擴展（例如未來新增「合作戒癮機構捐贈」白名單目的地）須先寫新
+        invariant。v0.1.14 INV-2 / INV-4 再次擴展含
+        <code>Liability.UnredeemedEntitlement.*</code> + INV-6 (g) 兌換
+        carve-out + 新增 INV-7（redemption-family txn 同人綁定）由
+        <a
+          href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+          >ADR-0007 v1.0</a
+        >
+        正式 governance 追認與新增。任何進一步擴展（例如未來新增「合作戒癮機構捐贈」白名單目的地）須先寫新
         ADR，附業主 + Compliance + Legal 三方簽核，<strong>不可</strong>直接改
         trigger function。
       </p>
