@@ -5,6 +5,8 @@ pub const LEDGER_BOOTSTRAP_SCOPE: &str = "stub-only";
 /// so the default peak fee at 50 cents is 100 bps = 1.0% of notional.
 pub const DEFAULT_TAKER_FEE_CURVE_BPS: u32 = 400;
 
+use std::collections::BTreeSet;
+
 use thiserror::Error;
 
 /// Ledger amount stored in SPEC-002 internal minor units.
@@ -190,8 +192,61 @@ impl LedgerTransactionDraft {
         Ok(())
     }
 
+    /// Validates SPEC-002 v0.1.14 §5 INV-7 / ADR-0007 §4.3: redemption-family
+    /// transactions must not cross `user_id` boundaries.
+    ///
+    /// For every transaction whose [`Self::txn_kind`] is one of
+    /// [`LedgerTxnKind::RedemptionPurchase`], [`LedgerTxnKind::EntitlementFulfillment`],
+    /// [`LedgerTxnKind::RedemptionRefund`], or [`LedgerTxnKind::EntitlementExpiry`],
+    /// every entry on a `Player.Wallet.{user_id}` or
+    /// `Liability.UnredeemedEntitlement.{user_id}` account must share the same
+    /// `user_id` suffix; otherwise the draft is rejected.
+    ///
+    /// Rationale: INV-6 is an account-kind whitelist and cannot express the
+    /// cross-entry constraint that a redemption must stay within one player.
+    /// Without INV-7 a forged or buggy draft could move points from
+    /// `Player.Wallet.alice` into `Liability.UnredeemedEntitlement.bob`,
+    /// effectively a disguised peer transfer (forbidden by Q-10 and
+    /// SPEC-002 §4.4.7).
+    ///
+    /// This is the application-layer mirror of the DB CONSTRAINT TRIGGER
+    /// defined in `migrations/202605270003_inv7_redemption_same_user.sql`.
+    /// Both layers must remain consistent — see ADR-0007 §4.4.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LedgerValidationError::Inv7Violation`] when two or more
+    /// distinct `user_id` suffixes appear across the relevant accounts.
+    pub fn validate_redemption_same_user(&self) -> Result<(), LedgerValidationError> {
+        if !matches!(
+            self.txn_kind,
+            LedgerTxnKind::RedemptionPurchase
+                | LedgerTxnKind::EntitlementFulfillment
+                | LedgerTxnKind::RedemptionRefund
+                | LedgerTxnKind::EntitlementExpiry
+        ) {
+            return Ok(());
+        }
+
+        let mut user_ids: BTreeSet<&str> = BTreeSet::new();
+        for entry in &self.entries {
+            if let Some(uid) = extract_redemption_user_id(entry.account_code()) {
+                user_ids.insert(uid);
+            }
+        }
+
+        if user_ids.len() > 1 {
+            return Err(LedgerValidationError::Inv7Violation {
+                user_ids: user_ids.into_iter().map(String::from).collect(),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Validates the full ledger invariant set required at draft time:
-    /// INV-1 (balanced) + INV-6 (`Player.Wallet.*` outflow whitelist).
+    /// INV-1 (balanced) + INV-6 (`Player.Wallet.*` outflow whitelist) +
+    /// INV-7 (redemption-family same-user binding).
     ///
     /// INV-2 (account-sum reconciliation), INV-3 (`TrustAccount` equality),
     /// INV-4 (non-negative wallet), and INV-5 (append-only) are enforced at
@@ -205,6 +260,7 @@ impl LedgerTransactionDraft {
         self.validate_balanced()?;
         self.validate_reserved_revenue_accounts()?;
         self.validate_player_wallet_outflow_whitelist()?;
+        self.validate_redemption_same_user()?;
         Ok(())
     }
 
@@ -251,8 +307,25 @@ impl LedgerTransactionDraft {
         if code == "Expense.ManualPointsGrant" {
             return matches!(self.txn_kind, LedgerTxnKind::ManualPointsAdjustment);
         }
+        // Player.Wallet → Liability.UnredeemedEntitlement.{user_id} 限 redemption_purchase
+        // （SPEC-024 §4.3 / ADR-0007 §4.1 (g)）。user_id 同人綁定（X = Y）由 INV-7 強制，
+        // 不在本函式範圍 — 由 [`Self::validate_redemption_same_user`] 配合 DB trigger 承擔。
+        if code.starts_with("Liability.UnredeemedEntitlement.") {
+            return matches!(self.txn_kind, LedgerTxnKind::RedemptionPurchase);
+        }
         false
     }
+}
+
+/// Extracts the `{user_id}` suffix from a redemption-related account code.
+///
+/// Returns `Some(uid)` for `Player.Wallet.{uid}` and
+/// `Liability.UnredeemedEntitlement.{uid}`; `None` otherwise. Used by INV-7
+/// to detect cross-user redemption drafts (SPEC-024 §5 / ADR-0007 §4.3).
+#[inline]
+fn extract_redemption_user_id(code: &str) -> Option<&str> {
+    code.strip_prefix("Player.Wallet.")
+        .or_else(|| code.strip_prefix("Liability.UnredeemedEntitlement."))
 }
 
 /// Ledger transaction kind. Carried into invariant checks so that INV-6 can
@@ -280,6 +353,23 @@ pub enum LedgerTxnKind {
     Chargeback,
     /// MVP/admin/manager/affiliate manual points adjustment.
     ManualPointsAdjustment,
+    /// SPEC-024 §4.2: redemption order committed —
+    /// `Player.Wallet.{user_id} → Liability.UnredeemedEntitlement.{user_id}`.
+    /// Unlocks INV-6 (g); enforced by INV-7 to stay within the same user.
+    RedemptionPurchase,
+    /// SPEC-024 §4.2: entitlement delivered —
+    /// `Liability.UnredeemedEntitlement.{user_id} → Revenue.VirtualGoodsSales.*`.
+    /// Not a `Player.Wallet` outflow, so INV-6 does not apply; INV-7 still binds
+    /// any incidental `Player.Wallet` entry to the same user.
+    EntitlementFulfillment,
+    /// SPEC-024 §4.2 / §7: cancel-window refund —
+    /// `Liability.UnredeemedEntitlement.{user_id} → Player.Wallet.{user_id}`.
+    /// Not a `Player.Wallet` outflow; INV-7 binds the two sides to one user.
+    RedemptionRefund,
+    /// SPEC-024 §4.2 / §7: expiry sweep —
+    /// `Liability.UnredeemedEntitlement.{user_id} → Revenue.EntitlementBreakage`.
+    /// Not a `Player.Wallet` outflow; INV-7 still applies in case of mixed entries.
+    EntitlementExpiry,
     /// Catch-all for non-classified drafts (defaults to most restrictive INV-6 mode).
     #[default]
     Other,
@@ -324,6 +414,18 @@ pub enum LedgerValidationError {
     /// but production settlement fees are permanently disabled.
     #[error("Revenue.SettlementFee is reserved and must not receive production fee revenue")]
     ReservedSettlementFeeRevenue,
+    /// SPEC-002 v0.1.14 §5 INV-7 / ADR-0007 §4.3: a redemption-family
+    /// transaction touched more than one `user_id` across its
+    /// `Player.Wallet.{X}` and `Liability.UnredeemedEntitlement.{Y}` entries.
+    /// This is a disguised peer-transfer attempt and is rejected.
+    #[error(
+        "INV-7 violation: redemption-family txn must not cross user_id boundary \
+         (got user_ids: {user_ids:?}; see ADR-0007 §4.3 / SPEC-024 §5)"
+    )]
+    Inv7Violation {
+        /// Distinct, sorted `user_id` suffixes that appeared in the draft.
+        user_ids: Vec<String>,
+    },
 }
 
 #[cfg(test)]
@@ -745,5 +847,205 @@ mod tests {
 
         // 應該先觸發 Imbalanced 而非 Inv6Violation
         assert!(matches!(error, LedgerValidationError::Imbalanced { .. }));
+    }
+
+    // -------------------------------------------------------------------
+    // SPEC-024 §4.3 / ADR-0007 §4.1 (g): INV-6 redemption carve-out
+    // SPEC-024 §5 / ADR-0007 §4.3:        INV-7 same-user binding
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn inv6_redemption_purchase_to_unredeemed_entitlement_passes() {
+        // RedemptionPurchase: Player.Wallet.{X} outflow → UnredeemedEntitlement.{X} inflow
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new(
+                "Player.Wallet.user_42",
+                LedgerAmount::from_minor_units(5_000),
+            ),
+            LedgerEntryDraft::new(
+                "Liability.UnredeemedEntitlement.user_42",
+                LedgerAmount::from_minor_units(-5_000),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::RedemptionPurchase);
+
+        assert!(
+            transaction.validate().is_ok(),
+            "RedemptionPurchase Player.Wallet → UnredeemedEntitlement (same user) should pass"
+        );
+    }
+
+    #[test]
+    fn inv6_rejects_unredeemed_entitlement_target_when_kind_is_other() {
+        // 沒標 RedemptionPurchase kind → INV-6 (g) carve-out 不開放
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new(
+                "Player.Wallet.user_42",
+                LedgerAmount::from_minor_units(5_000),
+            ),
+            LedgerEntryDraft::new(
+                "Liability.UnredeemedEntitlement.user_42",
+                LedgerAmount::from_minor_units(-5_000),
+            ),
+        ]);
+
+        let Err(LedgerValidationError::Inv6Violation { account_code }) = transaction.validate()
+        else {
+            panic!("UnredeemedEntitlement target should require RedemptionPurchase kind");
+        };
+        assert_eq!(account_code, "Liability.UnredeemedEntitlement.user_42");
+    }
+
+    #[test]
+    fn inv6_rejects_unredeemed_entitlement_target_when_kind_is_trade() {
+        // Trade 不應能 unlock UnredeemedEntitlement 目的地（防止混用攻擊）
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new(
+                "Player.Wallet.user_42",
+                LedgerAmount::from_minor_units(5_000),
+            ),
+            LedgerEntryDraft::new(
+                "Liability.UnredeemedEntitlement.user_42",
+                LedgerAmount::from_minor_units(-5_000),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::Trade);
+
+        assert!(matches!(
+            transaction.validate(),
+            Err(LedgerValidationError::Inv6Violation { .. })
+        ));
+    }
+
+    #[test]
+    fn inv7_redemption_purchase_cross_user_rejected() {
+        // 偽裝 peer transfer：Player.Wallet.alice → UnredeemedEntitlement.bob
+        // INV-6 (g) 看起來通過（account-kind 合法），但 INV-7 必須擋下
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new(
+                "Player.Wallet.user_alice",
+                LedgerAmount::from_minor_units(5_000),
+            ),
+            LedgerEntryDraft::new(
+                "Liability.UnredeemedEntitlement.user_bob",
+                LedgerAmount::from_minor_units(-5_000),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::RedemptionPurchase);
+
+        let Err(LedgerValidationError::Inv7Violation { user_ids }) = transaction.validate() else {
+            panic!("cross-user RedemptionPurchase must violate INV-7");
+        };
+        assert_eq!(
+            user_ids,
+            vec!["user_alice".to_owned(), "user_bob".to_owned()]
+        );
+    }
+
+    #[test]
+    fn inv7_fulfillment_single_user_passes() {
+        // EntitlementFulfillment: UnredeemedEntitlement.{X} debit → Revenue.* credit
+        // 非 Player.Wallet outflow，INV-6 不觸發；INV-7 只看到 1 個 user_id 通過
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new(
+                "Liability.UnredeemedEntitlement.user_42",
+                LedgerAmount::from_minor_units(5_000),
+            ),
+            LedgerEntryDraft::new(
+                "Revenue.VirtualGoodsSales.digital",
+                LedgerAmount::from_minor_units(-5_000),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::EntitlementFulfillment);
+
+        assert!(transaction.validate().is_ok());
+    }
+
+    #[test]
+    fn inv7_fulfillment_cross_user_rejected() {
+        // 病態 fulfillment：UnredeemedEntitlement.alice + UnredeemedEntitlement.bob
+        // 同 txn debit，配 Revenue credit。balanced 但跨 user。
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new(
+                "Liability.UnredeemedEntitlement.user_alice",
+                LedgerAmount::from_minor_units(3_000),
+            ),
+            LedgerEntryDraft::new(
+                "Liability.UnredeemedEntitlement.user_bob",
+                LedgerAmount::from_minor_units(2_000),
+            ),
+            LedgerEntryDraft::new(
+                "Revenue.VirtualGoodsSales.digital",
+                LedgerAmount::from_minor_units(-5_000),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::EntitlementFulfillment);
+
+        assert!(matches!(
+            transaction.validate(),
+            Err(LedgerValidationError::Inv7Violation { .. })
+        ));
+    }
+
+    #[test]
+    fn inv7_refund_cross_user_rejected() {
+        // 病態 refund：UnredeemedEntitlement.alice → Player.Wallet.bob
+        // Player.Wallet 是 credit 所以 INV-6 不觸發；INV-7 必須擋
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new(
+                "Liability.UnredeemedEntitlement.user_alice",
+                LedgerAmount::from_minor_units(5_000),
+            ),
+            LedgerEntryDraft::new(
+                "Player.Wallet.user_bob",
+                LedgerAmount::from_minor_units(-5_000),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::RedemptionRefund);
+
+        let Err(LedgerValidationError::Inv7Violation { user_ids }) = transaction.validate() else {
+            panic!("cross-user RedemptionRefund must violate INV-7");
+        };
+        assert_eq!(
+            user_ids,
+            vec!["user_alice".to_owned(), "user_bob".to_owned()]
+        );
+    }
+
+    #[test]
+    fn inv7_expiry_single_user_passes() {
+        // EntitlementExpiry: UnredeemedEntitlement.{X} → Revenue.EntitlementBreakage
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new(
+                "Liability.UnredeemedEntitlement.user_42",
+                LedgerAmount::from_minor_units(1_000),
+            ),
+            LedgerEntryDraft::new(
+                "Revenue.EntitlementBreakage",
+                LedgerAmount::from_minor_units(-1_000),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::EntitlementExpiry);
+
+        assert!(transaction.validate().is_ok());
+    }
+
+    #[test]
+    fn inv7_does_not_apply_to_trade_with_two_wallets() {
+        // Trade kind 不觸發 INV-7 — Player.Wallet → Player.Wallet 跨 user 是 trade 合法路徑
+        // 確保 INV-7 不誤傷既有撮合流程
+        let transaction = LedgerTransactionDraft::new([
+            LedgerEntryDraft::new(
+                "Player.Wallet.user_alice",
+                LedgerAmount::from_minor_units(6_500),
+            ),
+            LedgerEntryDraft::new(
+                "Player.Wallet.user_bob",
+                LedgerAmount::from_minor_units(-6_500),
+            ),
+        ])
+        .with_kind(LedgerTxnKind::Trade);
+
+        assert!(transaction.validate().is_ok());
     }
 }
