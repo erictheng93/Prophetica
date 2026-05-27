@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPEC-024 Implementation Plan</title>
+    <style>
+      body {
+        font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+        margin: 24px;
+        line-height: 1.6;
+        color: #0f172a;
+      }
+      h1, h2, h3 { color: #0f172a; }
+      h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+      .meta { color: #334155; margin: 8px 0 18px; }
+      section { margin: 16px 0; }
+      ul, ol { margin: 8px 0 8px 22px; }
+      code, pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+      pre {
+        background: #f8fafc;
+        border: 1px solid #dbeafe;
+        padding: 10px;
+        overflow: auto;
+      }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid #dbeafe; padding: 8px; vertical-align: top; }
+      th { background: #f1f5f9; text-align: left; }
+      .warn {
+        background: #fff7ed;
+        border-left: 4px solid #f59e0b;
+        padding: 10px;
+        margin: 10px 0;
+      }
+      .note {
+        background: #ecfeff;
+        border-left: 4px solid #06b6d4;
+        padding: 10px;
+        margin: 10px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SPEC-024-redemption-entitlement Implementation Plan</h1>
+    <div class="meta">
+      <strong>對應規格：</strong>
+      <a href="../../specs/SPEC-024-redemption-entitlement.html"
+        >specs/SPEC-024-redemption-entitlement.html</a
+      ><br />
+      <strong>版本：</strong> v0.1.0（規格首版同日落地骨架）<br />
+      <strong>產出目標：</strong>
+      將 SPEC-024 規格層拆為可逐 PR 落地的工程骨架：DB schema、ledger
+      carve-out、proto 變更、service crate 範圍、CI gate、測試矩陣。本版本不寫
+      production 程式碼，目的是讓「兌換 / entitlement」工作流可被分派與排程。
+    </div>
+
+    <div class="warn">
+      <strong>前置條件：</strong>本 plan 所有 ledger / INV 變更動工前必須先
+      merge
+      <a
+        href="../architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+        >ADR-0007</a
+      >（Status = Accepted）。在 ADR-0007 落地前，本 plan 內列的 migration / SDK
+      / proto 變更皆<strong>不得</strong>送出 PR。
+    </div>
+
+    <section>
+      <h2>1. 工作分割總覽</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Phase</th>
+            <th>內容</th>
+            <th>產出</th>
+            <th>依賴</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>P0 — Governance</td>
+            <td>ADR-0007 accept；SPEC-002 v0.1.13 changelog 加 cross-link；SPEC-000 §5 P2 表加 SPEC-024</td>
+            <td>3 個文件 PR（已含本批）</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>P1 — Ledger Backbone</td>
+            <td>
+              proto enum 4 個新 txn_type；新 3 個 chart of accounts code；INV-6
+              white-list trigger 加 (g)；INV-7 trigger 新建；SDK
+              <code>is_inv6_whitelisted_target</code> + 新增
+              <code>validate_redemption_same_user</code>；wallet-ledger-service
+              migration 一支
+            </td>
+            <td>1 PR（ledger only，不含 catalog / fulfillment）</td>
+            <td>P0</td>
+          </tr>
+          <tr>
+            <td>P2 — Catalog &amp; Order Service</td>
+            <td>
+              新 crate <code>services/redemption-service</code>（library）+
+              binary <code>services/_binaries/redemption-api</code>；catalog
+              table、order state machine、idempotency 表
+            </td>
+            <td>1 PR</td>
+            <td>P1</td>
+          </tr>
+          <tr>
+            <td>P3 — Fulfillment Workers</td>
+            <td>
+              <code>digital_immediate</code> →
+              <code>digital_code</code> → <code>service_async</code> 三模式依序，
+              每模式獨立 PR
+            </td>
+            <td>3 PR</td>
+            <td>P2</td>
+          </tr>
+          <tr>
+            <td>P4 — Expiry / Breakage / Refund</td>
+            <td>過期 sweep job、自助取消窗口、SPEC-012 客服退款分錄整合</td>
+            <td>2 PR（sweep + refund）</td>
+            <td>P2 + SPEC-012</td>
+          </tr>
+          <tr>
+            <td>P5 — KYC / AML Hooks</td>
+            <td>
+              高額 SKU tier gate；<code>redemption.committed</code> 事件 →
+              SPEC-010 anti-fraud pipeline；SPEC-022 高風險裝置 +
+              redemption combo 告警
+            </td>
+            <td>1 PR</td>
+            <td>P2 + SPEC-005 + SPEC-010</td>
+          </tr>
+          <tr>
+            <td>P6 — Admin / Audit</td>
+            <td>後台兌換明細查詢、breakage 揭露報表、稽核證據集匯出</td>
+            <td>1 PR</td>
+            <td>P3 + P4</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>2. Chart of Accounts 變更（規格 §4.1）</h2>
+      <pre><code class="language-sql">-- 落地前先確認 ADR-0007 Accepted。
+-- ledger_accounts 之 type 對齊 SPEC-002 §4.2 既有 enum；token_kind 預設 'COPPER'。
+
+-- 1) 會員 entitlement 負債子科目（與 Player.Wallet 同層）
+INSERT INTO ledger_accounts (code, type, token_kind, metadata)
+VALUES
+  (
+    'Liability.UnredeemedEntitlement.{user_id}',  -- 樣板；實際以 user_id 取代
+    'liability',
+    'COPPER',
+    '{"scope": "per_user", "doc_ref": "SPEC-024 §4.1"}'::jsonb
+  )
+ON CONFLICT (code) DO NOTHING;
+
+-- 2) 虛擬商品銷貨收入（按 sku_kind 聚合，留待 OQ-1 收斂後決定粒度）
+INSERT INTO ledger_accounts (code, type, token_kind, metadata)
+VALUES
+  (
+    'Revenue.VirtualGoodsSales.digital',
+    'revenue',
+    'COPPER',
+    '{"doc_ref": "SPEC-024 §4.1"}'::jsonb
+  ),
+  (
+    'Revenue.VirtualGoodsSales.service',
+    'revenue',
+    'COPPER',
+    '{"doc_ref": "SPEC-024 §4.1"}'::jsonb
+  ),
+  (
+    'Revenue.EntitlementBreakage',
+    'revenue',
+    'COPPER',
+    '{"doc_ref": "SPEC-024 §4.1 / §7"}'::jsonb
+  )
+ON CONFLICT (code) DO NOTHING;
+</code></pre>
+
+      <div class="note">
+        <strong>per-user 帳戶建立時機：</strong><code>Liability.UnredeemedEntitlement.{user_id}</code>
+        採 lazy creation — 第一筆 redemption_purchase 寫入時若該 user
+        尚無此子科目，由 service 層在同 transaction 先 INSERT 帳戶再 INSERT
+        entries。同 <code>Player.Wallet.{user_id}</code> 之既有做法。
+      </div>
+    </section>
+
+    <section>
+      <h2>3. Proto 變更（規格 §4.2）</h2>
+      <p>
+        以下為
+        <a href="../../packages/proto/v1/ledger.proto"
+          >packages/proto/v1/ledger.proto</a
+        >
+        中 <code>TxnType</code> enum 之 <strong>規劃 diff</strong>；ADR-0007
+        Accepted 後另開 PR 套用並執行
+        <code>make proto</code>。在此之前
+        <strong>不得</strong>動 .proto 檔，避免 stub drift。
+      </p>
+      <pre><code class="language-diff">enum TxnType {
+   TXN_TYPE_UNSPECIFIED = 0;
+   TXN_TYPE_DEPOSIT = 1;
+   TXN_TYPE_ORDER_LOCK = 2;
+   TXN_TYPE_TRADE = 3;
+   TXN_TYPE_SETTLE = 4;
+   TXN_TYPE_MARKET_VOID_REFUND = 5;
+   TXN_TYPE_CHARGEBACK = 6;
+   TXN_TYPE_CS_COMPENSATION = 7;
+   TXN_TYPE_AFFILIATE_COMMISSION = 8;
+   TXN_TYPE_DMM_REBATE = 9;
+   TXN_TYPE_LM_REWARD = 10;
+   TXN_TYPE_FX_RECONCILE = 11;
+   TXN_TYPE_RECONCILIATION_ADJUST = 12;
++  TXN_TYPE_REDEMPTION_PURCHASE = 13;      // SPEC-024 §4.2
++  TXN_TYPE_ENTITLEMENT_FULFILLMENT = 14;  // SPEC-024 §4.2
++  TXN_TYPE_REDEMPTION_REFUND = 15;        // SPEC-024 §4.2 / §7
++  TXN_TYPE_ENTITLEMENT_EXPIRY = 16;       // SPEC-024 §4.2 / §7
+ }
+</code></pre>
+      <p>
+        JSON canonical mapping（對齊 ledger.proto 既有 lowercase 規則）：
+      </p>
+      <ul>
+        <li><code>TXN_TYPE_REDEMPTION_PURCHASE</code> → <code>"redemption_purchase"</code></li>
+        <li><code>TXN_TYPE_ENTITLEMENT_FULFILLMENT</code> → <code>"entitlement_fulfillment"</code></li>
+        <li><code>TXN_TYPE_REDEMPTION_REFUND</code> → <code>"redemption_refund"</code></li>
+        <li><code>TXN_TYPE_ENTITLEMENT_EXPIRY</code> → <code>"entitlement_expiry"</code></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4. INV-6 white-list trigger 擴展（規格 §4.3 / ADR-0007）</h2>
+      <p>
+        以下為對
+        <a
+          href="../../services/wallet-ledger-service/migrations/202605070004_inv6_outflow_whitelist.sql"
+          >migrations/202605070004_inv6_outflow_whitelist.sql</a
+        >
+        之 <strong>後續 migration</strong> 規劃內容。ADR-0007
+        Accepted 後另開檔（建議檔名
+        <code>202607NNNN_inv6_redemption_carveout.sql</code>，NNNN
+        為當批次序），<strong>不要</strong>就地修改既有 trigger 檔。
+      </p>
+      <pre><code class="language-sql">-- 新 migration：INV-6 white-list 追加 (g) Liability.UnredeemedEntitlement carve-out（ADR-0007 §4.1 (g)）
+-- 配合 INV-7 user_id 同人綁定（新 trigger，§5 本 plan）
+
+CREATE OR REPLACE FUNCTION fn_inv6_outflow_whitelist_check()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_account_code TEXT;
+    v_violation_account TEXT;
+BEGIN
+    SELECT code INTO v_account_code
+    FROM ledger_accounts WHERE id = NEW.account_id;
+
+    IF v_account_code IS NULL
+       OR v_account_code NOT LIKE 'Player.Wallet.%'
+       OR NEW.direction &lt;&gt; 1 THEN
+        RETURN NULL;
+    END IF;
+
+    SELECT a2.code INTO v_violation_account
+    FROM ledger_entries e2
+    JOIN ledger_accounts a2 ON e2.account_id = a2.id
+    WHERE e2.txn_id = NEW.txn_id
+      AND e2.direction = -1
+      AND NOT (
+          a2.code LIKE 'Player.Locked.%'
+          OR a2.code LIKE 'Player.Frozen.%'
+          OR a2.code = 'Revenue.TradingFee'
+          OR a2.code = 'Revenue.SettlementFee'
+          OR (a2.code LIKE 'Player.Wallet.%'
+              AND EXISTS (
+                  SELECT 1 FROM ledger_transactions t
+                  WHERE t.id = NEW.txn_id
+                    AND t.txn_type IN ('trade', 'settle')
+              ))
+          OR (a2.code LIKE 'Bank.TrustAccount.%'
+              AND EXISTS (
+                  SELECT 1 FROM ledger_transactions t
+                  WHERE t.id = NEW.txn_id
+                    AND t.txn_type = 'chargeback'
+              ))
+          OR (a2.code = 'Expense.ManualPointsGrant'
+              AND EXISTS (
+                  SELECT 1 FROM ledger_transactions t
+                  WHERE t.id = NEW.txn_id
+                    AND t.txn_type = 'manual_points_adjustment'
+                    AND t.metadata-&gt;&gt;'adjustment_direction' = 'deduct'
+                    AND t.metadata-&gt;&gt;'actor_role' IN ('admin', 'manager')
+                    AND COALESCE(t.metadata-&gt;&gt;'audit_log_id', '') &lt;&gt; ''
+              ))
+          -- (g) Liability.UnredeemedEntitlement.{user_id} 限 redemption_purchase（ADR-0007 §4.1）
+          OR (a2.code LIKE 'Liability.UnredeemedEntitlement.%'
+              AND EXISTS (
+                  SELECT 1 FROM ledger_transactions t
+                  WHERE t.id = NEW.txn_id
+                    AND t.txn_type = 'redemption_purchase'
+                    AND COALESCE(t.metadata-&gt;&gt;'order_id', '') &lt;&gt; ''
+                    AND COALESCE(t.metadata-&gt;&gt;'sku_id', '') &lt;&gt; ''
+                    AND COALESCE(t.metadata-&gt;&gt;'audit_log_id', '') &lt;&gt; ''
+              ))
+      )
+    LIMIT 1;
+
+    IF v_violation_account IS NOT NULL THEN
+        RAISE EXCEPTION
+            'INV-6 violation in txn %: Player.Wallet outflow targets non-whitelisted account "%"',
+            NEW.txn_id, v_violation_account
+        USING ERRCODE = '40004',
+              HINT = 'See ADR-0007 §4.1 (g) for redemption carve-out; SPEC-024 §4.3.';
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+</code></pre>
+    </section>
+
+    <section>
+      <h2>5. INV-7 trigger（user_id 同人綁定）— 新建</h2>
+      <pre><code class="language-sql">-- 新 trigger：INV-7（SPEC-024 §5）— redemption / fulfillment / refund / expiry 系列
+-- txn 中，所有 Player.Wallet.{X} 與 Liability.UnredeemedEntitlement.{Y} entries 必須 X = Y。
+--
+-- 為何不靠 application：service 層 bug 或 admin 後台直連 PG 可能繞過；INV-7
+-- 三層保護（CI grep + SDK validate + DB trigger）對齊 INV-6 之安全強度。
+
+CREATE OR REPLACE FUNCTION fn_inv7_redemption_same_user_check()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_txn_type TEXT;
+    v_user_ids TEXT[];
+BEGIN
+    SELECT txn_type INTO v_txn_type
+    FROM ledger_transactions WHERE id = NEW.txn_id;
+
+    IF v_txn_type NOT IN (
+        'redemption_purchase',
+        'entitlement_fulfillment',
+        'redemption_refund',
+        'entitlement_expiry'
+    ) THEN
+        RETURN NULL;
+    END IF;
+
+    -- 收集本 txn 中所有 Player.Wallet.{X} / Liability.UnredeemedEntitlement.{Y}
+    -- entries 的 user_id 字尾，必須去重後只有 1 個（即同人）
+    SELECT ARRAY_AGG(DISTINCT
+        regexp_replace(a.code, '^(Player\.Wallet|Liability\.UnredeemedEntitlement)\.', '')
+    )
+    INTO v_user_ids
+    FROM ledger_entries e
+    JOIN ledger_accounts a ON e.account_id = a.id
+    WHERE e.txn_id = NEW.txn_id
+      AND (
+          a.code LIKE 'Player.Wallet.%'
+          OR a.code LIKE 'Liability.UnredeemedEntitlement.%'
+      );
+
+    IF v_user_ids IS NULL OR array_length(v_user_ids, 1) IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    IF array_length(v_user_ids, 1) &gt; 1 THEN
+        RAISE EXCEPTION
+            'INV-7 violation in txn %: redemption-family txn must not cross user_id boundary (got: %)',
+            NEW.txn_id, v_user_ids
+        USING ERRCODE = '40004',
+              HINT = 'See SPEC-024 §5 INV-7; SPEC-002 §4.4.7 / Q-10 prohibits peer transfer.';
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE CONSTRAINT TRIGGER trg_inv7_redemption_same_user
+AFTER INSERT ON ledger_entries
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION fn_inv7_redemption_same_user_check();
+</code></pre>
+      <div class="warn">
+        <strong>效能</strong>：INV-7 在每筆 ledger_entries insert 跑一次
+        regex；對 redemption 類 txn（typically 2 entries）overhead 可忽略。若
+        future workflow 把 redemption 與 trade 等高頻 txn 混在大 batch 內，
+        應切 statement-level trigger，呼應 ADR-0006 §5.2 Negative #2 的策略。
+      </div>
+    </section>
+
+    <section>
+      <h2>6. SDK 變更</h2>
+      <p>
+        在
+        <a href="../../crates/sdk/src/ledger/mod.rs"
+          >crates/sdk/src/ledger/mod.rs</a
+        >
+        中：
+      </p>
+      <ol>
+        <li>
+          <code>is_inv6_whitelisted_target()</code> 增加
+          <code>Liability.UnredeemedEntitlement.*</code> 分支（限
+          <code>txn_kind = RedemptionPurchase</code>，需檢查
+          metadata 含 <code>order_id</code> / <code>sku_id</code> /
+          <code>audit_log_id</code>）。
+        </li>
+        <li>
+          新增 <code>LedgerTxnKind</code> 變體：
+          <code>RedemptionPurchase</code>、<code>EntitlementFulfillment</code>、<code>RedemptionRefund</code>、<code>EntitlementExpiry</code>。
+        </li>
+        <li>
+          新增 <code>LedgerTransactionDraft::validate_redemption_same_user()</code>
+          — 在 application 層做 INV-7 早期攔截（呼應 ADR-0006 §4.2.2 之三層保護
+          pattern）。
+        </li>
+        <li>
+          新增 <code>LedgerError::Inv7Violation</code> variant。
+        </li>
+        <li>
+          測試：故意建構跨 user_id 之 redemption_purchase draft，驗
+          <code>validate()</code> 立即回傳 <code>Inv7Violation</code>；故意
+          bypass validate 直接寫入 DB（pg pool 整合測試）驗 trigger fail。
+        </li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>7. CI sentinel-scan 擴充</h2>
+      <p>
+        ADR-0006 §4.2.3 引述「CI sentinel-scan grep gate」；本 plan
+        順手把該 gate 之檔案路徑固定下來，並加入 SPEC-024 之新禁字：
+      </p>
+      <pre><code class="language-yaml">## .github/workflows/wallet-invariant-scan.yml（規劃路徑）
+## 觸發：每個 PR；失敗時 block merge。
+## 對應：ADR-0006 §4.2.3 / SPEC-024 §4.3 / SPEC-002 §4.4.7
+name: wallet-invariant-scan
+on: [pull_request]
+jobs:
+  red-line-grep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: INV-6 / R-1 紅線檢查
+        run: |
+          rg -n \
+            -e 'Player\.Wallet.*-&gt;\s*AccountsPayable' \
+            -e 'Player\.Wallet.*-&gt;\s*OperatingAccount' \
+            -e 'wallet_to_payable|cash_out_player_pts|redeem_points_to_cash' \
+            --type rust services/ crates/ \
+            &amp;&amp; { echo '::error::INV-6 / R-1 violation: Player.Wallet outflow to external assets'; exit 1; } \
+            || true
+      - name: SPEC-024 / Q-10 紅線檢查（peer transfer）
+        run: |
+          rg -n \
+            -e 'peer_transfer|wallet_to_wallet_gift|gift_points_to' \
+            -e 'Player\.PendingTransfer\.' \
+            -e 'Revenue\.PeerTransferFee' \
+            --type rust services/ crates/ \
+            &amp;&amp; { echo '::error::Q-10 violation: peer point transfer is prohibited'; exit 1; } \
+            || true
+</code></pre>
+      <div class="note">
+        <strong>同步動作</strong>：SPEC-002 implementation plan §3.2 已補上對本
+        gate 之指標連結；ADR-0006 §4.2.3 之「待寫」CI grep gate 落地於此檔。
+      </div>
+    </section>
+
+    <section>
+      <h2>8. Service 骨架（規格 §3）</h2>
+      <pre><code class="language-text">services/
+└─ redemption-service/              ← library crate（domain logic）
+   ├─ Cargo.toml
+   ├─ src/
+   │  ├─ lib.rs
+   │  ├─ catalog/     (CatalogItem, SKU, Stock)
+   │  ├─ order/       (Order state machine, idempotency)
+   │  ├─ entitlement/ (state machine, lifecycle events)
+   │  ├─ fulfillment/ (digital_immediate / digital_code / service_async)
+   │  └─ refund/      (cancel window, CS-driven refund)
+   └─ migrations/                   ← redemption 專屬 schema
+services/_binaries/
+└─ redemption-api/                  ← binary（thin axum + tonic）
+   ├─ Cargo.toml
+   └─ src/main.rs
+</code></pre>
+      <p>
+        所有 ledger 寫入<strong>不</strong>直接呼叫 wallet-ledger-service 之
+        PG client，而是透過
+        <code>crates/sdk/src/ledger</code> 之 <code>LedgerClient</code>，
+        確保 INV-6 / INV-7 application-level validate 都先過一次。
+      </p>
+    </section>
+
+    <section>
+      <h2>9. 測試矩陣</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>測試類別</th>
+            <th>內容</th>
+            <th>必過門檻</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Migration / Trigger</td>
+            <td>
+              新增 ledger_accounts；INV-6 trigger 通過 redemption_purchase
+              合法路徑；故意把 dest 換成 <code>Liability.AccountsPayable.*</code>
+              必 fail
+            </td>
+            <td>100% 路徑覆蓋</td>
+          </tr>
+          <tr>
+            <td>INV-7 同人綁定</td>
+            <td>
+              redemption_purchase 跨 user_id 必 fail；fulfillment / refund /
+              expiry 跨 user_id 必 fail；同 user 之合法路徑通過
+            </td>
+            <td>SDK 與 PG 雙層測試皆通過</td>
+          </tr>
+          <tr>
+            <td>Order 狀態機</td>
+            <td>所有合法 / 非法 transition；idempotency 重送回原結果</td>
+            <td>狀態圖每 transition 至少 1 test</td>
+          </tr>
+          <tr>
+            <td>Cancel 窗口</td>
+            <td>窗口內取消通過；窗口外取消必 fail</td>
+            <td>2 test（pass / fail）</td>
+          </tr>
+          <tr>
+            <td>過期 sweep</td>
+            <td>邊界（剛過期 vs 未過期）；breakage 帳目正確</td>
+            <td>property test</td>
+          </tr>
+          <tr>
+            <td>KYC tier gate</td>
+            <td>高額 SKU 在 Tier 1 必 fail，Tier 2 通過</td>
+            <td>2 test 起</td>
+          </tr>
+          <tr>
+            <td>CI sentinel-scan</td>
+            <td>故意 PR 寫入 <code>peer_transfer</code> 字串 — gate 必 block</td>
+            <td>regression case 留在 fixtures</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>10. 追溯關係</h2>
+      <ul>
+        <li>
+          <a href="../../specs/SPEC-024-redemption-entitlement.html"
+            >SPEC-024 規格</a
+          >
+        </li>
+        <li>
+          <a
+            href="../architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md"
+            >ADR-0006</a
+          >（INV-6 governance 基礎）
+        </li>
+        <li>
+          <a
+            href="../architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+            >ADR-0007</a
+          >（本 plan governance 簽核）
+        </li>
+        <li>
+          <a href="../../specs/SPEC-002-funds-safety.html">SPEC-002 §4.4.7 / §5</a>
+          （Q-10 禁令對照）
+        </li>
+        <li>
+          <a href="./SPEC-002-funds-safety-implementation-plan.html"
+            >SPEC-002 implementation plan §3.2</a
+          >（INV-6 既有 trigger 落地點）
+        </li>
+      </ul>
+    </section>
+  </body>
+</html>

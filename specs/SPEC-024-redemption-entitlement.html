@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPEC-024-redemption-entitlement</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans TC", "PingFang TC", sans-serif;
+        margin: 2rem;
+        line-height: 1.5;
+      }
+      img { max-width: 100%; }
+      code, pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+      pre {
+        overflow: auto;
+        padding: 1rem;
+        background: #f6f8fa;
+        border: 1px solid #d8dee3;
+      }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #d0d7de; padding: 0.4rem; vertical-align: top; }
+      a { color: #0969da; }
+      .changelog h2 { margin-top: 2rem; }
+      .changelog-item { margin: 1rem 0 1.25rem; }
+      .changelog-item h3 { margin: 0.25rem 0; font-size: 1.1rem; }
+      .changelog-item p { margin: 0.25rem 0; }
+      .changelog-item ol { margin: 0.5rem 0 0.5rem 1.25rem; padding: 0; }
+    </style>
+  </head>
+  <body>
+    <h1>SPEC-024 — 銅幣兌換、虛擬商品與會員 Entitlement</h1>
+    <blockquote>
+      <p>
+        優先級：<strong>P2</strong><br />
+        版本：v0.1.0 · 最後更新：2026-05-27<br />
+        依賴：SPEC-002, SPEC-005, SPEC-010<br />
+        被依賴：未來商城前端 SPEC（待立案）
+      </p>
+    </blockquote>
+    <section class="changelog">
+      <h2>變更紀錄</h2>
+      <article class="changelog-item">
+        <h3>v0.1.0</h3>
+        <p>
+          首版。回應
+          <a href="./SPEC-000-index.html#cross-cutting-q10">SPEC-000 §5 Q-10</a>
+          業主決議「銅幣點數僅可用於購買虛擬商品或兌換特定服務」之正面流程定義。本
+          SPEC 涵蓋：(1) catalog / SKU / 庫存模型；(2) redemption order
+          生命週期與 idempotency；(3) entitlement 生命週期狀態機（issued →
+          fulfilled → consumed / refunded / expired）；(4) 對應 ledger 分錄與
+          INV-6 carve-out 需求（由
+          <a
+            href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+            >ADR-0007</a
+          >
+          governance）；(5) v1 凍結 entitlement <strong>不可轉贈</strong>
+          之邊界（Q-10 雖允許各商品規格另行定義，但本 SPEC
+          選擇最保守解；放寬須另寫修訂版本並補 KYC / AML 評估）。實作細節見
+          <a
+            href="../docs/implementation-plans/SPEC-024-redemption-entitlement-implementation-plan.html"
+            >SPEC-024 implementation plan</a
+          >。
+        </p>
+      </article>
+    </section>
+    <hr />
+
+    <h2>1. Objective</h2>
+    <p>
+      定義會員以銅幣（SPEC-002）換取平台內<strong>虛擬商品</strong>或<strong>服務權益</strong>之完整流程；同時把
+      <a href="./SPEC-000-index.html#cross-cutting-q10">Q-10</a>
+      所允許的正面用途規格化，避免「禁止會員轉點，但商城又沒寫好」之灰色地帶被當作後門。
+    </p>
+    <blockquote>
+      <p>
+        <strong>名詞</strong>：本 SPEC 統一以
+        <em>redemption</em>（兌換）指「會員以銅幣換取站內權益」之單一動作；以
+        <em>entitlement</em>（權益）指「兌換後會員所持有、可在後續時刻消費或被
+        fulfilled 之站內憑證」。
+      </p>
+    </blockquote>
+
+    <h2>2. Scope &amp; Non-goals</h2>
+
+    <h3>2.1 In Scope（本 SPEC v0.1）</h3>
+    <ul>
+      <li>
+        Catalog / SKU 資料模型（含商品分類、定價、庫存、上下架）
+      </li>
+      <li>
+        Redemption order：placement、idempotency、扣點、寫入 ledger
+      </li>
+      <li>
+        Entitlement 生命週期：<code>issued</code> →
+        <code>fulfilled</code> | <code>refunded</code> | <code>expired</code>
+      </li>
+      <li>
+        Fulfillment 觸發：同步交付（數位 token / 啟用碼）與非同步交付（人工服務 /
+        外部 partner 履約）
+      </li>
+      <li>
+        取消 / 退款窗口（fulfillment 前可退；fulfillment 後不可退，除非 SPEC-012
+        客服流程介入）
+      </li>
+      <li>
+        Entitlement 到期與「未使用銷貨折讓」（breakage）收入認列
+      </li>
+      <li>
+        新 ledger txn_type 與 Chart of Accounts 擴展（由 ADR-0007
+        governance）
+      </li>
+      <li>
+        新不變式 INV-7（user_id 同人綁定 + UnredeemedEntitlement
+        非負），呼應 SPEC-002 §5 INV-1 ~ INV-6
+      </li>
+      <li>
+        反洗錢 / 反濫用觸發點：高頻 / 大額兌換之 SPEC-010 偵測 hook
+      </li>
+    </ul>
+
+    <h3>2.2 Out of Scope（本 SPEC 不處理）</h3>
+    <ul>
+      <li>
+        <strong>會員間點數轉移 / 贈送</strong>：由
+        <a href="./SPEC-002-funds-safety.html">SPEC-002 §4.4.7</a> +
+        <a href="./SPEC-000-index.html#cross-cutting-q10">Q-10</a>
+        永久禁止。任何兌換流程不得提供「指定收件人為他人」之收件欄位。
+      </li>
+      <li>
+        <strong>Entitlement 之轉贈</strong>：本 SPEC v0.1 凍結為
+        <strong>不可轉贈</strong>。Q-10
+        雖允許「各商品規格另行定義轉贈規則」，本 SPEC 行使該允許之「最保守解」—
+        所有 entitlement 與兌換時的 <code>user_id</code>
+        綁死，且不得轉移擁有權。未來放寬必須另開 SPEC 修訂版本，並一併補 KYC
+        tier 升級 / SPEC-010 AML 偵測 / Entitlement 二級市場政策三項評估。
+      </li>
+      <li>
+        <strong>Entitlement 兌回銅幣</strong>：永久禁止；fulfillment 後 entitlement
+        只能被消費或過期，<strong>不</strong>可逆向轉成
+        <code>Player.Wallet</code>。
+      </li>
+      <li>
+        <strong>外部資產（金幣 / 法幣）出帳</strong>：兌換物之外部成本由
+        <code>Liability.AccountsPayable.{partner_id}</code> 與
+        <code>Bank.OperatingAccount.*</code> 獨立軌道處理（SPEC-011 §6.4
+        既有），與本 SPEC 之 player wallet outflow 完全零交集。
+      </li>
+      <li>
+        商城 UI / UX / 推薦演算法 / 行銷活動：留給未來前端 SPEC。
+      </li>
+    </ul>
+
+    <h2>3. Domain Model</h2>
+
+    <h3>3.1 Catalog · SKU · Stock</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>實體</th>
+          <th>說明</th>
+          <th>關鍵欄位（規格層）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>CatalogItem</code></td>
+          <td>商品主檔；一個 item 可有多 SKU（如顏色 / 規格）</td>
+          <td>
+            <code>item_id</code>, <code>kind</code>（<code>digital</code> /
+            <code>service</code> / <code>physical</code>）, <code>status</code>，<code>visibility</code>，<code>category</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>SKU</code></td>
+          <td>可被兌換之最小單位；定價與庫存掛在此</td>
+          <td>
+            <code>sku_id</code>, <code>item_id</code>,
+            <code>price_minor_units</code>（銅幣，對齊 SPEC-002 §3.2），<code>fulfillment_mode</code>，<code>entitlement_ttl_days</code>
+          </td>
+        </tr>
+        <tr>
+          <td><code>Stock</code></td>
+          <td>
+            數位 / 服務商品多為「無限庫存或合約上限」；實體商品須對接外部
+            inventory
+          </td>
+          <td>
+            <code>sku_id</code>, <code>kind</code>（<code>unlimited</code> /
+            <code>finite</code> / <code>partner_managed</code>），<code>available_qty</code>，<code>reservation_ttl_seconds</code>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <blockquote>
+      <p>
+        <strong>v1 邊界</strong>：本 SPEC 預設只開
+        <code>kind = digital</code> 與 <code>kind = service</code>
+        兩類；<code>physical</code> 為保留欄位，未啟用前任何商品 PR
+        不得設此值（CI 檢查）。
+      </p>
+    </blockquote>
+
+    <h3>3.2 Redemption Order</h3>
+    <p>
+      一張 redemption order 對應「會員 A 以 N 銅幣兌換 SKU
+      之單次嘗試」。狀態機：
+    </p>
+    <pre><code class="language-text">[draft] → [submitted] → [accepted] → [committed] → [fulfilled]
+                                          ↓             ↓
+                                     [refunded]    [refunded](客服特批)
+                                          ↓
+                                      [expired]
+                                          ↓
+                                     [breakage]
+</code></pre>
+    <ul>
+      <li>
+        <code>submitted</code>：玩家確認下單；後端校驗 SKU 在線、庫存可預留、會員
+        KYC 門檻達標、會員可用銅幣 ≥ 售價 + buffer
+      </li>
+      <li>
+        <code>accepted</code>：庫存預留成功（<code>reservation_ttl_seconds</code>
+        內未進入 committed 則自動釋放）
+      </li>
+      <li>
+        <code>committed</code>：寫入 ledger 之
+        <code>redemption_purchase</code> 交易成功，
+        <code>Liability.UnredeemedEntitlement.{user_id}</code> 已產生餘額；
+        entitlement 已 <code>issued</code>
+      </li>
+      <li>
+        <code>fulfilled</code>：履約已完成（數位即時，或服務 worker
+        回報）；entitlement 進入 <code>fulfilled</code> 終態
+      </li>
+      <li>
+        <code>refunded</code>：取消窗口內或客服核准之退點；ledger 反向
+        <code>redemption_refund</code>
+      </li>
+      <li>
+        <code>expired</code> → <code>breakage</code>：超過
+        <code>entitlement_ttl_days</code> 仍未 fulfilled；entitlement
+        作廢，liability 結轉為 <code>Revenue.EntitlementBreakage</code>
+      </li>
+    </ul>
+
+    <h3>3.3 Entitlement 生命週期</h3>
+    <p>
+      每筆成功的 redemption order 都會在 <code>committed</code> 時 issue 一筆
+      entitlement。Entitlement 為
+      <strong>非可轉移</strong>之站內憑證，與兌換時的
+      <code>user_id</code> 永久綁定。
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>狀態</th>
+          <th>進入條件</th>
+          <th>離開條件</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>issued</code></td>
+          <td>redemption order committed</td>
+          <td>fulfilled / refunded / expired</td>
+        </tr>
+        <tr>
+          <td><code>fulfilled</code></td>
+          <td>履約 worker 回報成功；或同步交付完成</td>
+          <td>consumed（若有「使用」語意）；否則為終態</td>
+        </tr>
+        <tr>
+          <td><code>consumed</code></td>
+          <td>票券 / 服務時段被實際使用（非必經）</td>
+          <td>終態</td>
+        </tr>
+        <tr>
+          <td><code>refunded</code></td>
+          <td>取消窗口內取消，或客服核准退點</td>
+          <td>終態</td>
+        </tr>
+        <tr>
+          <td><code>expired</code></td>
+          <td>超過 <code>entitlement_ttl_days</code> 仍非 fulfilled</td>
+          <td>自動結轉 breakage 後為終態</td>
+        </tr>
+      </tbody>
+    </table>
+    <blockquote>
+      <p>
+        <strong>不可轉移強制點</strong>：entitlement 表必含
+        <code>owner_user_id</code> 欄位，<strong>所有</strong>查詢 / 履約 /
+        consumption API 必須以該欄為唯一所有者識別，禁止任何「指定他人為
+        owner」「贈送」「轉售」介面。對應 INV-7（見 §5）。
+      </p>
+    </blockquote>
+
+    <h3>3.4 Fulfillment 模式</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>fulfillment_mode</th>
+          <th>典型商品</th>
+          <th>履約延遲</th>
+          <th>備註</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>digital_immediate</code></td>
+          <td>站內頭像框、徽章、表情包</td>
+          <td>commit 後 &lt; 1s</td>
+          <td>同 transaction 寫入 ledger + entitlement + 啟用，最簡</td>
+        </tr>
+        <tr>
+          <td><code>digital_code</code></td>
+          <td>第三方平台啟用碼</td>
+          <td>commit 後 &lt; 30s</td>
+          <td>從 vault 抓未發放 code；entitlement 變為「持碼狀態」</td>
+        </tr>
+        <tr>
+          <td><code>service_async</code></td>
+          <td>VIP 諮詢、人工服務、外部 partner 履約</td>
+          <td>分鐘 ~ 數日</td>
+          <td>worker 訂閱事件、回報結果；entitlement 在 issued 至 fulfilled 間</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>4. Ledger 整合</h2>
+    <blockquote>
+      <p>
+        全部 4 個新 txn_type 與 3 個新 Chart of Accounts 科目，
+        governance 走
+        <a
+          href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+          >ADR-0007</a
+        >。本節為規格層；分錄範本 / migration / SDK validate 變更見
+        <a
+          href="../docs/implementation-plans/SPEC-024-redemption-entitlement-implementation-plan.html"
+          >SPEC-024 implementation plan</a
+        >。
+      </p>
+    </blockquote>
+
+    <h3>4.1 新增 Chart of Accounts 科目</h3>
+    <pre><code class="language-text">負債（Liabilities）
+  └─ Liability.UnredeemedEntitlement.{user_id}   會員已扣點但尚未 fulfilled 之憑證；本質仍是平台對玩家之負債（換成「給商品 / 服務」之承諾）
+
+收入（Revenue）
+  └─ Revenue.VirtualGoodsSales.{sku_kind}        虛擬商品 / 服務銷貨收入（按 SKU 分類聚合）
+  └─ Revenue.EntitlementBreakage                  未消費過期憑證認列之 breakage 收入
+</code></pre>
+
+    <h3>4.2 新增 ledger <code>txn_type</code></h3>
+    <table>
+      <thead>
+        <tr>
+          <th>txn_type</th>
+          <th>典型分錄（簡述）</th>
+          <th>觸發點</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>redemption_purchase</code></td>
+          <td>
+            <code>Player.Wallet.{X} +Y / Liability.UnredeemedEntitlement.{X} -Y</code>
+          </td>
+          <td>order 進入 <code>committed</code></td>
+        </tr>
+        <tr>
+          <td><code>entitlement_fulfillment</code></td>
+          <td>
+            <code>Liability.UnredeemedEntitlement.{X} +Y / Revenue.VirtualGoodsSales.{kind} -Y</code>
+          </td>
+          <td>履約 worker 回報成功</td>
+        </tr>
+        <tr>
+          <td><code>redemption_refund</code></td>
+          <td>
+            <code>Liability.UnredeemedEntitlement.{X} +Y / Player.Wallet.{X} -Y</code>
+          </td>
+          <td>fulfillment 前取消，或客服核准退點（需 SPEC-012 4-eye）</td>
+        </tr>
+        <tr>
+          <td><code>entitlement_expiry</code></td>
+          <td>
+            <code>Liability.UnredeemedEntitlement.{X} +Y / Revenue.EntitlementBreakage -Y</code>
+          </td>
+          <td>過期 sweep job</td>
+        </tr>
+      </tbody>
+    </table>
+    <blockquote>
+      <p>
+        所有四種 txn_type 中 <code>Player.Wallet.{X}</code> 與
+        <code>Liability.UnredeemedEntitlement.{X}</code> 之 <code>X</code> 必須是
+        <strong>同一個</strong> <code>user_id</code>；跨 user 配對由 INV-7
+        擋下（§5）。Proto enum 新增 4 個值之具體 ID 配置由 ADR-0007 §4 與 plan §3
+        定義。
+      </p>
+    </blockquote>
+
+    <h3>4.3 INV-6 carve-out 需求</h3>
+    <p>
+      新增 <code>redemption_purchase</code> 為 <code>Player.Wallet.*</code> outflow
+      的合法新目的地 — 即 ADR-0006 §4.1 INV-6 表的 (g) 行：
+    </p>
+    <pre><code class="language-text">(g) Liability.UnredeemedEntitlement.{user_id}
+    僅限：
+      - txn_type = redemption_purchase
+      - 配對之 Player.Wallet.{user_id} 與 Liability.UnredeemedEntitlement.{user_id} user_id 完全相同
+      - metadata 必含：sku_id、order_id、idempotency_key、audit_log_id
+</code></pre>
+    <blockquote>
+      <p>
+        此 carve-out 為「平台負債型態轉換」而非「銅幣變現」：玩家未取得外部資產，
+        平台對玩家之總負債維持不變（Player.Wallet 減少 = UnredeemedEntitlement
+        增加），呼應 ADR-0006 §1.2 R-1 紅線之精神。
+      </p>
+    </blockquote>
+
+    <h2>5. 不變式擴展</h2>
+    <p>
+      本 SPEC 對 SPEC-002 §5 INV 表做兩件事：擴展既有 INV-2 / INV-4，新增
+      INV-7。governance 由 ADR-0007 追認（同 ADR-0006 對 Frozen / INV-6
+      之模式）。
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>等式 / 規則</th>
+          <th>檢查頻率</th>
+          <th>違反處理</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>INV-2（擴展）</td>
+          <td>
+            <code>
+              Σ(Player.Wallet.*) + Σ(Player.Locked.*) + Σ(Player.Frozen.*) +
+              Σ(Liability.UnredeemedEntitlement.*) = 平台對玩家負債總額
+            </code>
+          </td>
+          <td>每 5 分鐘對帳腳本</td>
+          <td>記錄 <code>Suspense.Reconciliation</code>，啟告警 + 人工稽核</td>
+        </tr>
+        <tr>
+          <td>INV-4（擴展）</td>
+          <td>
+            每個 <code>Liability.UnredeemedEntitlement.X</code> 任意時刻 ≥ 0（無
+            chargeback 例外）
+          </td>
+          <td>每筆變動</td>
+          <td>拒絕交易；不得 issue 超出餘額之 entitlement 履約</td>
+        </tr>
+        <tr>
+          <td><strong>INV-7（新增）</strong></td>
+          <td>
+            <code>txn_type ∈ {redemption_purchase, entitlement_fulfillment, redemption_refund, entitlement_expiry}</code>
+            之交易中，所有
+            <code>Player.Wallet.{X}</code> 與
+            <code>Liability.UnredeemedEntitlement.{Y}</code> entries 之
+            <code>user_id</code> 必須相同（<code>X = Y</code>），即<strong>禁止跨會員兌換</strong>。
+          </td>
+          <td>每筆 commit（DB CONSTRAINT TRIGGER）</td>
+          <td>該筆交易拒絕提交；視同 INV-6 等級違規</td>
+        </tr>
+      </tbody>
+    </table>
+    <blockquote>
+      <p>
+        <strong>為何需要 INV-7</strong>：若僅靠 INV-6 white-list
+        允許「Player.Wallet → UnredeemedEntitlement」，惡意 / 漏洞 application
+        可寫入「Player.Wallet.A → UnredeemedEntitlement.B」之分錄 — 形式上
+        balanced、INV-6 white-list 也通過（目的地 account kind 合法），但實質是
+        wallet-to-wallet 跨會員轉點之偽裝，違反
+        <a href="./SPEC-000-index.html#cross-cutting-q10">Q-10</a>。INV-7 把
+        user_id 同人綁定下沉到 DB 層強制，三層保護（CI / SDK / DB）對齊 INV-6
+        之安全強度。
+      </p>
+    </blockquote>
+
+    <h2>6. KYC / AML 銜接</h2>
+    <ul>
+      <li>
+        <strong>Tier 門檻</strong>：v1 預設所有 SKU 開放給 Tier 1（已驗證
+        email）；單筆兌換 ≥ 50,000 銅幣或單日累計 ≥ 200,000 銅幣之 SKU 標
+        <code>requires_tier ≥ 2</code>，由 SPEC-005 既有 KYC tier check 攔截。
+      </li>
+      <li>
+        <strong>SPEC-010 偵測 hook</strong>：在 <code>redemption_purchase</code>
+        commit 後發出
+        <code>redemption.committed</code> 事件供 SPEC-010 anti-fraud pipeline
+        消費；目標偵測「短時間高頻兌換 → 暗示帳號被盜 / 點數來源異常」、「結合
+        SPEC-022 登入裝置異常之高風險兌換」。
+      </li>
+      <li>
+        <strong>禁止濫用路徑</strong>：兌換流程不得提供「為他人下單 / gift
+        link」介面；任何「分享」功能僅能分享商品頁網址，不可附帶預填收件人
+        user_id。
+      </li>
+    </ul>
+
+    <h2>7. 退款 / 過期政策</h2>
+    <ul>
+      <li>
+        <strong>取消窗口</strong>：<code>committed</code> 之後、<code>fulfilled</code>
+        之前，會員可自助取消並全額退點；窗口長度由 SKU
+        <code>cancel_window_seconds</code> 決定，預設 300 秒。
+      </li>
+      <li>
+        <strong>fulfilled 後不可自助退</strong>：須走 SPEC-012 客服流程；核准門檻：
+        manager + admin 4-eye；退點來源為
+        <code>Revenue.VirtualGoodsSales.{kind}</code> 之 contra（負向 entry），
+        並另寫補償 <code>cs_compensation</code> 分錄補回會員銅幣（與
+        <code>redemption_refund</code> 分離以利稽核）。
+      </li>
+      <li>
+        <strong>過期 sweep</strong>：daily cron 掃 <code>issued</code> 狀態超過
+        <code>entitlement_ttl_days</code> 之 entitlement，寫入
+        <code>entitlement_expiry</code> 交易。
+      </li>
+      <li>
+        <strong>breakage 揭露</strong>：<code>Revenue.EntitlementBreakage</code>
+        為獨立子科目，年度財報必須單獨揭露，避免與正常銷貨收入混同。
+      </li>
+    </ul>
+
+    <h2>8. 與既有 SPEC 的關係</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>SPEC / ADR</th>
+          <th>連動點</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="./SPEC-002-funds-safety.html">SPEC-002</a></td>
+          <td>
+            §4.2 Chart of Accounts 擴展、§4.4.7 禁令的正面對應、§5 INV
+            表擴展（INV-2 / INV-4 / 新增 INV-7）
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <a
+              href="../docs/architecture/decisions/ADR-0006-ledger-invariant-set-extension-inv6.md"
+              >ADR-0006</a
+            >
+          </td>
+          <td>
+            INV-6 white-list 於 ADR-0007 追加 (g)
+            <code>Liability.UnredeemedEntitlement</code> carve-out
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <a
+              href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+              >ADR-0007</a
+            >
+          </td>
+          <td>
+            本 SPEC 之 governance 簽核（INV-2 / INV-4 對齊 +
+            INV-7 新增 + INV-6 (g) carve-out）
+          </td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-005-kyc-aml.html">SPEC-005</a></td>
+          <td>高額 SKU 之 KYC tier gate</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-010-security-antifraud.html">SPEC-010</a></td>
+          <td><code>redemption.committed</code> 事件之 anti-fraud 偵測 hook</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-012-customer-support.html">SPEC-012</a></td>
+          <td>fulfilled 後退款必經之 4-eye 補償工作流</td>
+        </tr>
+        <tr>
+          <td><a href="./SPEC-009-dmm-liquidity.html">SPEC-009</a></td>
+          <td>
+            §1 註腳：本 SPEC 與「P2P 訂單簿撮合」屬完全不同層；訂單簿之 P2P
+            為合約 YES/NO 撮合（合法），本 SPEC 之 redemption
+            為玩家對平台之購買（合法），二者皆<strong>非</strong>會員間銅幣轉移（永遠禁止）
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>9. Open Questions</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>議題</th>
+          <th>影響</th>
+          <th>建議決策時點</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>OQ-1</td>
+          <td>
+            <code>Revenue.VirtualGoodsSales.{sku_kind}</code> 之 sku_kind
+            粒度：粗（digital / service）or 細（badge / emote / vip /
+            consultation / …）？
+          </td>
+          <td>影響稽核 / 年報揭露顆粒，不影響 INV</td>
+          <td>SPEC-024 v0.2 落地前</td>
+        </tr>
+        <tr>
+          <td>OQ-2</td>
+          <td>
+            entitlement <code>consumed</code> 狀態是否啟用？若某些 SKU
+            為「無使用語意」之即時 fulfillment（如頭像框），可省略
+            consumed；服務 / 票券則需要
+          </td>
+          <td>狀態機分支</td>
+          <td>第一個 service 類 SKU 立項時</td>
+        </tr>
+        <tr>
+          <td>OQ-3</td>
+          <td>
+            是否需要「兌換訂單之冷錢包模式」— 即 entitlement_ttl
+            到期前讓會員主動延期？
+          </td>
+          <td>影響 expiry sweep 與 breakage 收入認列時機</td>
+          <td>運營 6 個月後依數據評估</td>
+        </tr>
+        <tr>
+          <td>OQ-4</td>
+          <td>
+            未來若放寬「entitlement 可轉贈」，KYC 收件方門檻、AML 限額、二級市場
+            policy 三者誰先誰後？
+          </td>
+          <td>修訂 §2.2 凍結邊界之前置條件</td>
+          <td>有正式商業需求時另開 SPEC 修訂</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>
