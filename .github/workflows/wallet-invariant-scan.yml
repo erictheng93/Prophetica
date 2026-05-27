@@ -1,0 +1,46 @@
+name: wallet-invariant-scan
+
+# Sentinel-scan grep gate for ledger red lines. Cheap, deterministic,
+# fires on every PR to block known-prohibited patterns before review.
+#
+# Backs ADR-0006 §4.2.3 (R-1 / INV-6 sentinel-scan) and
+# ADR-0007 §4.4 (Q-10 / INV-7 peer-transfer black-list).
+# Trigger sources:
+#   - SPEC-002 §4.4.7 prohibits peer point transfer
+#   - SPEC-002 §5 INV-6 / INV-7 + ADR-0006 / ADR-0007
+#   - SPEC-024 §4.3 redemption carve-out boundary
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  red-line-grep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # INV-6 / R-1: Player.Wallet outflow must never target external assets.
+      # Catches both prose-style "Wallet -> AccountsPayable" comments and
+      # named function/identifier patterns historically used by such code.
+      - name: INV-6 / R-1 red line (Player.Wallet -> external assets)
+        run: |
+          set -e
+          PATTERN='Player\.Wallet[^[:space:]]*->[[:space:]]*(AccountsPayable|OperatingAccount)|wallet_to_payable|cash_out_player_pts|redeem_points_to_cash'
+          if grep -REn --include='*.rs' --include='*.sql' "$PATTERN" services/ crates/ ; then
+            echo "::error::INV-6 / R-1 violation detected: Player.Wallet outflow to external assets is permanently forbidden (SPEC-002 §5 INV-6 / ADR-0006 §4.1)."
+            exit 1
+          fi
+
+      # Q-10 / INV-7: peer transfer of points between members is prohibited.
+      # Catches the txn_type / account / identifier patterns explicitly banned
+      # by SPEC-002 v0.1.12 §4.4.7.
+      - name: Q-10 / INV-7 red line (member-to-member peer transfer)
+        run: |
+          set -e
+          PATTERN='peer_transfer_|Player\.PendingTransfer\.|Revenue\.PeerTransferFee|wallet_to_wallet_gift|gift_points_to'
+          if grep -REn --include='*.rs' --include='*.sql' --include='*.proto' "$PATTERN" services/ crates/ packages/proto/ ; then
+            echo "::error::Q-10 / INV-7 violation detected: member-to-member point transfer is permanently forbidden (SPEC-002 §4.4.7 / SPEC-024 §5 / ADR-0007 §4.3)."
+            exit 1
+          fi
