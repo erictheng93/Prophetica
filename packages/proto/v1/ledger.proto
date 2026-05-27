@@ -101,6 +101,10 @@ enum TxnType {
   TXN_TYPE_LM_REWARD = 10;          // SPEC-009 §4.4
   TXN_TYPE_FX_RECONCILE = 11;       // SPEC-016 §7.4 Phase 2
   TXN_TYPE_RECONCILIATION_ADJUST = 12; // 對帳暫掛人工修正
+  TXN_TYPE_REDEMPTION_PURCHASE = 13;      // SPEC-024 §4.2 / ADR-0007 §4.1 (g)
+  TXN_TYPE_ENTITLEMENT_FULFILLMENT = 14;  // SPEC-024 §4.2
+  TXN_TYPE_REDEMPTION_REFUND = 15;        // SPEC-024 §4.2 / §7
+  TXN_TYPE_ENTITLEMENT_EXPIRY = 16;       // SPEC-024 §4.2 / §7
 }
 
 // PostTransactionRequest. 由業務 service 呼叫 ledger 提交一筆 balanced

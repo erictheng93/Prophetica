@@ -1344,6 +1344,14 @@ pub enum TxnType {
     FxReconcile = 11,
     /// 對帳暫掛人工修正
     ReconciliationAdjust = 12,
+    /// SPEC-024 §4.2 / ADR-0007 §4.1 (g)
+    RedemptionPurchase = 13,
+    /// SPEC-024 §4.2
+    EntitlementFulfillment = 14,
+    /// SPEC-024 §4.2 / §7
+    RedemptionRefund = 15,
+    /// SPEC-024 §4.2 / §7
+    EntitlementExpiry = 16,
 }
 impl TxnType {
     /// String value of the enum field names used in the ProtoBuf definition.
@@ -1365,6 +1373,10 @@ impl TxnType {
             Self::LmReward => "TXN_TYPE_LM_REWARD",
             Self::FxReconcile => "TXN_TYPE_FX_RECONCILE",
             Self::ReconciliationAdjust => "TXN_TYPE_RECONCILIATION_ADJUST",
+            Self::RedemptionPurchase => "TXN_TYPE_REDEMPTION_PURCHASE",
+            Self::EntitlementFulfillment => "TXN_TYPE_ENTITLEMENT_FULFILLMENT",
+            Self::RedemptionRefund => "TXN_TYPE_REDEMPTION_REFUND",
+            Self::EntitlementExpiry => "TXN_TYPE_ENTITLEMENT_EXPIRY",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
@@ -1383,6 +1395,10 @@ impl TxnType {
             "TXN_TYPE_LM_REWARD" => Some(Self::LmReward),
             "TXN_TYPE_FX_RECONCILE" => Some(Self::FxReconcile),
             "TXN_TYPE_RECONCILIATION_ADJUST" => Some(Self::ReconciliationAdjust),
+            "TXN_TYPE_REDEMPTION_PURCHASE" => Some(Self::RedemptionPurchase),
+            "TXN_TYPE_ENTITLEMENT_FULFILLMENT" => Some(Self::EntitlementFulfillment),
+            "TXN_TYPE_REDEMPTION_REFUND" => Some(Self::RedemptionRefund),
+            "TXN_TYPE_ENTITLEMENT_EXPIRY" => Some(Self::EntitlementExpiry),
             _ => None,
         }
     }
