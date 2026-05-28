@@ -103,11 +103,20 @@ pub struct Sku {
 }
 
 impl Sku {
-    /// Constructs an SKU. Rejects non-positive prices or zero TTL.
+    /// Constructs an SKU. Rejects non-positive prices, zero TTL, and SKU IDs
+    /// that would later fail the INV-6 (g) v1.1 PG trigger format check.
+    ///
+    /// `sku_id` must be 3–64 chars of `[A-Za-z0-9_-]` (matches the regex in
+    /// `migrations/202605270004_inv6_redemption_metadata_format.sql`). This
+    /// catches the failure at SKU creation time instead of letting a unicode
+    /// / spaces / 1–2 char id propagate all the way to a `redemption_purchase`
+    /// ledger write that the trigger then rejects with SQLSTATE 40004.
     ///
     /// # Errors
     ///
     /// Returns [`CatalogError::EmptyField`] on empty IDs;
+    /// [`CatalogError::InvalidSkuId`] when `sku_id` violates the charset / length
+    /// constraint required by INV-6 (g) v1.1;
     /// [`CatalogError::InvalidPrice`] when `price_minor_units <= 0`;
     /// [`CatalogError::InvalidTtl`] when `entitlement_ttl_days == 0`.
     pub fn new(
@@ -125,6 +134,9 @@ impl Sku {
         if item_id.is_empty() {
             return Err(CatalogError::EmptyField { field: "item_id" });
         }
+        if !is_valid_sku_id(&sku_id) {
+            return Err(CatalogError::InvalidSkuId { sku_id });
+        }
         if price_minor_units <= 0 {
             return Err(CatalogError::InvalidPrice { price_minor_units });
         }
@@ -139,6 +151,18 @@ impl Sku {
             entitlement_ttl_days,
         })
     }
+}
+
+/// Mirrors `^[A-Za-z0-9_-]{3,64}$` from
+/// `migrations/202605270004_inv6_redemption_metadata_format.sql`.
+fn is_valid_sku_id(sku_id: &str) -> bool {
+    let len = sku_id.len();
+    if !(3..=64).contains(&len) {
+        return false;
+    }
+    sku_id
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 /// Stock semantics. SPEC-024 §3.1.
@@ -183,6 +207,10 @@ pub enum CatalogError {
     EmptyField { field: &'static str },
     #[error("SPEC-024 §3.1 v1: physical SKUs are not enabled")]
     PhysicalNotSupported,
+    #[error(
+        "sku_id must be 3-64 chars of [A-Za-z0-9_-] to satisfy INV-6 (g) v1.1 (got {sku_id:?})"
+    )]
+    InvalidSkuId { sku_id: String },
     #[error("SKU price must be positive (got {price_minor_units})")]
     InvalidPrice { price_minor_units: i64 },
     #[error("entitlement TTL must be at least 1 day")]
@@ -241,6 +269,52 @@ mod tests {
         let error = Sku::new("sku_x", "item_x", 100, FulfillmentMode::DigitalImmediate, 0)
             .expect_err("zero ttl");
         assert_eq!(error, CatalogError::InvalidTtl);
+    }
+
+    #[test]
+    fn sku_rejects_id_violating_inv6_g_format() {
+        // Each row should fail Sku::new at construction time — catching the
+        // INV-6 (g) v1.1 format mismatch BEFORE a redemption_purchase txn
+        // would get rejected by the PG trigger.
+        let cases: &[(&str, &str)] = &[
+            ("ab", "too short (len < 3)"),
+            (&"x".repeat(65), "too long (len > 64)"),
+            ("sku id", "contains space"),
+            ("sku.id", "contains dot"),
+            ("sku/id", "contains slash"),
+            ("商品_001", "non-ASCII characters"),
+            ("sku\nid", "control character"),
+            ("sku:id", "colon (allowed in audit_log_id, not sku_id)"),
+        ];
+        for (bad_id, why) in cases {
+            let error = Sku::new(
+                *bad_id,
+                "item_x",
+                100,
+                FulfillmentMode::DigitalImmediate,
+                30,
+            )
+            .expect_err(why);
+            assert!(
+                matches!(error, CatalogError::InvalidSkuId { .. }),
+                "id {bad_id:?} ({why}) should be rejected with InvalidSkuId, got {error:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn sku_accepts_id_matching_inv6_g_format() {
+        // Boundary cases that DO satisfy INV-6 (g) v1.1.
+        for good_id in ["abc", "sku_001", "sku-001", &"x".repeat(64)] {
+            Sku::new(
+                good_id,
+                "item_x",
+                100,
+                FulfillmentMode::DigitalImmediate,
+                30,
+            )
+            .expect("valid sku_id must construct");
+        }
     }
 
     #[test]
