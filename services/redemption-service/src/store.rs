@@ -83,8 +83,25 @@ struct InMemoryInner {
     skus: HashMap<String, Sku>,
     stock: HashMap<String, Stock>,
     orders: HashMap<String, RedemptionOrder>,
+    /// Maps the user-scoped idempotency key (see [`idempotency_storage_key`])
+    /// to the canonical `order_id`. Keying by `(user_id, idempotency_key)`
+    /// instead of `idempotency_key` alone prevents cross-user collisions
+    /// that would leak another user's order on replay (codex P3.1 P1 #3).
     orders_by_idempotency: HashMap<String, String>,
     entitlements: HashMap<String, Entitlement>,
+}
+
+/// Composite key for idempotent order lookup. Scoping by user prevents
+/// user B from receiving user A's order by reusing user A's
+/// `idempotency_key` — the prior failure mode flagged by codex on P3.1.
+///
+/// The separator is ASCII unit separator (U+001F), a control character that
+/// can never appear in a user-supplied string in this codebase, so it
+/// disambiguates `(user, key)` boundaries without escaping. If product
+/// constraints ever loosen to allow control characters in IDs, swap for a
+/// tuple `HashMap<(String, String), String>`.
+fn idempotency_storage_key(user_id: &str, idempotency_key: &str) -> String {
+    format!("{user_id}\u{1f}{idempotency_key}")
 }
 
 impl InMemoryRedemptionStore {
@@ -127,14 +144,15 @@ impl RedemptionStore for InMemoryRedemptionStore {
 
     async fn record_order(&self, order: RedemptionOrder) -> Result<RedemptionOrder, StoreError> {
         let mut guard = self.lock()?;
-        if let Some(prior_id) = guard.orders_by_idempotency.get(&order.idempotency_key) {
+        let storage_key = idempotency_storage_key(&order.user_id, &order.idempotency_key);
+        if let Some(prior_id) = guard.orders_by_idempotency.get(&storage_key) {
             if let Some(prior) = guard.orders.get(prior_id) {
                 return Ok(prior.clone());
             }
         }
         guard
             .orders_by_idempotency
-            .insert(order.idempotency_key.clone(), order.order_id.clone());
+            .insert(storage_key, order.order_id.clone());
         guard.orders.insert(order.order_id.clone(), order.clone());
         Ok(order)
     }
@@ -242,6 +260,42 @@ mod tests {
         let order_b = RedemptionOrder::submit("user_42", "sku_a", 100, "k-1").expect("submit");
         let replay = store.record_order(order_b).await.expect("replay");
         assert_eq!(replay.order_id, order_a.order_id);
+    }
+
+    #[tokio::test]
+    async fn record_order_isolates_idempotency_keys_per_user() {
+        // codex P3.1 P1 #3 regression guard: user B reusing user A's
+        // idempotency_key must NOT return user A's order. Both must persist
+        // as independent orders with distinct order_ids.
+        let store = InMemoryRedemptionStore::new();
+        let alice = RedemptionOrder::submit("user_alice", "sku_a", 100, "shared-key")
+            .expect("alice submit");
+        let bob =
+            RedemptionOrder::submit("user_bob", "sku_a", 100, "shared-key").expect("bob submit");
+
+        let alice_stored = store
+            .record_order(alice.clone())
+            .await
+            .expect("alice store");
+        let bob_stored = store.record_order(bob.clone()).await.expect("bob store");
+
+        assert_eq!(alice_stored.order_id, alice.order_id);
+        assert_eq!(alice_stored.user_id, "user_alice");
+        assert_eq!(bob_stored.order_id, bob.order_id);
+        assert_eq!(bob_stored.user_id, "user_bob");
+        assert_ne!(
+            alice_stored.order_id, bob_stored.order_id,
+            "shared idempotency_key across users must produce distinct order_ids",
+        );
+
+        // Replay for each user resolves to their own order, not the other's.
+        let alice_replay = RedemptionOrder::submit("user_alice", "sku_a", 100, "shared-key")
+            .expect("alice replay submit");
+        let resolved = store
+            .record_order(alice_replay)
+            .await
+            .expect("alice replay store");
+        assert_eq!(resolved.order_id, alice.order_id);
     }
 
     #[tokio::test]
