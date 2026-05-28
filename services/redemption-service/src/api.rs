@@ -116,6 +116,12 @@ fn render_redemption_error(error: &RedemptionError) -> Response {
         // HTTP-facing). If we ever surface one here, treat as 503 — the
         // operational fix is re-seeding the vault, not retrying the request.
         RedemptionError::VaultRejected(_) => (StatusCode::SERVICE_UNAVAILABLE, "vault_exhausted"),
+        // Partner errors likewise should stay in worker scope. If surfaced
+        // here, treat as 503 — the operational fix is partner-side, not
+        // client-retry.
+        RedemptionError::PartnerRejected(_) => {
+            (StatusCode::SERVICE_UNAVAILABLE, "partner_unavailable")
+        }
         RedemptionError::SkuVanished { .. }
         | RedemptionError::StoreUnavailable(_)
         | RedemptionError::Internal { .. } => {

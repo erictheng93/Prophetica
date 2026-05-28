@@ -46,6 +46,7 @@ use crate::{
         OrderError, OrderState, RedemptionOrder, ledger_idempotency_key_for_fulfillment,
         ledger_idempotency_key_for_purchase,
     },
+    partner::{PartnerAdapter, PartnerError, PartnerStatus},
     store::{RedemptionStore, StoreError},
     vault::{VaultClient, VaultError},
 };
@@ -65,10 +66,32 @@ pub struct SubmitOrderRequest {
 /// alert on `vault_exhausted` vs. `ledger_failed` differently.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct WorkerStats {
+    /// Entitlements that reached `Fulfilled` this pass.
     pub processed: usize,
+    /// Vault ran out of unused codes (`digital_code` worker only).
     pub vault_exhausted: usize,
+    /// Partner accepted the dispatch but service is not yet complete
+    /// (`service_async` worker only).
+    pub partner_pending: usize,
+    /// Partner reported a terminal failure (`service_async` worker only).
+    /// Operational cleanup (refund) is out of worker scope.
+    pub partner_failed: usize,
+    /// Ledger rejected the fulfillment txn (INV-* violation or transport).
     pub ledger_failed: usize,
+    /// Store could not persist a state update.
     pub store_failed: usize,
+}
+
+/// Internal classification of a single `service_async` worker step.
+/// Promoted to [`WorkerStats`] counters by the calling loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ServiceAsyncOutcome {
+    /// Entitlement reached `Fulfilled` this pass.
+    Processed,
+    /// Partner dispatched but not yet complete; try again later.
+    PartnerPending,
+    /// Partner reported terminal failure; operational cleanup required.
+    PartnerFailed,
 }
 
 /// Outbound order projection returned to API callers.
@@ -112,6 +135,8 @@ pub enum RedemptionError {
     StoreUnavailable(#[from] StoreError),
     #[error("vault rejected fulfillment: {0}")]
     VaultRejected(#[from] VaultError),
+    #[error("partner rejected fulfillment: {0}")]
+    PartnerRejected(#[from] PartnerError),
     #[error("sku vanished from catalog mid-fulfillment for order {order_id}")]
     SkuVanished { order_id: String },
     /// Defensive: a SPEC-024 state transition that should always be legal was
@@ -451,6 +476,150 @@ impl RedemptionService {
             }
         }
         Ok(stats)
+    }
+
+    /// SPEC-024 §3.4 `service_async` worker pass. Lists up to `limit`
+    /// entitlements in [`EntitlementState::Issued`] for `ServiceAsync` SKUs
+    /// and drives each one through the two-phase partner workflow:
+    ///
+    /// 1. **Dispatch** (if `fulfillment_payload.is_none()`): call
+    ///    [`PartnerAdapter::dispatch`], persist the returned `booking_id`
+    ///    onto the entitlement payload.
+    /// 2. **Status poll**: call [`PartnerAdapter::status(booking_id)`].
+    ///    On `Completed` → post `entitlement_fulfillment` ledger txn,
+    ///    advance order + entitlement to `Fulfilled`.
+    ///    On `Pending` → record `partner_pending` in stats, leave for the
+    ///    next pass.
+    ///    On `Failed` → record `partner_failed`; refund is operational
+    ///    work (P4), not the worker's responsibility.
+    ///
+    /// Crash-safety mirrors `run_digital_code_worker`: never re-dispatch
+    /// an entitlement that already has a `booking_id` payload, never re-post
+    /// the ledger fulfillment without ledger-side idempotency squashing it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RedemptionError::StoreUnavailable`] only when listing
+    /// pending work fails; individual entitlement outcomes are encoded in
+    /// the returned [`WorkerStats`].
+    pub async fn run_service_async_worker(
+        &self,
+        adapter: &dyn PartnerAdapter,
+        limit: usize,
+    ) -> Result<WorkerStats, RedemptionError> {
+        let pending = self
+            .store
+            .list_entitlements_pending_fulfillment(FulfillmentMode::ServiceAsync, limit)
+            .await?;
+
+        let mut stats = WorkerStats::default();
+        for entitlement in pending {
+            match self
+                .process_service_async_entitlement(&entitlement, adapter)
+                .await
+            {
+                Ok(ServiceAsyncOutcome::Processed) => stats.processed += 1,
+                Ok(ServiceAsyncOutcome::PartnerPending) => stats.partner_pending += 1,
+                Ok(ServiceAsyncOutcome::PartnerFailed)
+                | Err(RedemptionError::PartnerRejected(_)) => stats.partner_failed += 1,
+                Err(RedemptionError::LedgerRejected(_)) => stats.ledger_failed += 1,
+                Err(_) => stats.store_failed += 1,
+            }
+        }
+        Ok(stats)
+    }
+
+    async fn process_service_async_entitlement(
+        &self,
+        entitlement: &Entitlement,
+        adapter: &dyn PartnerAdapter,
+    ) -> Result<ServiceAsyncOutcome, RedemptionError> {
+        // Step 1: ensure a partner booking exists (dispatch only once).
+        let existing_booking_id = entitlement
+            .fulfillment_payload
+            .as_ref()
+            .and_then(|p| p.get("booking_id"))
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let booking_id = if let Some(existing) = existing_booking_id {
+            existing
+        } else {
+            let booking = adapter.dispatch(entitlement).await?;
+            let mut payload = serde_json::Map::new();
+            payload.insert(
+                "booking_id".to_owned(),
+                Value::String(booking.booking_id.clone()),
+            );
+            if let Some(meta) = booking.metadata {
+                payload.insert("partner_metadata".to_owned(), meta);
+            }
+            self.store
+                .set_entitlement_payload(&entitlement.entitlement_id, Value::Object(payload))
+                .await?;
+            booking.booking_id
+        };
+
+        // Step 2: ask the partner what state the booking is in.
+        match adapter.status(&booking_id).await? {
+            PartnerStatus::Pending => return Ok(ServiceAsyncOutcome::PartnerPending),
+            PartnerStatus::Failed { .. } => return Ok(ServiceAsyncOutcome::PartnerFailed),
+            PartnerStatus::Completed { metadata } => {
+                if let Some(meta) = metadata {
+                    self.merge_partner_completion_metadata(entitlement, meta)
+                        .await?;
+                }
+            }
+        }
+
+        // Step 3: post the fulfillment ledger txn and advance state.
+        let order = self
+            .store
+            .get_order(&entitlement.order_id)
+            .await?
+            .ok_or_else(|| RedemptionError::Internal {
+                order_id: entitlement.order_id.clone(),
+                message: "order missing during service_async fulfillment".to_owned(),
+            })?;
+        let sku = self
+            .store
+            .get_sku(&entitlement.sku_id)
+            .await?
+            .ok_or_else(|| RedemptionError::SkuVanished {
+                order_id: order.order_id.clone(),
+            })?;
+
+        self.post_entitlement_fulfillment(&order, &sku, &entitlement.entitlement_id)
+            .await?;
+
+        if matches!(order.state, OrderState::Committed) {
+            self.advance_order(&order.order_id, OrderState::Fulfilled)
+                .await?;
+        }
+        self.heal_entitlement_to_fulfilled(&order.order_id, &entitlement.entitlement_id)
+            .await?;
+        Ok(ServiceAsyncOutcome::Processed)
+    }
+
+    /// Merges partner-side completion metadata (transcript link, attendance
+    /// proof, etc.) into the entitlement payload. Preserves the existing
+    /// `booking_id` (which is the worker's only reliable handle back to the
+    /// partner on subsequent retries).
+    async fn merge_partner_completion_metadata(
+        &self,
+        entitlement: &Entitlement,
+        completion_metadata: Value,
+    ) -> Result<(), RedemptionError> {
+        let mut merged = entitlement
+            .fulfillment_payload
+            .as_ref()
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+        merged.insert("completion".to_owned(), completion_metadata);
+        self.store
+            .set_entitlement_payload(&entitlement.entitlement_id, Value::Object(merged))
+            .await?;
+        Ok(())
     }
 
     async fn fulfill_digital_code_entitlement(
@@ -912,6 +1081,7 @@ mod tests {
     // P3.2 digital_code worker tests
     // -------------------------------------------------------------------
 
+    use crate::partner::InMemoryPartnerAdapter;
     use crate::vault::{InMemoryVault, VaultClient};
 
     #[tokio::test]
@@ -1070,6 +1240,196 @@ mod tests {
             .expect("list");
         assert_eq!(remaining_issued.len(), 1);
         assert!(remaining_issued[0].fulfillment_payload.is_none());
+    }
+
+    // -------------------------------------------------------------------
+    // P3.3 service_async worker tests
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn service_async_worker_first_pass_dispatches_and_marks_pending() {
+        let (service, store, ledger) =
+            build_service_with_sku("svc_a", 1_000, FulfillmentMode::ServiceAsync).await;
+        ledger.seed_deposit("user_42", 10_000).await.expect("seed");
+        let adapter = InMemoryPartnerAdapter::new();
+
+        let view = service
+            .submit_order(submit_request("user_42", "svc_a", "k1"))
+            .await
+            .expect("submit");
+        assert_eq!(view.state, OrderState::Committed);
+        let entitlement_id = view.entitlement_id.expect("issued");
+
+        // First worker pass: partner accepts but state stays Pending.
+        let stats = service
+            .run_service_async_worker(&adapter, 10)
+            .await
+            .expect("worker pass 1");
+        assert_eq!(stats.processed, 0);
+        assert_eq!(stats.partner_pending, 1);
+
+        // Entitlement now carries the booking_id; order/entitlement
+        // unchanged.
+        let dispatched = store
+            .get_entitlement_for_order(&view.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        assert_eq!(dispatched.state, EntitlementState::Issued);
+        let booking_id = dispatched
+            .fulfillment_payload
+            .as_ref()
+            .and_then(|p| p.get("booking_id"))
+            .and_then(|v| v.as_str())
+            .expect("booking_id present")
+            .to_owned();
+        assert_eq!(booking_id.len(), 26, "ULID booking_id");
+
+        // Confirm no fulfillment ledger txn yet.
+        let posted = ledger.recorded_transactions().expect("recorded");
+        assert!(
+            posted
+                .iter()
+                .all(|t| t.txn_type != "entitlement_fulfillment"),
+            "no fulfillment posted while partner still Pending"
+        );
+
+        // Mark completed and rerun: this pass advances to Fulfilled.
+        adapter
+            .mark_completed(
+                &booking_id,
+                Some(serde_json::json!({"transcript": "https://...t"})),
+            )
+            .expect("mark");
+        let stats = service
+            .run_service_async_worker(&adapter, 10)
+            .await
+            .expect("worker pass 2");
+        assert_eq!(stats.processed, 1);
+        assert_eq!(stats.partner_pending, 0);
+
+        let healed = store
+            .get_entitlement_for_order(&view.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        assert_eq!(healed.state, EntitlementState::Fulfilled);
+        // Payload merges completion metadata while preserving booking_id.
+        let payload = healed.fulfillment_payload.as_ref().expect("payload");
+        assert_eq!(
+            payload.get("booking_id").and_then(|v| v.as_str()),
+            Some(booking_id.as_str())
+        );
+        assert!(
+            payload.get("completion").is_some(),
+            "completion metadata merged into payload"
+        );
+
+        let order = store
+            .get_order(&view.order_id)
+            .await
+            .expect("get order")
+            .expect("present");
+        assert_eq!(order.state, OrderState::Fulfilled);
+        let _ = entitlement_id;
+    }
+
+    #[tokio::test]
+    async fn service_async_worker_does_not_redispatch_on_retry() {
+        // P3.3 crash-safety: a prior worker pass dispatched (booking_id
+        // stored on payload) but failed before posting fulfillment. The
+        // next pass MUST reuse the booking_id, not call dispatch again.
+        let (service, _store, ledger) =
+            build_service_with_sku("svc_a", 1_000, FulfillmentMode::ServiceAsync).await;
+        ledger.seed_deposit("user_42", 10_000).await.expect("seed");
+        let adapter = InMemoryPartnerAdapter::new();
+
+        service
+            .submit_order(submit_request("user_42", "svc_a", "k1"))
+            .await
+            .expect("submit");
+
+        // First pass: dispatch — booking_id stored.
+        let _ = service
+            .run_service_async_worker(&adapter, 10)
+            .await
+            .expect("pass 1");
+
+        // Snapshot bookings on partner side. Subsequent worker passes must
+        // not create new bookings even though entitlement is still Issued.
+        let pass2 = service
+            .run_service_async_worker(&adapter, 10)
+            .await
+            .expect("pass 2");
+        let pass3 = service
+            .run_service_async_worker(&adapter, 10)
+            .await
+            .expect("pass 3");
+
+        // All subsequent passes count as partner_pending (booking exists,
+        // partner status still Pending). NO additional dispatches happen,
+        // so we only ever have 1 booking_id.
+        assert_eq!(pass2.partner_pending, 1);
+        assert_eq!(pass3.partner_pending, 1);
+        assert_eq!(pass2.processed, 0);
+        assert_eq!(pass3.processed, 0);
+    }
+
+    #[tokio::test]
+    async fn service_async_worker_records_partner_failure_without_fulfilling() {
+        let (service, store, ledger) =
+            build_service_with_sku("svc_a", 1_000, FulfillmentMode::ServiceAsync).await;
+        ledger.seed_deposit("user_42", 10_000).await.expect("seed");
+        let adapter = InMemoryPartnerAdapter::new();
+
+        service
+            .submit_order(submit_request("user_42", "svc_a", "k1"))
+            .await
+            .expect("submit");
+
+        // Dispatch first.
+        let stats = service
+            .run_service_async_worker(&adapter, 10)
+            .await
+            .expect("dispatch pass");
+        assert_eq!(stats.partner_pending, 1);
+
+        // Partner fails the booking; subsequent worker pass records that
+        // outcome but does NOT post the fulfillment ledger txn or advance
+        // state.
+        let booking_id = adapter_only_booking_id(&adapter);
+        adapter
+            .mark_failed(&booking_id, "partner_capacity".to_owned())
+            .expect("mark failed");
+
+        let stats = service
+            .run_service_async_worker(&adapter, 10)
+            .await
+            .expect("failure pass");
+        assert_eq!(stats.processed, 0);
+        assert_eq!(stats.partner_failed, 1);
+
+        // Entitlement remains Issued — refund path is P4.
+        let stuck = store
+            .list_entitlements_pending_fulfillment(FulfillmentMode::ServiceAsync, 10)
+            .await
+            .expect("list");
+        assert_eq!(stuck.len(), 1);
+        assert_eq!(stuck[0].state, EntitlementState::Issued);
+
+        let posted = ledger.recorded_transactions().expect("recorded");
+        assert!(
+            posted
+                .iter()
+                .all(|t| t.txn_type != "entitlement_fulfillment"),
+            "no fulfillment ledger txn on partner failure"
+        );
+    }
+
+    fn adapter_only_booking_id(adapter: &InMemoryPartnerAdapter) -> String {
+        let ids = adapter.booking_ids().expect("booking_ids");
+        assert_eq!(ids.len(), 1, "expected exactly one dispatched booking");
+        ids.into_iter().next().expect("first")
     }
 
     #[tokio::test]

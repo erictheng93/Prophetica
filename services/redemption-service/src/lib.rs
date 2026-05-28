@@ -23,6 +23,7 @@ pub mod catalog;
 pub mod entitlement;
 pub mod ledger;
 pub mod order;
+pub mod partner;
 pub mod service;
 pub mod store;
 pub mod vault;
