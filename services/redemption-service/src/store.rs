@@ -18,6 +18,7 @@ use serde_json::Value;
 
 use crate::{
     catalog::{CatalogItem, FulfillmentMode, Sku, Stock},
+    cs_refund::{CsRefundProposal, ProposalStatus},
     entitlement::{Entitlement, EntitlementState},
     order::{OrderState, RedemptionOrder},
 };
@@ -109,6 +110,37 @@ pub trait RedemptionStore: Send + Sync {
         limit: usize,
     ) -> Result<Vec<RedemptionOrder>, StoreError>;
 
+    /// Persists a new CS refund proposal (SPEC-024 P5.6 / SPEC-012 §11).
+    /// Returns the stored proposal on success, or
+    /// [`StoreError::ProposalAlreadyPendingForOrder`] when the order
+    /// already has another pending proposal (PG: enforced by the partial
+    /// unique index `idx_cs_proposals_one_pending_per_order`).
+    async fn record_cs_refund_proposal(
+        &self,
+        proposal: CsRefundProposal,
+    ) -> Result<CsRefundProposal, StoreError>;
+
+    /// Loads a CS refund proposal by id.
+    async fn get_cs_refund_proposal(
+        &self,
+        proposal_id: &str,
+    ) -> Result<Option<CsRefundProposal>, StoreError>;
+
+    /// Conditional transition: updates a proposal from `Pending` to
+    /// `new_status` while atomically recording `resolved_by` /
+    /// `resolved_at_unix_secs`. Returns `Ok(true)` when this call won the
+    /// race, `Ok(false)` when the proposal exists but was already terminal
+    /// (so the caller can detect "someone else already approved" and exit
+    /// cleanly), or [`StoreError::ProposalNotFound`] when the proposal id
+    /// is unknown.
+    async fn resolve_cs_refund_proposal(
+        &self,
+        proposal_id: &str,
+        new_status: ProposalStatus,
+        resolved_by: &str,
+        resolved_at_unix_secs: i64,
+    ) -> Result<bool, StoreError>;
+
     /// Atomically writes `payload` to an entitlement. Used by fulfillment
     /// workers to attach mode-specific delivery data (the activation code
     /// for `digital_code`, the booking ID for `service_async`, etc.).
@@ -141,6 +173,8 @@ struct InMemoryInner {
     /// that would leak another user's order on replay (codex P3.1 P1 #3).
     orders_by_idempotency: HashMap<String, String>,
     entitlements: HashMap<String, Entitlement>,
+    /// CS refund proposals keyed by `proposal_id`. SPEC-024 P5.6.
+    cs_refund_proposals: HashMap<String, CsRefundProposal>,
 }
 
 /// Composite key for idempotent order lookup. Scoping by user prevents
@@ -342,6 +376,61 @@ impl RedemptionStore for InMemoryRedemptionStore {
         Ok(hits)
     }
 
+    async fn record_cs_refund_proposal(
+        &self,
+        proposal: CsRefundProposal,
+    ) -> Result<CsRefundProposal, StoreError> {
+        let mut guard = self.lock()?;
+        // Enforce the "one pending proposal per order" invariant — mirror
+        // of the partial unique index in PG migration 202605280003.
+        let has_pending = guard
+            .cs_refund_proposals
+            .values()
+            .any(|p| p.order_id == proposal.order_id && p.status == ProposalStatus::Pending);
+        if has_pending {
+            return Err(StoreError::ProposalAlreadyPendingForOrder {
+                order_id: proposal.order_id,
+            });
+        }
+        guard
+            .cs_refund_proposals
+            .insert(proposal.proposal_id.clone(), proposal.clone());
+        Ok(proposal)
+    }
+
+    async fn get_cs_refund_proposal(
+        &self,
+        proposal_id: &str,
+    ) -> Result<Option<CsRefundProposal>, StoreError> {
+        let guard = self.lock()?;
+        Ok(guard.cs_refund_proposals.get(proposal_id).cloned())
+    }
+
+    async fn resolve_cs_refund_proposal(
+        &self,
+        proposal_id: &str,
+        new_status: ProposalStatus,
+        resolved_by: &str,
+        resolved_at_unix_secs: i64,
+    ) -> Result<bool, StoreError> {
+        let mut guard = self.lock()?;
+        let Some(proposal) = guard.cs_refund_proposals.get_mut(proposal_id) else {
+            return Err(StoreError::ProposalNotFound {
+                proposal_id: proposal_id.to_owned(),
+            });
+        };
+        // Conditional transition: only resolves Pending. Race-safe under the
+        // single-mutex; PG implementation gets the same atomicity via
+        // `WHERE status = 'pending'` in the UPDATE.
+        if proposal.status != ProposalStatus::Pending {
+            return Ok(false);
+        }
+        proposal.status = new_status;
+        proposal.resolved_at_unix_secs = Some(resolved_at_unix_secs);
+        proposal.resolved_by = Some(resolved_by.to_owned());
+        Ok(true)
+    }
+
     async fn set_entitlement_payload(
         &self,
         entitlement_id: &str,
@@ -371,6 +460,15 @@ pub enum StoreError {
     /// exist.
     #[error("entitlement not found: {entitlement_id}")]
     EntitlementNotFound { entitlement_id: String },
+    /// `record_cs_refund_proposal` collided with an existing `pending`
+    /// proposal for the same `order_id`. Caller should resolve the prior
+    /// proposal (approve / reject / cancel) before opening a new one.
+    #[error("a pending CS refund proposal already exists for order {order_id}")]
+    ProposalAlreadyPendingForOrder { order_id: String },
+    /// `resolve_cs_refund_proposal` / `get_cs_refund_proposal` was called
+    /// for an unknown proposal id.
+    #[error("CS refund proposal not found: {proposal_id}")]
+    ProposalNotFound { proposal_id: String },
 }
 
 #[cfg(test)]

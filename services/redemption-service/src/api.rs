@@ -4,11 +4,15 @@
 //! - **Public:** `submit_order` / `get_order` / `list_entitlements` /
 //!   `cancel_order` (under `/v1/redemption/...`). Gated by the API gateway's
 //!   normal authenticated-user role check (SPEC-014 §6.1.2).
-//! - **Admin:** `cs_refund` under `/v1/admin/redemption/orders/:id/refund`.
-//!   SPEC-024 P5.3 ships the 4-eye guard inline — the route validates
-//!   `proposer_user_id != approver_user_id` in the handler. Production
-//!   wiring depends on the gateway routing this prefix to admin-scope
-//!   identities only; this service does NOT re-authenticate.
+//! - **Admin (P5.6 two-stage CS refund):** POST
+//!   `/v1/admin/redemption/orders/:order_id/refund-proposals` (proposer
+//!   creates a proposal) and POST
+//!   `/v1/admin/redemption/refund-proposals/:proposal_id/approve` (a
+//!   distinct approver flips it to Approved + posts the refund). Each
+//!   endpoint reads `x-user-id` from a gateway-asserted header — the
+//!   service does NOT re-authenticate. The 4-eye invariant is enforced
+//!   by loading the stored proposer and rejecting any approver where
+//!   `approver_user_id == proposed_by`.
 //! - **Operational (binary-only):** the expiry sweep
 //!   (`run_expiry_sweep`) ships as `redemption-expiry-sweeper-binary`, not
 //!   as an HTTP route.
@@ -49,9 +53,16 @@ pub fn router(service: Arc<RedemptionService>) -> Router {
             "/v1/redemption/entitlements/:user_id",
             get(list_entitlements),
         )
+        // P5.6 two-stage CS refund: proposer creates proposal, approver
+        // approves it. Each endpoint independently authenticates its
+        // caller via x-user-id (P5.5).
         .route(
-            "/v1/admin/redemption/orders/:order_id/refund",
-            post(admin_cs_refund),
+            "/v1/admin/redemption/orders/:order_id/refund-proposals",
+            post(admin_propose_cs_refund),
+        )
+        .route(
+            "/v1/admin/redemption/refund-proposals/:proposal_id/approve",
+            post(admin_approve_cs_refund),
         )
         .with_state(service)
 }
@@ -113,55 +124,23 @@ async fn cancel_order(
     }
 }
 
-/// Inbound body for the admin 4-eye CS refund. P5.5 update: `proposer_user_id`
-/// is **no longer accepted from the body** — the handler reads the
-/// gateway-asserted [`AUTH_USER_ID_HEADER`] (`x-user-id`) and uses that as
-/// the proposer identity. The approver is still a body field for now;
-/// closing that gap fully requires the two-stage propose+approve flow
-/// (ADR-0007 §7.1 hard gate, planned for P5.6).
+/// Inbound body for the propose step of the SPEC-012 §11 two-stage CS
+/// refund. The proposer identity is taken from the `x-user-id` header (P5.5),
+/// not the body.
 #[derive(Debug, Deserialize)]
-struct CsRefundRequest {
-    approver_user_id: String,
+struct ProposeCsRefundRequest {
     reason: String,
 }
 
-async fn admin_cs_refund(
+async fn admin_propose_cs_refund(
     State(service): State<Arc<RedemptionService>>,
     Path(order_id): Path<String>,
     headers: HeaderMap,
-    Json(request): Json<CsRefundRequest>,
+    Json(request): Json<ProposeCsRefundRequest>,
 ) -> Response {
-    // Step 1: pull proposer identity from the trusted gateway header.
-    // Missing / empty header means the gateway did not authenticate the
-    // caller (or routed an unauthenticated request to us by mistake) —
-    // either way we MUST refuse.
-    let proposer_user_id = match headers
-        .get(&AUTH_USER_ID_HEADER)
-        .and_then(|v| v.to_str().ok())
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-    {
-        Some(value) => value.to_owned(),
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({
-                    "error": "missing_auth_context",
-                    "message": "x-user-id header must be set by the API gateway"
-                })),
-            )
-                .into_response();
-        }
+    let Some(proposer_user_id) = extract_authenticated_user_id(&headers) else {
+        return missing_auth_response();
     };
-
-    // Step 2: basic body-shape validation (approver + reason).
-    if request.approver_user_id.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "empty_field", "field": "approver_user_id"})),
-        )
-            .into_response();
-    }
     if request.reason.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -169,22 +148,54 @@ async fn admin_cs_refund(
         )
             .into_response();
     }
-
-    // Step 3: 4-eye check + refund. The proposer is now bound to the
-    // gateway-asserted identity; the approver remains body-asserted until
-    // P5.6 lands the two-stage propose/approve flow.
+    let now = crate::service::current_unix_secs();
     match service
-        .cs_refund_with_4eye(
-            &order_id,
-            &proposer_user_id,
-            &request.approver_user_id,
-            &request.reason,
-        )
+        .propose_cs_refund(&order_id, &proposer_user_id, &request.reason, now)
+        .await
+    {
+        Ok(proposal) => (StatusCode::CREATED, Json(proposal)).into_response(),
+        Err(error) => render_redemption_error(&error),
+    }
+}
+
+async fn admin_approve_cs_refund(
+    State(service): State<Arc<RedemptionService>>,
+    Path(proposal_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    // No body — approval is a pure verb on the proposal id. Approver
+    // identity comes from the gateway-injected header.
+    let Some(approver_user_id) = extract_authenticated_user_id(&headers) else {
+        return missing_auth_response();
+    };
+    let now = crate::service::current_unix_secs();
+    match service
+        .approve_cs_refund(&proposal_id, &approver_user_id, now)
         .await
     {
         Ok(view) => (StatusCode::OK, Json(view)).into_response(),
         Err(error) => render_redemption_error(&error),
     }
+}
+
+fn extract_authenticated_user_id(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(&AUTH_USER_ID_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_owned)
+}
+
+fn missing_auth_response() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({
+            "error": "missing_auth_context",
+            "message": "x-user-id header must be set by the API gateway"
+        })),
+    )
+        .into_response()
 }
 
 #[derive(Debug, Serialize)]
@@ -203,9 +214,13 @@ fn render_redemption_error(error: &RedemptionError) -> Response {
             (StatusCode::CONFLICT, "order_state_not_allowed")
         }
         RedemptionError::CancelWindowExpired { .. } => (StatusCode::GONE, "cancel_window_expired"),
-        RedemptionError::FourEyeViolation { .. } => {
+        RedemptionError::FourEyeViolation { .. } | RedemptionError::ApproverIsProposer { .. } => {
             (StatusCode::UNPROCESSABLE_ENTITY, "four_eye_violation")
         }
+        RedemptionError::ProposalAlreadyResolved { .. } => {
+            (StatusCode::CONFLICT, "proposal_already_resolved")
+        }
+        RedemptionError::ProposalBuild(_) => (StatusCode::BAD_REQUEST, "invalid_proposal"),
         RedemptionError::MissingCommitTimestamp { .. } => {
             warn!(?error, "redemption-service missing commit timestamp");
             (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
@@ -401,11 +416,12 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn admin_cs_refund_422s_on_same_proposer_and_approver() {
-        let app = build_router_with_seeded_sku().await;
-
-        // Set up a Fulfilled order.
+    async fn submit_then_propose_helper(
+        app: &axum::Router,
+        idempotency_key: &str,
+        proposer: &str,
+    ) -> String {
+        // submit → Fulfilled → propose → return proposal_id.
         let submit = Request::builder()
             .uri("/v1/redemption/orders")
             .method("POST")
@@ -414,7 +430,7 @@ mod tests {
                 serde_json::to_vec(&serde_json::json!({
                     "user_id": "user_42",
                     "sku_id": "sku_a",
-                    "idempotency_key": "cs-422",
+                    "idempotency_key": idempotency_key,
                 }))
                 .expect("encode"),
             ))
@@ -425,138 +441,63 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&body).expect("parse");
         let order_id = parsed["order_id"].as_str().expect("order_id").to_owned();
 
-        let refund = Request::builder()
-            .uri(format!("/v1/admin/redemption/orders/{order_id}/refund"))
+        let propose = Request::builder()
+            .uri(format!(
+                "/v1/admin/redemption/orders/{order_id}/refund-proposals"
+            ))
             .method("POST")
             .header("content-type", "application/json")
-            .header("x-user-id", "ops_alice")
+            .header("x-user-id", proposer)
             .body(Body::from(
-                serde_json::to_vec(&serde_json::json!({
-                    "approver_user_id": "ops_alice",
-                    "reason": "test",
-                }))
-                .expect("encode"),
+                serde_json::to_vec(&serde_json::json!({"reason": "wrong item"})).expect("encode"),
             ))
             .expect("request");
-        let response = app.oneshot(refund).await.expect("oneshot");
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        assert!(
-            read_body_to_string(response)
-                .await
-                .contains("four_eye_violation")
-        );
+        let propose_response = app.clone().oneshot(propose).await.expect("propose");
+        assert_eq!(propose_response.status(), StatusCode::CREATED);
+        let body = read_body_to_string(propose_response).await;
+        let parsed: serde_json::Value = serde_json::from_str(&body).expect("parse");
+        parsed["proposal_id"]
+            .as_str()
+            .expect("proposal_id")
+            .to_owned()
     }
 
     #[tokio::test]
-    async fn admin_cs_refund_401s_when_x_user_id_header_missing() {
+    async fn admin_propose_201_on_valid_proposal() {
         let app = build_router_with_seeded_sku().await;
-        let refund = Request::builder()
-            .uri("/v1/admin/redemption/orders/anything/refund")
+        let proposal_id = submit_then_propose_helper(&app, "prop-201", "ops_alice").await;
+        assert_eq!(proposal_id.len(), 26, "ULID proposal_id");
+    }
+
+    #[tokio::test]
+    async fn admin_propose_401_when_x_user_id_missing() {
+        let app = build_router_with_seeded_sku().await;
+        let request = Request::builder()
+            .uri("/v1/admin/redemption/orders/anything/refund-proposals")
             .method("POST")
             .header("content-type", "application/json")
             .body(Body::from(
-                serde_json::to_vec(&serde_json::json!({
-                    "approver_user_id": "ops_bob",
-                    "reason": "test",
-                }))
-                .expect("encode"),
+                serde_json::to_vec(&serde_json::json!({"reason": "test"})).expect("encode"),
             ))
             .expect("request");
-        let response = app.oneshot(refund).await.expect("oneshot");
+        let response = app.oneshot(request).await.expect("oneshot");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert!(
-            read_body_to_string(response)
-                .await
-                .contains("missing_auth_context")
-        );
     }
 
     #[tokio::test]
-    async fn admin_cs_refund_ignores_proposer_body_field_and_uses_header() {
-        // Hostile body claiming proposer = ops_bob, but x-user-id header
-        // says ops_alice. The handler MUST use the header value, so when
-        // approver_user_id = ops_alice in the body it's a 4-eye violation
-        // (proposer == approver via header).
+    async fn admin_approve_200_for_distinct_approver() {
         let app = build_router_with_seeded_sku().await;
-        let submit = Request::builder()
-            .uri("/v1/redemption/orders")
-            .method("POST")
-            .header("content-type", "application/json")
-            .body(Body::from(
-                serde_json::to_vec(&serde_json::json!({
-                    "user_id": "user_42",
-                    "sku_id": "sku_a",
-                    "idempotency_key": "cs-spoof",
-                }))
-                .expect("encode"),
-            ))
-            .expect("request");
-        let submit_response = app.clone().oneshot(submit).await.expect("submit");
-        let body = read_body_to_string(submit_response).await;
-        let parsed: serde_json::Value = serde_json::from_str(&body).expect("parse");
-        let order_id = parsed["order_id"].as_str().expect("order_id").to_owned();
+        let proposal_id = submit_then_propose_helper(&app, "prop-app", "ops_alice").await;
 
-        let refund = Request::builder()
-            .uri(format!("/v1/admin/redemption/orders/{order_id}/refund"))
-            .method("POST")
-            .header("content-type", "application/json")
-            .header("x-user-id", "ops_alice")
-            .body(Body::from(
-                // Body claims proposer is bob — ignored. Header says alice.
-                // approver = alice → 4-eye violation against header.
-                serde_json::to_vec(&serde_json::json!({
-                    "proposer_user_id": "ops_bob",
-                    "approver_user_id": "ops_alice",
-                    "reason": "spoof attempt",
-                }))
-                .expect("encode"),
+        let approve = Request::builder()
+            .uri(format!(
+                "/v1/admin/redemption/refund-proposals/{proposal_id}/approve"
             ))
-            .expect("request");
-        let response = app.oneshot(refund).await.expect("oneshot");
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        assert!(
-            read_body_to_string(response)
-                .await
-                .contains("four_eye_violation")
-        );
-    }
-
-    #[tokio::test]
-    async fn admin_cs_refund_200_on_valid_4eye_request() {
-        let app = build_router_with_seeded_sku().await;
-
-        let submit = Request::builder()
-            .uri("/v1/redemption/orders")
             .method("POST")
-            .header("content-type", "application/json")
-            .body(Body::from(
-                serde_json::to_vec(&serde_json::json!({
-                    "user_id": "user_42",
-                    "sku_id": "sku_a",
-                    "idempotency_key": "cs-200",
-                }))
-                .expect("encode"),
-            ))
+            .header("x-user-id", "ops_bob")
+            .body(Body::empty())
             .expect("request");
-        let submit_response = app.clone().oneshot(submit).await.expect("submit");
-        let body = read_body_to_string(submit_response).await;
-        let parsed: serde_json::Value = serde_json::from_str(&body).expect("parse");
-        let order_id = parsed["order_id"].as_str().expect("order_id").to_owned();
-
-        let refund = Request::builder()
-            .uri(format!("/v1/admin/redemption/orders/{order_id}/refund"))
-            .method("POST")
-            .header("content-type", "application/json")
-            .header("x-user-id", "ops_alice")
-            .body(Body::from(
-                serde_json::to_vec(&serde_json::json!({
-                    "approver_user_id": "ops_bob",
-                    "reason": "wrong item delivered",
-                }))
-                .expect("encode"),
-            ))
-            .expect("request");
-        let response = app.oneshot(refund).await.expect("oneshot");
+        let response = app.oneshot(approve).await.expect("oneshot");
         assert_eq!(response.status(), StatusCode::OK);
         assert!(
             read_body_to_string(response)
@@ -566,26 +507,58 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_cs_refund_400_on_empty_reason() {
+    async fn admin_approve_422_when_approver_matches_proposer() {
         let app = build_router_with_seeded_sku().await;
-        // Real order_id not needed — the body validation runs before any
-        // store lookup.
-        let refund = Request::builder()
-            .uri("/v1/admin/redemption/orders/anything/refund")
-            .method("POST")
-            .header("content-type", "application/json")
-            .header("x-user-id", "ops_alice")
-            .body(Body::from(
-                serde_json::to_vec(&serde_json::json!({
-                    "approver_user_id": "ops_bob",
-                    "reason": "   ",
-                }))
-                .expect("encode"),
+        let proposal_id = submit_then_propose_helper(&app, "prop-422", "ops_alice").await;
+
+        let approve = Request::builder()
+            .uri(format!(
+                "/v1/admin/redemption/refund-proposals/{proposal_id}/approve"
             ))
+            .method("POST")
+            .header("x-user-id", "ops_alice") // same as proposer
+            .body(Body::empty())
             .expect("request");
-        let response = app.oneshot(refund).await.expect("oneshot");
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert!(read_body_to_string(response).await.contains("empty_reason"));
+        let response = app.oneshot(approve).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(
+            read_body_to_string(response)
+                .await
+                .contains("four_eye_violation")
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_approve_409_when_proposal_already_approved() {
+        let app = build_router_with_seeded_sku().await;
+        let proposal_id = submit_then_propose_helper(&app, "prop-409", "ops_alice").await;
+
+        let approve_first = Request::builder()
+            .uri(format!(
+                "/v1/admin/redemption/refund-proposals/{proposal_id}/approve"
+            ))
+            .method("POST")
+            .header("x-user-id", "ops_bob")
+            .body(Body::empty())
+            .expect("request");
+        let resp1 = app.clone().oneshot(approve_first).await.expect("first");
+        assert_eq!(resp1.status(), StatusCode::OK);
+
+        let approve_second = Request::builder()
+            .uri(format!(
+                "/v1/admin/redemption/refund-proposals/{proposal_id}/approve"
+            ))
+            .method("POST")
+            .header("x-user-id", "ops_carol")
+            .body(Body::empty())
+            .expect("request");
+        let resp2 = app.oneshot(approve_second).await.expect("second");
+        assert_eq!(resp2.status(), StatusCode::CONFLICT);
+        assert!(
+            read_body_to_string(resp2)
+                .await
+                .contains("proposal_already_resolved")
+        );
     }
 
     #[tokio::test]

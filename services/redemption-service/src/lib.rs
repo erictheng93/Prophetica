@@ -20,6 +20,7 @@ pub const DEFAULT_PORT: u16 = 8095;
 
 pub mod api;
 pub mod catalog;
+pub mod cs_refund;
 pub mod entitlement;
 pub mod ledger;
 pub mod order;

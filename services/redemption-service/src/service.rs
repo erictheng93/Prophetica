@@ -40,6 +40,7 @@ use thiserror::Error;
 
 use crate::{
     catalog::{FulfillmentMode, Sku},
+    cs_refund::{CsRefundError, CsRefundProposal, ProposalStatus},
     entitlement::{Entitlement, EntitlementError, EntitlementState},
     ledger::{LedgerClient, LedgerClientError, PostTransactionRequest},
     order::{
@@ -178,6 +179,29 @@ pub enum RedemptionError {
     /// distinct human identities before money moves.
     #[error("4-eye violation: proposer and approver must differ (both = {actor})")]
     FourEyeViolation { actor: String },
+    /// Approver tried to approve their own proposal (proposer == approver
+    /// when loaded from the stored proposal). Same invariant as
+    /// `FourEyeViolation`, distinct error variant so the HTTP layer can
+    /// surface a clearer message.
+    #[error(
+        "4-eye violation: approver {approver} matches stored proposer of proposal {proposal_id}"
+    )]
+    ApproverIsProposer {
+        proposal_id: String,
+        approver: String,
+    },
+    /// Proposal failed validation (empty field). Wraps the domain error
+    /// from `crate::cs_refund`.
+    #[error("CS refund proposal build failed: {0}")]
+    ProposalBuild(#[from] CsRefundError),
+    /// `approve_cs_refund` was called for a proposal that was already
+    /// resolved (Approved / Rejected / Cancelled). Idempotent retries of
+    /// the same approver get a clear signal rather than silently no-op.
+    #[error("proposal {proposal_id} already terminal at status {status:?}; cannot re-approve")]
+    ProposalAlreadyResolved {
+        proposal_id: String,
+        status: ProposalStatus,
+    },
     /// Defensive: a SPEC-024 state transition that should always be legal was
     /// rejected — points to either a code bug here or a concurrent write
     /// that advanced the order between our load and update.
@@ -567,6 +591,131 @@ impl RedemptionService {
             ..order
         };
         self.build_view(refunded_order, None, false).await
+    }
+
+    /// SPEC-024 P5.6 / SPEC-012 §11 step 1: propose a CS refund.
+    /// `proposer_user_id` MUST come from a gateway-authenticated identity
+    /// (the API handler reads `x-user-id`). The order must be `Fulfilled`;
+    /// proposals against `Committed` orders should use the
+    /// [`Self::cancel_order`] cancel-window path instead.
+    ///
+    /// Returns the stored proposal with its server-generated `proposal_id`.
+    /// The approver uses [`Self::approve_cs_refund`] with that id.
+    ///
+    /// # Errors
+    ///
+    /// - [`RedemptionError::OrderNotFound`] / [`RedemptionError::OrderStateNotAllowed`]
+    ///   when the order is missing or not `Fulfilled`.
+    /// - [`RedemptionError::ProposalBuild`] when proposer / reason is empty.
+    /// - Propagates store errors (including
+    ///   [`StoreError::ProposalAlreadyPendingForOrder`] when a prior
+    ///   proposal is still `Pending`).
+    pub async fn propose_cs_refund(
+        &self,
+        order_id: &str,
+        proposer_user_id: &str,
+        reason: &str,
+        now_unix_secs: i64,
+    ) -> Result<CsRefundProposal, RedemptionError> {
+        let order = self.store.get_order(order_id).await?.ok_or_else(|| {
+            RedemptionError::OrderNotFound {
+                order_id: order_id.to_owned(),
+            }
+        })?;
+        if !matches!(order.state, OrderState::Fulfilled) {
+            return Err(RedemptionError::OrderStateNotAllowed {
+                order_id: order.order_id.clone(),
+                operation: "propose_cs_refund",
+                state: order.state,
+                allowed_states: &[OrderState::Fulfilled],
+            });
+        }
+        let proposal =
+            CsRefundProposal::propose(order_id, proposer_user_id, reason, now_unix_secs)?;
+        let stored = self.store.record_cs_refund_proposal(proposal).await?;
+        Ok(stored)
+    }
+
+    /// SPEC-024 P5.6 / SPEC-012 §11 step 2: approve a previously-proposed
+    /// CS refund. Validates that `approver_user_id` came from a different
+    /// gateway-authenticated identity than the stored `proposed_by`, then
+    /// posts the refund ledger entry + advances order state.
+    ///
+    /// Concurrent approvers race on
+    /// [`crate::store::RedemptionStore::resolve_cs_refund_proposal`]'s
+    /// conditional UPDATE — only the first transition Pending → Approved
+    /// wins; subsequent callers see [`RedemptionError::ProposalAlreadyResolved`].
+    ///
+    /// # Errors
+    ///
+    /// - [`StoreError::ProposalNotFound`] (via `StoreUnavailable`) when the
+    ///   proposal id is unknown.
+    /// - [`RedemptionError::ApproverIsProposer`] when the approver matches
+    ///   the stored proposer (4-eye violation).
+    /// - [`RedemptionError::ProposalAlreadyResolved`] when the proposal is
+    ///   already Approved / Rejected / Cancelled.
+    /// - Propagates [`Self::refund_fulfilled_order_cs`] errors.
+    pub async fn approve_cs_refund(
+        &self,
+        proposal_id: &str,
+        approver_user_id: &str,
+        now_unix_secs: i64,
+    ) -> Result<OrderView, RedemptionError> {
+        let proposal = self
+            .store
+            .get_cs_refund_proposal(proposal_id)
+            .await?
+            .ok_or_else(|| {
+                RedemptionError::StoreUnavailable(StoreError::ProposalNotFound {
+                    proposal_id: proposal_id.to_owned(),
+                })
+            })?;
+
+        if proposal.status != ProposalStatus::Pending {
+            return Err(RedemptionError::ProposalAlreadyResolved {
+                proposal_id: proposal.proposal_id,
+                status: proposal.status,
+            });
+        }
+        if approver_user_id == proposal.proposed_by {
+            return Err(RedemptionError::ApproverIsProposer {
+                proposal_id: proposal.proposal_id,
+                approver: approver_user_id.to_owned(),
+            });
+        }
+
+        // Conditional resolve — only the winning thread proceeds to ledger.
+        let won_race = self
+            .store
+            .resolve_cs_refund_proposal(
+                &proposal.proposal_id,
+                ProposalStatus::Approved,
+                approver_user_id,
+                now_unix_secs,
+            )
+            .await?;
+        if !won_race {
+            // Another approver beat us between the get_cs_refund_proposal
+            // load above and the conditional UPDATE. Re-read to surface the
+            // actual terminal status.
+            let resolved = self
+                .store
+                .get_cs_refund_proposal(&proposal.proposal_id)
+                .await?
+                .ok_or_else(|| {
+                    RedemptionError::StoreUnavailable(StoreError::ProposalNotFound {
+                        proposal_id: proposal.proposal_id.clone(),
+                    })
+                })?;
+            return Err(RedemptionError::ProposalAlreadyResolved {
+                proposal_id: resolved.proposal_id,
+                status: resolved.status,
+            });
+        }
+
+        // Race won → fire the actual refund. The proposer/approver pair are
+        // both gateway-authenticated at this point.
+        self.refund_fulfilled_order_cs(&proposal.order_id).await
     }
 
     /// SPEC-024 §3.2 / SPEC-012 §11 CS-driven refund with 4-eye guard.

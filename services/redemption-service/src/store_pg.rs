@@ -26,6 +26,7 @@ use crate::{
     catalog::{
         CatalogItem, CatalogItemKind, CatalogItemStatus, FulfillmentMode, Sku, Stock, StockKind,
     },
+    cs_refund::{CsRefundProposal, ProposalStatus},
     entitlement::{Entitlement, EntitlementState},
     order::{OrderState, RedemptionOrder},
     store::{RedemptionStore, StoreError},
@@ -463,6 +464,117 @@ impl RedemptionStore for PgRedemptionStore {
             .collect()
     }
 
+    async fn record_cs_refund_proposal(
+        &self,
+        proposal: CsRefundProposal,
+    ) -> Result<CsRefundProposal, StoreError> {
+        let result = sqlx::query(
+            "INSERT INTO cs_refund_proposals \
+                (proposal_id, order_id, proposed_by, reason, status, proposed_at) \
+             VALUES ($1, $2, $3, $4, $5, to_timestamp($6::double precision))",
+        )
+        .bind(&proposal.proposal_id)
+        .bind(&proposal.order_id)
+        .bind(&proposal.proposed_by)
+        .bind(&proposal.reason)
+        .bind(proposal_status_to_str(proposal.status))
+        .bind(proposal.proposed_at_unix_secs)
+        .execute(&self.pool)
+        .await;
+
+        match result {
+            Ok(_) => Ok(proposal),
+            Err(sqlx::Error::Database(db_err))
+                if db_err
+                    .constraint()
+                    .is_some_and(|c| c == "idx_cs_proposals_one_pending_per_order") =>
+            {
+                Err(StoreError::ProposalAlreadyPendingForOrder {
+                    order_id: proposal.order_id,
+                })
+            }
+            Err(err) => Err(map_sqlx_error(&err)),
+        }
+    }
+
+    async fn get_cs_refund_proposal(
+        &self,
+        proposal_id: &str,
+    ) -> Result<Option<CsRefundProposal>, StoreError> {
+        let row: Option<(
+            String,
+            String,
+            String,
+            String,
+            String,
+            i64,
+            Option<i64>,
+            Option<String>,
+        )> = sqlx::query_as(
+            "SELECT proposal_id, order_id, proposed_by, reason, status, \
+                    EXTRACT(EPOCH FROM proposed_at)::bigint, \
+                    EXTRACT(EPOCH FROM resolved_at)::bigint, \
+                    resolved_by \
+             FROM cs_refund_proposals WHERE proposal_id = $1",
+        )
+        .bind(proposal_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|err| map_sqlx_error(&err))?;
+
+        Ok(match row {
+            None => None,
+            Some(row) => Some(CsRefundProposal {
+                proposal_id: row.0,
+                order_id: row.1,
+                proposed_by: row.2,
+                reason: row.3,
+                status: proposal_status_from_str(&row.4)?,
+                proposed_at_unix_secs: row.5,
+                resolved_at_unix_secs: row.6,
+                resolved_by: row.7,
+            }),
+        })
+    }
+
+    async fn resolve_cs_refund_proposal(
+        &self,
+        proposal_id: &str,
+        new_status: ProposalStatus,
+        resolved_by: &str,
+        resolved_at_unix_secs: i64,
+    ) -> Result<bool, StoreError> {
+        // Conditional UPDATE: only flips Pending → new_status. rows_affected
+        // = 1 means we won the race; 0 means someone else got there first
+        // OR the proposal id is unknown (we disambiguate via a follow-up
+        // SELECT so the caller gets the right error variant).
+        let result = sqlx::query(
+            "UPDATE cs_refund_proposals SET \
+                status = $1, \
+                resolved_at = to_timestamp($2::double precision), \
+                resolved_by = $3 \
+             WHERE proposal_id = $4 AND status = 'pending'",
+        )
+        .bind(proposal_status_to_str(new_status))
+        .bind(resolved_at_unix_secs)
+        .bind(resolved_by)
+        .bind(proposal_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|err| map_sqlx_error(&err))?;
+
+        if result.rows_affected() == 1 {
+            return Ok(true);
+        }
+        // Distinguish "unknown id" from "already terminal".
+        match self.get_cs_refund_proposal(proposal_id).await? {
+            Some(_) => Ok(false), // exists but already terminal
+            None => Err(StoreError::ProposalNotFound {
+                proposal_id: proposal_id.to_owned(),
+            }),
+        }
+    }
+
     async fn set_entitlement_payload(
         &self,
         entitlement_id: &str,
@@ -563,6 +675,27 @@ fn entitlement_state_to_str(state: EntitlementState) -> &'static str {
         EntitlementState::Consumed => "consumed",
         EntitlementState::Refunded => "refunded",
         EntitlementState::Expired => "expired",
+    }
+}
+
+fn proposal_status_to_str(status: ProposalStatus) -> &'static str {
+    match status {
+        ProposalStatus::Pending => "pending",
+        ProposalStatus::Approved => "approved",
+        ProposalStatus::Rejected => "rejected",
+        ProposalStatus::Cancelled => "cancelled",
+    }
+}
+
+fn proposal_status_from_str(s: &str) -> Result<ProposalStatus, StoreError> {
+    match s {
+        "pending" => Ok(ProposalStatus::Pending),
+        "approved" => Ok(ProposalStatus::Approved),
+        "rejected" => Ok(ProposalStatus::Rejected),
+        "cancelled" => Ok(ProposalStatus::Cancelled),
+        other => Err(StoreError::ProposalNotFound {
+            proposal_id: format!("invalid status {other:?} in DB"),
+        }),
     }
 }
 
