@@ -43,8 +43,9 @@ use crate::{
     entitlement::{Entitlement, EntitlementError, EntitlementState},
     ledger::{LedgerClient, LedgerClientError, PostTransactionRequest},
     order::{
-        OrderError, OrderState, RedemptionOrder, ledger_idempotency_key_for_fulfillment,
-        ledger_idempotency_key_for_purchase,
+        OrderError, OrderState, RedemptionOrder, ledger_idempotency_key_for_expiry,
+        ledger_idempotency_key_for_fulfillment, ledger_idempotency_key_for_purchase,
+        ledger_idempotency_key_for_refund,
     },
     partner::{PartnerAdapter, PartnerError, PartnerStatus},
     store::{RedemptionStore, StoreError},
@@ -139,6 +140,23 @@ pub enum RedemptionError {
     PartnerRejected(#[from] PartnerError),
     #[error("sku vanished from catalog mid-fulfillment for order {order_id}")]
     SkuVanished { order_id: String },
+    /// Refund / cancel / expire was attempted on an order whose state does
+    /// not allow the operation. SPEC-024 §3.2 transitions:
+    /// - cancel-window refund: only from `Committed`
+    /// - CS-driven refund: only from `Fulfilled`
+    /// - expire: only from `Committed`
+    #[error(
+        "order {order_id} is in state {state:?}; {operation} requires one of {allowed_states:?}"
+    )]
+    OrderStateNotAllowed {
+        order_id: String,
+        operation: &'static str,
+        state: OrderState,
+        allowed_states: &'static [OrderState],
+    },
+    /// Order id supplied to cancel / expire was not in the store.
+    #[error("order {order_id} not found")]
+    OrderNotFound { order_id: String },
     /// Defensive: a SPEC-024 state transition that should always be legal was
     /// rejected — points to either a code bug here or a concurrent write
     /// that advanced the order between our load and update.
@@ -423,6 +441,220 @@ impl RedemptionService {
                 ),
             ],
             metadata: redemption_purchase_metadata(order, sku, audit_log_id),
+        };
+        self.ledger.post_transaction(request).await?;
+        Ok(())
+    }
+
+    /// SPEC-024 §3.2 / §7 cancel-window refund. Allowed only when the
+    /// order is in [`OrderState::Committed`] — once `Fulfilled`, the CS
+    /// path ([`Self::refund_fulfilled_order_cs`]) is the only refund
+    /// route. P4 skeleton: the time-based cancel window (`SKU.cancel_window_seconds`)
+    /// is enforced at the SPEC level but NOT here — production wiring
+    /// passes a `now` clock + reads `SKU.cancel_window_seconds` to gate.
+    /// The orchestrator below stays time-agnostic so refund workflows can
+    /// be exercised in tests without clock injection.
+    ///
+    /// Ledger: `redemption_refund` txn moves the value from
+    /// `Liability.UnredeemedEntitlement.{user}` back to `Player.Wallet.{user}`,
+    /// keyed on `ledger_idempotency_key_for_refund(order_id)`.
+    ///
+    /// # Errors
+    ///
+    /// - [`RedemptionError::OrderNotFound`] when `order_id` is unknown.
+    /// - [`RedemptionError::OrderStateNotAllowed`] when the order is not
+    ///   `Committed`.
+    /// - Propagates ledger / store errors.
+    pub async fn cancel_order(&self, order_id: &str) -> Result<OrderView, RedemptionError> {
+        let order = self.store.get_order(order_id).await?.ok_or_else(|| {
+            RedemptionError::OrderNotFound {
+                order_id: order_id.to_owned(),
+            }
+        })?;
+
+        if !matches!(order.state, OrderState::Committed) {
+            return Err(RedemptionError::OrderStateNotAllowed {
+                order_id: order.order_id.clone(),
+                operation: "cancel_order",
+                state: order.state,
+                allowed_states: &[OrderState::Committed],
+            });
+        }
+
+        let sku = self.store.get_sku(&order.sku_id).await?.ok_or_else(|| {
+            RedemptionError::SkuVanished {
+                order_id: order.order_id.clone(),
+            }
+        })?;
+
+        self.post_redemption_refund(&order, &sku).await?;
+        self.advance_order(&order.order_id, OrderState::Refunded)
+            .await?;
+        if let Some(entitlement) = self
+            .store
+            .get_entitlement_for_order(&order.order_id)
+            .await?
+        {
+            self.store
+                .update_entitlement_state(&entitlement.entitlement_id, EntitlementState::Refunded)
+                .await?;
+        }
+        let refunded_order = RedemptionOrder {
+            state: OrderState::Refunded,
+            ..order
+        };
+        self.build_view(refunded_order, None, false).await
+    }
+
+    /// SPEC-024 §3.2 CS-driven refund from `Fulfilled`. P4 skeleton: the
+    /// 4-eye approval workflow (SPEC-012) is NOT wired here — this method
+    /// assumes the caller has already cleared CS approval. The orchestrator
+    /// posts the refund ledger entry and advances state.
+    ///
+    /// # Errors
+    ///
+    /// - [`RedemptionError::OrderStateNotAllowed`] when the order is not
+    ///   `Fulfilled`.
+    /// - Propagates ledger / store errors.
+    pub async fn refund_fulfilled_order_cs(
+        &self,
+        order_id: &str,
+    ) -> Result<OrderView, RedemptionError> {
+        let order = self.store.get_order(order_id).await?.ok_or_else(|| {
+            RedemptionError::OrderNotFound {
+                order_id: order_id.to_owned(),
+            }
+        })?;
+        if !matches!(order.state, OrderState::Fulfilled) {
+            return Err(RedemptionError::OrderStateNotAllowed {
+                order_id: order.order_id.clone(),
+                operation: "refund_fulfilled_order_cs",
+                state: order.state,
+                allowed_states: &[OrderState::Fulfilled],
+            });
+        }
+        let sku = self.store.get_sku(&order.sku_id).await?.ok_or_else(|| {
+            RedemptionError::SkuVanished {
+                order_id: order.order_id.clone(),
+            }
+        })?;
+        self.post_redemption_refund(&order, &sku).await?;
+        self.advance_order(&order.order_id, OrderState::Refunded)
+            .await?;
+        if let Some(entitlement) = self
+            .store
+            .get_entitlement_for_order(&order.order_id)
+            .await?
+        {
+            self.store
+                .update_entitlement_state(&entitlement.entitlement_id, EntitlementState::Refunded)
+                .await?;
+        }
+        let refunded_order = RedemptionOrder {
+            state: OrderState::Refunded,
+            ..order
+        };
+        self.build_view(refunded_order, None, false).await
+    }
+
+    /// SPEC-024 §3.2 / §7 expiry. Marks a single `Committed` order as
+    /// expired and posts the breakage ledger entry that recognises the
+    /// unused entitlement as `Revenue.EntitlementBreakage`. Caller is
+    /// responsible for the "is this expired now?" decision — the production
+    /// expiry sweep (which queries `WHERE state='committed' AND expires_at < NOW()`)
+    /// invokes this method per expired order id.
+    ///
+    /// # Errors
+    ///
+    /// - [`RedemptionError::OrderNotFound`] when `order_id` is unknown.
+    /// - [`RedemptionError::OrderStateNotAllowed`] when the order is not
+    ///   `Committed` (Fulfilled orders cannot expire — happy-path terminal).
+    /// - Propagates ledger / store errors.
+    pub async fn expire_order(&self, order_id: &str) -> Result<OrderView, RedemptionError> {
+        let order = self.store.get_order(order_id).await?.ok_or_else(|| {
+            RedemptionError::OrderNotFound {
+                order_id: order_id.to_owned(),
+            }
+        })?;
+        if !matches!(order.state, OrderState::Committed) {
+            return Err(RedemptionError::OrderStateNotAllowed {
+                order_id: order.order_id.clone(),
+                operation: "expire_order",
+                state: order.state,
+                allowed_states: &[OrderState::Committed],
+            });
+        }
+        self.post_entitlement_expiry(&order).await?;
+        self.advance_order(&order.order_id, OrderState::Expired)
+            .await?;
+        if let Some(entitlement) = self
+            .store
+            .get_entitlement_for_order(&order.order_id)
+            .await?
+        {
+            self.store
+                .update_entitlement_state(&entitlement.entitlement_id, EntitlementState::Expired)
+                .await?;
+        }
+        let expired_order = RedemptionOrder {
+            state: OrderState::Expired,
+            ..order
+        };
+        self.build_view(expired_order, None, false).await
+    }
+
+    async fn post_redemption_refund(
+        &self,
+        order: &RedemptionOrder,
+        sku: &Sku,
+    ) -> Result<(), RedemptionError> {
+        let request = PostTransactionRequest {
+            txn_kind: LedgerTxnKind::RedemptionRefund,
+            txn_type: "redemption_refund".to_owned(),
+            idempotency_key: ledger_idempotency_key_for_refund(&order.order_id),
+            correlation_id: None,
+            entries: vec![
+                LedgerEntryDraft::new(
+                    format!("Liability.UnredeemedEntitlement.{}", order.user_id),
+                    LedgerAmount::from_minor_units(sku.price_minor_units),
+                ),
+                LedgerEntryDraft::new(
+                    format!("Player.Wallet.{}", order.user_id),
+                    LedgerAmount::from_minor_units(-sku.price_minor_units),
+                ),
+            ],
+            metadata: HashMap::from([(
+                "order_id".to_owned(),
+                Value::String(order.order_id.clone()),
+            )]),
+        };
+        self.ledger.post_transaction(request).await?;
+        Ok(())
+    }
+
+    async fn post_entitlement_expiry(
+        &self,
+        order: &RedemptionOrder,
+    ) -> Result<(), RedemptionError> {
+        let request = PostTransactionRequest {
+            txn_kind: LedgerTxnKind::EntitlementExpiry,
+            txn_type: "entitlement_expiry".to_owned(),
+            idempotency_key: ledger_idempotency_key_for_expiry(&order.order_id),
+            correlation_id: None,
+            entries: vec![
+                LedgerEntryDraft::new(
+                    format!("Liability.UnredeemedEntitlement.{}", order.user_id),
+                    LedgerAmount::from_minor_units(order.price_minor_units),
+                ),
+                LedgerEntryDraft::new(
+                    "Revenue.EntitlementBreakage".to_owned(),
+                    LedgerAmount::from_minor_units(-order.price_minor_units),
+                ),
+            ],
+            metadata: HashMap::from([(
+                "order_id".to_owned(),
+                Value::String(order.order_id.clone()),
+            )]),
         };
         self.ledger.post_transaction(request).await?;
         Ok(())
@@ -1075,6 +1307,213 @@ mod tests {
             EntitlementState::Fulfilled,
             "replay must self-heal entitlement to Fulfilled"
         );
+    }
+
+    // -------------------------------------------------------------------
+    // P4 refund / expiry / breakage tests
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn cancel_order_from_committed_refunds_and_restores_balance() {
+        // Use DigitalCode so submit_order stops at Committed (Fulfilled
+        // can't be cancelled by the cancel-window path).
+        let (service, store, ledger) =
+            build_service_with_sku("code_a", 1_000, FulfillmentMode::DigitalCode).await;
+        ledger.seed_deposit("user_42", 10_000).await.expect("seed");
+        let view = service
+            .submit_order(submit_request("user_42", "code_a", "k"))
+            .await
+            .expect("submit");
+        assert_eq!(view.state, OrderState::Committed);
+        let balance_after_commit = ledger
+            .get_wallet_balance("user_42")
+            .await
+            .expect("balance")
+            .available_minor_units;
+        assert_eq!(balance_after_commit, 9_000);
+
+        let refunded = service.cancel_order(&view.order_id).await.expect("cancel");
+        assert_eq!(refunded.state, OrderState::Refunded);
+
+        // Wallet balance restored.
+        let balance_after_refund = ledger
+            .get_wallet_balance("user_42")
+            .await
+            .expect("balance")
+            .available_minor_units;
+        assert_eq!(balance_after_refund, 10_000);
+
+        // Entitlement moved to Refunded.
+        let healed = store
+            .get_entitlement_for_order(&view.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        assert_eq!(healed.state, EntitlementState::Refunded);
+
+        // Ledger has redemption_refund txn.
+        let posted = ledger.recorded_transactions().expect("recorded");
+        assert!(posted.iter().any(|t| t.txn_type == "redemption_refund"));
+    }
+
+    #[tokio::test]
+    async fn cancel_order_rejects_non_committed_state() {
+        let (service, _store, ledger) =
+            build_service_with_sku("sku_a", 500, FulfillmentMode::DigitalImmediate).await;
+        ledger.seed_deposit("user_42", 1_000).await.expect("seed");
+        let view = service
+            .submit_order(submit_request("user_42", "sku_a", "k"))
+            .await
+            .expect("submit");
+        assert_eq!(view.state, OrderState::Fulfilled);
+        let error = match service.cancel_order(&view.order_id).await {
+            Ok(_) => panic!("cancel_order on Fulfilled must error"),
+            Err(error) => error,
+        };
+        match error {
+            RedemptionError::OrderStateNotAllowed {
+                operation,
+                state,
+                allowed_states,
+                ..
+            } => {
+                assert_eq!(operation, "cancel_order");
+                assert_eq!(state, OrderState::Fulfilled);
+                assert_eq!(allowed_states, &[OrderState::Committed]);
+            }
+            other => panic!("expected OrderStateNotAllowed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn cancel_order_idempotent_replay_does_not_double_refund() {
+        let (service, _store, ledger) =
+            build_service_with_sku("code_a", 1_000, FulfillmentMode::DigitalCode).await;
+        ledger.seed_deposit("user_42", 10_000).await.expect("seed");
+        let view = service
+            .submit_order(submit_request("user_42", "code_a", "k"))
+            .await
+            .expect("submit");
+
+        let first = service
+            .cancel_order(&view.order_id)
+            .await
+            .expect("cancel 1");
+        assert_eq!(first.state, OrderState::Refunded);
+
+        // Second cancel fails — already terminal.
+        let err = match service.cancel_order(&view.order_id).await {
+            Ok(_) => panic!("second cancel on Refunded must error"),
+            Err(error) => error,
+        };
+        assert!(matches!(err, RedemptionError::OrderStateNotAllowed { .. }));
+
+        // Ledger only saw ONE redemption_refund — no double-refund.
+        let posted = ledger.recorded_transactions().expect("recorded");
+        let refund_count = posted
+            .iter()
+            .filter(|t| t.txn_type == "redemption_refund")
+            .count();
+        assert_eq!(refund_count, 1, "exactly one refund posted");
+        let balance = ledger.get_wallet_balance("user_42").await.expect("balance");
+        assert_eq!(balance.available_minor_units, 10_000);
+    }
+
+    #[tokio::test]
+    async fn cs_refund_from_fulfilled_moves_to_refunded_and_restores_balance() {
+        let (service, _store, ledger) =
+            build_service_with_sku("sku_a", 500, FulfillmentMode::DigitalImmediate).await;
+        ledger.seed_deposit("user_42", 1_000).await.expect("seed");
+        let view = service
+            .submit_order(submit_request("user_42", "sku_a", "k"))
+            .await
+            .expect("submit");
+        assert_eq!(view.state, OrderState::Fulfilled);
+
+        let refunded = service
+            .refund_fulfilled_order_cs(&view.order_id)
+            .await
+            .expect("cs refund");
+        assert_eq!(refunded.state, OrderState::Refunded);
+
+        let balance = ledger.get_wallet_balance("user_42").await.expect("balance");
+        assert_eq!(balance.available_minor_units, 1_000);
+    }
+
+    #[tokio::test]
+    async fn cs_refund_rejects_non_fulfilled_state() {
+        let (service, _store, ledger) =
+            build_service_with_sku("code_a", 500, FulfillmentMode::DigitalCode).await;
+        ledger.seed_deposit("user_42", 1_000).await.expect("seed");
+        let view = service
+            .submit_order(submit_request("user_42", "code_a", "k"))
+            .await
+            .expect("submit");
+        assert_eq!(view.state, OrderState::Committed);
+
+        let err = match service.refund_fulfilled_order_cs(&view.order_id).await {
+            Ok(_) => panic!("cs refund on Committed must error"),
+            Err(error) => error,
+        };
+        assert!(matches!(err, RedemptionError::OrderStateNotAllowed { .. }));
+    }
+
+    #[tokio::test]
+    async fn expire_order_from_committed_writes_breakage_and_advances() {
+        let (service, store, ledger) =
+            build_service_with_sku("code_a", 1_500, FulfillmentMode::DigitalCode).await;
+        ledger.seed_deposit("user_42", 10_000).await.expect("seed");
+        let view = service
+            .submit_order(submit_request("user_42", "code_a", "k"))
+            .await
+            .expect("submit");
+
+        let expired = service.expire_order(&view.order_id).await.expect("expire");
+        assert_eq!(expired.state, OrderState::Expired);
+
+        let entitlement = store
+            .get_entitlement_for_order(&view.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        assert_eq!(entitlement.state, EntitlementState::Expired);
+
+        // Ledger: liability cleared into Revenue.EntitlementBreakage.
+        let posted = ledger.recorded_transactions().expect("recorded");
+        assert!(posted.iter().any(|t| t.txn_type == "entitlement_expiry"));
+        let breakage = ledger
+            .account_balance("Revenue.EntitlementBreakage")
+            .expect("balance");
+        assert_eq!(breakage, -1_500, "credit-positive in SDK convention");
+
+        // Wallet NOT refunded (this is breakage, not refund).
+        let wallet = ledger.get_wallet_balance("user_42").await.expect("balance");
+        assert_eq!(wallet.available_minor_units, 10_000 - 1_500);
+    }
+
+    #[tokio::test]
+    async fn expire_order_rejects_fulfilled_and_refunded() {
+        let (service, _store, ledger) =
+            build_service_with_sku("sku_a", 500, FulfillmentMode::DigitalImmediate).await;
+        ledger.seed_deposit("user_42", 5_000).await.expect("seed");
+
+        // Try to expire a Fulfilled order — refuse.
+        let view = service
+            .submit_order(submit_request("user_42", "sku_a", "k1"))
+            .await
+            .expect("submit 1");
+        let err = match service.expire_order(&view.order_id).await {
+            Ok(_) => panic!("expire on Fulfilled must error"),
+            Err(error) => error,
+        };
+        assert!(matches!(err, RedemptionError::OrderStateNotAllowed { .. }));
+
+        // Try to expire a non-existent order — OrderNotFound.
+        let err = match service.expire_order("01HX-DOES-NOT-EXIST").await {
+            Ok(_) => panic!("unknown order must error"),
+            Err(error) => error,
+        };
+        assert!(matches!(err, RedemptionError::OrderNotFound { .. }));
     }
 
     // -------------------------------------------------------------------

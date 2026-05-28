@@ -1,9 +1,12 @@
 //! HTTP surface for the redemption-service.
 //!
-//! SPEC-024 implementation plan §1 P3.1: `submit_order` / `get_order` /
-//! `list_entitlements` are real handlers backed by [`crate::service::RedemptionService`].
-//! The `cancel_order` route still returns 501 — cancel-window refund lands
-//! with P4 (`expiry / breakage / refund`).
+//! SPEC-024 implementation plan §1 P3.1 + P4: `submit_order` / `get_order` /
+//! `list_entitlements` / `cancel_order` are all real handlers backed by
+//! [`crate::service::RedemptionService`]. CS-driven refund
+//! ([`RedemptionService::refund_fulfilled_order_cs`]) and the expiry sweep
+//! ([`RedemptionService::expire_order`]) are operational entry points — not
+//! exposed as public HTTP routes; they ship with SPEC-012 (CS workflow) and
+//! the expiry worker binary respectively.
 
 use std::sync::Arc;
 
@@ -15,7 +18,7 @@ use axum::{
     routing::{get, post},
 };
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::json;
 use tracing::warn;
 
 use crate::{
@@ -29,10 +32,7 @@ pub fn router(service: Arc<RedemptionService>) -> Router {
     Router::new()
         .route("/v1/redemption/orders", post(submit_order))
         .route("/v1/redemption/orders/:order_id", get(get_order))
-        .route(
-            "/v1/redemption/orders/:order_id/cancel",
-            post(stub_cancel_order),
-        )
+        .route("/v1/redemption/orders/:order_id/cancel", post(cancel_order))
         .route(
             "/v1/redemption/entitlements/:user_id",
             get(list_entitlements),
@@ -86,15 +86,14 @@ async fn list_entitlements(
     }
 }
 
-async fn stub_cancel_order() -> (StatusCode, Json<Value>) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(json!({
-            "error": "not_implemented",
-            "handler": "redemption cancel-order",
-            "plan_ref": "SPEC-024 implementation plan §1 P4: cancel-window refund + ledger redemption_refund txn live in the expiry/breakage/refund phase.",
-        })),
-    )
+async fn cancel_order(
+    State(service): State<Arc<RedemptionService>>,
+    Path(order_id): Path<String>,
+) -> Response {
+    match service.cancel_order(&order_id).await {
+        Ok(view) => (StatusCode::OK, Json(view)).into_response(),
+        Err(error) => render_redemption_error(&error),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -108,6 +107,10 @@ fn render_redemption_error(error: &RedemptionError) -> Response {
         RedemptionError::OrderBuild(_) => (StatusCode::BAD_REQUEST, "invalid_order"),
         RedemptionError::EntitlementBuild(_) => (StatusCode::BAD_REQUEST, "invalid_entitlement"),
         RedemptionError::SkuNotFound { .. } => (StatusCode::NOT_FOUND, "sku_not_found"),
+        RedemptionError::OrderNotFound { .. } => (StatusCode::NOT_FOUND, "order_not_found"),
+        RedemptionError::OrderStateNotAllowed { .. } => {
+            (StatusCode::CONFLICT, "order_state_not_allowed")
+        }
         RedemptionError::InsufficientBalance { .. } => {
             (StatusCode::PAYMENT_REQUIRED, "insufficient_balance")
         }
@@ -283,14 +286,58 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancel_route_still_returns_501() {
+    async fn cancel_route_404s_for_unknown_order() {
         let app = build_router_with_seeded_sku().await;
         let request = Request::builder()
-            .uri("/v1/redemption/orders/some-id/cancel")
+            .uri("/v1/redemption/orders/01HX-NOT-A-REAL-ORDER/cancel")
             .method("POST")
             .body(Body::empty())
             .expect("request");
         let response = app.oneshot(request).await.expect("oneshot");
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert!(
+            read_body_to_string(response)
+                .await
+                .contains("order_not_found")
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_route_409s_for_terminal_order() {
+        // Fulfilled order can't be cancelled via this path (CS path only).
+        let app = build_router_with_seeded_sku().await;
+
+        // First submit + commit a DigitalImmediate order so it's Fulfilled.
+        let submit = Request::builder()
+            .uri("/v1/redemption/orders")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "user_id": "user_42",
+                    "sku_id": "sku_a",
+                    "idempotency_key": "cancel-409",
+                }))
+                .expect("encode"),
+            ))
+            .expect("request");
+        let submit_response = app.clone().oneshot(submit).await.expect("submit");
+        assert_eq!(submit_response.status(), StatusCode::CREATED);
+        let body = read_body_to_string(submit_response).await;
+        let parsed: serde_json::Value = serde_json::from_str(&body).expect("parse");
+        let order_id = parsed["order_id"].as_str().expect("order_id").to_owned();
+
+        let cancel = Request::builder()
+            .uri(format!("/v1/redemption/orders/{order_id}/cancel"))
+            .method("POST")
+            .body(Body::empty())
+            .expect("request");
+        let response = app.oneshot(cancel).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert!(
+            read_body_to_string(response)
+                .await
+                .contains("order_state_not_allowed")
+        );
     }
 }
