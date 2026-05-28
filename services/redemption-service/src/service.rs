@@ -47,6 +47,7 @@ use crate::{
         ledger_idempotency_key_for_purchase,
     },
     store::{RedemptionStore, StoreError},
+    vault::{VaultClient, VaultError},
 };
 
 /// Inbound submit-order request.
@@ -57,6 +58,17 @@ pub struct SubmitOrderRequest {
     pub idempotency_key: String,
     #[serde(default)]
     pub correlation_id: Option<String>,
+}
+
+/// Summary of one fulfillment worker pass. Per-entitlement failures are
+/// counted by category instead of aborting the whole batch — operators can
+/// alert on `vault_exhausted` vs. `ledger_failed` differently.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct WorkerStats {
+    pub processed: usize,
+    pub vault_exhausted: usize,
+    pub ledger_failed: usize,
+    pub store_failed: usize,
 }
 
 /// Outbound order projection returned to API callers.
@@ -98,6 +110,10 @@ pub enum RedemptionError {
     LedgerRejected(#[from] LedgerClientError),
     #[error("redemption store unavailable: {0}")]
     StoreUnavailable(#[from] StoreError),
+    #[error("vault rejected fulfillment: {0}")]
+    VaultRejected(#[from] VaultError),
+    #[error("sku vanished from catalog mid-fulfillment for order {order_id}")]
+    SkuVanished { order_id: String },
     /// Defensive: a SPEC-024 state transition that should always be legal was
     /// rejected — points to either a code bug here or a concurrent write
     /// that advanced the order between our load and update.
@@ -384,6 +400,107 @@ impl RedemptionService {
             metadata: redemption_purchase_metadata(order, sku, audit_log_id),
         };
         self.ledger.post_transaction(request).await?;
+        Ok(())
+    }
+
+    /// SPEC-024 §3.4 `digital_code` worker pass. Lists up to `limit`
+    /// entitlements in [`EntitlementState::Issued`] for `DigitalCode` SKUs,
+    /// claims a code from `vault`, attaches it to the entitlement payload,
+    /// posts the `entitlement_fulfillment` ledger transaction, and advances
+    /// both order and entitlement to `Fulfilled`.
+    ///
+    /// Per-entitlement failures are recorded in [`WorkerStats`] and the
+    /// worker continues to the next entitlement — one stuck record never
+    /// blocks the rest of the batch.
+    ///
+    /// Crash-safe by design (see also the `submit_order` doc-comment on
+    /// self-healing):
+    /// - If [`VaultClient::claim_code`] succeeds but ledger / store updates
+    ///   fail, the next pass detects `fulfillment_payload.is_some()` and
+    ///   reuses the existing code instead of claiming a fresh one. This
+    ///   prevents the "lost code on retry" failure mode.
+    /// - `entitlement_fulfillment` ledger writes use
+    ///   `ledger_idempotency_key_for_fulfillment(order_id)` so duplicate
+    ///   posts are squashed by the ledger client.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RedemptionError::StoreUnavailable`] only when listing
+    /// pending work fails. Individual entitlement failures are reflected in
+    /// the returned [`WorkerStats`], not as `Err`.
+    pub async fn run_digital_code_worker(
+        &self,
+        vault: &dyn VaultClient,
+        limit: usize,
+    ) -> Result<WorkerStats, RedemptionError> {
+        let pending = self
+            .store
+            .list_entitlements_pending_fulfillment(FulfillmentMode::DigitalCode, limit)
+            .await?;
+
+        let mut stats = WorkerStats::default();
+        for entitlement in pending {
+            match self
+                .fulfill_digital_code_entitlement(&entitlement, vault)
+                .await
+            {
+                Ok(()) => stats.processed += 1,
+                Err(RedemptionError::VaultRejected(_)) => stats.vault_exhausted += 1,
+                Err(RedemptionError::LedgerRejected(_)) => stats.ledger_failed += 1,
+                Err(_) => stats.store_failed += 1,
+            }
+        }
+        Ok(stats)
+    }
+
+    async fn fulfill_digital_code_entitlement(
+        &self,
+        entitlement: &Entitlement,
+        vault: &dyn VaultClient,
+    ) -> Result<(), RedemptionError> {
+        // Step 1: get-or-claim the activation code. Reusing an existing
+        // payload across retries is what makes the worker crash-safe — a
+        // prior pass that claimed a code but then failed to post the ledger
+        // txn left the code on the entitlement record; we MUST NOT claim a
+        // fresh code or it leaks one per retry.
+        if entitlement.fulfillment_payload.is_none() {
+            let code = vault.claim_code(&entitlement.sku_id).await?;
+            let payload = serde_json::json!({ "code": code });
+            self.store
+                .set_entitlement_payload(&entitlement.entitlement_id, payload)
+                .await?;
+        }
+
+        let order = self
+            .store
+            .get_order(&entitlement.order_id)
+            .await?
+            .ok_or_else(|| RedemptionError::Internal {
+                order_id: entitlement.order_id.clone(),
+                message: "order missing during digital_code fulfillment".to_owned(),
+            })?;
+        let sku = self
+            .store
+            .get_sku(&entitlement.sku_id)
+            .await?
+            .ok_or_else(|| RedemptionError::SkuVanished {
+                order_id: order.order_id.clone(),
+            })?;
+
+        self.post_entitlement_fulfillment(&order, &sku, &entitlement.entitlement_id)
+            .await?;
+
+        // Advance order BEFORE entitlement: the order state machine drives
+        // the `submit_order` self-healing forward-drive (Committed → Fulfilled).
+        // If the entitlement advance fails, the next worker pass + a
+        // subsequent `submit_order` replay (which runs `heal_entitlement_to_fulfilled`)
+        // catches up.
+        if matches!(order.state, OrderState::Committed) {
+            self.advance_order(&order.order_id, OrderState::Fulfilled)
+                .await?;
+        }
+        self.heal_entitlement_to_fulfilled(&order.order_id, &entitlement.entitlement_id)
+            .await?;
         Ok(())
     }
 
@@ -789,6 +906,170 @@ mod tests {
             EntitlementState::Fulfilled,
             "replay must self-heal entitlement to Fulfilled"
         );
+    }
+
+    // -------------------------------------------------------------------
+    // P3.2 digital_code worker tests
+    // -------------------------------------------------------------------
+
+    use crate::vault::{InMemoryVault, VaultClient};
+
+    #[tokio::test]
+    async fn digital_code_worker_drives_issued_to_fulfilled() {
+        let (service, store, ledger) =
+            build_service_with_sku("code_a", 250, FulfillmentMode::DigitalCode).await;
+        ledger.seed_deposit("user_42", 10_000).await.expect("seed");
+        let vault = InMemoryVault::new();
+        vault
+            .seed_codes("code_a", vec!["AAA-001".to_owned(), "AAA-002".to_owned()])
+            .expect("seed codes");
+
+        // submit_order stops at Committed for non-DigitalImmediate modes.
+        let view = service
+            .submit_order(submit_request("user_42", "code_a", "k1"))
+            .await
+            .expect("submit");
+        assert_eq!(view.state, OrderState::Committed);
+        assert!(view.entitlement_id.is_some(), "entitlement issued");
+        let pending = store
+            .list_entitlements_pending_fulfillment(FulfillmentMode::DigitalCode, 10)
+            .await
+            .expect("list");
+        assert_eq!(pending.len(), 1, "should have 1 pending digital_code");
+
+        // Worker pass picks it up and fulfills.
+        let stats = service
+            .run_digital_code_worker(&vault, 10)
+            .await
+            .expect("worker");
+        assert_eq!(stats.processed, 1);
+        assert_eq!(stats.vault_exhausted, 0);
+        assert_eq!(stats.ledger_failed, 0);
+
+        // Order + entitlement both Fulfilled, payload contains code.
+        let healed = store
+            .get_entitlement_for_order(&view.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        assert_eq!(healed.state, EntitlementState::Fulfilled);
+        let payload = healed
+            .fulfillment_payload
+            .as_ref()
+            .expect("payload populated");
+        assert_eq!(
+            payload.get("code").and_then(|v| v.as_str()),
+            Some("AAA-001")
+        );
+        assert_eq!(vault.remaining("code_a").expect("remaining"), 1);
+
+        // Ledger has purchase + fulfillment for this order.
+        let posted = ledger.recorded_transactions().expect("recorded");
+        let kinds: Vec<&str> = posted.iter().map(|t| t.txn_type.as_str()).collect();
+        assert!(kinds.contains(&"redemption_purchase"));
+        assert!(kinds.contains(&"entitlement_fulfillment"));
+    }
+
+    #[tokio::test]
+    async fn digital_code_worker_reuses_payload_on_retry_does_not_double_claim() {
+        // P3.2 crash-safety guard: if a prior worker pass claimed a code but
+        // failed to post the ledger / advance state, the entitlement holds
+        // the payload at state=Issued. A retry MUST reuse that code instead
+        // of claiming a fresh one.
+        let (service, store, ledger) =
+            build_service_with_sku("code_a", 250, FulfillmentMode::DigitalCode).await;
+        ledger.seed_deposit("user_42", 10_000).await.expect("seed");
+        let vault = InMemoryVault::new();
+        vault
+            .seed_codes("code_a", vec!["ONLY-001".to_owned()])
+            .expect("seed");
+
+        let view = service
+            .submit_order(submit_request("user_42", "code_a", "k1"))
+            .await
+            .expect("submit");
+        let entitlement_id = view.entitlement_id.expect("issued");
+
+        // Simulate "claimed code but failed to post ledger" by directly
+        // setting the payload + leaving state at Issued. Vault should now be
+        // empty (the one code was 'consumed' by the prior failed attempt).
+        let code = vault.claim_code("code_a").await.expect("manual claim");
+        assert_eq!(vault.remaining("code_a").expect("remaining"), 0);
+        store
+            .set_entitlement_payload(&entitlement_id, serde_json::json!({ "code": code.clone() }))
+            .await
+            .expect("set payload");
+
+        // Retry: vault is exhausted, but worker should NOT call claim_code
+        // because payload is already present. Must succeed.
+        let stats = service
+            .run_digital_code_worker(&vault, 10)
+            .await
+            .expect("worker retry");
+        assert_eq!(
+            stats.processed, 1,
+            "retry must reuse existing payload without re-claiming"
+        );
+
+        // Final payload still holds the original code.
+        let healed = store
+            .get_entitlement_for_order(&view.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        assert_eq!(
+            healed
+                .fulfillment_payload
+                .as_ref()
+                .and_then(|v| v.get("code"))
+                .and_then(|v| v.as_str()),
+            Some(code.as_str())
+        );
+        assert_eq!(healed.state, EntitlementState::Fulfilled);
+    }
+
+    #[tokio::test]
+    async fn digital_code_worker_records_vault_exhaustion_without_aborting_batch() {
+        let (service, store, ledger) =
+            build_service_with_sku("code_a", 250, FulfillmentMode::DigitalCode).await;
+        ledger.seed_deposit("user_42", 100_000).await.expect("seed");
+        ledger
+            .seed_deposit("user_99", 100_000)
+            .await
+            .expect("seed 2");
+        let vault = InMemoryVault::new();
+        // Only one code available; we'll create two pending entitlements.
+        vault
+            .seed_codes("code_a", vec!["LUCKY-001".to_owned()])
+            .expect("seed");
+
+        service
+            .submit_order(submit_request("user_42", "code_a", "k1"))
+            .await
+            .expect("submit 1");
+        service
+            .submit_order(submit_request("user_99", "code_a", "k2"))
+            .await
+            .expect("submit 2");
+
+        let stats = service
+            .run_digital_code_worker(&vault, 10)
+            .await
+            .expect("worker");
+        assert_eq!(stats.processed, 1, "one entitlement claims the only code");
+        assert_eq!(
+            stats.vault_exhausted, 1,
+            "the second is recorded but doesn't abort the batch"
+        );
+
+        // The stuck entitlement remains Issued with no payload — operators
+        // can re-seed the vault and re-run the worker to clear it.
+        let remaining_issued = store
+            .list_entitlements_pending_fulfillment(FulfillmentMode::DigitalCode, 10)
+            .await
+            .expect("list");
+        assert_eq!(remaining_issued.len(), 1);
+        assert!(remaining_issued[0].fulfillment_payload.is_none());
     }
 
     #[tokio::test]

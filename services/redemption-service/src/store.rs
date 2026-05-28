@@ -14,8 +14,10 @@ use std::{
 use async_trait::async_trait;
 use thiserror::Error;
 
+use serde_json::Value;
+
 use crate::{
-    catalog::{CatalogItem, Sku, Stock},
+    catalog::{CatalogItem, FulfillmentMode, Sku, Stock},
     entitlement::{Entitlement, EntitlementState},
     order::{OrderState, RedemptionOrder},
 };
@@ -67,6 +69,28 @@ pub trait RedemptionStore: Send + Sync {
         &self,
         owner_user_id: &str,
     ) -> Result<Vec<Entitlement>, StoreError>;
+
+    /// Returns up to `limit` entitlements currently in [`EntitlementState::Issued`]
+    /// whose backing SKU has fulfillment mode `mode`. Used by the P3.2 /
+    /// P3.3 fulfillment workers to find pending work. PG implementation
+    /// (P3.4) will JOIN entitlements → skus on `sku_id` to filter
+    /// efficiently; the in-memory impl iterates and looks up per-entitlement.
+    async fn list_entitlements_pending_fulfillment(
+        &self,
+        mode: FulfillmentMode,
+        limit: usize,
+    ) -> Result<Vec<Entitlement>, StoreError>;
+
+    /// Atomically writes `payload` to an entitlement. Used by fulfillment
+    /// workers to attach mode-specific delivery data (the activation code
+    /// for `digital_code`, the booking ID for `service_async`, etc.).
+    /// Returns [`StoreError::EntitlementNotFound`] if the `entitlement_id`
+    /// is unknown.
+    async fn set_entitlement_payload(
+        &self,
+        entitlement_id: &str,
+        payload: Value,
+    ) -> Result<(), StoreError>;
 }
 
 /// In-memory `RedemptionStore`. Intentional: no `unwrap` on the mutex; we
@@ -223,6 +247,46 @@ impl RedemptionStore for InMemoryRedemptionStore {
             .filter(|e| e.owner_user_id == owner_user_id)
             .cloned()
             .collect())
+    }
+
+    async fn list_entitlements_pending_fulfillment(
+        &self,
+        mode: FulfillmentMode,
+        limit: usize,
+    ) -> Result<Vec<Entitlement>, StoreError> {
+        let guard = self.lock()?;
+        let mut hits: Vec<Entitlement> = guard
+            .entitlements
+            .values()
+            .filter(|e| e.state == EntitlementState::Issued)
+            .filter(|e| {
+                guard
+                    .skus
+                    .get(&e.sku_id)
+                    .is_some_and(|sku| sku.fulfillment_mode == mode)
+            })
+            .cloned()
+            .collect();
+        // Stable ordering by entitlement_id so worker behaviour is
+        // deterministic in tests (ULIDs sort by creation time).
+        hits.sort_by(|a, b| a.entitlement_id.cmp(&b.entitlement_id));
+        hits.truncate(limit);
+        Ok(hits)
+    }
+
+    async fn set_entitlement_payload(
+        &self,
+        entitlement_id: &str,
+        payload: Value,
+    ) -> Result<(), StoreError> {
+        let mut guard = self.lock()?;
+        let Some(entitlement) = guard.entitlements.get_mut(entitlement_id) else {
+            return Err(StoreError::EntitlementNotFound {
+                entitlement_id: entitlement_id.to_owned(),
+            });
+        };
+        entitlement.fulfillment_payload = Some(payload);
+        Ok(())
     }
 }
 

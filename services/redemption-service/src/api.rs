@@ -112,7 +112,13 @@ fn render_redemption_error(error: &RedemptionError) -> Response {
             (StatusCode::PAYMENT_REQUIRED, "insufficient_balance")
         }
         RedemptionError::LedgerRejected(_) => (StatusCode::CONFLICT, "ledger_rejected"),
-        RedemptionError::StoreUnavailable(_) | RedemptionError::Internal { .. } => {
+        // Vault errors should normally be confined to worker passes (not
+        // HTTP-facing). If we ever surface one here, treat as 503 — the
+        // operational fix is re-seeding the vault, not retrying the request.
+        RedemptionError::VaultRejected(_) => (StatusCode::SERVICE_UNAVAILABLE, "vault_exhausted"),
+        RedemptionError::SkuVanished { .. }
+        | RedemptionError::StoreUnavailable(_)
+        | RedemptionError::Internal { .. } => {
             warn!(?error, "redemption-service internal error");
             (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
         }

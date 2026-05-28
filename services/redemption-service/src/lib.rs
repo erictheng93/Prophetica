@@ -25,3 +25,4 @@ pub mod ledger;
 pub mod order;
 pub mod service;
 pub mod store;
+pub mod vault;

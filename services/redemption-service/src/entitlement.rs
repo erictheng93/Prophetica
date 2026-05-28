@@ -6,6 +6,7 @@
 //! (e.g. ticket scan) act on the entitlement directly, not the order.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use thiserror::Error;
 
 /// SPEC-024 §3.3 entitlement lifecycle.
@@ -58,6 +59,12 @@ pub struct Entitlement {
     pub owner_user_id: String,
     pub sku_id: String,
     pub state: EntitlementState,
+    /// Mode-specific delivery payload populated at fulfillment time.
+    /// Examples: `{"code": "AAA-001"}` for `digital_code`,
+    /// `{"booking_id": "01HX...", "slot": "..."}` for `service_async`.
+    /// `None` while the entitlement is `Issued` (P3.2+ workers fill this).
+    #[serde(default)]
+    pub fulfillment_payload: Option<Value>,
 }
 
 impl Entitlement {
@@ -92,6 +99,7 @@ impl Entitlement {
             owner_user_id,
             sku_id,
             state: EntitlementState::Issued,
+            fulfillment_payload: None,
         })
     }
 
