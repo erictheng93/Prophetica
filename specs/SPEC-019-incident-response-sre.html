@@ -22,9 +22,9 @@
 <h1>SPEC-019 Incident Response &amp; SRE</h1>
 <blockquote>
   <p>優先序：P1（可作為 P0 啟動條件的基礎能力）</p>
-  <p>版本：v0.1.0</p>
-  <p>更新日：2026-05-09</p>
-  <p>依賴：SPEC-002, SPEC-007, SPEC-008, SPEC-013, SPEC-017</p>
+  <p>版本：v0.1.1</p>
+  <p>更新日：2026-05-28</p>
+  <p>依賴：SPEC-002, SPEC-007, SPEC-008, SPEC-013, SPEC-017, SPEC-024</p>
 </blockquote>
 <section>
   <h2>1. 目的</h2>
@@ -115,7 +115,100 @@
     <li><a href="./SPEC-007-observability.html">SPEC-007</a>：告警、可用性、追蹤指標</li>
     <li><a href="./SPEC-008-disaster-recovery.html">SPEC-008</a>：切換與回復路徑</li>
     <li><a href="./SPEC-013-cicd-release.html">SPEC-013</a>：變更回滾與風險降級</li>
+    <li><a href="./SPEC-024-redemption-entitlement.html">SPEC-024</a>：兌換 / entitlement 流程；相關 worker 故障 runbook 見 §9.1</li>
   </ul>
+</section>
+
+<section>
+  <h2>9. 服務特定 Runbook</h2>
+  <h3>9.1 redemption-expiry-sweeper 停擺</h3>
+  <p>
+    SPEC-024 §3.2 / §7 expiry sweep binary
+    <code>redemption-expiry-sweeper</code>（services/_binaries/redemption-expiry-sweeper）負責每
+    5 分鐘掃 <code>redemption_orders WHERE state='committed' AND expires_at &lt; NOW()</code>，呼叫
+    <code>RedemptionService::expire_order</code> 寫
+    <code>entitlement_expiry</code> ledger 與 advance 訂單 + entitlement 狀態
+    為 <code>expired</code>，並把對應銅幣由
+    <code>Liability.UnredeemedEntitlement.{user_id}</code> 結轉為
+    <code>Revenue.EntitlementBreakage</code>。
+  </p>
+  <table>
+    <thead>
+      <tr><th>面向</th><th>內容</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>事故分級</td>
+        <td>
+          <strong>S3</strong>（latent；無玩家可見影響）。理由：sweeper
+          停擺只延遲「未消費過期 entitlement → breakage 收入認列」與「order
+          狀態轉 <code>expired</code>」之背景流程；玩家錢包 / 庫存 / 在用
+          entitlement 一律不受影響，前端 UI 仍正確顯示「已過期但未結轉」
+          的條目（依 entitlement 之 <code>expires_at</code>）。資金不變、
+          INV-2 / INV-3 / INV-4 / INV-6 / INV-7 全部保持 invariant；
+          breakage 收入認列僅延遲，不漏不溢。
+        </td>
+      </tr>
+      <tr>
+        <td>偵測</td>
+        <td>
+          SPEC-007 §6.4 budget 之上加 <code>redemption_expiry_sweep_lag_seconds</code>
+          (gauge) — 當前時間與最舊 <code>state='committed' AND expires_at &lt; NOW()</code>
+          row 的 <code>expires_at</code> 差距。&gt; 30 分鐘觸發 S3 告警；&gt;
+          24 小時升 S2（財報 breakage 認列窗口可能跨期延誤）。
+        </td>
+      </tr>
+      <tr>
+        <td>初步處置</td>
+        <td>
+          (1) 確認 binary 是否在運行；若 down，<code>systemctl restart</code>
+          / k8s rollout restart 即可。binary 是 cron-loop，啟動後第一次
+          pass 會清掉所有積壓（受 <code>REDEMPTION_EXPIRY_BATCH_SIZE</code>
+          batch 上限保護）。
+          (2) 若 binary 在運行但 lag 仍上升，檢查 PG
+          <code>redemption_orders</code> 表是否異常龐大、index
+          <code>idx_orders_committed_expires</code> 是否被 drop / disabled。
+          (3) <strong>不</strong>動玩家錢包 / 不發補償公告 —
+          見「外部溝通」。
+        </td>
+      </tr>
+      <tr>
+        <td>緊急 oneshot</td>
+        <td>
+          設 <code>REDEMPTION_EXPIRY_ONESHOT=1</code> 跑單發版本（k8s
+          Job / cron 一次性 trigger），與 cron-loop 並行安全（兩者都用
+          <code>ledger_idempotency_key_for_expiry(order_id)</code> 去重）。
+          可作為 cron-loop 修復前的人工降載方式。
+        </td>
+      </tr>
+      <tr>
+        <td>外部溝通</td>
+        <td>
+          <strong>不</strong>對玩家公告。本 runbook 之事故對玩家完全
+          invisible（錢包正確、UI 正確、可繼續兌換）。對內部財務 ping
+          一聲告知本日 / 本週 breakage 收入認列延遲，並提供預期補認列
+          時間（= sweeper 恢復 + 一輪 pass）。
+        </td>
+      </tr>
+      <tr>
+        <td>事故結束條件</td>
+        <td>
+          <code>redemption_expiry_sweep_lag_seconds</code> 連續 3 個 sample
+          回到 ≤ 10 分鐘；
+          <code>SELECT COUNT(*) FROM redemption_orders WHERE state='committed' AND expires_at &lt; NOW()</code>
+          ≤ 一輪 batch size（預設 500）。
+        </td>
+      </tr>
+      <tr>
+        <td>RCA 重點</td>
+        <td>
+          binary 為單點 — 是否該升級為 multi-replica（k8s leader election
+          / advisory lock）？目前判斷：lag 容忍度寬（24h 內無實質影響），
+          single-replica 簡單可靠，待真有重大 lag 事件再評估。
+        </td>
+      </tr>
+    </tbody>
+  </table>
 </section>
 
 <section>

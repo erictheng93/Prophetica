@@ -232,8 +232,11 @@ INV-7 之違反代價同 INV-6：
       已明文標 SECURITY 警示。
 - [ ] `redemption-expiry-sweeper` binary 部署排程：建議每 5 分鐘一輪
       （`REDEMPTION_EXPIRY_INTERVAL_SECONDS=300`），oneshot 模式作為
-      cron 備援。需確認 SPEC-019 incident-response runbook 含此 binary
-      停擺處理流程（單點故障 → entitlement 過期回收延遲，不影響玩家錢包）。
+      cron 備援。SPEC-019 §9.1 incident-response runbook 已落地（P5.7）
+      含此 binary 停擺處理流程 — 事故分級 S3、無玩家可見影響、
+      `redemption_expiry_sweep_lag_seconds` 告警、oneshot 緊急降載路徑。
+      剩餘 deployment manifest (k8s / cron config) 為 devops 範圍，不在
+      本 ADR 之 hard gate 內。
 
 ## 8. References
 
