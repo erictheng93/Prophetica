@@ -1,12 +1,17 @@
 //! HTTP surface for the redemption-service.
 //!
-//! SPEC-024 implementation plan §1 P3.1 + P4: `submit_order` / `get_order` /
-//! `list_entitlements` / `cancel_order` are all real handlers backed by
-//! [`crate::service::RedemptionService`]. CS-driven refund
-//! ([`RedemptionService::refund_fulfilled_order_cs`]) and the expiry sweep
-//! ([`RedemptionService::expire_order`]) are operational entry points — not
-//! exposed as public HTTP routes; they ship with SPEC-012 (CS workflow) and
-//! the expiry worker binary respectively.
+//! Routes:
+//! - **Public:** `submit_order` / `get_order` / `list_entitlements` /
+//!   `cancel_order` (under `/v1/redemption/...`). Gated by the API gateway's
+//!   normal authenticated-user role check (SPEC-014 §6.1.2).
+//! - **Admin:** `cs_refund` under `/v1/admin/redemption/orders/:id/refund`.
+//!   SPEC-024 P5.3 ships the 4-eye guard inline — the route validates
+//!   `proposer_user_id != approver_user_id` in the handler. Production
+//!   wiring depends on the gateway routing this prefix to admin-scope
+//!   identities only; this service does NOT re-authenticate.
+//! - **Operational (binary-only):** the expiry sweep
+//!   (`run_expiry_sweep`) ships as `redemption-expiry-sweeper-binary`, not
+//!   as an HTTP route.
 
 use std::sync::Arc;
 
@@ -20,6 +25,8 @@ use axum::{
 use serde::Serialize;
 use serde_json::json;
 use tracing::warn;
+
+use serde::Deserialize;
 
 use crate::{
     entitlement::Entitlement,
@@ -36,6 +43,10 @@ pub fn router(service: Arc<RedemptionService>) -> Router {
         .route(
             "/v1/redemption/entitlements/:user_id",
             get(list_entitlements),
+        )
+        .route(
+            "/v1/admin/redemption/orders/:order_id/refund",
+            post(admin_cs_refund),
         )
         .with_state(service)
 }
@@ -97,6 +108,53 @@ async fn cancel_order(
     }
 }
 
+/// Inbound body for the admin 4-eye CS refund. Skeleton uses one-shot
+/// proposer+approver; full SPEC-012 wiring (separate propose/approve flow)
+/// is later work.
+#[derive(Debug, Deserialize)]
+struct CsRefundRequest {
+    proposer_user_id: String,
+    approver_user_id: String,
+    reason: String,
+}
+
+async fn admin_cs_refund(
+    State(service): State<Arc<RedemptionService>>,
+    Path(order_id): Path<String>,
+    Json(request): Json<CsRefundRequest>,
+) -> Response {
+    // Gateway is expected to gate this route to admin-scope identities only
+    // (SPEC-014 §6.1.2); we do NOT re-authenticate here. We DO validate
+    // basic shape so the 4-eye guard further down has something honest to
+    // compare.
+    if request.proposer_user_id.is_empty() || request.approver_user_id.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "empty_field"})),
+        )
+            .into_response();
+    }
+    if request.reason.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "empty_reason"})),
+        )
+            .into_response();
+    }
+    match service
+        .cs_refund_with_4eye(
+            &order_id,
+            &request.proposer_user_id,
+            &request.approver_user_id,
+            &request.reason,
+        )
+        .await
+    {
+        Ok(view) => (StatusCode::OK, Json(view)).into_response(),
+        Err(error) => render_redemption_error(&error),
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct EntitlementListResponse {
     entitlements: Vec<Entitlement>,
@@ -113,6 +171,9 @@ fn render_redemption_error(error: &RedemptionError) -> Response {
             (StatusCode::CONFLICT, "order_state_not_allowed")
         }
         RedemptionError::CancelWindowExpired { .. } => (StatusCode::GONE, "cancel_window_expired"),
+        RedemptionError::FourEyeViolation { .. } => {
+            (StatusCode::UNPROCESSABLE_ENTITY, "four_eye_violation")
+        }
         RedemptionError::MissingCommitTimestamp { .. } => {
             warn!(?error, "redemption-service missing commit timestamp");
             (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
@@ -306,6 +367,119 @@ mod tests {
                 .await
                 .contains("order_not_found")
         );
+    }
+
+    #[tokio::test]
+    async fn admin_cs_refund_422s_on_same_proposer_and_approver() {
+        let app = build_router_with_seeded_sku().await;
+
+        // Set up a Fulfilled order.
+        let submit = Request::builder()
+            .uri("/v1/redemption/orders")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "user_id": "user_42",
+                    "sku_id": "sku_a",
+                    "idempotency_key": "cs-422",
+                }))
+                .expect("encode"),
+            ))
+            .expect("request");
+        let submit_response = app.clone().oneshot(submit).await.expect("submit");
+        assert_eq!(submit_response.status(), StatusCode::CREATED);
+        let body = read_body_to_string(submit_response).await;
+        let parsed: serde_json::Value = serde_json::from_str(&body).expect("parse");
+        let order_id = parsed["order_id"].as_str().expect("order_id").to_owned();
+
+        let refund = Request::builder()
+            .uri(format!("/v1/admin/redemption/orders/{order_id}/refund"))
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "proposer_user_id": "ops_alice",
+                    "approver_user_id": "ops_alice",
+                    "reason": "test",
+                }))
+                .expect("encode"),
+            ))
+            .expect("request");
+        let response = app.oneshot(refund).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(
+            read_body_to_string(response)
+                .await
+                .contains("four_eye_violation")
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_cs_refund_200_on_valid_4eye_request() {
+        let app = build_router_with_seeded_sku().await;
+
+        let submit = Request::builder()
+            .uri("/v1/redemption/orders")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "user_id": "user_42",
+                    "sku_id": "sku_a",
+                    "idempotency_key": "cs-200",
+                }))
+                .expect("encode"),
+            ))
+            .expect("request");
+        let submit_response = app.clone().oneshot(submit).await.expect("submit");
+        let body = read_body_to_string(submit_response).await;
+        let parsed: serde_json::Value = serde_json::from_str(&body).expect("parse");
+        let order_id = parsed["order_id"].as_str().expect("order_id").to_owned();
+
+        let refund = Request::builder()
+            .uri(format!("/v1/admin/redemption/orders/{order_id}/refund"))
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "proposer_user_id": "ops_alice",
+                    "approver_user_id": "ops_bob",
+                    "reason": "wrong item delivered",
+                }))
+                .expect("encode"),
+            ))
+            .expect("request");
+        let response = app.oneshot(refund).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            read_body_to_string(response)
+                .await
+                .contains("\"state\":\"refunded\"")
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_cs_refund_400_on_empty_reason() {
+        let app = build_router_with_seeded_sku().await;
+        // Real order_id not needed — the body validation runs before any
+        // store lookup.
+        let refund = Request::builder()
+            .uri("/v1/admin/redemption/orders/anything/refund")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "proposer_user_id": "ops_alice",
+                    "approver_user_id": "ops_bob",
+                    "reason": "   ",
+                }))
+                .expect("encode"),
+            ))
+            .expect("request");
+        let response = app.oneshot(refund).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(read_body_to_string(response).await.contains("empty_reason"));
     }
 
     #[tokio::test]

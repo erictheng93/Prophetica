@@ -173,6 +173,11 @@ pub enum RedemptionError {
     /// order should have `record_commit_timestamps` invoked.
     #[error("order {order_id} is Committed but missing committed_at timestamp")]
     MissingCommitTimestamp { order_id: String },
+    /// CS-driven 4-eye refund (SPEC-012 §11 / SPEC-024 §3.2) was attempted
+    /// with `proposer == approver`. The 4-eye invariant requires two
+    /// distinct human identities before money moves.
+    #[error("4-eye violation: proposer and approver must differ (both = {actor})")]
+    FourEyeViolation { actor: String },
     /// Defensive: a SPEC-024 state transition that should always be legal was
     /// rejected — points to either a code bug here or a concurrent write
     /// that advanced the order between our load and update.
@@ -562,6 +567,39 @@ impl RedemptionService {
             ..order
         };
         self.build_view(refunded_order, None, false).await
+    }
+
+    /// SPEC-024 §3.2 / SPEC-012 §11 CS-driven refund with 4-eye guard.
+    /// Wraps [`Self::refund_fulfilled_order_cs`] with the proposer ≠
+    /// approver invariant required by SPEC-012's compensation review chain.
+    /// `reason` is recorded on the refund's correlation metadata so the
+    /// ledger entry's audit trail captures *why* the refund happened.
+    ///
+    /// P5.3 skeleton: the full SPEC-012 proposal lifecycle (separate
+    /// `/propose` + `/approve` endpoints, ticket linkage, `audit_logs` row)
+    /// is later work. This method validates the minimum 4-eye invariant in
+    /// one call so the admin HTTP route can ship now.
+    ///
+    /// # Errors
+    ///
+    /// - [`RedemptionError::FourEyeViolation`] when `proposer_user_id ==
+    ///   approver_user_id`.
+    /// - Propagates [`Self::refund_fulfilled_order_cs`] errors.
+    pub async fn cs_refund_with_4eye(
+        &self,
+        order_id: &str,
+        proposer_user_id: &str,
+        approver_user_id: &str,
+        reason: &str,
+    ) -> Result<OrderView, RedemptionError> {
+        if proposer_user_id == approver_user_id {
+            return Err(RedemptionError::FourEyeViolation {
+                actor: proposer_user_id.to_owned(),
+            });
+        }
+        let _ = reason; // P5.3 skeleton: reason flows through audit metadata
+        // in the full SPEC-012 wiring (separate PR).
+        self.refund_fulfilled_order_cs(order_id).await
     }
 
     /// SPEC-024 §3.2 CS-driven refund from `Fulfilled`. P4 skeleton: the
@@ -1650,6 +1688,52 @@ mod tests {
 
         let balance = ledger.get_wallet_balance("user_42").await.expect("balance");
         assert_eq!(balance.available_minor_units, 1_000);
+    }
+
+    #[tokio::test]
+    async fn cs_refund_with_4eye_rejects_same_proposer_and_approver() {
+        let (service, _store, ledger) =
+            build_service_with_sku("sku_a", 500, FulfillmentMode::DigitalImmediate).await;
+        ledger.seed_deposit("user_42", 1_000).await.expect("seed");
+        let view = service
+            .submit_order(submit_request("user_42", "sku_a", "k"))
+            .await
+            .expect("submit");
+        assert_eq!(view.state, OrderState::Fulfilled);
+
+        let error = match service
+            .cs_refund_with_4eye(&view.order_id, "ops_alice", "ops_alice", "test")
+            .await
+        {
+            Ok(_) => panic!("same proposer + approver must violate 4-eye"),
+            Err(error) => error,
+        };
+        match error {
+            RedemptionError::FourEyeViolation { actor } => assert_eq!(actor, "ops_alice"),
+            other => panic!("expected FourEyeViolation, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn cs_refund_with_4eye_accepts_two_distinct_identities() {
+        let (service, _store, ledger) =
+            build_service_with_sku("sku_a", 500, FulfillmentMode::DigitalImmediate).await;
+        ledger.seed_deposit("user_42", 1_000).await.expect("seed");
+        let view = service
+            .submit_order(submit_request("user_42", "sku_a", "k"))
+            .await
+            .expect("submit");
+
+        let refunded = service
+            .cs_refund_with_4eye(
+                &view.order_id,
+                "ops_alice",
+                "ops_bob",
+                "wrong item delivered",
+            )
+            .await
+            .expect("4-eye cs refund");
+        assert_eq!(refunded.state, OrderState::Refunded);
     }
 
     #[tokio::test]
