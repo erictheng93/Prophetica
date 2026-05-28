@@ -26,4 +26,5 @@ pub mod order;
 pub mod partner;
 pub mod service;
 pub mod store;
+pub mod store_pg;
 pub mod vault;

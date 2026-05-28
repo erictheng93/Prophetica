@@ -1,13 +1,27 @@
 //! redemption-api binary entrypoint.
 //!
-//! SPEC-024 implementation plan §1 P2: thin composition layer over the
-//! redemption-service library crate. Future phases (P3 / P4 / P5 / P6) plug
-//! in fulfillment workers, refund jobs, and Postgres store wiring here.
+//! SPEC-024 implementation plan §1 P3.1 → P3.4. The binary picks its store
+//! and ledger client based on environment variables:
+//!
+//! | env var                    | value           | effect                                |
+//! |----------------------------|-----------------|---------------------------------------|
+//! | `REDEMPTION_DATABASE_URL`  | postgres URL    | use `PgRedemptionStore` + run migrations |
+//! | (unset)                    | —               | fall back to `InMemoryRedemptionStore` (dev only) |
+//! | `WALLET_LEDGER_URL`        | http(s) base    | use `HttpLedgerClient`                |
+//! | (unset)                    | —               | fall back to `InMemoryLedgerClient` (dev only)    |
+//!
+//! The in-memory fall-back is deliberately non-persistent — restarting the
+//! process loses all orders. Intended for local QA / contract tests, NOT
+//! production. The startup logs make this explicit.
 
 use std::sync::Arc;
 
 use redemption_service::{
-    ledger::InMemoryLedgerClient, service::RedemptionService, store::InMemoryRedemptionStore,
+    api,
+    ledger::{HttpLedgerClient, InMemoryLedgerClient, LedgerClient},
+    service::RedemptionService,
+    store::{InMemoryRedemptionStore, RedemptionStore},
+    store_pg::{PgRedemptionStore, connect_pool},
 };
 use sdk::{config::ServiceConfig, observability, service_stub};
 use tokio::{net::TcpListener, signal};
@@ -21,19 +35,11 @@ async fn main() -> anyhow::Result<()> {
     )?;
     tracing::info!(?config, "redemption-api service config loaded");
 
-    // P3.1: in-memory store + in-memory ledger client. The HTTP-backed
-    // LedgerClient that calls wallet-ledger-service ships in P3.4; the
-    // Postgres-backed RedemptionStore ships alongside it. Until then, this
-    // binary boots a non-persistent dev instance — wired for local QA and
-    // contract tests, NOT production.
-    let store = Arc::new(InMemoryRedemptionStore::new());
-    let ledger = Arc::new(InMemoryLedgerClient::new());
-    let service = Arc::new(RedemptionService::new(store as Arc<_>, ledger as Arc<_>));
-    tracing::warn!(
-        "redemption-api using in-memory store + in-memory ledger client (P3.1 dev build; not production)"
-    );
+    let store = build_store().await?;
+    let ledger = build_ledger()?;
+    let service = Arc::new(RedemptionService::new(store, ledger));
 
-    let app = service_stub::router(&config).merge(redemption_service::api::router(service));
+    let app = service_stub::router(&config).merge(api::router(service));
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "redemption-api listening");
 
@@ -42,6 +48,35 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     Ok(())
+}
+
+async fn build_store() -> anyhow::Result<Arc<dyn RedemptionStore>> {
+    if let Ok(database_url) = std::env::var("REDEMPTION_DATABASE_URL") {
+        let pool = connect_pool(&database_url).await?;
+        sqlx::migrate!("../../redemption-service/migrations")
+            .run(&pool)
+            .await?;
+        tracing::info!("redemption-api using PgRedemptionStore");
+        Ok(Arc::new(PgRedemptionStore::new(pool)))
+    } else {
+        tracing::warn!(
+            "REDEMPTION_DATABASE_URL not set — falling back to InMemoryRedemptionStore (dev only, NOT production)"
+        );
+        Ok(Arc::new(InMemoryRedemptionStore::new()))
+    }
+}
+
+fn build_ledger() -> anyhow::Result<Arc<dyn LedgerClient>> {
+    if let Ok(ledger_url) = std::env::var("WALLET_LEDGER_URL") {
+        let client = HttpLedgerClient::new(&ledger_url)?;
+        tracing::info!(%ledger_url, "redemption-api using HttpLedgerClient");
+        Ok(Arc::new(client))
+    } else {
+        tracing::warn!(
+            "WALLET_LEDGER_URL not set — falling back to InMemoryLedgerClient (dev only, NOT production)"
+        );
+        Ok(Arc::new(InMemoryLedgerClient::new()))
+    }
 }
 
 async fn shutdown_signal() {

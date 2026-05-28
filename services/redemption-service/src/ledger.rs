@@ -19,6 +19,7 @@ use async_trait::async_trait;
 use sdk::ledger::{
     LedgerAmount, LedgerEntryDraft, LedgerTransactionDraft, LedgerTxnKind, LedgerValidationError,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -275,10 +276,188 @@ impl LedgerClient for InMemoryLedgerClient {
     }
 }
 
+// ---------------------------------------------------------------------------
+// HttpLedgerClient — production wrapper around wallet-ledger-service HTTP.
+// SPEC-024 implementation plan §1 P3.4a.
+// ---------------------------------------------------------------------------
+
+/// HTTP-backed `LedgerClient` that targets wallet-ledger-service's
+/// `/internal/ledger/*` endpoints. The JSON contract is mirrored exactly by
+/// [`HttpPostTransactionRequest`] / [`HttpPostEntry`] /
+/// [`HttpWalletBalanceResponse`] so swapping the in-memory client for this
+/// one in the binary is a one-line change.
+pub struct HttpLedgerClient {
+    client: reqwest::Client,
+    base_url: String,
+}
+
+impl HttpLedgerClient {
+    /// `base_url` should be the wallet-ledger-service root (e.g.
+    /// `http://wallet-ledger-service:8086`). The client builds
+    /// `{base_url}/internal/ledger/*` from this.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LedgerClientError::Transport`] when the underlying
+    /// `reqwest::Client::builder` fails to construct (rare — typically
+    /// only on TLS misconfiguration).
+    pub fn new(base_url: impl Into<String>) -> Result<Self, LedgerClientError> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|err| LedgerClientError::Transport(err.to_string()))?;
+        Ok(Self {
+            client,
+            base_url: base_url.into().trim_end_matches('/').to_owned(),
+        })
+    }
+}
+
+/// JSON shape mirroring wallet-ledger-service `api::PostTransactionRequest`.
+/// Kept private (not part of the crate API) — callers go through the
+/// [`LedgerClient`] trait.
+#[derive(Debug, Serialize)]
+struct HttpPostTransactionRequest<'a> {
+    txn_type: &'a str,
+    idempotency_key: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    correlation_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    metadata: &'a HashMap<String, Value>,
+    entries: Vec<HttpPostEntry<'a>>,
+}
+
+#[derive(Debug, Serialize)]
+struct HttpPostEntry<'a> {
+    account_code: &'a str,
+    direction: HttpEntryDirection,
+    amount_minor_units: i64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum HttpEntryDirection {
+    Debit,
+    Credit,
+}
+
+#[derive(Debug, Deserialize)]
+struct HttpPostTransactionResponse {
+    txn_id: i64,
+    idempotency_key: String,
+    replayed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(clippy::struct_field_names)] // mirrors wallet-ledger-service JSON contract verbatim
+struct HttpWalletBalanceResponse {
+    available_minor_units: i64,
+    locked_minor_units: i64,
+    frozen_minor_units: i64,
+}
+
+impl<'a> From<&'a LedgerEntryDraft> for HttpPostEntry<'a> {
+    fn from(draft: &'a LedgerEntryDraft) -> Self {
+        // SDK convention: positive minor_units = debit; negative = credit.
+        // The HTTP contract expects a separate `direction` field with the
+        // amount always positive.
+        let minor_units = draft.amount().minor_units();
+        Self {
+            account_code: draft.account_code(),
+            direction: if minor_units >= 0 {
+                HttpEntryDirection::Debit
+            } else {
+                HttpEntryDirection::Credit
+            },
+            amount_minor_units: minor_units.abs(),
+        }
+    }
+}
+
+#[async_trait]
+impl LedgerClient for HttpLedgerClient {
+    async fn post_transaction(
+        &self,
+        request: PostTransactionRequest,
+    ) -> Result<PostTransactionResponse, LedgerClientError> {
+        let body = HttpPostTransactionRequest {
+            txn_type: &request.txn_type,
+            idempotency_key: &request.idempotency_key,
+            correlation_id: request.correlation_id.as_deref(),
+            metadata: &request.metadata,
+            entries: request.entries.iter().map(HttpPostEntry::from).collect(),
+        };
+
+        let url = format!("{}/internal/ledger/transactions", self.base_url);
+        let response = self
+            .client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|err| LedgerClientError::Transport(err.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(LedgerClientError::Transport(format!(
+                "ledger POST {url} returned HTTP {status}: {body}"
+            )));
+        }
+
+        let parsed: HttpPostTransactionResponse = response
+            .json()
+            .await
+            .map_err(|err| LedgerClientError::Transport(err.to_string()))?;
+        Ok(PostTransactionResponse {
+            txn_id: parsed.txn_id,
+            idempotency_key: parsed.idempotency_key,
+            replayed: parsed.replayed,
+        })
+    }
+
+    async fn get_wallet_balance(&self, user_id: &str) -> Result<WalletBalance, LedgerClientError> {
+        // URL-encode would be safer, but wallet-ledger-service path is
+        // `:user_id` with internal-only callers controlling the value. If
+        // user_id ever leaks unicode, swap for percent-encoding here.
+        let url = format!(
+            "{}/internal/ledger/wallets/{user_id}/balance",
+            self.base_url
+        );
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|err| LedgerClientError::Transport(err.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(LedgerClientError::Transport(format!(
+                "ledger GET {url} returned HTTP {status}: {body}"
+            )));
+        }
+
+        let parsed: HttpWalletBalanceResponse = response
+            .json()
+            .await
+            .map_err(|err| LedgerClientError::Transport(err.to_string()))?;
+        Ok(WalletBalance {
+            available_minor_units: parsed.available_minor_units,
+            locked_minor_units: parsed.locked_minor_units,
+            frozen_minor_units: parsed.frozen_minor_units,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
-    use super::{InMemoryLedgerClient, LedgerClient, LedgerClientError, PostTransactionRequest};
+    use super::{
+        HttpEntryDirection, HttpPostEntry, InMemoryLedgerClient, LedgerClient, LedgerClientError,
+        PostTransactionRequest,
+    };
     use sdk::ledger::{LedgerAmount, LedgerEntryDraft, LedgerTxnKind};
     use std::collections::HashMap;
 
@@ -327,6 +506,45 @@ mod tests {
         // Balance only moves once even though the same request posted twice.
         let balance = client.get_wallet_balance("user_42").await.expect("balance");
         assert_eq!(balance.available_minor_units, 95_000);
+    }
+
+    #[test]
+    fn http_post_entry_maps_positive_amount_to_debit() {
+        let draft =
+            LedgerEntryDraft::new("Player.Wallet.user_42", LedgerAmount::from_minor_units(500));
+        let entry = HttpPostEntry::from(&draft);
+        assert_eq!(entry.account_code, "Player.Wallet.user_42");
+        assert!(matches!(entry.direction, HttpEntryDirection::Debit));
+        assert_eq!(entry.amount_minor_units, 500);
+    }
+
+    #[test]
+    fn http_post_entry_maps_negative_amount_to_credit_with_positive_amount_field() {
+        let draft = LedgerEntryDraft::new(
+            "Liability.UnredeemedEntitlement.user_42",
+            LedgerAmount::from_minor_units(-500),
+        );
+        let entry = HttpPostEntry::from(&draft);
+        assert_eq!(
+            entry.account_code,
+            "Liability.UnredeemedEntitlement.user_42"
+        );
+        assert!(matches!(entry.direction, HttpEntryDirection::Credit));
+        assert_eq!(
+            entry.amount_minor_units, 500,
+            "HTTP contract carries positive amount + separate direction field"
+        );
+    }
+
+    #[test]
+    fn http_post_entry_zero_maps_to_debit_with_zero_amount() {
+        // 0 minor_units is filtered earlier by SDK INV-1 (zero amount entries
+        // rejected at validate). The HTTP mapping treats 0 as debit so the
+        // server-side validator returns a deterministic error, not a panic.
+        let draft = LedgerEntryDraft::new("Revenue.TradingFee", LedgerAmount::from_minor_units(0));
+        let entry = HttpPostEntry::from(&draft);
+        assert!(matches!(entry.direction, HttpEntryDirection::Debit));
+        assert_eq!(entry.amount_minor_units, 0);
     }
 
     #[tokio::test]
