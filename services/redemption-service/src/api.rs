@@ -18,20 +18,25 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, HeaderName, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::warn;
-
-use serde::Deserialize;
 
 use crate::{
     entitlement::Entitlement,
     service::{RedemptionError, RedemptionService, SubmitOrderRequest},
 };
+
+/// Trusted authenticated-user header injected by the API gateway after
+/// bearer-token verification. SPEC-014 §6.1.2; matches the
+/// `api-gateway::lib::USER_ID_HEADER` constant. Any handler that needs to
+/// know "who is calling" MUST read this header — never trust a user-id
+/// field in the request body.
+const AUTH_USER_ID_HEADER: HeaderName = HeaderName::from_static("x-user-id");
 
 /// Builds the redemption-service HTTP router. The `service` argument is
 /// shared across all handlers as axum `State`.
@@ -108,35 +113,14 @@ async fn cancel_order(
     }
 }
 
-/// Inbound body for the admin 4-eye CS refund.
-///
-/// **Skeleton-only — DO NOT expose this route in production as written.**
-/// Both `proposer_user_id` and `approver_user_id` are currently
-/// client-supplied JSON fields with no binding to any authenticated
-/// identity. A malicious admin could submit `proposer_user_id =
-/// "ops_alice", approver_user_id = "ops_bob"` while actually being neither
-/// person, satisfying the 4-eye check on paper without any real second
-/// reviewer. This is exactly the spoofable-field bypass that automated
-/// security review flags as a HIGH finding.
-///
-/// Production wiring (tracked in ADR-0007 §7.1) MUST land before this route
-/// is enabled outside dev:
-///
-/// 1. **Bind proposer to a verified source** — read it from a
-///    gateway-injected, signed header (e.g. `X-Auth-User` asserted by the
-///    SPEC-014 §6.1.2 gateway) or from an authenticated session/JWT
-///    claim. The handler MUST reject any request where the body's
-///    `proposer_user_id` disagrees with the verified identity.
-/// 2. **Split into separate `/propose` + `/approve` endpoints** (SPEC-012
-///    §11) so each identity is bound to its own authenticated request,
-///    proposals are persisted server-side, and the approver's call loads
-///    the prior proposal and verifies `approver != stored proposer`.
-///
-/// Until both are in place, this route stays gated to non-production
-/// environments (gateway routing config).
+/// Inbound body for the admin 4-eye CS refund. P5.5 update: `proposer_user_id`
+/// is **no longer accepted from the body** — the handler reads the
+/// gateway-asserted [`AUTH_USER_ID_HEADER`] (`x-user-id`) and uses that as
+/// the proposer identity. The approver is still a body field for now;
+/// closing that gap fully requires the two-stage propose+approve flow
+/// (ADR-0007 §7.1 hard gate, planned for P5.6).
 #[derive(Debug, Deserialize)]
 struct CsRefundRequest {
-    proposer_user_id: String,
     approver_user_id: String,
     reason: String,
 }
@@ -144,17 +128,37 @@ struct CsRefundRequest {
 async fn admin_cs_refund(
     State(service): State<Arc<RedemptionService>>,
     Path(order_id): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<CsRefundRequest>,
 ) -> Response {
-    // SECURITY (P5.3 skeleton — see [`CsRefundRequest`] doc): both
-    // identities are presently trusted from the request body. The gateway
-    // (SPEC-014 §6.1.2) routes admin-scope identities here, but does not
-    // bind `proposer_user_id` to the caller's verified identity. ADR-0007
-    // §7.1 tracks the hard gate required before this ships to production.
-    if request.proposer_user_id.is_empty() || request.approver_user_id.is_empty() {
+    // Step 1: pull proposer identity from the trusted gateway header.
+    // Missing / empty header means the gateway did not authenticate the
+    // caller (or routed an unauthenticated request to us by mistake) —
+    // either way we MUST refuse.
+    let proposer_user_id = match headers
+        .get(&AUTH_USER_ID_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        Some(value) => value.to_owned(),
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error": "missing_auth_context",
+                    "message": "x-user-id header must be set by the API gateway"
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // Step 2: basic body-shape validation (approver + reason).
+    if request.approver_user_id.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": "empty_field"})),
+            Json(json!({"error": "empty_field", "field": "approver_user_id"})),
         )
             .into_response();
     }
@@ -165,10 +169,14 @@ async fn admin_cs_refund(
         )
             .into_response();
     }
+
+    // Step 3: 4-eye check + refund. The proposer is now bound to the
+    // gateway-asserted identity; the approver remains body-asserted until
+    // P5.6 lands the two-stage propose/approve flow.
     match service
         .cs_refund_with_4eye(
             &order_id,
-            &request.proposer_user_id,
+            &proposer_user_id,
             &request.approver_user_id,
             &request.reason,
         )
@@ -421,11 +429,85 @@ mod tests {
             .uri(format!("/v1/admin/redemption/orders/{order_id}/refund"))
             .method("POST")
             .header("content-type", "application/json")
+            .header("x-user-id", "ops_alice")
             .body(Body::from(
                 serde_json::to_vec(&serde_json::json!({
-                    "proposer_user_id": "ops_alice",
                     "approver_user_id": "ops_alice",
                     "reason": "test",
+                }))
+                .expect("encode"),
+            ))
+            .expect("request");
+        let response = app.oneshot(refund).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(
+            read_body_to_string(response)
+                .await
+                .contains("four_eye_violation")
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_cs_refund_401s_when_x_user_id_header_missing() {
+        let app = build_router_with_seeded_sku().await;
+        let refund = Request::builder()
+            .uri("/v1/admin/redemption/orders/anything/refund")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "approver_user_id": "ops_bob",
+                    "reason": "test",
+                }))
+                .expect("encode"),
+            ))
+            .expect("request");
+        let response = app.oneshot(refund).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(
+            read_body_to_string(response)
+                .await
+                .contains("missing_auth_context")
+        );
+    }
+
+    #[tokio::test]
+    async fn admin_cs_refund_ignores_proposer_body_field_and_uses_header() {
+        // Hostile body claiming proposer = ops_bob, but x-user-id header
+        // says ops_alice. The handler MUST use the header value, so when
+        // approver_user_id = ops_alice in the body it's a 4-eye violation
+        // (proposer == approver via header).
+        let app = build_router_with_seeded_sku().await;
+        let submit = Request::builder()
+            .uri("/v1/redemption/orders")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "user_id": "user_42",
+                    "sku_id": "sku_a",
+                    "idempotency_key": "cs-spoof",
+                }))
+                .expect("encode"),
+            ))
+            .expect("request");
+        let submit_response = app.clone().oneshot(submit).await.expect("submit");
+        let body = read_body_to_string(submit_response).await;
+        let parsed: serde_json::Value = serde_json::from_str(&body).expect("parse");
+        let order_id = parsed["order_id"].as_str().expect("order_id").to_owned();
+
+        let refund = Request::builder()
+            .uri(format!("/v1/admin/redemption/orders/{order_id}/refund"))
+            .method("POST")
+            .header("content-type", "application/json")
+            .header("x-user-id", "ops_alice")
+            .body(Body::from(
+                // Body claims proposer is bob — ignored. Header says alice.
+                // approver = alice → 4-eye violation against header.
+                serde_json::to_vec(&serde_json::json!({
+                    "proposer_user_id": "ops_bob",
+                    "approver_user_id": "ops_alice",
+                    "reason": "spoof attempt",
                 }))
                 .expect("encode"),
             ))
@@ -465,9 +547,9 @@ mod tests {
             .uri(format!("/v1/admin/redemption/orders/{order_id}/refund"))
             .method("POST")
             .header("content-type", "application/json")
+            .header("x-user-id", "ops_alice")
             .body(Body::from(
                 serde_json::to_vec(&serde_json::json!({
-                    "proposer_user_id": "ops_alice",
                     "approver_user_id": "ops_bob",
                     "reason": "wrong item delivered",
                 }))
@@ -492,9 +574,9 @@ mod tests {
             .uri("/v1/admin/redemption/orders/anything/refund")
             .method("POST")
             .header("content-type", "application/json")
+            .header("x-user-id", "ops_alice")
             .body(Body::from(
                 serde_json::to_vec(&serde_json::json!({
-                    "proposer_user_id": "ops_alice",
                     "approver_user_id": "ops_bob",
                     "reason": "   ",
                 }))
