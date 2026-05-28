@@ -11,17 +11,21 @@
 //!
 //! Trade-offs the SDK callers should know about:
 //!
-//! 1. **Two-phase semantics**: the orchestrator persists the order first,
-//!    then writes the ledger, then advances order state. If the process
-//!    crashes between ledger commit and state update, the ledger is the
-//!    source of truth — a recovery sweep can match on the
-//!    `ledger_idempotency_key_for_purchase(order_id)` key and re-advance
-//!    the order. We accept this eventual consistency for P3.1; full
-//!    transactional coupling waits for the PG-backed store.
-//! 2. **Idempotency replay** returns the prior `OrderView` *unchanged* — we
-//!    do not re-validate balances or re-post ledger entries on retry,
-//!    matching SPEC-002 §6.1 idempotent contract.
-//! 3. **INV-7** (cross-user) is enforced by the [`crate::ledger::LedgerClient`]
+//! 1. **Self-healing forward drive (codex P3.1 P1 #1 + #2 follow-up)**:
+//!    `submit_order` reloads the order's current state on every call and
+//!    drives it forward to the terminal state. Idempotent ledger writes
+//!    (deterministic `ledger_idempotency_key_for_*(order_id)`) make this
+//!    safe to repeat — a crash between ledger commit and order state
+//!    advance is healed by the next retry, no recovery sweep needed.
+//! 2. **Replay vs. first-submission** differ only in the response's
+//!    `replayed` flag and the `record_order` short-circuit. Both paths
+//!    drive forward through `drive_to_completion`, so a replay against an
+//!    order stuck at Accepted (ledger ran, state didn't advance) actually
+//!    finishes the job and returns the correct final view.
+//! 3. **Terminal states are sticky**: `Refunded` / `Expired` orders never
+//!    re-enter the forward drive on replay — they return the current view
+//!    as-is, matching SPEC-024 §3.2.
+//! 4. **INV-7** (cross-user) is enforced by the [`crate::ledger::LedgerClient`]
 //!    layer through the SDK validator; the orchestrator never builds a
 //!    cross-user draft on its own. Hostile callers attempting to forge a
 //!    request with one `user_id` and a different wallet account get rejected
@@ -122,9 +126,15 @@ impl RedemptionService {
         Self { store, ledger }
     }
 
-    /// Submits a redemption order. Full path for `DigitalImmediate` SKUs;
-    /// partial path (stops at `Committed`, entitlement `Issued`) for the
-    /// other fulfillment modes.
+    /// Submits a redemption order, then drives it forward to whatever
+    /// terminal state its `fulfillment_mode` allows. Safe to retry —
+    /// idempotent ledger keys + state-aware forward drive make the operation
+    /// self-healing across crashes.
+    ///
+    /// Full path for `DigitalImmediate` SKUs (terminal = `Fulfilled`).
+    /// Partial path (terminal = `Committed`, entitlement `Issued`) for the
+    /// other fulfillment modes — the matching P3.2 / P3.3 worker advances
+    /// them later.
     ///
     /// # Errors
     ///
@@ -147,59 +157,80 @@ impl RedemptionService {
         let recorded = self.store.record_order(draft).await?;
         let is_replay = recorded.order_id != draft_order_id;
 
-        if is_replay {
-            return self.build_replay_view(recorded).await;
+        self.drive_to_completion(recorded, &sku, request.correlation_id.as_deref(), is_replay)
+            .await
+    }
+
+    /// Forward-drives an order from its current persisted state toward the
+    /// terminal state allowed by the SKU's fulfillment mode. Each ledger
+    /// write uses a deterministic idempotency key
+    /// (`ledger_idempotency_key_for_*(order_id)`) so re-entering this loop
+    /// after a crash is safe — the ledger client returns `replayed: true`
+    /// and balances do not move twice.
+    ///
+    /// Heals every partial-failure state codex P3.1 flagged:
+    /// - `Submitted` with a still-pending balance check → re-checks balance
+    /// - `Accepted` but ledger purchase already committed → re-posts
+    ///   (idempotent on the ledger key), advances to `Committed`
+    /// - `Committed` but entitlement record missing → issues entitlement
+    /// - `DigitalImmediate` `Fulfilled` but entitlement still `Issued` →
+    ///   updates entitlement state to `Fulfilled` (the P1 #2 divergence path)
+    /// - `Refunded` / `Expired` → returns current view as-is (terminal, sticky)
+    async fn drive_to_completion(
+        &self,
+        mut order: RedemptionOrder,
+        sku: &Sku,
+        correlation_id: Option<&str>,
+        was_replay: bool,
+    ) -> Result<OrderView, RedemptionError> {
+        if matches!(order.state, OrderState::Refunded | OrderState::Expired) {
+            return self.build_view(order, None, was_replay).await;
         }
 
-        let balance = self.ledger.get_wallet_balance(&request.user_id).await?;
-        if !balance.covers(sku.price_minor_units) {
-            return Err(RedemptionError::InsufficientBalance {
-                required_minor_units: sku.price_minor_units,
-                available_minor_units: balance.available_minor_units,
-            });
-        }
-
-        self.advance_order(&recorded.order_id, OrderState::Accepted)
-            .await?;
-
-        let audit_log_id = generate_audit_log_id();
-        self.post_redemption_purchase(
-            &recorded,
-            &sku,
-            &audit_log_id,
-            request.correlation_id.as_deref(),
-        )
-        .await?;
-
-        self.advance_order(&recorded.order_id, OrderState::Committed)
-            .await?;
-
-        let entitlement = Entitlement::issue(
-            recorded.order_id.clone(),
-            recorded.user_id.clone(),
-            recorded.sku_id.clone(),
-        )?;
-        let entitlement_id = entitlement.entitlement_id.clone();
-        self.store.record_entitlement(entitlement).await?;
-
-        let final_state = if matches!(sku.fulfillment_mode, FulfillmentMode::DigitalImmediate) {
-            self.fulfill_immediately(&recorded, &sku, &entitlement_id)
+        if matches!(order.state, OrderState::Submitted) {
+            let balance = self.ledger.get_wallet_balance(&order.user_id).await?;
+            if !balance.covers(sku.price_minor_units) {
+                return Err(RedemptionError::InsufficientBalance {
+                    required_minor_units: sku.price_minor_units,
+                    available_minor_units: balance.available_minor_units,
+                });
+            }
+            self.advance_order(&order.order_id, OrderState::Accepted)
                 .await?;
-            OrderState::Fulfilled
-        } else {
-            OrderState::Committed
-        };
+            order.state = OrderState::Accepted;
+        }
 
-        Ok(OrderView {
-            order_id: recorded.order_id,
-            state: final_state,
-            user_id: recorded.user_id,
-            sku_id: recorded.sku_id,
-            price_minor_units: recorded.price_minor_units,
-            entitlement_id: Some(entitlement_id),
-            idempotency_key: recorded.idempotency_key,
-            replayed: false,
-        })
+        if matches!(order.state, OrderState::Accepted) {
+            let audit_log_id = generate_audit_log_id();
+            self.post_redemption_purchase(&order, sku, &audit_log_id, correlation_id)
+                .await?;
+            self.advance_order(&order.order_id, OrderState::Committed)
+                .await?;
+            order.state = OrderState::Committed;
+        }
+
+        let entitlement = self.ensure_entitlement(&order).await?;
+        let entitlement_id = entitlement.entitlement_id.clone();
+        let mut entitlement_state = entitlement.state;
+
+        if matches!(sku.fulfillment_mode, FulfillmentMode::DigitalImmediate) {
+            if matches!(order.state, OrderState::Committed) {
+                self.post_entitlement_fulfillment(&order, sku, &entitlement_id)
+                    .await?;
+                self.advance_order(&order.order_id, OrderState::Fulfilled)
+                    .await?;
+                order.state = OrderState::Fulfilled;
+            }
+            if !matches!(entitlement_state, EntitlementState::Fulfilled) {
+                self.heal_entitlement_to_fulfilled(&order.order_id, &entitlement_id)
+                    .await?;
+                entitlement_state = EntitlementState::Fulfilled;
+            }
+        }
+
+        let _ = entitlement_state; // future use; suppresses unused-binding warning
+        self.build_view(order, Some(entitlement_id), was_replay)
+            .await
     }
 
     /// Loads an order view by id. Returns `None` when the order is unknown.
@@ -247,23 +278,29 @@ impl RedemptionService {
             })
     }
 
-    async fn build_replay_view(
+    async fn build_view(
         &self,
-        recorded: RedemptionOrder,
+        order: RedemptionOrder,
+        known_entitlement_id: Option<String>,
+        replayed: bool,
     ) -> Result<OrderView, RedemptionError> {
-        let entitlement = self
-            .store
-            .get_entitlement_for_order(&recorded.order_id)
-            .await?;
+        let entitlement_id = match known_entitlement_id {
+            Some(id) => Some(id),
+            None => self
+                .store
+                .get_entitlement_for_order(&order.order_id)
+                .await?
+                .map(|e| e.entitlement_id),
+        };
         Ok(OrderView {
-            order_id: recorded.order_id,
-            state: recorded.state,
-            user_id: recorded.user_id,
-            sku_id: recorded.sku_id,
-            price_minor_units: recorded.price_minor_units,
-            entitlement_id: entitlement.map(|e| e.entitlement_id),
-            idempotency_key: recorded.idempotency_key,
-            replayed: true,
+            order_id: order.order_id,
+            state: order.state,
+            user_id: order.user_id,
+            sku_id: order.sku_id,
+            price_minor_units: order.price_minor_units,
+            entitlement_id,
+            idempotency_key: order.idempotency_key,
+            replayed,
         })
     }
 
@@ -273,6 +310,52 @@ impl RedemptionService {
         new_state: OrderState,
     ) -> Result<(), RedemptionError> {
         self.store.update_order_state(order_id, new_state).await?;
+        Ok(())
+    }
+
+    /// Returns the entitlement for `order`, issuing one if none exists yet.
+    /// Idempotent: if a prior `submit_order` call crashed between order
+    /// commit and entitlement record, the replay creates it now.
+    async fn ensure_entitlement(
+        &self,
+        order: &RedemptionOrder,
+    ) -> Result<Entitlement, RedemptionError> {
+        if let Some(existing) = self
+            .store
+            .get_entitlement_for_order(&order.order_id)
+            .await?
+        {
+            return Ok(existing);
+        }
+        let issued = Entitlement::issue(
+            order.order_id.clone(),
+            order.user_id.clone(),
+            order.sku_id.clone(),
+        )?;
+        self.store.record_entitlement(issued.clone()).await?;
+        Ok(issued)
+    }
+
+    /// Heals the codex P3.1 P1 #2 divergence: order advanced to `Fulfilled`
+    /// but entitlement still `Issued`. Idempotent — no-op when the
+    /// entitlement is already `Fulfilled`.
+    async fn heal_entitlement_to_fulfilled(
+        &self,
+        order_id: &str,
+        entitlement_id: &str,
+    ) -> Result<(), RedemptionError> {
+        self.store
+            .update_entitlement_state(entitlement_id, EntitlementState::Fulfilled)
+            .await
+            .map_err(|err| match err {
+                StoreError::EntitlementNotFound { entitlement_id } => RedemptionError::Internal {
+                    order_id: order_id.to_owned(),
+                    message: format!(
+                        "entitlement {entitlement_id} vanished while healing to Fulfilled"
+                    ),
+                },
+                other => RedemptionError::StoreUnavailable(other),
+            })?;
         Ok(())
     }
 
@@ -304,7 +387,7 @@ impl RedemptionService {
         Ok(())
     }
 
-    async fn fulfill_immediately(
+    async fn post_entitlement_fulfillment(
         &self,
         order: &RedemptionOrder,
         sku: &Sku,
@@ -335,19 +418,6 @@ impl RedemptionService {
             ]),
         };
         self.ledger.post_transaction(request).await?;
-
-        self.advance_order(&order.order_id, OrderState::Fulfilled)
-            .await?;
-        self.store
-            .update_entitlement_state(entitlement_id, EntitlementState::Fulfilled)
-            .await
-            .map_err(|err| match err {
-                StoreError::EntitlementNotFound { entitlement_id } => RedemptionError::Internal {
-                    order_id: order.order_id.clone(),
-                    message: format!("entitlement {entitlement_id} vanished mid-fulfill"),
-                },
-                other => RedemptionError::StoreUnavailable(other),
-            })?;
         Ok(())
     }
 }
@@ -638,6 +708,87 @@ mod tests {
             .expect("present");
         assert_eq!(loaded.entitlement_id, view.entitlement_id);
         assert_eq!(loaded.state, OrderState::Fulfilled);
+    }
+
+    #[tokio::test]
+    async fn replay_self_heals_from_accepted_state_drives_to_fulfilled() {
+        // codex P3.1 P1 #1 regression guard: simulate the crash window where
+        // the ledger purchase committed but order state never advanced past
+        // Accepted. The retry must finish the job and return Fulfilled, NOT
+        // the stale Accepted view.
+        let (service, store, ledger) =
+            build_service_with_sku("sku_a", 500, FulfillmentMode::DigitalImmediate).await;
+        ledger.seed_deposit("user_42", 100_000).await.expect("seed");
+
+        let first = service
+            .submit_order(submit_request("user_42", "sku_a", "k"))
+            .await
+            .expect("first");
+        assert_eq!(first.state, OrderState::Fulfilled);
+
+        // Force state backwards to simulate mid-orchestration crash (in
+        // production the store would simply still hold the pre-crash state).
+        store
+            .update_order_state(&first.order_id, OrderState::Accepted)
+            .await
+            .expect("rewind to Accepted");
+
+        let replay = service
+            .submit_order(submit_request("user_42", "sku_a", "k"))
+            .await
+            .expect("replay");
+        assert_eq!(replay.order_id, first.order_id);
+        assert_eq!(replay.state, OrderState::Fulfilled);
+        assert!(replay.replayed);
+
+        // Ledger balance only decremented once — the ledger client's
+        // idempotency layer (same ledger_idempotency_key_for_purchase)
+        // squashes the retry.
+        let balance = ledger.get_wallet_balance("user_42").await.expect("balance");
+        assert_eq!(balance.available_minor_units, 99_500);
+    }
+
+    #[tokio::test]
+    async fn replay_self_heals_fulfilled_order_with_issued_entitlement() {
+        // codex P3.1 P1 #2 regression guard: order=Fulfilled but
+        // entitlement=Issued (the fulfill_immediately partial-failure
+        // window). Replay must drive entitlement to Fulfilled.
+        let (service, store, ledger) =
+            build_service_with_sku("sku_a", 500, FulfillmentMode::DigitalImmediate).await;
+        ledger.seed_deposit("user_42", 100_000).await.expect("seed");
+
+        let first = service
+            .submit_order(submit_request("user_42", "sku_a", "k"))
+            .await
+            .expect("first");
+        let entitlement_id = first
+            .entitlement_id
+            .clone()
+            .expect("DigitalImmediate must issue entitlement");
+
+        // Simulate the partial-failure window: store layer regresses
+        // entitlement to Issued (store doesn't validate transitions —
+        // intentional, see `update_entitlement_state` docs).
+        store
+            .update_entitlement_state(&entitlement_id, EntitlementState::Issued)
+            .await
+            .expect("rewind entitlement");
+
+        let _ = service
+            .submit_order(submit_request("user_42", "sku_a", "k"))
+            .await
+            .expect("replay");
+
+        let healed = store
+            .get_entitlement_for_order(&first.order_id)
+            .await
+            .expect("get")
+            .expect("entitlement present");
+        assert_eq!(
+            healed.state,
+            EntitlementState::Fulfilled,
+            "replay must self-heal entitlement to Fulfilled"
+        );
     }
 
     #[tokio::test]
