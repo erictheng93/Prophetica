@@ -8,7 +8,13 @@ import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth";
 import { secureCookies } from "@/lib/cookie-policy";
 import { recordJourneyRedirect } from "@/lib/telemetry/journey-metrics";
 
-const PROTECTED_PATH_PREFIXES = ["/portfolio", "/topup", "/kyc", "/account"];
+const PROTECTED_PATH_PREFIXES = [
+  "/portfolio",
+  "/topup",
+  "/kyc",
+  "/account",
+  "/redemption",
+];
 const PUBLIC_PATH_PREFIXES = [
   "/",
   "/markets",
