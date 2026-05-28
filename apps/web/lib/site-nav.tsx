@@ -41,6 +41,7 @@ interface NavItemDef {
 const mainNavItems: NavItemDef[] = [
   { key: "markets", href: "/markets" },
   { key: "howItWorks", href: "/how-it-works" },
+  { key: "redemption", href: "/redemption" },
   { key: "responsibleGaming", href: "/responsible-gaming" },
   { key: "support", href: "/support" },
 ];

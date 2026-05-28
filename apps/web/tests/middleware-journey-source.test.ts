@@ -7,7 +7,13 @@ const source = readFileSync(join(process.cwd(), "middleware.ts"), "utf8");
 
 test("middleware declares SPEC-023 protected and public journey path sets", () => {
   assert.match(source, /const PROTECTED_PATH_PREFIXES = \[/);
-  for (const path of ["/portfolio", "/topup", "/kyc", "/account"]) {
+  for (const path of [
+    "/portfolio",
+    "/topup",
+    "/kyc",
+    "/account",
+    "/redemption",
+  ]) {
     assert.match(source, new RegExp(JSON.stringify(path)));
   }
   assert.match(source, /const PUBLIC_PATH_PREFIXES = \[/);
