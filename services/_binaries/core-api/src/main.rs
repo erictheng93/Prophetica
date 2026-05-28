@@ -1,3 +1,4 @@
+use redemption_service::{ledger::HttpLedgerClient, service::RedemptionService};
 use sdk::{
     config::ServiceConfig,
     postgres_migrations::{
@@ -7,6 +8,7 @@ use sdk::{
     },
     service_stub,
 };
+use std::sync::Arc;
 use std::{env, net::SocketAddr};
 use tokio::{net::TcpListener, signal};
 
@@ -20,6 +22,7 @@ async fn main() -> anyhow::Result<()> {
         run_referral_http(),
         run_kyc_http(),
         run_wallet_ledger_http(),
+        run_redemption_http(),
     )?;
 
     Ok(())
@@ -149,6 +152,52 @@ async fn run_wallet_ledger_http() -> anyhow::Result<()> {
         .await?;
 
     Ok(())
+}
+
+async fn run_redemption_http() -> anyhow::Result<()> {
+    let config = ServiceConfig::from_env(
+        redemption_service::SERVICE_NAME,
+        redemption_service::DEFAULT_PORT,
+    )?;
+    let database_url = redemption_database_url()?;
+    let pool = sqlx::PgPool::connect(&database_url).await?;
+    run_postgres_migrations(
+        sqlx::migrate!("../../redemption-service/migrations"),
+        &pool,
+        "_sqlx_migrations_redemption_service",
+    )
+    .await?;
+
+    let ledger = HttpLedgerClient::new(redemption_wallet_ledger_base_url())
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let app = service_stub::router(&config).merge(redemption_service::api::router(Arc::new(
+        RedemptionService::new(
+            Arc::new(redemption_service::store_pg::PgRedemptionStore::new(pool)),
+            Arc::new(ledger),
+        ),
+    )));
+
+    let listener = TcpListener::bind(config.bind_addr).await?;
+    tracing::info!(addr = %config.bind_addr, "redemption-api service listening inside core-api");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(redemption_service::SERVICE_NAME))
+        .await?;
+
+    Ok(())
+}
+
+fn redemption_database_url() -> anyhow::Result<String> {
+    let service_url = env::var("REDEMPTION_DATABASE_URL").ok();
+    let shared_url = env::var("DATABASE_URL").ok();
+    redemption_database_url_from_values(service_url.as_deref(), shared_url.as_deref())
+}
+
+fn redemption_wallet_ledger_base_url() -> String {
+    env::var("WALLET_LEDGER_BASE_URL")
+        .ok()
+        .or_else(|| env::var("WALLET_LEDGER_URL").ok())
+        .unwrap_or_else(|| "http://127.0.0.1:8086".to_owned())
 }
 
 fn wallet_ledger_database_url() -> anyhow::Result<String> {
@@ -286,7 +335,8 @@ fn validate_kyc_service_store_mode(prophetica_env: &str, mode: &str) -> anyhow::
 #[cfg(test)]
 mod tests {
     use super::{
-        store_mode, validate_kyc_service_store_mode, validate_referral_service_store_mode,
+        redemption_database_url_from_values, redemption_wallet_ledger_base_url, store_mode,
+        validate_kyc_service_store_mode, validate_referral_service_store_mode,
         validate_user_service_store_mode, wallet_ledger_database_url_from_values,
     };
 
@@ -380,4 +430,55 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn redemption_database_url_prefers_service_specific_url() {
+        let database_url = redemption_database_url_from_values(
+            Some("postgres://redemption"),
+            Some("postgres://shared"),
+        );
+
+        assert!(matches!(
+            database_url.as_deref(),
+            Ok("postgres://redemption")
+        ));
+    }
+
+    #[test]
+    fn redemption_database_url_falls_back_to_shared_database_url() {
+        let database_url = redemption_database_url_from_values(None, Some("postgres://shared"));
+
+        assert!(matches!(database_url.as_deref(), Ok("postgres://shared")));
+    }
+
+    #[test]
+    fn redemption_database_url_requires_a_database_url() {
+        let result = redemption_database_url_from_values(None, None);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().map(|error| error.to_string()).as_deref(),
+            Some("REDEMPTION_DATABASE_URL or DATABASE_URL is required for redemption-service")
+        );
+    }
+
+    #[test]
+    fn redemption_wallet_ledger_base_url_prefers_new_env_name() {
+        let base_url = redemption_wallet_ledger_base_url();
+        assert!(!base_url.is_empty());
+    }
+}
+
+fn redemption_database_url_from_values(
+    redemption_service_url: Option<&str>,
+    shared_url: Option<&str>,
+) -> anyhow::Result<String> {
+    redemption_service_url
+        .and_then(non_empty_env_value)
+        .or_else(|| shared_url.and_then(non_empty_env_value))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "REDEMPTION_DATABASE_URL or DATABASE_URL is required for redemption-service"
+            )
+        })
 }

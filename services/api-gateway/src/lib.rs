@@ -24,6 +24,11 @@ use order_precheck::{
     curve_taker_fee_minor_units, required_minor_units,
 };
 use prometheus::{IntCounter, IntCounterVec, Opts};
+use redemption_service::{
+    cs_refund::CsRefundProposal,
+    entitlement::Entitlement,
+    service::{OrderView, SubmitOrderRequest},
+};
 use reqwest::Url;
 use sdk::{
     config::ServiceConfig,
@@ -55,6 +60,7 @@ const TRANSITION_CALLER_HEADER: HeaderName = HeaderName::from_static("x-transiti
 const IDEMPOTENCY_KEY_HEADER: HeaderName = HeaderName::from_static("idempotency-key");
 const DEFAULT_KYC_SERVICE_BASE_URL: &str = "http://127.0.0.1:8085";
 const DEFAULT_POSITION_SERVICE_BASE_URL: &str = "http://127.0.0.1:8089";
+const DEFAULT_REDEMPTION_SERVICE_BASE_URL: &str = "http://127.0.0.1:8095";
 const DEFAULT_TRADE_FILL_SAGA_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 const TRADE_FILL_SAGA_BATCH_LIMIT: i64 = 50;
 
@@ -77,6 +83,25 @@ pub(crate) fn kyc_service_base_url_from_env() -> String {
     resolve_kyc_service_base_url(
         env::var("KYC_SERVICE_BASE_URL").ok().as_deref(),
         env::var("KYC_SERVICE_URL").ok().as_deref(),
+    )
+}
+
+fn resolve_redemption_service_base_url(
+    redemption_service_base_url: Option<&str>,
+    redemption_service_url: Option<&str>,
+) -> String {
+    redemption_service_base_url
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| redemption_service_url.filter(|value| !value.trim().is_empty()))
+        .unwrap_or(DEFAULT_REDEMPTION_SERVICE_BASE_URL)
+        .trim_end_matches('/')
+        .to_owned()
+}
+
+pub(crate) fn redemption_service_base_url_from_env() -> String {
+    resolve_redemption_service_base_url(
+        env::var("REDEMPTION_SERVICE_BASE_URL").ok().as_deref(),
+        env::var("REDEMPTION_SERVICE_URL").ok().as_deref(),
     )
 }
 
@@ -925,8 +950,16 @@ impl ApiError {
         Self::new(StatusCode::BAD_REQUEST, error, message)
     }
 
+    fn not_found(error: &'static str, message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_FOUND, error, message)
+    }
+
     fn conflict(error: &'static str, message: impl Into<String>) -> Self {
         Self::new(StatusCode::CONFLICT, error, message)
+    }
+
+    fn forbidden(error: &'static str, message: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, error, message)
     }
 
     fn internal(message: impl Into<String>) -> Self {
@@ -945,12 +978,20 @@ impl ApiError {
         )
     }
 
+    fn redemption_service(message: impl Into<String>) -> Self {
+        Self::redemption_service_status(StatusCode::BAD_GATEWAY, message)
+    }
+
     fn market_service(message: impl Into<String>) -> Self {
         Self::new(
             StatusCode::BAD_GATEWAY,
             "market_service_unavailable",
             message,
         )
+    }
+
+    fn redemption_service_status(status: StatusCode, message: impl Into<String>) -> Self {
+        Self::new(status, "redemption_service_unavailable", message)
     }
 
     fn position_service(message: impl Into<String>) -> Self {
@@ -1419,6 +1460,57 @@ pub trait ReferralClient {
     async fn list_commission_adjustment_reviews(&self) -> Result<serde_json::Value, ApiError>;
 
     async fn list_affiliate_payout_reviews(&self) -> Result<serde_json::Value, ApiError>;
+}
+
+#[async_trait]
+pub(crate) trait RedemptionClient {
+    async fn submit_order(
+        &self,
+        user_id: &str,
+        request: SubmitRedemptionOrderRequest,
+    ) -> Result<(StatusCode, OrderView), ApiError>;
+
+    async fn get_order(&self, order_id: &str) -> Result<Option<OrderView>, ApiError>;
+
+    async fn cancel_order(&self, order_id: &str) -> Result<OrderView, ApiError>;
+
+    async fn list_entitlements(&self, user_id: &str) -> Result<Vec<Entitlement>, ApiError>;
+
+    async fn propose_cs_refund(
+        &self,
+        order_id: &str,
+        user_id: &str,
+        reason: &str,
+    ) -> Result<(StatusCode, CsRefundProposal), ApiError>;
+
+    async fn approve_cs_refund(
+        &self,
+        proposal_id: &str,
+        approver_user_id: &str,
+    ) -> Result<(StatusCode, OrderView), ApiError>;
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct SubmitRedemptionOrderRequest {
+    sku_id: String,
+    idempotency_key: String,
+    correlation_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ProposeRedemptionRefundRequest {
+    reason: String,
+}
+
+#[derive(Debug, Clone)]
+struct RedemptionState<R> {
+    client: R,
+}
+
+impl<R> RedemptionState<R> {
+    const fn new(client: R) -> Self {
+        Self { client }
+    }
 }
 
 #[async_trait]
@@ -1966,6 +2058,12 @@ pub struct HttpReferralClient {
 }
 
 #[derive(Debug, Clone)]
+pub struct HttpRedemptionClient {
+    base_url: Url,
+    client: reqwest::Client,
+}
+
+#[derive(Debug, Clone)]
 pub struct HttpMarketServiceClient {
     base_url: Url,
     client: reqwest::Client,
@@ -2068,6 +2166,20 @@ impl HttpWalletLedgerClient {
             txn_id: response.txn_id,
             replayed: response.replayed,
         })
+    }
+}
+
+impl HttpRedemptionClient {
+    pub fn new(base_url: &str) -> anyhow::Result<Self> {
+        Ok(Self {
+            base_url: Url::parse(base_url)?,
+            client: reqwest::Client::new(),
+        })
+    }
+
+    pub fn from_env() -> anyhow::Result<Self> {
+        let base_url = redemption_service_base_url_from_env();
+        Self::new(&base_url)
     }
 }
 
@@ -2183,6 +2295,133 @@ impl HttpKycServiceClient {
             None => "dev-analytics-internal-call-secret".to_owned(),
         };
         Self::new(&base_url, secret)
+    }
+}
+
+#[async_trait]
+impl RedemptionClient for HttpRedemptionClient {
+    async fn submit_order(
+        &self,
+        user_id: &str,
+        request: SubmitRedemptionOrderRequest,
+    ) -> Result<(StatusCode, OrderView), ApiError> {
+        let url = self
+            .base_url
+            .join("/v1/redemption/orders")
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+        let request = SubmitOrderRequest {
+            user_id: user_id.to_owned(),
+            sku_id: request.sku_id,
+            idempotency_key: request.idempotency_key,
+            correlation_id: request.correlation_id,
+        };
+        let response = self
+            .client
+            .post(url)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+
+        decode_redemption_response_with_status(response).await
+    }
+
+    async fn get_order(&self, order_id: &str) -> Result<Option<OrderView>, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/v1/redemption/orders/{order_id}"))
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        decode_redemption_response(response).await.map(Some)
+    }
+
+    async fn cancel_order(&self, order_id: &str) -> Result<OrderView, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/v1/redemption/orders/{order_id}/cancel"))
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+        let response = self
+            .client
+            .post(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+
+        decode_redemption_response(response).await
+    }
+
+    async fn list_entitlements(&self, user_id: &str) -> Result<Vec<Entitlement>, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!("/v1/redemption/entitlements/{user_id}"))
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+        let (_, payload) =
+            decode_redemption_response_with_status::<RedemptionEntitlementListResponse>(response)
+                .await?;
+        Ok(payload.entitlements)
+    }
+
+    async fn propose_cs_refund(
+        &self,
+        order_id: &str,
+        user_id: &str,
+        reason: &str,
+    ) -> Result<(StatusCode, CsRefundProposal), ApiError> {
+        let request = ProposeRedemptionRefundRequest {
+            reason: reason.to_owned(),
+        };
+        let url = self
+            .base_url
+            .join(&format!(
+                "/v1/admin/redemption/orders/{order_id}/refund-proposals"
+            ))
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+        let response = self
+            .client
+            .post(url)
+            .header(USER_ID_HEADER.as_str(), user_id)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+
+        decode_redemption_response_with_status(response).await
+    }
+
+    async fn approve_cs_refund(
+        &self,
+        proposal_id: &str,
+        approver_user_id: &str,
+    ) -> Result<(StatusCode, OrderView), ApiError> {
+        let url = self
+            .base_url
+            .join(&format!(
+                "/v1/admin/redemption/refund-proposals/{proposal_id}/approve"
+            ))
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+        let response = self
+            .client
+            .post(url)
+            .header(USER_ID_HEADER.as_str(), approver_user_id)
+            .send()
+            .await
+            .map_err(|error| ApiError::redemption_service(error.to_string()))?;
+
+        decode_redemption_response_with_status(response).await
     }
 }
 
@@ -2990,6 +3229,45 @@ where
         .json::<T>()
         .await
         .map_err(|error| ApiError::matching_engine(StatusCode::BAD_GATEWAY, error.to_string()))
+}
+
+async fn decode_redemption_response<T>(response: reqwest::Response) -> Result<T, ApiError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let status = response.status();
+    if !status.is_success() {
+        let message = response
+            .text()
+            .await
+            .map(|text| {
+                serde_json::from_str::<serde_json::Value>(&text)
+                    .ok()
+                    .and_then(|body| {
+                        body.get("message")
+                            .and_then(serde_json::Value::as_str)
+                            .map(ToOwned::to_owned)
+                    })
+                    .unwrap_or_else(|| text.to_string())
+            })
+            .unwrap_or_else(|error| error.to_string());
+        return Err(ApiError::redemption_service_status(status, message));
+    }
+
+    response.json::<T>().await.map_err(|error| {
+        ApiError::redemption_service_status(StatusCode::BAD_GATEWAY, error.to_string())
+    })
+}
+
+async fn decode_redemption_response_with_status<T>(
+    response: reqwest::Response,
+) -> Result<(StatusCode, T), ApiError>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let status = response.status();
+    let payload = decode_redemption_response(response).await?;
+    Ok((status, payload))
 }
 
 fn admin_proxy_headers(context: AdminProxyContext) -> Result<reqwest::header::HeaderMap, ApiError> {
@@ -4001,6 +4279,162 @@ where
     Router::new()
         .route("/v1/me/positions", get(list_my_positions::<P>))
         .with_state(Arc::new(position_service))
+}
+
+pub(crate) fn redemption_router<R>(redemption_client: R) -> Router
+where
+    R: RedemptionClient + Clone + Send + Sync + 'static,
+{
+    Router::new()
+        .route("/v1/redemption/orders", post(submit_redemption_order::<R>))
+        .route(
+            "/v1/redemption/orders/:order_id",
+            get(get_redemption_order::<R>),
+        )
+        .route(
+            "/v1/redemption/orders/:order_id/cancel",
+            post(cancel_redemption_order::<R>),
+        )
+        .route(
+            "/v1/redemption/entitlements/:user_id",
+            get(list_my_entitlements::<R>),
+        )
+        .route(
+            "/v1/admin/redemption/orders/:order_id/refund-proposals",
+            post(propose_redemption_cs_refund::<R>),
+        )
+        .route(
+            "/v1/admin/redemption/refund-proposals/:proposal_id/approve",
+            post(approve_redemption_cs_refund::<R>),
+        )
+        .with_state(Arc::new(RedemptionState::new(redemption_client)))
+}
+
+async fn submit_redemption_order<R>(
+    State(state): State<Arc<RedemptionState<R>>>,
+    auth: AuthContext,
+    Json(request): Json<SubmitRedemptionOrderRequest>,
+) -> Result<(StatusCode, Json<OrderView>), ApiError>
+where
+    R: RedemptionClient + Send + Sync,
+{
+    let request = SubmitRedemptionOrderRequest {
+        sku_id: request.sku_id,
+        idempotency_key: request.idempotency_key,
+        correlation_id: request.correlation_id,
+    };
+    let (status, order) = state.client.submit_order(&auth.user_id, request).await?;
+    Ok((status, Json(order)))
+}
+
+async fn get_redemption_order<R>(
+    State(state): State<Arc<RedemptionState<R>>>,
+    auth: AuthContext,
+    Path(order_id): Path<String>,
+) -> Result<Json<OrderView>, ApiError>
+where
+    R: RedemptionClient + Send + Sync,
+{
+    let Some(order) = state.client.get_order(&order_id).await? else {
+        return Err(ApiError::not_found(
+            "order_not_found",
+            "redemption order not found",
+        ));
+    };
+    if order.user_id != auth.user_id {
+        return Err(ApiError::forbidden(
+            "order_access_forbidden",
+            "cannot access another user's redemption order",
+        ));
+    }
+    Ok(Json(order))
+}
+
+async fn cancel_redemption_order<R>(
+    State(state): State<Arc<RedemptionState<R>>>,
+    auth: AuthContext,
+    Path(order_id): Path<String>,
+) -> Result<Json<OrderView>, ApiError>
+where
+    R: RedemptionClient + Send + Sync,
+{
+    let Some(order) = state.client.get_order(&order_id).await? else {
+        return Err(ApiError::not_found(
+            "order_not_found",
+            "redemption order not found",
+        ));
+    };
+    if order.user_id != auth.user_id {
+        return Err(ApiError::forbidden(
+            "order_access_forbidden",
+            "cannot cancel another user's redemption order",
+        ));
+    }
+
+    let order = state.client.cancel_order(&order_id).await?;
+    Ok(Json(order))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RedemptionEntitlementListResponse {
+    entitlements: Vec<Entitlement>,
+}
+
+async fn list_my_entitlements<R>(
+    State(state): State<Arc<RedemptionState<R>>>,
+    auth: AuthContext,
+    Path(user_id): Path<String>,
+) -> Result<Json<RedemptionEntitlementListResponse>, ApiError>
+where
+    R: RedemptionClient + Send + Sync,
+{
+    if user_id != auth.user_id {
+        return Err(ApiError::forbidden(
+            "forbidden",
+            "can only view entitlements for the authenticated user",
+        ));
+    }
+
+    let entitlements = state.client.list_entitlements(&user_id).await?;
+    Ok(Json(RedemptionEntitlementListResponse { entitlements }))
+}
+
+async fn propose_redemption_cs_refund<R>(
+    State(state): State<Arc<RedemptionState<R>>>,
+    auth: AuthContext,
+    Path(order_id): Path<String>,
+    Json(request): Json<ProposeRedemptionRefundRequest>,
+) -> Result<(StatusCode, Json<CsRefundProposal>), ApiError>
+where
+    R: RedemptionClient + Send + Sync,
+{
+    if request.reason.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            "empty_reason",
+            "reason must not be empty",
+        ));
+    }
+
+    let (status, proposal) = state
+        .client
+        .propose_cs_refund(&order_id, &auth.user_id, &request.reason)
+        .await?;
+    Ok((status, Json(proposal)))
+}
+
+async fn approve_redemption_cs_refund<R>(
+    State(state): State<Arc<RedemptionState<R>>>,
+    auth: AuthContext,
+    Path(proposal_id): Path<String>,
+) -> Result<(StatusCode, Json<OrderView>), ApiError>
+where
+    R: RedemptionClient + Send + Sync,
+{
+    let (status, order) = state
+        .client
+        .approve_cs_refund(&proposal_id, &auth.user_id)
+        .await?;
+    Ok((status, Json(order)))
 }
 
 async fn list_public_markets<M>(
@@ -5673,6 +6107,7 @@ pub async fn run_http() -> anyhow::Result<()> {
     let wallet_ledger = HttpWalletLedgerClient::from_env()?;
     let matching_engine = HttpMatchingEngineClient::from_env()?;
     let referral = HttpReferralClient::from_env()?;
+    let redemption = HttpRedemptionClient::from_env()?;
     let affiliate_credentials: Arc<dyn AffiliateCredentialClient> =
         HttpAffiliateCredentialClient::from_env().map_or_else(
             || Arc::new(NoopAffiliateCredentialClient) as Arc<dyn AffiliateCredentialClient>,
@@ -5730,6 +6165,7 @@ pub async fn run_http() -> anyhow::Result<()> {
             ),
         )
         .merge(admin_ops_router().await?)
+        .merge(redemption_router(redemption))
         .layer(Extension(auth_verifier));
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "api gateway listening");
