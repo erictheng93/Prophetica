@@ -157,6 +157,22 @@ pub enum RedemptionError {
     /// Order id supplied to cancel / expire was not in the store.
     #[error("order {order_id} not found")]
     OrderNotFound { order_id: String },
+    /// Cancel-window deadline (SPEC-024 §3.2 / §7) elapsed —
+    /// `now > committed_at + sku.cancel_window_seconds`. The only path back
+    /// to the player wallet is now the CS-driven refund.
+    #[error(
+        "cancel window expired for order {order_id}: deadline was {deadline_unix_secs}, now is {now_unix_secs}"
+    )]
+    CancelWindowExpired {
+        order_id: String,
+        deadline_unix_secs: i64,
+        now_unix_secs: i64,
+    },
+    /// `cancel_order` was called against an order whose `committed_at`
+    /// timestamp was never recorded. Indicates a code bug — every Committed
+    /// order should have `record_commit_timestamps` invoked.
+    #[error("order {order_id} is Committed but missing committed_at timestamp")]
+    MissingCommitTimestamp { order_id: String },
     /// Defensive: a SPEC-024 state transition that should always be legal was
     /// rejected — points to either a code bug here or a concurrent write
     /// that advanced the order between our load and update.
@@ -266,6 +282,22 @@ impl RedemptionService {
             self.advance_order(&order.order_id, OrderState::Committed)
                 .await?;
             order.state = OrderState::Committed;
+            // Stamp commit + expiry timestamps so the cancel-window deadline
+            // (P5.1) and the expiry sweep (P5.2) have something to read.
+            // Reload is idempotent: replay against an already-stamped order
+            // overwrites with the same values (computed from a fresh clock,
+            // which differs across retries — see doc note below for the
+            // intentional choice to NOT re-stamp on replay).
+            if order.committed_at_unix_secs.is_none() {
+                let committed_at = current_unix_secs();
+                let expires_at =
+                    committed_at.saturating_add(i64::from(sku.entitlement_ttl_days) * 86_400);
+                self.store
+                    .record_commit_timestamps(&order.order_id, committed_at, expires_at)
+                    .await?;
+                order.committed_at_unix_secs = Some(committed_at);
+                order.expires_at_unix_secs = Some(expires_at);
+            }
         }
 
         let entitlement = self.ensure_entitlement(&order).await?;
@@ -446,14 +478,18 @@ impl RedemptionService {
         Ok(())
     }
 
-    /// SPEC-024 §3.2 / §7 cancel-window refund. Allowed only when the
-    /// order is in [`OrderState::Committed`] — once `Fulfilled`, the CS
-    /// path ([`Self::refund_fulfilled_order_cs`]) is the only refund
-    /// route. P4 skeleton: the time-based cancel window (`SKU.cancel_window_seconds`)
-    /// is enforced at the SPEC level but NOT here — production wiring
-    /// passes a `now` clock + reads `SKU.cancel_window_seconds` to gate.
-    /// The orchestrator below stays time-agnostic so refund workflows can
-    /// be exercised in tests without clock injection.
+    /// SPEC-024 §3.2 / §7 cancel-window refund. Allowed only when:
+    ///
+    /// 1. order state is [`OrderState::Committed`] (Fulfilled goes via
+    ///    [`Self::refund_fulfilled_order_cs`]), and
+    /// 2. `now_unix_secs ≤ order.committed_at + sku.cancel_window_seconds`
+    ///    — i.e. the cancel window has not closed yet.
+    ///
+    /// Callers are responsible for sourcing `now_unix_secs`. HTTP handlers
+    /// use [`current_unix_secs`]; tests pass deterministic values so a
+    /// suite can both (a) exercise the in-window happy path with a recent
+    /// clock and (b) exercise the deadline-elapsed branch by passing a
+    /// timestamp past `committed_at + cancel_window`.
     ///
     /// Ledger: `redemption_refund` txn moves the value from
     /// `Liability.UnredeemedEntitlement.{user}` back to `Player.Wallet.{user}`,
@@ -464,8 +500,16 @@ impl RedemptionService {
     /// - [`RedemptionError::OrderNotFound`] when `order_id` is unknown.
     /// - [`RedemptionError::OrderStateNotAllowed`] when the order is not
     ///   `Committed`.
+    /// - [`RedemptionError::CancelWindowExpired`] when the deadline has passed.
+    /// - [`RedemptionError::MissingCommitTimestamp`] when the order is
+    ///   `Committed` but no `committed_at` was recorded (code bug — every
+    ///   Committed order should have had `record_commit_timestamps` invoked).
     /// - Propagates ledger / store errors.
-    pub async fn cancel_order(&self, order_id: &str) -> Result<OrderView, RedemptionError> {
+    pub async fn cancel_order(
+        &self,
+        order_id: &str,
+        now_unix_secs: i64,
+    ) -> Result<OrderView, RedemptionError> {
         let order = self.store.get_order(order_id).await?.ok_or_else(|| {
             RedemptionError::OrderNotFound {
                 order_id: order_id.to_owned(),
@@ -486,6 +530,20 @@ impl RedemptionService {
                 order_id: order.order_id.clone(),
             }
         })?;
+
+        let committed_at = order.committed_at_unix_secs.ok_or_else(|| {
+            RedemptionError::MissingCommitTimestamp {
+                order_id: order.order_id.clone(),
+            }
+        })?;
+        let deadline_unix_secs = committed_at.saturating_add(i64::from(sku.cancel_window_seconds));
+        if now_unix_secs > deadline_unix_secs {
+            return Err(RedemptionError::CancelWindowExpired {
+                order_id: order.order_id.clone(),
+                deadline_unix_secs,
+                now_unix_secs,
+            });
+        }
 
         self.post_redemption_refund(&order, &sku).await?;
         self.advance_order(&order.order_id, OrderState::Refunded)
@@ -988,6 +1046,18 @@ fn generate_audit_log_id() -> String {
     ulid::Ulid::new().to_string()
 }
 
+/// Current wall-clock as Unix epoch seconds. Centralised so the cancel
+/// window + expiry sweep paths agree on the source of "now", and so that
+/// tests can swap in `cancel_order_at(..., explicit_now_secs)` for
+/// deterministic checks. Production callers (HTTP handlers, expiry binary)
+/// just read from this helper indirectly via [`current_unix_secs`].
+#[must_use]
+pub fn current_unix_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |dur| i64::try_from(dur.as_secs()).unwrap_or(i64::MAX))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
@@ -1332,7 +1402,10 @@ mod tests {
             .available_minor_units;
         assert_eq!(balance_after_commit, 9_000);
 
-        let refunded = service.cancel_order(&view.order_id).await.expect("cancel");
+        let refunded = service
+            .cancel_order(&view.order_id, current_unix_secs())
+            .await
+            .expect("cancel");
         assert_eq!(refunded.state, OrderState::Refunded);
 
         // Wallet balance restored.
@@ -1366,7 +1439,10 @@ mod tests {
             .await
             .expect("submit");
         assert_eq!(view.state, OrderState::Fulfilled);
-        let error = match service.cancel_order(&view.order_id).await {
+        let error = match service
+            .cancel_order(&view.order_id, current_unix_secs())
+            .await
+        {
             Ok(_) => panic!("cancel_order on Fulfilled must error"),
             Err(error) => error,
         };
@@ -1396,13 +1472,16 @@ mod tests {
             .expect("submit");
 
         let first = service
-            .cancel_order(&view.order_id)
+            .cancel_order(&view.order_id, current_unix_secs())
             .await
             .expect("cancel 1");
         assert_eq!(first.state, OrderState::Refunded);
 
         // Second cancel fails — already terminal.
-        let err = match service.cancel_order(&view.order_id).await {
+        let err = match service
+            .cancel_order(&view.order_id, current_unix_secs())
+            .await
+        {
             Ok(_) => panic!("second cancel on Refunded must error"),
             Err(error) => error,
         };
@@ -1417,6 +1496,103 @@ mod tests {
         assert_eq!(refund_count, 1, "exactly one refund posted");
         let balance = ledger.get_wallet_balance("user_42").await.expect("balance");
         assert_eq!(balance.available_minor_units, 10_000);
+    }
+
+    #[tokio::test]
+    async fn cancel_order_rejects_when_window_has_elapsed() {
+        // SKU with 60-second cancel window. submit_order stamps
+        // committed_at = SystemTime::now() unix secs. Passing
+        // committed_at + 61 as `now` puts the call past the deadline.
+        let store = Arc::new(InMemoryRedemptionStore::new());
+        let ledger = Arc::new(InMemoryLedgerClient::new());
+        let item = CatalogItem::new(
+            "item_w",
+            CatalogItemKind::Digital,
+            "cosmetic",
+            "Window-test SKU",
+        )
+        .expect("item");
+        let sku = Sku::new(
+            "sku_window",
+            "item_w",
+            500,
+            FulfillmentMode::DigitalCode,
+            30,
+        )
+        .expect("sku")
+        .with_cancel_window(60)
+        .expect("60s window");
+        let stock = Stock {
+            sku_id: "sku_window".to_owned(),
+            kind: StockKind::Unlimited,
+            available_qty: 0,
+            reservation_ttl_seconds: 300,
+        };
+        store.upsert_catalog_item(item).await.expect("item");
+        store.upsert_sku(sku).await.expect("sku");
+        store.upsert_stock(stock).await.expect("stock");
+        ledger.seed_deposit("user_42", 10_000).await.expect("seed");
+        let service = RedemptionService::new(store.clone() as Arc<_>, ledger.clone() as Arc<_>);
+
+        let view = service
+            .submit_order(submit_request("user_42", "sku_window", "k"))
+            .await
+            .expect("submit");
+        assert_eq!(view.state, OrderState::Committed);
+
+        let order = store
+            .get_order(&view.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        let committed_at = order
+            .committed_at_unix_secs
+            .expect("submit must stamp committed_at");
+
+        // Now within window: succeeds.
+        let now_within = committed_at + 30;
+        let _ = service
+            .cancel_order(&view.order_id, now_within)
+            .await
+            .expect("within-window cancel must succeed");
+
+        // Submit a second order, then attempt cancel past the deadline.
+        let view2 = service
+            .submit_order(submit_request("user_42", "sku_window", "k2"))
+            .await
+            .expect("submit 2");
+        let order2 = store
+            .get_order(&view2.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        let committed_at2 = order2
+            .committed_at_unix_secs
+            .expect("submit must stamp committed_at");
+        let now_past = committed_at2 + 61;
+        let error = match service.cancel_order(&view2.order_id, now_past).await {
+            Ok(_) => panic!("past-deadline cancel must be rejected"),
+            Err(error) => error,
+        };
+        match error {
+            RedemptionError::CancelWindowExpired {
+                deadline_unix_secs,
+                now_unix_secs,
+                ..
+            } => {
+                assert_eq!(deadline_unix_secs, committed_at2 + 60);
+                assert_eq!(now_unix_secs, now_past);
+            }
+            other => panic!("expected CancelWindowExpired, got {other:?}"),
+        }
+
+        // Order must remain Committed (no state change on rejection).
+        let after = store
+            .get_order(&view2.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        assert_eq!(after.state, OrderState::Committed);
     }
 
     #[tokio::test]
@@ -1520,6 +1696,7 @@ mod tests {
     // P3.2 digital_code worker tests
     // -------------------------------------------------------------------
 
+    use super::current_unix_secs;
     use crate::partner::InMemoryPartnerAdapter;
     use crate::vault::{InMemoryVault, VaultClient};
 

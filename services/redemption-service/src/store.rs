@@ -48,6 +48,20 @@ pub trait RedemptionStore: Send + Sync {
         new_state: OrderState,
     ) -> Result<(), StoreError>;
 
+    /// Records the commit moment + entitlement expiry deadline on the
+    /// order. Called by [`crate::service::RedemptionService`] right after
+    /// the state advances to `Committed`. Idempotent — re-call with the
+    /// same values on replay is a no-op.
+    ///
+    /// `committed_at_unix_secs` drives the P5.1 cancel-window deadline
+    /// check; `expires_at_unix_secs` drives the P5.2 expiry sweep query.
+    async fn record_commit_timestamps(
+        &self,
+        order_id: &str,
+        committed_at_unix_secs: i64,
+        expires_at_unix_secs: i64,
+    ) -> Result<(), StoreError>;
+
     async fn get_order(&self, order_id: &str) -> Result<Option<RedemptionOrder>, StoreError>;
 
     async fn record_entitlement(&self, entitlement: Entitlement) -> Result<(), StoreError>;
@@ -193,6 +207,23 @@ impl RedemptionStore for InMemoryRedemptionStore {
             });
         };
         order.state = new_state;
+        Ok(())
+    }
+
+    async fn record_commit_timestamps(
+        &self,
+        order_id: &str,
+        committed_at_unix_secs: i64,
+        expires_at_unix_secs: i64,
+    ) -> Result<(), StoreError> {
+        let mut guard = self.lock()?;
+        let Some(order) = guard.orders.get_mut(order_id) else {
+            return Err(StoreError::OrderNotFound {
+                order_id: order_id.to_owned(),
+            });
+        };
+        order.committed_at_unix_secs = Some(committed_at_unix_secs);
+        order.expires_at_unix_secs = Some(expires_at_unix_secs);
         Ok(())
     }
 

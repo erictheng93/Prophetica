@@ -90,7 +90,8 @@ async fn cancel_order(
     State(service): State<Arc<RedemptionService>>,
     Path(order_id): Path<String>,
 ) -> Response {
-    match service.cancel_order(&order_id).await {
+    let now = crate::service::current_unix_secs();
+    match service.cancel_order(&order_id, now).await {
         Ok(view) => (StatusCode::OK, Json(view)).into_response(),
         Err(error) => render_redemption_error(&error),
     }
@@ -110,6 +111,11 @@ fn render_redemption_error(error: &RedemptionError) -> Response {
         RedemptionError::OrderNotFound { .. } => (StatusCode::NOT_FOUND, "order_not_found"),
         RedemptionError::OrderStateNotAllowed { .. } => {
             (StatusCode::CONFLICT, "order_state_not_allowed")
+        }
+        RedemptionError::CancelWindowExpired { .. } => (StatusCode::GONE, "cancel_window_expired"),
+        RedemptionError::MissingCommitTimestamp { .. } => {
+            warn!(?error, "redemption-service missing commit timestamp");
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
         }
         RedemptionError::InsufficientBalance { .. } => {
             (StatusCode::PAYMENT_REQUIRED, "insufficient_balance")

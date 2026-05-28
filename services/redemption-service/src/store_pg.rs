@@ -69,13 +69,16 @@ impl RedemptionStore for PgRedemptionStore {
 
     async fn upsert_sku(&self, sku: Sku) -> Result<(), StoreError> {
         sqlx::query(
-            "INSERT INTO skus (sku_id, item_id, price_minor_units, fulfillment_mode, entitlement_ttl_days) \
-             VALUES ($1, $2, $3, $4, $5) \
+            "INSERT INTO skus \
+                (sku_id, item_id, price_minor_units, fulfillment_mode, \
+                 entitlement_ttl_days, cancel_window_seconds) \
+             VALUES ($1, $2, $3, $4, $5, $6) \
              ON CONFLICT (sku_id) DO UPDATE SET \
                 item_id = EXCLUDED.item_id, \
                 price_minor_units = EXCLUDED.price_minor_units, \
                 fulfillment_mode = EXCLUDED.fulfillment_mode, \
                 entitlement_ttl_days = EXCLUDED.entitlement_ttl_days, \
+                cancel_window_seconds = EXCLUDED.cancel_window_seconds, \
                 updated_at = NOW()",
         )
         .bind(&sku.sku_id)
@@ -83,6 +86,7 @@ impl RedemptionStore for PgRedemptionStore {
         .bind(sku.price_minor_units)
         .bind(fulfillment_mode_to_str(sku.fulfillment_mode))
         .bind(i64::from(sku.entitlement_ttl_days))
+        .bind(i64::from(sku.cancel_window_seconds))
         .execute(&self.pool)
         .await
         .map_err(|err| map_sqlx_error(&err))?;
@@ -110,8 +114,9 @@ impl RedemptionStore for PgRedemptionStore {
     }
 
     async fn get_sku(&self, sku_id: &str) -> Result<Option<Sku>, StoreError> {
-        let row: Option<(String, String, i64, String, i32)> = sqlx::query_as(
-            "SELECT item_id, sku_id, price_minor_units, fulfillment_mode, entitlement_ttl_days \
+        let row: Option<(String, String, i64, String, i32, i32)> = sqlx::query_as(
+            "SELECT item_id, sku_id, price_minor_units, fulfillment_mode, \
+                    entitlement_ttl_days, cancel_window_seconds \
              FROM skus WHERE sku_id = $1",
         )
         .bind(sku_id)
@@ -121,16 +126,24 @@ impl RedemptionStore for PgRedemptionStore {
 
         match row {
             None => Ok(None),
-            Some((item_id, sku_id, price, mode, ttl)) => {
+            Some((item_id, sku_id, price, mode, ttl, cancel)) => {
                 let mode = fulfillment_mode_from_str(&mode)?;
                 let ttl = u32::try_from(ttl).map_err(|_| StoreError::OrderNotFound {
                     order_id: format!("invalid ttl for sku {sku_id}"),
+                })?;
+                let cancel = u32::try_from(cancel).map_err(|_| StoreError::OrderNotFound {
+                    order_id: format!("invalid cancel_window for sku {sku_id}"),
                 })?;
                 let sku = Sku::new(sku_id, item_id, price, mode, ttl).map_err(|err| {
                     StoreError::OrderNotFound {
                         order_id: format!("catalog invariant violated: {err}"),
                     }
                 })?;
+                let sku =
+                    sku.with_cancel_window(cancel)
+                        .map_err(|err| StoreError::OrderNotFound {
+                            order_id: format!("catalog invariant violated: {err}"),
+                        })?;
                 Ok(Some(sku))
             }
         }
@@ -159,8 +172,19 @@ impl RedemptionStore for PgRedemptionStore {
 
         // Re-read by (user, key) to get the canonical order — whether ours
         // (first writer) or the prior row (replay).
-        let row: (String, String, String, i64, String, String) = sqlx::query_as(
-            "SELECT order_id, user_id, sku_id, price_minor_units, idempotency_key, state \
+        let row: (
+            String,
+            String,
+            String,
+            i64,
+            String,
+            String,
+            Option<i64>,
+            Option<i64>,
+        ) = sqlx::query_as(
+            "SELECT order_id, user_id, sku_id, price_minor_units, idempotency_key, state, \
+                    EXTRACT(EPOCH FROM committed_at)::bigint, \
+                    EXTRACT(EPOCH FROM expires_at)::bigint \
              FROM redemption_orders WHERE user_id = $1 AND idempotency_key = $2",
         )
         .bind(&order.user_id)
@@ -176,6 +200,8 @@ impl RedemptionStore for PgRedemptionStore {
             price_minor_units: row.3,
             idempotency_key: row.4,
             state: order_state_from_str(&row.5)?,
+            committed_at_unix_secs: row.6,
+            expires_at_unix_secs: row.7,
         })
     }
 
@@ -201,8 +227,19 @@ impl RedemptionStore for PgRedemptionStore {
     }
 
     async fn get_order(&self, order_id: &str) -> Result<Option<RedemptionOrder>, StoreError> {
-        let row: Option<(String, String, String, i64, String, String)> = sqlx::query_as(
-            "SELECT order_id, user_id, sku_id, price_minor_units, idempotency_key, state \
+        let row: Option<(
+            String,
+            String,
+            String,
+            i64,
+            String,
+            String,
+            Option<i64>,
+            Option<i64>,
+        )> = sqlx::query_as(
+            "SELECT order_id, user_id, sku_id, price_minor_units, idempotency_key, state, \
+                    EXTRACT(EPOCH FROM committed_at)::bigint, \
+                    EXTRACT(EPOCH FROM expires_at)::bigint \
              FROM redemption_orders WHERE order_id = $1",
         )
         .bind(order_id)
@@ -218,8 +255,37 @@ impl RedemptionStore for PgRedemptionStore {
                 price_minor_units: row.3,
                 idempotency_key: row.4,
                 state: order_state_from_str(&row.5)?,
+                committed_at_unix_secs: row.6,
+                expires_at_unix_secs: row.7,
             }),
         })
+    }
+
+    async fn record_commit_timestamps(
+        &self,
+        order_id: &str,
+        committed_at_unix_secs: i64,
+        expires_at_unix_secs: i64,
+    ) -> Result<(), StoreError> {
+        let result = sqlx::query(
+            "UPDATE redemption_orders SET \
+                committed_at = to_timestamp($1::double precision), \
+                expires_at = to_timestamp($2::double precision), \
+                updated_at = NOW() \
+             WHERE order_id = $3",
+        )
+        .bind(committed_at_unix_secs)
+        .bind(expires_at_unix_secs)
+        .bind(order_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|err| map_sqlx_error(&err))?;
+        if result.rows_affected() == 0 {
+            return Err(StoreError::OrderNotFound {
+                order_id: order_id.to_owned(),
+            });
+        }
+        Ok(())
     }
 
     async fn record_entitlement(&self, entitlement: Entitlement) -> Result<(), StoreError> {

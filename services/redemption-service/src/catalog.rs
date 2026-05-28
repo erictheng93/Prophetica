@@ -89,6 +89,12 @@ pub enum FulfillmentMode {
     ServiceAsync,
 }
 
+/// Default cancel-window length applied when a SKU is constructed via
+/// [`Sku::new`] without an explicit window. Mirrors the migration-level
+/// default in `202605280002_commit_window_columns.sql` (300 seconds =
+/// 5 minutes), and the SPEC-024 §3.2 reference value.
+pub const DEFAULT_CANCEL_WINDOW_SECONDS: u32 = 300;
+
 /// SPEC-024 §3.1 `SKU`. Smallest redeemable unit; price and stock attach here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Sku {
@@ -100,6 +106,17 @@ pub struct Sku {
     /// Days an issued entitlement remains valid before expiry sweep
     /// (SPEC-024 §3.3 / §7).
     pub entitlement_ttl_days: u32,
+    /// SPEC-024 §3.2 / §7 cancel-window length in seconds. Cancel deadline
+    /// is `order.committed_at + cancel_window_seconds`; past that the
+    /// orchestrator returns [`crate::service::RedemptionError::CancelWindowExpired`].
+    /// Constructor default is [`DEFAULT_CANCEL_WINDOW_SECONDS`]; override
+    /// per-SKU via [`Sku::with_cancel_window`].
+    #[serde(default = "default_cancel_window_seconds")]
+    pub cancel_window_seconds: u32,
+}
+
+fn default_cancel_window_seconds() -> u32 {
+    DEFAULT_CANCEL_WINDOW_SECONDS
 }
 
 impl Sku {
@@ -149,7 +166,24 @@ impl Sku {
             price_minor_units,
             fulfillment_mode,
             entitlement_ttl_days,
+            cancel_window_seconds: DEFAULT_CANCEL_WINDOW_SECONDS,
         })
+    }
+
+    /// Builder: override the per-SKU cancel-window length. Returns the
+    /// SKU unchanged when `seconds == 0` would otherwise pass — zero
+    /// disables cancel entirely which is rarely what the caller means and
+    /// is rejected here.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CatalogError::InvalidCancelWindow`] when `seconds == 0`.
+    pub fn with_cancel_window(mut self, seconds: u32) -> Result<Self, CatalogError> {
+        if seconds == 0 {
+            return Err(CatalogError::InvalidCancelWindow);
+        }
+        self.cancel_window_seconds = seconds;
+        Ok(self)
     }
 }
 
@@ -215,6 +249,8 @@ pub enum CatalogError {
     InvalidPrice { price_minor_units: i64 },
     #[error("entitlement TTL must be at least 1 day")]
     InvalidTtl,
+    #[error("cancel window must be at least 1 second")]
+    InvalidCancelWindow,
 }
 
 #[cfg(test)]

@@ -67,6 +67,16 @@ pub struct RedemptionOrder {
     pub price_minor_units: i64,
     pub idempotency_key: String,
     pub state: OrderState,
+    /// Unix epoch seconds at which state advanced to `Committed`. `None`
+    /// while the order is still pre-Committed. Used by the cancel-window
+    /// deadline check ([`crate::service::RedemptionService::cancel_order`]).
+    #[serde(default)]
+    pub committed_at_unix_secs: Option<i64>,
+    /// Unix epoch seconds at which the entitlement expires (=
+    /// `committed_at + sku.entitlement_ttl_days × 86400`). `None` while
+    /// pre-Committed. Drives the P5.2 expiry sweep.
+    #[serde(default)]
+    pub expires_at_unix_secs: Option<i64>,
 }
 
 impl RedemptionOrder {
@@ -110,6 +120,8 @@ impl RedemptionOrder {
             price_minor_units,
             idempotency_key,
             state: OrderState::Submitted,
+            committed_at_unix_secs: None,
+            expires_at_unix_secs: None,
         })
     }
 
