@@ -1,0 +1,22 @@
+[package]
+name = "redemption-expiry-sweeper-binary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "redemption-expiry-sweeper"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+redemption-service = { path = "../../redemption-service" }
+sdk = { path = "../../../crates/sdk" }
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

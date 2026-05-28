@@ -25,6 +25,7 @@ members = [
     "services/_binaries/kyc-service",
     "services/_binaries/notification-and-risk",
     "services/_binaries/redemption-api",
+    "services/_binaries/redemption-expiry-sweeper",
     "crates/sdk",
     "crates/proto",
     "tools/mocks/provider",

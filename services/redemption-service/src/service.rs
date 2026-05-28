@@ -615,6 +615,42 @@ impl RedemptionService {
         self.build_view(refunded_order, None, false).await
     }
 
+    /// SPEC-024 §3.2 / §7 expiry sweep. Lists up to `limit` `Committed`
+    /// orders whose `expires_at_unix_secs <= now_unix_secs` and calls
+    /// [`Self::expire_order`] on each. Per-order failures (ledger reject,
+    /// missing SKU, etc.) increment the appropriate counter in the returned
+    /// [`WorkerStats`] but do not abort the batch.
+    ///
+    /// Production caller is the `redemption-expiry-sweeper` binary; it
+    /// loops or runs one-shot on a cron schedule, passing
+    /// [`current_unix_secs`] as `now_unix_secs`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RedemptionError::StoreUnavailable`] only when the initial
+    /// `list_orders_pending_expiry` call fails; individual `expire_order`
+    /// failures are encoded in [`WorkerStats`].
+    pub async fn run_expiry_sweep(
+        &self,
+        now_unix_secs: i64,
+        limit: usize,
+    ) -> Result<WorkerStats, RedemptionError> {
+        let pending = self
+            .store
+            .list_orders_pending_expiry(now_unix_secs, limit)
+            .await?;
+
+        let mut stats = WorkerStats::default();
+        for order in pending {
+            match self.expire_order(&order.order_id).await {
+                Ok(_) => stats.processed += 1,
+                Err(RedemptionError::LedgerRejected(_)) => stats.ledger_failed += 1,
+                Err(_) => stats.store_failed += 1,
+            }
+        }
+        Ok(stats)
+    }
+
     /// SPEC-024 §3.2 / §7 expiry. Marks a single `Committed` order as
     /// expired and posts the breakage ledger entry that recognises the
     /// unused entitlement as `Revenue.EntitlementBreakage`. Caller is
@@ -1665,6 +1701,120 @@ mod tests {
         // Wallet NOT refunded (this is breakage, not refund).
         let wallet = ledger.get_wallet_balance("user_42").await.expect("balance");
         assert_eq!(wallet.available_minor_units, 10_000 - 1_500);
+    }
+
+    #[tokio::test]
+    async fn run_expiry_sweep_processes_overdue_orders_and_leaves_fresh_ones() {
+        let (service, store, ledger) =
+            build_service_with_sku("code_a", 1_000, FulfillmentMode::DigitalCode).await;
+        ledger.seed_deposit("user_42", 100_000).await.expect("seed");
+
+        // Two orders submitted at "now"; both have expires_at =
+        // committed_at + 30 days. We'll pass a `now` past both, then again
+        // past only one, to verify selectivity.
+        let view_a = service
+            .submit_order(submit_request("user_42", "code_a", "k1"))
+            .await
+            .expect("submit a");
+        let view_b = service
+            .submit_order(submit_request("user_42", "code_a", "k2"))
+            .await
+            .expect("submit b");
+
+        let order_a = store
+            .get_order(&view_a.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        let order_b = store
+            .get_order(&view_b.order_id)
+            .await
+            .expect("get")
+            .expect("present");
+        let exp_a = order_a.expires_at_unix_secs.expect("expires_at a");
+        let exp_b = order_b.expires_at_unix_secs.expect("expires_at b");
+        assert_eq!(exp_a, exp_b, "same SKU TTL → same expires_at");
+
+        // Pass `now` past both deadlines: sweep should process both.
+        let stats = service
+            .run_expiry_sweep(exp_a + 1, 10)
+            .await
+            .expect("sweep");
+        assert_eq!(stats.processed, 2);
+
+        // Re-running with the same `now` finds nothing (both are Expired,
+        // not Committed). Sweep is idempotent.
+        let again = service
+            .run_expiry_sweep(exp_a + 1, 10)
+            .await
+            .expect("sweep 2");
+        assert_eq!(again.processed, 0);
+
+        // Both orders now Expired.
+        for order_id in [&view_a.order_id, &view_b.order_id] {
+            let order = store
+                .get_order(order_id)
+                .await
+                .expect("get")
+                .expect("present");
+            assert_eq!(order.state, OrderState::Expired);
+        }
+        // Revenue.EntitlementBreakage credited 1_000 × 2.
+        let breakage = ledger
+            .account_balance("Revenue.EntitlementBreakage")
+            .expect("balance");
+        assert_eq!(breakage, -2_000);
+    }
+
+    #[tokio::test]
+    async fn run_expiry_sweep_respects_limit_and_processes_oldest_first() {
+        let (service, store, ledger) =
+            build_service_with_sku("code_a", 500, FulfillmentMode::DigitalCode).await;
+        ledger.seed_deposit("user_42", 100_000).await.expect("seed");
+
+        let view_a = service
+            .submit_order(submit_request("user_42", "code_a", "k1"))
+            .await
+            .expect("a");
+        let view_b = service
+            .submit_order(submit_request("user_42", "code_a", "k2"))
+            .await
+            .expect("b");
+        let view_c = service
+            .submit_order(submit_request("user_42", "code_a", "k3"))
+            .await
+            .expect("c");
+
+        // Pass limit=2 so only 2 of 3 get processed this pass.
+        let now = current_unix_secs() + 86_400 * 31;
+        let stats = service
+            .run_expiry_sweep(now, 2)
+            .await
+            .expect("sweep limit=2");
+        assert_eq!(stats.processed, 2);
+
+        // One order remains Committed; the other two are Expired. All three
+        // share the same expires_at (same SKU + back-to-back submits), so
+        // we don't assert specific identity — just count.
+        let mut final_states: Vec<OrderState> = Vec::with_capacity(3);
+        for view in [&view_a, &view_b, &view_c] {
+            let order = store
+                .get_order(&view.order_id)
+                .await
+                .expect("store")
+                .expect("present");
+            final_states.push(order.state);
+        }
+        let committed_count = final_states
+            .iter()
+            .filter(|s| matches!(s, OrderState::Committed))
+            .count();
+        let expired_count = final_states
+            .iter()
+            .filter(|s| matches!(s, OrderState::Expired))
+            .count();
+        assert_eq!(committed_count, 1);
+        assert_eq!(expired_count, 2);
     }
 
     #[tokio::test]

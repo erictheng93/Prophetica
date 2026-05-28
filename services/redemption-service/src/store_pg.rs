@@ -383,6 +383,53 @@ impl RedemptionStore for PgRedemptionStore {
             .collect()
     }
 
+    async fn list_orders_pending_expiry(
+        &self,
+        now_unix_secs: i64,
+        limit: usize,
+    ) -> Result<Vec<RedemptionOrder>, StoreError> {
+        let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            i64,
+            String,
+            String,
+            Option<i64>,
+            Option<i64>,
+        )> = sqlx::query_as(
+            "SELECT order_id, user_id, sku_id, price_minor_units, idempotency_key, state, \
+                    EXTRACT(EPOCH FROM committed_at)::bigint, \
+                    EXTRACT(EPOCH FROM expires_at)::bigint \
+             FROM redemption_orders \
+             WHERE state = 'committed' AND expires_at IS NOT NULL \
+               AND expires_at <= to_timestamp($1::double precision) \
+             ORDER BY expires_at ASC \
+             LIMIT $2",
+        )
+        .bind(now_unix_secs)
+        .bind(limit_i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|err| map_sqlx_error(&err))?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(RedemptionOrder {
+                    order_id: row.0,
+                    user_id: row.1,
+                    sku_id: row.2,
+                    price_minor_units: row.3,
+                    idempotency_key: row.4,
+                    state: order_state_from_str(&row.5)?,
+                    committed_at_unix_secs: row.6,
+                    expires_at_unix_secs: row.7,
+                })
+            })
+            .collect()
+    }
+
     async fn list_entitlements_pending_fulfillment(
         &self,
         mode: FulfillmentMode,

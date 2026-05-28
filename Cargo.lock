@@ -2763,6 +2763,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "redemption-expiry-sweeper-binary"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "redemption-service",
+ "sdk",
+ "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "redemption-service"
 version = "0.1.0"
 dependencies = [

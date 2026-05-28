@@ -95,6 +95,20 @@ pub trait RedemptionStore: Send + Sync {
         limit: usize,
     ) -> Result<Vec<Entitlement>, StoreError>;
 
+    /// Returns up to `limit` `Committed` orders whose `expires_at_unix_secs`
+    /// is `<= now_unix_secs`. Drives the P5.2 expiry sweep
+    /// ([`crate::service::RedemptionService::run_expiry_sweep`]).
+    ///
+    /// PG implementation uses the partial index added in
+    /// `202605280002_commit_window_columns.sql`
+    /// (`idx_orders_committed_expires`) so scanning cost is bounded by the
+    /// active Committed set, not the whole order table.
+    async fn list_orders_pending_expiry(
+        &self,
+        now_unix_secs: i64,
+        limit: usize,
+    ) -> Result<Vec<RedemptionOrder>, StoreError>;
+
     /// Atomically writes `payload` to an entitlement. Used by fulfillment
     /// workers to attach mode-specific delivery data (the activation code
     /// for `digital_code`, the booking ID for `service_async`, etc.).
@@ -301,6 +315,29 @@ impl RedemptionStore for InMemoryRedemptionStore {
         // Stable ordering by entitlement_id so worker behaviour is
         // deterministic in tests (ULIDs sort by creation time).
         hits.sort_by(|a, b| a.entitlement_id.cmp(&b.entitlement_id));
+        hits.truncate(limit);
+        Ok(hits)
+    }
+
+    async fn list_orders_pending_expiry(
+        &self,
+        now_unix_secs: i64,
+        limit: usize,
+    ) -> Result<Vec<RedemptionOrder>, StoreError> {
+        let guard = self.lock()?;
+        let mut hits: Vec<RedemptionOrder> = guard
+            .orders
+            .values()
+            .filter(|o| matches!(o.state, OrderState::Committed))
+            .filter(|o| {
+                o.expires_at_unix_secs
+                    .is_some_and(|deadline| deadline <= now_unix_secs)
+            })
+            .cloned()
+            .collect();
+        // Deterministic ordering: oldest expires_at first so the worker
+        // processes the most-overdue orders before fresher ones in a batch.
+        hits.sort_by(|a, b| a.expires_at_unix_secs.cmp(&b.expires_at_unix_secs));
         hits.truncate(limit);
         Ok(hits)
     }
