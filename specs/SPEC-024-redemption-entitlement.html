@@ -36,13 +36,74 @@
     <blockquote>
       <p>
         優先級：<strong>P2</strong><br />
-        版本：v0.1.0 · 最後更新：2026-05-27<br />
-        依賴：SPEC-002, SPEC-005, SPEC-010<br />
+        版本：v0.2.0 · 最後更新：2026-05-28<br />
+        依賴：SPEC-002, SPEC-005, SPEC-010, SPEC-012, SPEC-014, SPEC-019<br />
         被依賴：未來商城前端 SPEC（待立案）
       </p>
     </blockquote>
     <section class="changelog">
       <h2>變更紀錄</h2>
+      <article class="changelog-item">
+        <h3>v0.2.0</h3>
+        <p>
+          P3 + P4 + P5 全部 in-memory + PG + HTTP 三層 backend land。完整
+          端到端流程：catalog/SKU 設定 → submit_order →（依
+          fulfillment_mode 分流）DigitalImmediate 同 transaction 履約 /
+          DigitalCode worker claim 一次性 code / ServiceAsync worker 兩階段
+          partner dispatch+poll → 履約完成轉 Fulfilled → cancel-window
+          retry → expiry sweep breakage 收入認列 → CS 4-eye refund 從
+          Fulfilled。落地細項：
+        </p>
+        <ul>
+          <li>
+            <strong>P3.1 digital_immediate</strong>（self-healing forward
+            drive，crash window 自癒）
+          </li>
+          <li>
+            <strong>P3.2 digital_code</strong>（VaultClient trait + retry
+            時不 double-claim code）
+          </li>
+          <li>
+            <strong>P3.3 service_async</strong>（PartnerAdapter trait + 兩
+            階段 dispatch / status poll；不 redispatch on retry）
+          </li>
+          <li>
+            <strong>P3.4 HTTP + PG</strong>（HttpLedgerClient against
+            wallet-ledger-service + PgRedemptionStore；env-var fallback 為
+            in-memory dev mode）
+          </li>
+          <li>
+            <strong>P4 refund / expiry / breakage</strong>（cancel_order /
+            refund_fulfilled_order_cs / expire_order；ledger
+            redemption_refund + entitlement_expiry txn）
+          </li>
+          <li>
+            <strong>P5.1 cancel-window deadline</strong>（Sku.cancel_window_seconds
+            + RedemptionOrder.committed_at_unix_secs + cancel_order(order_id,
+            now) deadline check；migration 202605280002 加 columns + partial
+            index）
+          </li>
+          <li>
+            <strong>P5.2 expiry sweep binary</strong>（services/_binaries/redemption-expiry-sweeper
+            一站式 cron / oneshot）
+          </li>
+          <li>
+            <strong>P5.3 4-eye CS refund</strong>（cs_refund_with_4eye 強制
+            proposer ≠ approver；admin HTTP route POST
+            /v1/admin/redemption/orders/:id/refund）
+          </li>
+        </ul>
+        <p>
+          公開 Beta 上線前剩餘 hard gate 集中列於
+          <a
+            href="../docs/architecture/decisions/ADR-0007-inv6-redemption-carveout-and-inv7.md"
+            >ADR-0007 §7.1</a
+          >：Compliance Counsel breakage dormancy 法律意見書、SPEC-012 §11
+          4-eye compensation review chain 完整接入、admin HTTP route gateway
+          admin-scope 確認、expiry sweeper 部署 + SPEC-019 incident
+          runbook。被依賴清單擴展含 SPEC-012 / SPEC-014 / SPEC-019。
+        </p>
+      </article>
       <article class="changelog-item">
         <h3>v0.1.0</h3>
         <p>

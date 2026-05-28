@@ -199,6 +199,42 @@ INV-7 之違反代價同 INV-6：
 - [ ] ADR-0006 v1.0.3 Revision History 標註 INV-6 (g) 由本 ADR 補
 - [ ] SPEC-007 §6.4 wallet-ledger latency budget 壓測：INV-7 trigger overhead 不破 2ms P99
 
+### 7.1 公開 Beta 之前必須補齊（hard gate）
+
+§5.2 Negative #3 已標示但仍未落地的法律 / 合規前置條件，本 ADR §6 P5
+落地時集中列出以避免 ship 前才追：
+
+- [ ] **Compliance Counsel 法律意見書 — breakage dormancy period**
+      （**hard gate**）：`Revenue.EntitlementBreakage` 收入認列時點需符合
+      執照地法規（美國各州 dormancy period 1~5 年不等；台灣消保法第 19
+      條商品禮券有 1 年使用期最低保障；其他地區由 Counsel 出具當地法規
+      適用結論）。意見書必須在公開 Beta 上線前出具，並更新 SPEC-024
+      §7 之 entitlement TTL 上限。Owner = Compliance Counsel；Tracker =
+      [SPEC-000 §5 LG-?](../../../specs/SPEC-000-index.html#cross-cutting)
+      (新增 launch gate 條目)；目標日期 = 公開 Beta gate 開啟前 30 天。
+- [ ] SPEC-012 §11 4-eye compensation review chain 完整接入
+      `RedemptionService::cs_refund_with_4eye`：兩階段 propose +
+      approve、ticket linkage、`audit_logs` row。目前 P5.3 skeleton 已
+      強制 proposer ≠ approver 但缺 audit trail 與 ticket integration。
+- [ ] **Admin HTTP route identity binding（hard gate — 安全紅線）**：
+      `/v1/admin/redemption/orders/:id/refund` 目前 `proposer_user_id` 與
+      `approver_user_id` 都是 client-supplied JSON 欄位，沒有與任何
+      authenticated identity 綁定。惡意 admin 可任意填寫 `(alice, bob)`
+      但實際兩端皆為自己，paper 上滿足 4-eye 但實質是 1-eye。**production
+      上線前必須**：(a) 至少 `proposer_user_id` 從 gateway-injected 簽名
+      header（如 `X-Auth-User`，SPEC-014 §6.1.2 簽核）或 authenticated
+      session/JWT claim 取出，handler 拒絕 body 不匹配的請求；(b) 進一步
+      把 endpoint 拆成 `/propose` + `/approve` 兩個 authenticated request
+      ，approver 端 load 既存 proposal 並驗 `approver != stored
+      proposer`（SPEC-012 §11 模型）。在兩條同時落地前，gateway routing
+      config 必須把此路徑限制在 non-production 環境；
+      `services/redemption-service/src/api.rs::admin_cs_refund` doc-comment
+      已明文標 SECURITY 警示。
+- [ ] `redemption-expiry-sweeper` binary 部署排程：建議每 5 分鐘一輪
+      （`REDEMPTION_EXPIRY_INTERVAL_SECONDS=300`），oneshot 模式作為
+      cron 備援。需確認 SPEC-019 incident-response runbook 含此 binary
+      停擺處理流程（單點故障 → entitlement 過期回收延遲，不影響玩家錢包）。
+
 ## 8. References
 
 ### 8.1 內部文件
