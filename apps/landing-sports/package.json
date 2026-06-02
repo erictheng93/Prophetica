@@ -44,7 +44,6 @@
     "@prophetica/design-tokens": "workspace:*",
     "@prophetica/ts-sdk": "workspace:*",
     "@prophetica/ui": "workspace:*",
-    "clsx": "^2.1.1",
     "next": "^16.2.6",
     "next-intl": "^4.11.0",
     "react": "^19.0.0",
