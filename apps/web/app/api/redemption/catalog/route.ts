@@ -49,7 +49,9 @@ const FALLBACK_CATALOG: ApiCatalogResponse = {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<NextResponse<ApiCatalogResponse>> {
+export async function GET(): Promise<
+  NextResponse<ApiCatalogResponse | { error: string }>
+> {
   const allowDevFallback = devBffFallbackEnabled();
   const bearerToken = await getUpstreamSessionToken();
   const viewer = await getViewer();

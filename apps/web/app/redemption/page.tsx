@@ -1,4 +1,4 @@
-import { getFooterColumns, SiteFooterColumnId } from "@/lib/site-nav";
+import { getFooterColumns, FooterColumnId } from "@/lib/site-nav";
 import {
   AuthCta,
   Brand,
@@ -9,7 +9,7 @@ import { ProphFooter, ProphSubNav, ProphTile } from "@prophetica/ui";
 
 import { RedemptionClient } from "./redemption-client";
 
-const redemptionFooterColumns: SiteFooterColumnId[] = [
+const redemptionFooterColumns: FooterColumnId[] = [
   "player",
   "about",
   "responsibleGaming",
