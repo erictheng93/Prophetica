@@ -1,0 +1,10 @@
+# Build outputs
+.next/
+.open-next/
+dist/
+.turbo/
+
+# Generated protobuf TypeScript stubs — owned by buf (buf.gen.yaml), not
+# prettier. Formatting these would conflict with the proto-drift gate
+# (ci.yml / release.yml), which regenerates them via buf and diffs the result.
+packages/proto/gen/
