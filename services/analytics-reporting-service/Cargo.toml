@@ -11,7 +11,6 @@ anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 csv = "1"
-hmac = "0.12"
 http-body-util = "0.1"
 reqwest.workspace = true
 sdk = { path = "../../crates/sdk" }
@@ -23,7 +22,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tower = "0.5"
 tracing.workspace = true
-ulid.workspace = true
 
 [lints]
 workspace = true

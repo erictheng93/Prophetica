@@ -26,7 +26,6 @@ dependencies = [
  "async-trait",
  "axum 0.7.9",
  "csv",
- "hmac",
  "http-body-util",
  "reqwest",
  "sdk",
@@ -38,7 +37,6 @@ dependencies = [
  "tokio",
  "tower 0.5.3",
  "tracing",
- "ulid",
 ]
 
 [[package]]
@@ -1741,7 +1739,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
- "core_affinity",
  "futures-util",
  "http-body-util",
  "proptest",
@@ -2282,7 +2279,6 @@ dependencies = [
  "tokio",
  "tower 0.5.3",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3089,7 +3085,6 @@ dependencies = [
  "opentelemetry_sdk",
  "prometheus",
  "serde",
- "serde_json",
  "sqlx",
  "thiserror 1.0.69",
  "tokio",
@@ -4136,7 +4131,6 @@ checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 name = "user-service"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "argon2",
  "async-trait",
  "axum 0.7.9",
