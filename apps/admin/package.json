@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ./scripts/dev.mjs",
+    "dev": "env -u NO_COLOR node ./scripts/dev.mjs",
     "build": "next build --webpack",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lint": "tsc --project tsconfig.lint.json",
-    "test:e2e": "playwright test",
-    "test:e2e:full": "playwright test --config playwright.full-e2e.config.ts tests/e2e/member-management-full-chain.spec.ts",
+    "test:e2e": "env -u NO_COLOR playwright test",
+    "test:e2e:full": "env -u NO_COLOR playwright test --config playwright.full-e2e.config.ts tests/e2e/member-management-full-chain.spec.ts",
     "test": "node -e \"require('node:fs').rmSync('.test-out', { recursive: true, force: true })\" && tsc --project tsconfig.test.json && node --conditions react-server --experimental-strip-types --disable-warning=ExperimentalWarning --test .test-out/tests/*.test.js"
   },
   "dependencies": {

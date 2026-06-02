@@ -128,7 +128,7 @@ test("admin and manager can reach /affiliate/[id] detail; affiliate cannot", () 
 });
 
 test("/me prefix does not bleed into /members or /me-anything", () => {
-  // Regression: an earlier middleware build used pathname.startsWith("/me")
+  // Regression: an earlier proxy build used pathname.startsWith("/me")
   // which returned true for /members. canAccess must still classify /members
   // through its own explicit member-management rule.
   assert.equal(canAccess("/members", "affiliate"), true);

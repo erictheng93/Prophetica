@@ -9,7 +9,7 @@ import {
 const SESSION_COOKIE_NAME = "proph_admin_session";
 
 /*
- * SPEC-017 §6.3 (amended 2026-05-10) — admin middleware enforces:
+ * SPEC-017 §6.3 (amended 2026-05-10) — admin proxy enforces:
  *   1. Cloudflare Access / mTLS gate for internal admin surfaces. `/login`
  *      and `/me/affiliate/*` bypass the edge SSO requirement so external
  *      affiliates can reach their own portal, but application session/RBAC
@@ -44,7 +44,7 @@ function isPublic(pathname: string): boolean {
   );
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (isPublic(pathname)) {

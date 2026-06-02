@@ -9,10 +9,10 @@ interface RoleGateProps {
 }
 
 /*
- * Server-side RBAC gate. middleware already redirects unauthenticated and
+ * Server-side RBAC gate. proxy already redirects unauthenticated and
  * unauthorized requests, but pages still call this to (a) get a typed
  * viewer object without each page re-reading the cookie, and (b) be safe
- * if middleware is ever bypassed (e.g. internal RSC fetch).
+ * if proxy is ever bypassed (e.g. internal RSC fetch).
  */
 export async function RoleGate({ allow, children }: RoleGateProps) {
   const viewer = await getViewer();

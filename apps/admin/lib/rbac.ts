@@ -12,7 +12,7 @@ export function isRole(value: unknown): value is Role {
 
 /*
  * SPEC-017 §6.3.1 — single source of truth for which roles can reach which
- * route. middleware, AdminNav, RoleGate, and any API route guard all read
+ * route. proxy, AdminNav, RoleGate, and any API route guard all read
  * from this table; never duplicate the allowlist anywhere else.
  *
  * "isPrefix" means any path that *starts with* the key is also allowed —
