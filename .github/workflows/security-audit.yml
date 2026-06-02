@@ -8,9 +8,19 @@ on:
 jobs:
   rust-security-audit:
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: "true" # rustc-wrapper=sccache comes from .cargo/config.toml
+      CARGO_INCREMENTAL: "0" # sccache cannot cache incremental units
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.85
+      # Project toolchain single-sourced from rust-toolchain.toml (channel 1.85);
+      # the extra 1.88 toolchain below is installed only for cargo-deny.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false # caching is handled explicitly below (Swatinem + sccache)
+          # Suppress this action's default RUSTFLAGS=-D warnings so the geiger build
+          # is not failed by incidental compiler warnings.
+          rustflags: ""
       - uses: Swatinem/rust-cache@v2
       - uses: mozilla-actions/sccache-action@v0.0.10
       - name: install cargo-geiger

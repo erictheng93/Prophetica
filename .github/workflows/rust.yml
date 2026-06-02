@@ -1,22 +1,71 @@
-name: rust-tests
+name: rust
 
-# Backend test execution. ci.yml already runs cargo check / clippy / fmt;
-# this workflow fills the gap it leaves — actually running the workspace
-# test suite via cargo nextest (the canonical runner per `make test`).
+# All backend Rust gates, split into two parallel jobs so a lint failure and a
+# test failure surface independently while still running concurrently (wall-clock
+# ~= the slower of the two, not their sum). `cargo check` is intentionally NOT a
+# separate step: `cargo clippy --all-targets` performs the same front-end compile,
+# so a standalone check would only duplicate work. fmt runs first — it needs no
+# compilation and fails in seconds when formatting drifts.
+#
+# Toolchain is single-sourced from rust-toolchain.toml (channel + components) via
+# actions-rust-lang/setup-rust-toolchain; do not hard-code a version here.
+# Two cache layers, each pulling its weight: Swatinem/rust-cache preserves the
+# target/ dir (incl. the expensive vendored librdkafka C build, which sccache
+# cannot cache because it is a cc/cmake build script, not a rustc invocation),
+# while sccache (already wired as rustc-wrapper in .cargo/config.toml) caches
+# first-party rustc objects. SCCACHE_GHA_ENABLED is the actual win here: it routes
+# sccache to the persistent GitHub Actions cache backend instead of the ephemeral
+# local disk it would otherwise use (which is wiped between CI runs).
 
 on:
   pull_request:
   push:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  workspace-tests:
+  lint:
     runs-on: ubuntu-latest
     env:
       SQLX_OFFLINE: "true"
+      SCCACHE_GHA_ENABLED: "true" # rustc-wrapper=sccache comes from .cargo/config.toml
+      CARGO_INCREMENTAL: "0" # sccache cannot cache incremental units
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false # caching is handled explicitly below (Swatinem + sccache)
+          # Suppress this action's default RUSTFLAGS=-D warnings injection so plain
+          # check/test/build keep prior (dtolnay) behavior; only clippy enforces
+          # -D warnings, via its own `-- -D warnings` below.
+          rustflags: ""
+      - uses: Swatinem/rust-cache@v2
+      - uses: mozilla-actions/sccache-action@v0.0.10
+      - name: install native rdkafka deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
+      - name: rust format check
+        run: cargo fmt --all -- --check
+      - name: rust lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    env:
+      SQLX_OFFLINE: "true"
+      SCCACHE_GHA_ENABLED: "true" # rustc-wrapper=sccache comes from .cargo/config.toml
+      CARGO_INCREMENTAL: "0" # sccache cannot cache incremental units
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false # caching is handled explicitly below (Swatinem + sccache)
+          # Suppress this action's default RUSTFLAGS=-D warnings injection so plain
+          # check/test/build keep prior (dtolnay) behavior; only clippy enforces
+          # -D warnings, via its own `-- -D warnings` below.
+          rustflags: ""
       - uses: Swatinem/rust-cache@v2
       - uses: mozilla-actions/sccache-action@v0.0.10
       - uses: taiki-e/install-action@nextest

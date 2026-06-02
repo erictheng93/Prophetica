@@ -1,9 +1,16 @@
 name: ci
 
+# Lightweight, language-agnostic gates: standalone node scripts + landing
+# variant manifests. Rust lives in rust.yml; the pnpm workspace in node.js.yml.
+
 on:
   pull_request:
   push:
     branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   landing-variant-validator:
@@ -28,20 +35,23 @@ jobs:
       - name: test repository scripts
         run: node --test tools/scripts/*.test.mjs
 
-  rust-lsp-lint:
+  proto-drift:
+    # Regenerate the committed protobuf stubs from packages/proto/v1/*.proto and
+    # fail if crates/proto/src/gen or packages/proto/gen/ts drift from source.
+    # SDD requires generated artifacts never lag the .proto source; release.yml
+    # enforces this at tag time, this brings the same gate to every PR.
+    # buf.gen.yaml uses remote plugins, so no local protoc/plugin install needed.
     runs-on: ubuntu-latest
-    env:
-      SQLX_OFFLINE: "true"
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.85
-      - uses: Swatinem/rust-cache@v2
-      - uses: mozilla-actions/sccache-action@v0.0.10
-      - name: install native rdkafka deps
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev cmake clang lld pkg-config
-      - name: rust syntax and type check
-        run: cargo check --workspace --locked
-      - name: rust lint
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: rust format check
-        run: cargo fmt --all -- --check
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: regenerate protobuf stubs
+        run: pnpm exec buf generate
+      - name: fail on uncommitted protobuf drift
+        run: git diff --exit-code crates/proto/src/gen packages/proto/gen/ts

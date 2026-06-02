@@ -37,12 +37,20 @@ jobs:
       SQLX_OFFLINE: "true"
       RELEASE_REF: ${{ inputs.release_ref || github.ref_name }}
       DEPLOYMENT_MODE: ${{ inputs.deployment_mode || 'production' }}
+      SCCACHE_GHA_ENABLED: "true" # rustc-wrapper=sccache comes from .cargo/config.toml
+      CARGO_INCREMENTAL: "0" # sccache cannot cache incremental units
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.release_ref || github.ref }}
 
-      - uses: dtolnay/rust-toolchain@1.85
+      # Toolchain single-sourced from rust-toolchain.toml; do not hard-code here.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false # caching is handled explicitly below (Swatinem + sccache)
+          # Suppress this action's default RUSTFLAGS=-D warnings so test/build keep
+          # prior behavior; only clippy enforces -D warnings, via its own flag below.
+          rustflags: ""
       - uses: Swatinem/rust-cache@v2
       - uses: mozilla-actions/sccache-action@v0.0.10
       - name: install cargo-nextest
@@ -68,9 +76,8 @@ jobs:
       - name: frontend build
         run: pnpm build
 
-      - name: rust check
-        run: cargo check --workspace --locked
-
+      # No standalone `cargo check`: clippy --all-targets performs the same
+      # front-end compile, so a separate check step only rebuilds the workspace.
       - name: rust lint
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
@@ -80,6 +87,8 @@ jobs:
       - name: rust format
         run: cargo fmt --all -- --check
 
+      - name: regenerate protobuf stubs
+        run: pnpm exec buf generate
       - name: generated protobuf is committed
         run: git diff --exit-code crates/proto/src/gen packages/proto/gen/ts
 
