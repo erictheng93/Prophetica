@@ -35,7 +35,7 @@ test("manager proposal can be approved by admin and moves to posted history", as
     await expect(page.getByText("cmp-000001")).toBeVisible();
     await page.getByRole("button", { name: "approve" }).click();
     await expect(page.getByText(/已核准 cmp-000001，目前狀態：已入帳/)).toBeVisible();
-    await expect(page.getByText("已入帳")).toBeVisible();
+    await expect(page.getByText("已入帳", { exact: true })).toBeVisible();
   } finally {
     await new Promise<void>((resolve) => gateway.close(() => resolve()));
   }

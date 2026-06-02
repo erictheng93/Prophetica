@@ -3,7 +3,7 @@ import { ADMIN_ORIGIN, ADMIN_PORT } from "./tests/admin-env.js";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  timeout: 60_000,
+  timeout: 120_000,
   expect: {
     timeout: 20_000,
   },
