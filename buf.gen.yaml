@@ -1,11 +1,14 @@
 version: v2
 plugins:
-  - remote: buf.build/community/neoeinstein-prost
+  # Remote plugins are version-pinned so regenerated output is reproducible and
+  # the proto-drift gate (ci.yml / release.yml) cannot fail on an unrelated PR
+  # just because a plugin published a new version. Bump these intentionally.
+  - remote: buf.build/community/neoeinstein-prost:v0.5.0
     out: crates/proto/src/gen
     opt: [bytes=., compile_well_known_types]
-  - remote: buf.build/community/neoeinstein-tonic
+  - remote: buf.build/community/neoeinstein-tonic:v0.5.0
     out: crates/proto/src/gen
     opt: [no_include, compile_well_known_types]
-  - remote: buf.build/bufbuild/es
+  - remote: buf.build/bufbuild/es:v2.12.0
     out: packages/proto/gen/ts
     opt: target=ts
