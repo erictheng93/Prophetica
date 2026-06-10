@@ -6,6 +6,8 @@ services:
       POSTGRES_PASSWORD: dev
       POSTGRES_DB: prophetica
     ports: ["5432:5432"]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U proph -d prophetica"]
       interval: 3s
@@ -145,3 +147,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+
+volumes:
+  pg_data:
