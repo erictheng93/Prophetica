@@ -115,32 +115,28 @@ losing the remaining launch work.
 - Run and document an S0 / S1 incident drill.
 - Link final runbooks from the launch-gate evidence package.
 
-### LG-1: Legal / Jurisdiction Readiness
-
-- Complete legal memo coverage for the initial market list.
-- Confirm jurisdiction allow / deny rules for the beta launch scope.
-- Publish any required market-specific restrictions before launch.
-
 ### LG-7: admin RBAC Phase 3 — production auth
 
-Tracked here because Phase 2 (2026-05-10) ships only a mock auth surface
-inside `apps/admin/`. None of the items below can ride to production as-is.
+Tracked here because Phase 2 (2026-05-10) still had local session compatibility
+inside `apps/admin/`. Production auth now treats user-service as the session
+authority; any remaining items below are operational rollout evidence, not a
+separate mock-auth product path.
 
 - Stand up real auth endpoints in `services/user-service` (`/v1/auth/login`,
-  `/v1/auth/logout`, `/v1/auth/me`) is implemented for the local provider;
-  remaining work is deprecating `apps/admin/app/api/auth/*` mock and
-  `apps/admin/lib/mock-users.ts` once admin sessions move to the real provider.
+  `/v1/auth/logout`, `/v1/auth/me`) is implemented for the local provider.
+  `apps/admin/app/api/auth/login` calls user-service and sets the
+  user-service session token as the admin session cookie when the token is an
+  Ed25519 compact JWS.
 - Sign sessions with Ed25519 (private key in Vault per SPEC-010 §3.3); admin
-  middleware verifies via JWKS endpoint instead of HMAC. Update
-  `apps/admin/lib/session.ts` accordingly.
+  middleware verifies configured JWKS / public JWK sessions. Legacy HMAC
+  session compatibility is rejected in production and remains only for local /
+  E2E fixtures.
 - Migrate affiliate passwords to Argon2id PHC hashes. Runtime verification with
   minimum `m >= 19456, t >= 2, p >= 1` is implemented in `user-service`;
   remaining work is credential migration / secret management.
-- Reintroduce MFA later as a dedicated Phase 3 auth hardening effort. Current
-  admin and web app runtime intentionally has no MFA / passkey / step-up
-  enforcement or UI. Future work should re-spec the exact product scope, restore
-  the necessary user-service and app integration, add browser evidence, and then
-  enable enforcement only after the end-to-end operational flow is validated.
+- MFA evidence forwarding is wired through the admin login form and API route
+  using `mfa_code` / `mfa_recovery_code`; user-service remains responsible for
+  validating TOTP, recovery-code, passkey, and hardware-MFA policy.
 - Configure Cloudflare Access with bypass policies for `/login` and
   `/me/affiliate/*` so external affiliates can reach the app surface, while
   `/`, `/dashboard`, and the six internal domain routes still require SSO.
@@ -151,8 +147,8 @@ inside `apps/admin/`. None of the items below can ride to production as-is.
 - Replace `ADMIN_SESSION_SECRET` dev fallback in `lib/session.ts` with
   fail-closed behavior (no default secret in production) is implemented; local
   development still gets an explicit dev-only fallback.
-- Remove the dev-credential hint block from `app/login/page.tsx` once real
-  user-service is in place.
+- Remove the dev-credential hint block from `app/login/page.tsx` only after
+  local onboarding no longer depends on seeded user-service accounts.
 
 ### LG-8: PWA / RWD followups
 
