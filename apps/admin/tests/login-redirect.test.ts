@@ -40,11 +40,12 @@ test("login form marks affiliate portal attempts from intended route", () => {
   assert.match(source, /login_surface: loginSurface/);
 });
 
-test("login form sends only password login credentials", () => {
+test("login form sends password and optional MFA login credentials", () => {
   const source = readAdminFile("components/login-form.tsx");
 
   assert.match(
     source,
-    /JSON\.stringify\(\{ email, password, login_surface: loginSurface \}\)/,
+    /JSON\.stringify\(\{\s*email,\s*password,\s*login_surface: loginSurface,\s*mfa_code: mfaCode/,
   );
+  assert.match(source, /mfa_recovery_code: mfaRecoveryCode/);
 });

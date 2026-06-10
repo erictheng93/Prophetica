@@ -14,6 +14,8 @@ export function LoginForm() {
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaRecoveryCode, setMfaRecoveryCode] = useState("");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -31,7 +33,13 @@ export function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, login_surface: loginSurface }),
+        body: JSON.stringify({
+          email,
+          password,
+          login_surface: loginSurface,
+          mfa_code: mfaCode,
+          mfa_recovery_code: mfaRecoveryCode,
+        }),
       });
       if (res.ok) {
         const data = (await res.json()) as { redirect: string };
@@ -90,6 +98,45 @@ export function LoginForm() {
           onChange={(event) => setPassword(event.target.value)}
           className="w-full rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink focus:border-proph-primary focus:outline-none focus:ring-2 focus:ring-proph-primary-focus"
         />
+      </div>
+      <div className="space-y-2">
+        <label
+          className="block text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]"
+          htmlFor="login-mfa-code"
+        >
+          {adminCopy.login.mfaCodeLabel}
+        </label>
+        <input
+          id="login-mfa-code"
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          value={mfaCode}
+          onChange={(event) => setMfaCode(event.target.value)}
+          className="w-full rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink focus:border-proph-primary focus:outline-none focus:ring-2 focus:ring-proph-primary-focus"
+        />
+        <p className="text-[12px] leading-[1.33] tracking-[-0.12px] text-proph-ink-muted-48">
+          {adminCopy.login.mfaCodeHelp}
+        </p>
+      </div>
+      <div className="space-y-2">
+        <label
+          className="block text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]"
+          htmlFor="login-recovery-code"
+        >
+          {adminCopy.login.recoveryCodeLabel}
+        </label>
+        <input
+          id="login-recovery-code"
+          type="text"
+          autoComplete="off"
+          value={mfaRecoveryCode}
+          onChange={(event) => setMfaRecoveryCode(event.target.value)}
+          className="w-full rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink focus:border-proph-primary focus:outline-none focus:ring-2 focus:ring-proph-primary-focus"
+        />
+        <p className="text-[12px] leading-[1.33] tracking-[-0.12px] text-proph-ink-muted-48">
+          {adminCopy.login.recoveryCodeHelp}
+        </p>
       </div>
       {feedback && (
         <p

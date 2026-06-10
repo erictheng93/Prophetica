@@ -1,28 +1,17 @@
 import "server-only";
 import { cookies } from "next/headers";
 import {
-  resolveSessionJwks,
   resolveSessionSecret,
   signSession,
-  verifyEd25519JwsSession,
+  verifyAdminSessionToken,
   verifySession as verifySessionPure,
   type SessionPayload,
 } from "./session-crypto";
 
 /*
- * SPEC-017 §6.3 amendment — Phase 2 mock session.
- *
- * Why HMAC-SHA256 here, not Ed25519 JWT yet
- *   The real signer is user-service (Rust) and is part of Phase 3 work
- *   (see TODO.md LG-7). For Phase 2 we only need a tamper-evident envelope
- *   so browsers can't trivially forge a `role=admin` cookie. Web Crypto's
- *   HMAC-SHA256 is enough; rotating in Ed25519 later is a swap of `verify`
- *   inside session-crypto without touching call sites here.
- *
- * The signing key is read from `ADMIN_SESSION_SECRET`. In production this
- * comes from Vault (SPEC-010 §3.3); locally it falls back to a clearly-
- * marked dev string so engineers can iterate without bootstrapping Vault.
- * Phase 3 will fail-closed on missing secret.
+ * Production admin sessions are user-service Ed25519 compact JWS tokens.
+ * The legacy HMAC envelope remains available only for local/E2E fixtures; it
+ * is rejected when NODE_ENV=production by session-crypto.
  */
 
 export const SESSION_COOKIE_NAME = "proph_admin_session";
@@ -34,10 +23,7 @@ function getSecret(): string {
 }
 
 export async function verifySession(token: string): Promise<SessionPayload | null> {
-  if (token.split(".").length === 3) {
-    return verifyEd25519JwsSession(token, resolveSessionJwks());
-  }
-  return verifySessionPure(token, getSecret());
+  return verifyAdminSessionToken(token);
 }
 
 export async function getViewer(): Promise<SessionPayload | null> {
@@ -48,6 +34,10 @@ export async function getViewer(): Promise<SessionPayload | null> {
 
 export async function setSessionCookie(payload: Omit<SessionPayload, "iat" | "exp">): Promise<void> {
   const token = await signSession(payload, getSecret());
+  await setUserServiceSessionCookie(token);
+}
+
+export async function setUserServiceSessionCookie(token: string): Promise<void> {
   (await cookies()).set({
     name: SESSION_COOKIE_NAME,
     value: token,

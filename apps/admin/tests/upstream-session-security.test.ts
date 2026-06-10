@@ -11,8 +11,11 @@ test("admin login and logout preserve the upstream user-service session in an ht
   const logoutRoute = readAdminFile("app/api/auth/logout/route.ts");
   const upstreamSession = readAdminFile("lib/upstream-session.ts");
 
-  assert.match(loginRoute, /setUpstreamSessionCookie\(user\.session_token\)/);
+  assert.match(loginRoute, /setUserServiceSessionCookie\(user\.session_token\)/);
+  assert.doesNotMatch(loginRoute, /setSessionCookie\(\{/);
   assert.match(loginRoute, /login_surface: loginSurface/);
+  assert.match(loginRoute, /mfa_code: optionalString\(body\.mfa_code\)/);
+  assert.match(loginRoute, /mfa_recovery_code: optionalString\(body\.mfa_recovery_code\)/);
   assert.match(loginRoute, /affiliate_portal/);
   assert.match(loginRoute, /cf-connecting-ip/);
   assert.match(loginRoute, /x-forwarded-for/);

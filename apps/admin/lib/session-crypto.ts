@@ -222,3 +222,19 @@ export async function verifyEd25519JwsSession(
   }
   return null;
 }
+
+export async function verifyAdminSessionToken(
+  token: string,
+  env: Record<string, string | undefined> = process.env,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): Promise<SessionPayload | null> {
+  if (token.split(".").length === 3) {
+    return verifyEd25519JwsSession(token, resolveSessionJwks(env), nowSeconds);
+  }
+
+  if (env.NODE_ENV === "production") {
+    return null;
+  }
+
+  return verifySession(token, resolveSessionSecret(env), nowSeconds);
+}

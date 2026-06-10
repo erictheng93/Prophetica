@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { toAdminRole } from "@/lib/admin-auth";
 import { defaultLandingFor } from "@/lib/rbac";
-import { setSessionCookie } from "@/lib/session";
+import { setUserServiceSessionCookie } from "@/lib/session";
 import { setUpstreamSessionCookie } from "@/lib/upstream-session";
 
 interface LoginBody {
   email?: unknown;
   password?: unknown;
   login_surface?: unknown;
+  mfa_code?: unknown;
+  mfa_recovery_code?: unknown;
 }
 
 interface UserServiceLoginResponse {
@@ -42,6 +44,8 @@ export async function POST(request: Request) {
       identifier: email,
       identifier_kind: "email",
       password,
+      mfa_code: optionalString(body.mfa_code),
+      mfa_recovery_code: optionalString(body.mfa_recovery_code),
       remember: false,
       login_surface: loginSurface,
     }),
@@ -75,17 +79,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "admin_access_denied" }, { status: 403 });
   }
 
-  await setSessionCookie({
-    sub,
-    role,
-    ...(affiliateId ? { affiliateId } : {}),
-  });
+  if (user.session_token.split(".").length !== 3) {
+    return NextResponse.json({ error: "ed25519_session_required" }, { status: 502 });
+  }
+  await setUserServiceSessionCookie(user.session_token);
   await setUpstreamSessionCookie(user.session_token);
 
   return NextResponse.json({
     role,
     redirect: defaultLandingFor(role),
   });
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function loginForwardHeaders(request: Request): Headers {

@@ -1,10 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requiresCloudflareAccess } from "@/lib/cloudflare-access-policy";
 import { canAccess, defaultLandingFor } from "@/lib/rbac";
-import {
-  resolveSessionSecret,
-  verifySession,
-} from "@/lib/session-crypto";
+import { verifyAdminSessionToken } from "@/lib/session-crypto";
 
 const SESSION_COOKIE_NAME = "proph_admin_session";
 
@@ -66,7 +63,7 @@ export async function proxy(req: NextRequest) {
 
   const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
   const session = token
-    ? await verifySession(token, resolveSessionSecret()).catch(() => null)
+    ? await verifyAdminSessionToken(token).catch(() => null)
     : null;
 
   if (!session) {

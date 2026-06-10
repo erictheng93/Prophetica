@@ -4,6 +4,7 @@ import {
   resolveSessionJwks,
   resolveSessionSecret,
   signSession,
+  verifyAdminSessionToken,
   verifyEd25519JwsSession,
   verifySession,
 } from "../lib/session-crypto.js";
@@ -71,6 +72,25 @@ test("verifySession rejects unknown roles", async () => {
   // forge a body but no valid sig — verify must reject regardless
   const verified = await verifySession(`${body}.invalidsig`, SECRET);
   assert.equal(verified, null);
+});
+
+test("verifyAdminSessionToken rejects legacy HMAC sessions in production", async () => {
+  const token = await signSession({ sub: "U-1", role: "admin" }, SECRET);
+
+  assert.equal(
+    await verifyAdminSessionToken(token, {
+      NODE_ENV: "production",
+      ADMIN_SESSION_SECRET: SECRET,
+    }),
+    null,
+  );
+  assert.equal(
+    (await verifyAdminSessionToken(token, {
+      NODE_ENV: "development",
+      ADMIN_SESSION_SECRET: SECRET,
+    }))?.role,
+    "admin",
+  );
 });
 
 test("resolveSessionSecret fails closed in production without configured secret", () => {
@@ -143,6 +163,36 @@ test("verifyEd25519JwsSession rejects unknown kid and resolveSessionJwks parses 
     })[0]?.kid,
     "session-key-1",
   );
+});
+
+test("verifyAdminSessionToken accepts Ed25519 user-service sessions from configured JWKS in production", async () => {
+  const pair = (await crypto.subtle.generateKey(
+    { name: "Ed25519" } as AlgorithmIdentifier,
+    true,
+    ["sign", "verify"],
+  )) as CryptoKeyPair;
+  const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+  jwkWithKid(publicJwk).kid = "session-key-1";
+  const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+  jwkWithKid(privateJwk).kid = "session-key-1";
+  const now = Math.floor(Date.now() / 1000);
+  const token = await signEd25519Jws(
+    {
+      sub: "U-4",
+      role: "manager",
+      iat: now,
+      exp: now + 60,
+    },
+    privateJwk,
+  );
+
+  const verified = await verifyAdminSessionToken(token, {
+    NODE_ENV: "production",
+    ADMIN_SESSION_JWKS: JSON.stringify({ keys: [publicJwk] }),
+  });
+
+  assert.equal(verified?.sub, "U-4");
+  assert.equal(verified?.role, "manager");
 });
 
 async function signEd25519Jws(
