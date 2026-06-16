@@ -32,5 +32,7 @@
 
 - [x] `rtk cargo clippy -p api-gateway --all-targets --locked -- -D warnings` 無告警
 - [x] `rtk cargo nextest run -p api-gateway --locked` 全綠
-- [ ] 手動：`/members/kyc-review` 查不存在會員 → `404` + `ERROR_CODE_MEMBER_NOT_FOUND`
+- [x] 手動/Browser smoke：`/members/kyc-review` 查不存在會員 → `404` + `ERROR_CODE_MEMBER_NOT_FOUND`
+  - 2026-06-17：`rtk pnpm --filter @prophetica/admin test:e2e -- tests/e2e/member-management.spec.ts -g "member lookup surfaces the not-found message"` 通過；Playwright 進 `/members/kyc-review?query=MEM-MISSING`，確認 `/api/members/MEM-MISSING/summary` 回 `404` 且畫面顯示「查無此會員」。
+  - 回歸測試：`RUSTC_WRAPPER= rtk cargo test -p api-gateway member_summary_proxies_member_not_found_from_user_service --locked` 通過，驗證 gateway 保留 upstream `ERROR_CODE_MEMBER_NOT_FOUND`。
 - [x] 交付 reviewer
