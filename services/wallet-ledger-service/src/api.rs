@@ -816,6 +816,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn post_transaction_commits_redemption_purchase_from_http_txn_type() {
+        let store = InMemoryLedgerStore::default();
+        seed_entry(&store, "Player.Wallet.user_01", -100_000);
+        let response = super::router(store.clone())
+            .oneshot(json_post(&json!({
+                "txn_type": "redemption_purchase",
+                "idempotency_key": "redemption:purchase:order-001",
+                "correlation_id": "trace-redemption-001",
+                "metadata": {
+                    "order_id": "01HX0000000000000000000000",
+                    "sku_id": "sku-gold-100",
+                    "audit_log_id": "01HX0000000000000000000001"
+                },
+                "entries": [
+                    {
+                        "account_code": "Player.Wallet.user_01",
+                        "direction": "debit",
+                        "amount_minor_units": 50_000
+                    },
+                    {
+                        "account_code": "Liability.UnredeemedEntitlement.user_01",
+                        "direction": "credit",
+                        "amount_minor_units": 50_000
+                    }
+                ]
+            })))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["txn_id"], json!(1));
+        assert_eq!(
+            body["idempotency_key"],
+            json!("redemption:purchase:order-001")
+        );
+        assert_eq!(body["replayed"], json!(false));
+        assert_eq!(store.commit_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn post_transaction_rejects_cross_user_redemption_family_from_http_txn_type() {
+        let store = InMemoryLedgerStore::default();
+        let cases = [
+            (
+                "redemption_purchase",
+                "Player.Wallet.user_01",
+                "Liability.UnredeemedEntitlement.user_02",
+            ),
+            (
+                "entitlement_fulfillment",
+                "Liability.UnredeemedEntitlement.user_01",
+                "Liability.UnredeemedEntitlement.user_02",
+            ),
+            (
+                "redemption_refund",
+                "Liability.UnredeemedEntitlement.user_01",
+                "Liability.UnredeemedEntitlement.user_02",
+            ),
+            (
+                "entitlement_expiry",
+                "Liability.UnredeemedEntitlement.user_01",
+                "Liability.UnredeemedEntitlement.user_02",
+            ),
+        ];
+
+        for (txn_type, debit_account, credit_account) in cases {
+            let response = super::router(store.clone())
+                .oneshot(json_post(&json!({
+                    "txn_type": txn_type,
+                    "idempotency_key": format!("redemption-family:{txn_type}:cross-user"),
+                    "metadata": {
+                        "order_id": "01HX0000000000000000000002",
+                        "sku_id": "sku-gold-100",
+                        "audit_log_id": "01HX0000000000000000000003"
+                    },
+                    "entries": [
+                        {
+                            "account_code": debit_account,
+                            "direction": "debit",
+                            "amount_minor_units": 50_000
+                        },
+                        {
+                            "account_code": credit_account,
+                            "direction": "credit",
+                            "amount_minor_units": 50_000
+                        }
+                    ]
+                })))
+                .await
+                .expect("request should be handled");
+
+            assert_eq!(
+                response.status(),
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "{txn_type} must reject cross-user redemption-family entries"
+            );
+            let body = response_json(response).await;
+            assert_eq!(body["error"], json!("validation_failed"));
+            assert!(body["message"].as_str().is_some_and(|message| {
+                message.contains("INV-7 violation")
+                    && message.contains("user_01")
+                    && message.contains("user_02")
+            }));
+            assert_eq!(store.commit_count(), 0);
+        }
+    }
+
+    #[tokio::test]
     async fn post_transaction_replays_same_idempotency_key() {
         let store = InMemoryLedgerStore::default();
         let request_body = json!({

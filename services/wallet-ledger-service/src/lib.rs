@@ -27,6 +27,10 @@ pub fn map_txn_type_to_kind(txn_type: &str) -> LedgerTxnKind {
         "cs_compensation" => LedgerTxnKind::Compensation,
         "chargeback" => LedgerTxnKind::Chargeback,
         "manual_points_adjustment" => LedgerTxnKind::ManualPointsAdjustment,
+        "redemption_purchase" => LedgerTxnKind::RedemptionPurchase,
+        "entitlement_fulfillment" => LedgerTxnKind::EntitlementFulfillment,
+        "redemption_refund" => LedgerTxnKind::RedemptionRefund,
+        "entitlement_expiry" => LedgerTxnKind::EntitlementExpiry,
         _ => LedgerTxnKind::Other,
     }
 }
@@ -115,6 +119,22 @@ mod tests {
         assert_eq!(
             map_txn_type_to_kind("manual_points_adjustment"),
             LedgerTxnKind::ManualPointsAdjustment
+        );
+        assert_eq!(
+            map_txn_type_to_kind("redemption_purchase"),
+            LedgerTxnKind::RedemptionPurchase
+        );
+        assert_eq!(
+            map_txn_type_to_kind("entitlement_fulfillment"),
+            LedgerTxnKind::EntitlementFulfillment
+        );
+        assert_eq!(
+            map_txn_type_to_kind("redemption_refund"),
+            LedgerTxnKind::RedemptionRefund
+        );
+        assert_eq!(
+            map_txn_type_to_kind("entitlement_expiry"),
+            LedgerTxnKind::EntitlementExpiry
         );
         assert_eq!(map_txn_type_to_kind("unknown_type"), LedgerTxnKind::Other);
     }
