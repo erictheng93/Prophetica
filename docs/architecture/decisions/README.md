@@ -44,6 +44,8 @@ ADR 描述「**為什麼這樣決定 / 為什麼別的方案被否決**」，一
 | [ADR-0004](./ADR-0004-react-stack-due-to-kumo.md) | 採用 Cloudflare Kumo 作為元件庫，前端框架由 Nuxt 3 / Vue 3 切換至 Next.js 15 / React 19 | Accepted | frontend, component-library, framework, accessibility, core-architecture |
 | [ADR-0005](./ADR-0005-backend-language-rust-over-go.md) | 後端語言由 Go 切換至 Rust（全平台）| Accepted（retroactive 2026-05-07）| backend-language, core-architecture, runtime, type-safety, matching-engine, ledger |
 | [ADR-0006](./ADR-0006-ledger-invariant-set-extension-inv6.md) | 帳本不變式集合擴展：新增 INV-6（Player.Wallet outflow 白名單）+ INV-2 / INV-4 對齊 Frozen 子科目 | Accepted | ledger, finance, invariant, audit, compliance, core-architecture |
+| [ADR-0007](./ADR-0007-inv6-redemption-carveout-and-inv7.md) | 帳本不變式集合再擴展：INV-6 新增 UnredeemedEntitlement carve-out + 新增 INV-7（redemption 同人綁定） | Accepted | ledger, finance, invariant, audit, compliance, core-architecture, redemption |
+| [ADR-0008](./ADR-0008-server-authoritative-benefit-logic.md) | 利益邏輯一律由 Rust 後端權威執行，前端驗證僅作 UX 輔助 | Accepted | security, backend, frontend, ledger, payments, core-architecture |
 
 ## 何時要寫 ADR
 

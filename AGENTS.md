@@ -79,6 +79,18 @@ or ask before including them.
 
 Copy `.env.example` for local configuration and do not commit secrets. Prefer checked-in scripts in `tools/scripts/` for bootstrap, migrations, and seeding. Regenerate protobuf and SQLx artifacts intentionally, and include generated outputs only when required by the workflow.
 
+## Server-Authoritative Benefit Logic
+
+永遠不要相信前端的任何驗證，所有牽涉到利益（不管是積分、金幣、金流）的邏輯，一律放在 Rust 後端。
+
+Frontend validation may improve UX only. Any rule that can change, unlock,
+transfer, settle, redeem, grant, deduct, charge, refund, or otherwise affect
+points, coins, balances, entitlements, payments, commissions, limits, or audit
+state must be enforced by Rust backend services and, where applicable, ledger
+or database invariants. Next.js routes and client components may proxy requests
+or display derived state, but they must not be the authoritative decision point
+for benefit-sensitive behavior.
+
 ## RTK Command Preference
 When invoking external CLI commands from Codex for this repository, prefer the `rtk` prefix for tools such as `pnpm`, `cargo`, `make`, `git`, `docker`, `node`, and `bash`.
 
