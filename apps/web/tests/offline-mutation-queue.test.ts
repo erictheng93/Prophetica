@@ -4,13 +4,42 @@ import { test } from "node:test";
 import {
   IDEMPOTENCY_HEADER,
   createOfflineMutationQueue,
+  findOfflineMutationPolicy,
+  isQueueableMutation,
   isQueueableTradingMutation,
   MemoryOfflineMutationStore,
 } from "../lib/offline-mutation-queue.js";
 
-test("only order placement and cancellation mutations are queueable", () => {
+test("offline mutation allowlist exposes per-route reconciliation policies", () => {
+  const orderPlacement = new Request(
+    "https://app.local/v1/markets/mkt-election/orders",
+    { method: "POST" },
+  );
+  const cancellation = new Request(
+    "https://app.local/v1/orders/ord_01HZ0000000000000000000000",
+    { method: "DELETE" },
+  );
+  const ledgerWrite = new Request(
+    "https://app.local/internal/ledger/transactions",
+    { method: "POST" },
+  );
+
+  assert.deepEqual(findOfflineMutationPolicy(orderPlacement), {
+    id: "trading-order-placement",
+    methods: ["POST"],
+    pathPattern: "^/v1/markets/[^/]+/orders$",
+    reconciliation: "engine-order-status",
+  });
   assert.equal(
-    isQueueableTradingMutation(
+    findOfflineMutationPolicy(cancellation)?.reconciliation,
+    "engine-order-status",
+  );
+  assert.equal(findOfflineMutationPolicy(ledgerWrite), null);
+});
+
+test("only allowlisted trading mutations are queueable in Phase 1", () => {
+  assert.equal(
+    isQueueableMutation(
       new Request("https://app.local/v1/markets/mkt-election/orders", {
         method: "POST",
       }),
@@ -18,7 +47,7 @@ test("only order placement and cancellation mutations are queueable", () => {
     true,
   );
   assert.equal(
-    isQueueableTradingMutation(
+    isQueueableMutation(
       new Request(
         "https://app.local/v1/orders/ord_01HZ0000000000000000000000",
         {
@@ -29,7 +58,7 @@ test("only order placement and cancellation mutations are queueable", () => {
     true,
   );
   assert.equal(
-    isQueueableTradingMutation(
+    isQueueableMutation(
       new Request("https://app.local/internal/ledger/transactions", {
         method: "POST",
       }),
@@ -37,12 +66,20 @@ test("only order placement and cancellation mutations are queueable", () => {
     false,
   );
   assert.equal(
-    isQueueableTradingMutation(
+    isQueueableMutation(
       new Request("https://app.local/v1/markets/mkt-election/orders", {
         method: "GET",
       }),
     ),
     false,
+  );
+  assert.equal(
+    isQueueableTradingMutation(
+      new Request("https://app.local/v1/orders/abc", {
+        method: "DELETE",
+      }),
+    ),
+    true,
   );
 });
 

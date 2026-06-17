@@ -2052,6 +2052,9 @@
       "pointsTemplate": "{amount} 點",
       "submitting": "送出中…",
       "submit": "送出訂單",
+      "pendingQueued": "離線訂單已排入佇列，恢復連線後會以原 idempotency key 重送。",
+      "pendingReplayed": "待送訂單已重送，請稍後查看訂單簿與持倉狀態。",
+      "pendingFailed": "待送訂單尚未重送成功，請確認連線後再試一次。",
       "footnote": "下單前請確認你已完成 KYC 層級驗證、設定月儲值上限。違反者由 SPEC-003 撮合層直接拒收。"
     }
   },

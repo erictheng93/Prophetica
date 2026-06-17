@@ -623,6 +623,13 @@
       }
     }
   },
+  "tradePanel": {
+    "panel": {
+      "pendingQueued": "离线订单已排入队列，恢复连接后会以原 idempotency key 重送。",
+      "pendingReplayed": "待送订单已重送，请稍后查看订单簿与持仓状态。",
+      "pendingFailed": "待送订单尚未重送成功，请确认连接后再试一次。"
+    }
+  },
   "topup": {
     "mvpAssistance": {
       "label": "服务协助充值",

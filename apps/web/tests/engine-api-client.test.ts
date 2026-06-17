@@ -111,6 +111,34 @@ test("placeMarketOrder posts with idempotency to the same-origin order proxy and
   });
 });
 
+test("placeMarketOrder maps service-worker queued responses", async () => {
+  const order = await placeMarketOrder({
+    marketId: "mkt-election",
+    side: "buy",
+    outcome: "YES",
+    type: "LIMIT",
+    pricePts: 55,
+    quantity: 3,
+    timeInForce: "GTC",
+    fetcher: async () =>
+      Response.json(
+        {
+          status: "queued",
+          idempotency_key: "idem-order-queued",
+          queued_at: 1_800_000_000_000,
+        },
+        { status: 202 },
+      ),
+  });
+
+  assert.deepEqual(order, {
+    kind: "queued",
+    status: "queued",
+    idempotencyKey: "idem-order-queued",
+    queuedAt: 1_800_000_000_000,
+  });
+});
+
 test("placeMarketOrder forwards user-service bearer token when available", async () => {
   const calls: Array<{ headers: Record<string, string> }> = [];
   await placeMarketOrder({

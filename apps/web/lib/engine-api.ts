@@ -55,6 +55,15 @@ export interface PlacedMarketOrder {
   feePts: number;
 }
 
+export interface QueuedMarketOrder {
+  kind: "queued";
+  status: "queued";
+  idempotencyKey: string;
+  queuedAt: number;
+}
+
+export type PlaceMarketOrderResult = PlacedMarketOrder | QueuedMarketOrder;
+
 export class MarketOrderApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -81,6 +90,12 @@ interface ApiOrderActionResponse {
   avg_price_pts: number;
   remaining_qty: number;
   fee_pts: number;
+}
+
+interface ApiQueuedOrderResponse {
+  status: "queued";
+  idempotency_key: string;
+  queued_at: number;
 }
 
 interface ApiErrorResponse {
@@ -146,7 +161,7 @@ export async function placeMarketOrder({
   timeInForce,
   clientOrderId,
   fetcher = fetch,
-}: PlaceMarketOrderOptions): Promise<PlacedMarketOrder> {
+}: PlaceMarketOrderOptions): Promise<PlaceMarketOrderResult> {
   const headers = new Headers({
     accept: "application/json",
     "content-type": "application/json",
@@ -182,6 +197,14 @@ export async function placeMarketOrder({
 
   if (!response.ok) {
     throw marketOrderApiError(response.status, payload);
+  }
+  if (response.status === 202 && isQueuedOrderResponse(payload)) {
+    return {
+      kind: "queued",
+      status: "queued",
+      idempotencyKey: payload.idempotency_key,
+      queuedAt: payload.queued_at,
+    };
   }
 
   return mapPlacedOrder(payload as ApiOrderActionResponse);
@@ -257,6 +280,17 @@ function mapPlacedOrder(order: ApiOrderActionResponse): PlacedMarketOrder {
     remainingQty: order.remaining_qty,
     feePts: order.fee_pts,
   };
+}
+
+function isQueuedOrderResponse(
+  payload: unknown,
+): payload is ApiQueuedOrderResponse {
+  if (!isRecord(payload)) return false;
+  return (
+    payload.status === "queued" &&
+    typeof payload.idempotency_key === "string" &&
+    typeof payload.queued_at === "number"
+  );
 }
 
 async function readJson(response: Response): Promise<unknown> {

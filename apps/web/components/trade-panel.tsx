@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,8 +8,13 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { TrendDown, TrendUp } from "@phosphor-icons/react";
 import { orderRejectionRedirectPath, placeMarketOrder } from "@/lib/engine-api";
+import type {
+  PlaceMarketOrderResult,
+  QueuedMarketOrder,
+} from "@/lib/engine-api";
 import type { JourneyState } from "@/lib/journey-state";
 import type { Market } from "@/lib/mock-markets";
+import { createOfflineMutationQueue } from "@/lib/offline-mutation-queue";
 
 /*
  * Order entry form per SPEC-003 §3 (cent-priced YES/NO outcomes) + ADR-0004
@@ -56,12 +61,53 @@ export function TradePanel({
     kind: "success" | "error";
     message: string;
   } | null>(null);
+  const [pendingMutation, setPendingMutation] = useState<{
+    kind: "queued" | "replayed" | "failed";
+    idempotencyKey?: string;
+  } | null>(null);
 
   const isTradable = market.status === "open" || market.status === "closing";
 
   useEffect(() => {
     setHydrated(true);
   }, []);
+
+  const drainPendingMutations = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    try {
+      const result = await createOfflineMutationQueue().drain();
+      navigator.serviceWorker?.controller?.postMessage({
+        type: "DRAIN_OFFLINE_MUTATIONS",
+      });
+      if (result.replayed > 0) {
+        setPendingMutation({ kind: "replayed" });
+      } else if (result.failed > 0) {
+        setPendingMutation({ kind: "failed" });
+      }
+    } catch {
+      setPendingMutation((current) =>
+        current?.kind === "queued" ? { ...current, kind: "failed" } : current,
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    function onOnline() {
+      void drainPendingMutations();
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void drainPendingMutations();
+      }
+    }
+
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [drainPendingMutations]);
 
   const {
     register,
@@ -121,6 +167,15 @@ export function TradePanel({
         quantity: values.quantity,
         timeInForce: "GTC",
       });
+      if (isQueuedMarketOrder(order)) {
+        setPendingMutation({
+          kind: "queued",
+          idempotencyKey: order.idempotencyKey,
+        });
+        setFlash(null);
+        setSheetOpen(false);
+        return;
+      }
       setFlash({
         kind: "success",
         message: tFlash("flashAccepted", {
@@ -340,6 +395,19 @@ export function TradePanel({
             </p>
           ) : null}
 
+          {pendingMutation ? (
+            <p
+              role="status"
+              className="rounded-proph-md border border-proph-primary/40 bg-proph-canvas-parchment px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-primary"
+            >
+              {pendingMutation.kind === "queued"
+                ? tPanel("pendingQueued")
+                : pendingMutation.kind === "replayed"
+                  ? tPanel("pendingReplayed")
+                  : tPanel("pendingFailed")}
+            </p>
+          ) : null}
+
           <button
             type="button"
             onClick={handleSubmit(onSubmit)}
@@ -389,6 +457,12 @@ function orderSoftGateRedirectPath(
   }
 
   return null;
+}
+
+function isQueuedMarketOrder(
+  order: PlaceMarketOrderResult,
+): order is QueuedMarketOrder {
+  return "kind" in order && order.kind === "queued";
 }
 
 interface FormFieldProps {

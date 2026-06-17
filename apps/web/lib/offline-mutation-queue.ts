@@ -1,6 +1,35 @@
 export const IDEMPOTENCY_HEADER = "Idempotency-Key";
 
 export type OfflineMutationMethod = "POST" | "DELETE";
+export type OfflineMutationReconciliation = "engine-order-status";
+
+export interface OfflineMutationPolicy {
+  id: string;
+  methods: OfflineMutationMethod[];
+  pathPattern: string;
+  reconciliation: OfflineMutationReconciliation;
+}
+
+export const OFFLINE_MUTATION_POLICIES: ReadonlyArray<OfflineMutationPolicy> = [
+  {
+    id: "trading-order-placement",
+    methods: ["POST"],
+    pathPattern: "^/v1/markets/[^/]+/orders$",
+    reconciliation: "engine-order-status",
+  },
+  {
+    id: "trading-order-placement-bff",
+    methods: ["POST"],
+    pathPattern: "^/api/engine/markets/[^/]+/orders$",
+    reconciliation: "engine-order-status",
+  },
+  {
+    id: "trading-order-cancellation",
+    methods: ["DELETE"],
+    pathPattern: "^/v1/orders/[^/]+$",
+    reconciliation: "engine-order-status",
+  },
+];
 
 export interface OfflineMutationItem {
   id: string;
@@ -38,15 +67,26 @@ export interface DrainResult {
   failed: number;
 }
 
-export function isQueueableTradingMutation(request: Request): boolean {
+export function findOfflineMutationPolicy(
+  request: Request,
+): OfflineMutationPolicy | null {
   const url = new URL(request.url);
-  if (request.method === "POST") {
-    return /^\/v1\/markets\/[^/]+\/orders$/.test(url.pathname);
-  }
-  if (request.method === "DELETE") {
-    return /^\/v1\/orders\/[^/]+$/.test(url.pathname);
-  }
-  return false;
+  const method = request.method as OfflineMutationMethod;
+  return (
+    OFFLINE_MUTATION_POLICIES.find(
+      (policy) =>
+        policy.methods.includes(method) &&
+        new RegExp(policy.pathPattern).test(url.pathname),
+    ) ?? null
+  );
+}
+
+export function isQueueableMutation(request: Request): boolean {
+  return findOfflineMutationPolicy(request) !== null;
+}
+
+export function isQueueableTradingMutation(request: Request): boolean {
+  return isQueueableMutation(request);
 }
 
 export function createOfflineMutationQueue(
@@ -57,7 +97,7 @@ export function createOfflineMutationQueue(
 
   return {
     async enqueueRequest(request: Request): Promise<OfflineMutationItem> {
-      if (!isQueueableTradingMutation(request)) {
+      if (!isQueueableMutation(request)) {
         throw new Error("request is not queueable");
       }
 

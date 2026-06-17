@@ -11,9 +11,9 @@
  *   - JSON / API GETs: stale-while-revalidate. Returns cached copy
  *     immediately, fires a background fetch, replaces the entry. Read
  *     surfaces feel snappy without sacrificing freshness.
- *   - Mutations: only the api-gateway trading commands listed in
- *     isQueueableTradingMutation() can be queued, and only when they
- *     carry Idempotency-Key. All other POST / PUT / DELETE requests are
+ *   - Mutations: only commands listed in OFFLINE_MUTATION_POLICIES can be
+ *     queued, and only when they carry Idempotency-Key. Each policy declares
+ *     its reconciliation family; all other POST / PUT / DELETE requests are
  *     pass-through per SPEC-002 funds-safety.
  *
  * Cache versioning
@@ -29,6 +29,26 @@ const OFFLINE_MUTATION_DB = "prophetica-offline-mutations";
 const OFFLINE_MUTATION_STORE = "mutations";
 const OFFLINE_SYNC_TAG = "proph-offline-mutations";
 const IDEMPOTENCY_HEADER = "Idempotency-Key";
+const OFFLINE_MUTATION_POLICIES = [
+  {
+    id: "trading-order-placement",
+    methods: ["POST"],
+    pathPattern: /^\/v1\/markets\/[^/]+\/orders$/,
+    reconciliation: "engine-order-status",
+  },
+  {
+    id: "trading-order-placement-bff",
+    methods: ["POST"],
+    pathPattern: /^\/api\/engine\/markets\/[^/]+\/orders$/,
+    reconciliation: "engine-order-status",
+  },
+  {
+    id: "trading-order-cancellation",
+    methods: ["DELETE"],
+    pathPattern: /^\/v1\/orders\/[^/]+$/,
+    reconciliation: "engine-order-status",
+  },
+];
 
 const PRECACHE_URLS = [OFFLINE_URL, "/manifest.webmanifest"];
 
@@ -81,14 +101,14 @@ function isApiGet(request, url) {
   return request.method === "GET" && url.pathname.startsWith("/api/");
 }
 
-function isQueueableTradingMutation(request, url) {
-  if (request.method === "POST") {
-    return /^\/v1\/markets\/[^/]+\/orders$/.test(url.pathname);
-  }
-  if (request.method === "DELETE") {
-    return /^\/v1\/orders\/[^/]+$/.test(url.pathname);
-  }
-  return false;
+function findOfflineMutationPolicy(request, url) {
+  return (
+    OFFLINE_MUTATION_POLICIES.find(
+      (policy) =>
+        policy.methods.includes(request.method) &&
+        policy.pathPattern.test(url.pathname),
+    ) ?? null
+  );
 }
 
 async function networkFirstHtml(request) {
@@ -134,7 +154,7 @@ async function staleWhileRevalidate(request) {
   );
 }
 
-async function fetchOrQueueTradingMutation(request) {
+async function fetchOrQueueMutation(request, policy) {
   try {
     return await fetch(request.clone());
   } catch {
@@ -156,6 +176,8 @@ async function fetchOrQueueTradingMutation(request) {
     return Response.json(
       {
         status: "queued",
+        policy_id: policy.id,
+        reconciliation: policy.reconciliation,
         idempotency_key: idempotencyKey,
         queued_at: item.createdAt,
       },
@@ -258,8 +280,9 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.method !== "GET") {
-    if (isQueueableTradingMutation(request, url)) {
-      event.respondWith(fetchOrQueueTradingMutation(request));
+    const policy = findOfflineMutationPolicy(request, url);
+    if (policy) {
+      event.respondWith(fetchOrQueueMutation(request, policy));
     }
     return;
   }

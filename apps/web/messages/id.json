@@ -623,6 +623,13 @@
       }
     }
   },
+  "tradePanel": {
+    "panel": {
+      "pendingQueued": "Offline order queued. It will replay with the original idempotency key when the connection returns.",
+      "pendingReplayed": "Queued order replayed. Check the order book and positions shortly.",
+      "pendingFailed": "Queued order has not replayed yet. Check your connection and try again."
+    }
+  },
   "topup": {
     "mvpAssistance": {
       "label": "Top-up berbantuan",

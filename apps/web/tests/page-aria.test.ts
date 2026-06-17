@@ -354,6 +354,19 @@ test("trade panel redirects SPEC-023 order gate rejections with return_to", () =
   assert.match(source, /window\.location\.pathname/);
 });
 
+test("trade panel surfaces queued and replay follow-up states", () => {
+  const source = readFileSync(
+    join(process.cwd(), "components/trade-panel.tsx"),
+    "utf8",
+  );
+
+  assert.match(source, /kind: "queued"/);
+  assert.match(source, /pendingQueued/);
+  assert.match(source, /pendingReplayed/);
+  assert.match(source, /pendingFailed/);
+  assert.match(source, /DRAIN_OFFLINE_MUTATIONS/);
+});
+
 test("trade panel performs SPEC-023 pre-submit journey soft gates", () => {
   const panelSource = readFileSync(
     join(process.cwd(), "components/trade-panel.tsx"),
