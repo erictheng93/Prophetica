@@ -5,8 +5,9 @@ use std::{
 
 use async_trait::async_trait;
 use referral_service::{
-    AntiAbuseFlags, DueQualificationReferral, HttpReferralLedgerPoster, PostgresAffiliateStore,
-    QualificationEvent, QualificationInputProvider, ReferralDailyWorker, ReferralStoreError,
+    AntiAbuseAccountFlags, AntiAbuseFlags, AntiAbuseIdentityFlags, AntiAbuseTradingFlags,
+    DueQualificationReferral, HttpReferralLedgerPoster, PostgresAffiliateStore, QualificationEvent,
+    QualificationInputProvider, ReferralDailyWorker, ReferralStoreError,
 };
 use sdk::{
     observability,
@@ -182,15 +183,7 @@ async fn trade_commission_candidates(
 }
 
 fn clean_anti_abuse() -> AntiAbuseFlags {
-    AntiAbuseFlags {
-        same_ip: false,
-        same_device_fingerprint: false,
-        same_kyc_identity: false,
-        referred_self_trade: false,
-        chargeback_or_void: false,
-        referrer_account_abnormal: false,
-        referred_permanently_banned: false,
-    }
+    AntiAbuseFlags::default()
 }
 
 async fn qualification_inputs_from_env() -> anyhow::Result<QualificationInputs> {
@@ -460,13 +453,19 @@ impl QualificationInputProvider for PostgresQualificationInputs {
             kyc_tier: u8::try_from(kyc_tier).unwrap_or_default(),
             completed_trade_count: u32::try_from(completed_trade_count).unwrap_or(u32::MAX),
             anti_abuse: AntiAbuseFlags {
-                same_ip,
-                same_device_fingerprint,
-                same_kyc_identity,
-                referred_self_trade: false,
-                chargeback_or_void,
-                referrer_account_abnormal,
-                referred_permanently_banned: false,
+                identity: AntiAbuseIdentityFlags {
+                    same_ip,
+                    same_device_fingerprint,
+                    same_kyc_identity,
+                },
+                trading: AntiAbuseTradingFlags {
+                    referred_self_trade: false,
+                    chargeback_or_void,
+                },
+                account: AntiAbuseAccountFlags {
+                    referrer_account_abnormal,
+                    referred_permanently_banned: false,
+                },
             },
             kinship_review_passed: false,
         })

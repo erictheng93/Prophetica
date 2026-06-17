@@ -828,7 +828,7 @@ fn can_cross(taker: &amp;Order, level: &amp;PriceLevel) -&gt; bool {
 </ul>
 <h3>16.6 Mutation testing（nightly）</h3>
 <ul>
-<li>由 SPEC-017 §8.2 nightly workflow 限縮跑 <code>crates/sdk/ledger</code> + <code>services/matching-engine/src/{book,match}</code> + <code>services/wallet-ledger-service/src/ledger</code></li>
+<li>由 SPEC-017 §8.2 nightly workflow 限縮跑 <code>crates/sdk/ledger</code> + <code>services/matching-engine/src/{order_book,shard,service}.rs</code> + <code>services/wallet-ledger-service/src/ledger</code></li>
 <li>門檻：caught mutation rate ≥ 75%（呼應 SPEC-017 §3.3 R-4）</li>
 <li>不阻塞 PR；持續 &lt; 75% 開 issue 補測試</li>
 </ul>
@@ -919,7 +919,7 @@ fn can_cross(taker: &amp;Order, level: &amp;PriceLevel) -&gt; bool {
 <li><strong>promotion / demotion governance</strong>：每次升降級寫 audit log，week-over-week 報表給 Compliance</li>
 </ul>
 <h4>17.3.4 SPEC-017 §6.1.1 之範例對齊</h4>
-<p>SPEC-017 §6.1.1 之 <code>main.rs</code> 範例（每 market 一 thread + core_affinity）對應<strong>熱市場</strong>之撮合引擎 binary。冷市場 binary 為<strong>獨立 main.rs</strong>，採 <code>#[tokio::main]</code> multi-thread runtime + <code>tokio::spawn</code> per-market task。兩個 binary 共用 <code>crates/sdk</code> + <code>services/matching-engine/src/{book,match}</code> 核心邏輯。</p>
+<p>SPEC-017 §6.1.1 之 <code>main.rs</code> 範例（每 market 一 thread + core_affinity）對應<strong>熱市場</strong>之撮合引擎 binary。冷市場 binary 為<strong>獨立 main.rs</strong>，採 <code>#[tokio::main]</code> multi-thread runtime + <code>tokio::spawn</code> per-market task。兩個 binary 共用 <code>crates/sdk</code> + <code>services/matching-engine/src/{order_book,shard,service}.rs</code> 核心邏輯。</p>
 <p>實作落地：</p>
 <ul>
 <li><code>services/matching-engine-hot/src/main.rs</code> — 熱市場 binary</li>

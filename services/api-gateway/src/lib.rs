@@ -2170,6 +2170,11 @@ impl HttpWalletLedgerClient {
 }
 
 impl HttpRedemptionClient {
+    /// Creates an HTTP client for the internal redemption service.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `base_url` is not a valid URL.
     pub fn new(base_url: &str) -> anyhow::Result<Self> {
         Ok(Self {
             base_url: Url::parse(base_url)?,
@@ -2177,6 +2182,11 @@ impl HttpRedemptionClient {
         })
     }
 
+    /// Creates an HTTP client using the configured redemption service base URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the configured base URL is invalid.
     pub fn from_env() -> anyhow::Result<Self> {
         let base_url = redemption_service_base_url_from_env();
         Self::new(&base_url)
@@ -3237,10 +3247,9 @@ where
 {
     let status = response.status();
     if !status.is_success() {
-        let message = response
-            .text()
-            .await
-            .map(|text| {
+        let message = response.text().await.map_or_else(
+            |error| error.to_string(),
+            |text| {
                 serde_json::from_str::<serde_json::Value>(&text)
                     .ok()
                     .and_then(|body| {
@@ -3249,8 +3258,8 @@ where
                             .map(ToOwned::to_owned)
                     })
                     .unwrap_or_else(|| text.to_string())
-            })
-            .unwrap_or_else(|error| error.to_string());
+            },
+        );
         return Err(ApiError::redemption_service_status(status, message));
     }
 

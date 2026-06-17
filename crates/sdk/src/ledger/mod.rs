@@ -1,4 +1,3 @@
-pub const LEDGER_BOOTSTRAP_SCOPE: &str = "stub-only";
 /// Default taker fee curve coefficient in basis points.
 ///
 /// Effective taker fee bps is `round(DEFAULT_TAKER_FEE_CURVE_BPS * p * (1-p))`,

@@ -90,7 +90,7 @@ pub enum LedgerClientError {
     /// Storage backend unreachable / poisoned (in-memory mutex case here).
     #[error("ledger storage unavailable")]
     StorageUnavailable,
-    /// HTTP / transport-layer failure (placeholder for P3.4 real client).
+    /// HTTP / transport-layer failure raised by [`HttpLedgerClient`].
     #[error("ledger transport error: {0}")]
     Transport(String),
 }

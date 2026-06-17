@@ -11,8 +11,9 @@
 //! | (unset)                    | —               | fall back to `InMemoryLedgerClient` (dev only)    |
 //!
 //! The in-memory fall-back is deliberately non-persistent — restarting the
-//! process loses all orders. Intended for local QA / contract tests, NOT
-//! production. The startup logs make this explicit.
+//! process loses all orders. Intended for local QA / contract tests only;
+//! `PROPHETICA_ENV=production` fails startup unless both production backing
+//! services are configured.
 
 use std::sync::Arc;
 
@@ -34,6 +35,12 @@ async fn main() -> anyhow::Result<()> {
         redemption_service::DEFAULT_PORT,
     )?;
     tracing::info!(?config, "redemption-api service config loaded");
+
+    validate_runtime_config(
+        &std::env::var("PROPHETICA_ENV").unwrap_or_else(|_| "dev".to_owned()),
+        std::env::var("REDEMPTION_DATABASE_URL").is_ok(),
+        std::env::var("WALLET_LEDGER_URL").is_ok(),
+    )?;
 
     let store = build_store().await?;
     let ledger = build_ledger()?;
@@ -79,8 +86,46 @@ fn build_ledger() -> anyhow::Result<Arc<dyn LedgerClient>> {
     }
 }
 
+fn validate_runtime_config(
+    prophetica_env: &str,
+    has_redemption_database_url: bool,
+    has_wallet_ledger_url: bool,
+) -> anyhow::Result<()> {
+    if prophetica_env.eq_ignore_ascii_case("production")
+        && (!has_redemption_database_url || !has_wallet_ledger_url)
+    {
+        anyhow::bail!(
+            "REDEMPTION_DATABASE_URL and WALLET_LEDGER_URL are required when PROPHETICA_ENV=production"
+        );
+    }
+    Ok(())
+}
+
 async fn shutdown_signal() {
     if let Err(error) = signal::ctrl_c().await {
         tracing::warn!(%error, "failed to install ctrl-c handler");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_runtime_config;
+
+    #[test]
+    fn production_requires_persistent_store_and_http_ledger() {
+        let result = validate_runtime_config("production", false, false);
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.err().map(|error| error.to_string()).as_deref(),
+            Some(
+                "REDEMPTION_DATABASE_URL and WALLET_LEDGER_URL are required when PROPHETICA_ENV=production"
+            )
+        );
+    }
+
+    #[test]
+    fn dev_allows_in_memory_fallbacks() {
+        assert!(validate_runtime_config("dev", false, false).is_ok());
     }
 }

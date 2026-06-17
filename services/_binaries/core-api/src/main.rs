@@ -332,6 +332,20 @@ fn validate_kyc_service_store_mode(prophetica_env: &str, mode: &str) -> anyhow::
     Ok(())
 }
 
+fn redemption_database_url_from_values(
+    redemption_service_url: Option<&str>,
+    shared_url: Option<&str>,
+) -> anyhow::Result<String> {
+    redemption_service_url
+        .and_then(non_empty_env_value)
+        .or_else(|| shared_url.and_then(non_empty_env_value))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "REDEMPTION_DATABASE_URL or DATABASE_URL is required for redemption-service"
+            )
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -467,18 +481,4 @@ mod tests {
         let base_url = redemption_wallet_ledger_base_url();
         assert!(!base_url.is_empty());
     }
-}
-
-fn redemption_database_url_from_values(
-    redemption_service_url: Option<&str>,
-    shared_url: Option<&str>,
-) -> anyhow::Result<String> {
-    redemption_service_url
-        .and_then(non_empty_env_value)
-        .or_else(|| shared_url.and_then(non_empty_env_value))
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "REDEMPTION_DATABASE_URL or DATABASE_URL is required for redemption-service"
-            )
-        })
 }
