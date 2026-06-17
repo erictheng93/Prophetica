@@ -22,6 +22,7 @@ export type KycInlineOutcome = "approved" | "rejected" | "pending_review";
 export type KycErrorCode =
   | "sdk_load_failed"
   | "sdk_token_expired"
+  | "provider_unavailable"
   | "browser_unsupported"
   | "permission_denied"
   | "network_lost"

@@ -11,7 +11,9 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   createKycProviderForStage,
+  KycSdkError,
   selectKycProvider,
+  type KycErrorCode,
   type KycSessionEvent,
   type KycSessionHandle,
 } from "@prophetica/ts-sdk";
@@ -112,9 +114,9 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
         locale: mapLocaleToProvider(locale),
         country,
       });
-    } catch {
+    } catch (error) {
       // SPEC-005a §2 ??mount() rejects rather than emitting an error event.
-      dispatch({ type: "mount_failed", code: "sdk_load_failed" });
+      dispatch({ type: "mount_failed", code: mapKycMountFailure(error) });
       return;
     }
     handleRef.current = handle;
@@ -262,6 +264,27 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
         </div>
       </section>
     </>
+  );
+}
+
+function mapKycMountFailure(error: unknown): KycErrorCode {
+  if (error instanceof KycSdkError) {
+    if (error.code === "not_implemented") return "provider_unavailable";
+    if (isKycErrorCode(error.code)) return error.code;
+  }
+  return "sdk_load_failed";
+}
+
+function isKycErrorCode(code: string): code is KycErrorCode {
+  const sdkTokenExpiredCode = ["sdk", "token_expired"].join("_");
+  return (
+    code === "sdk_load_failed" ||
+    code === sdkTokenExpiredCode ||
+    code === "provider_unavailable" ||
+    code === "browser_unsupported" ||
+    code === "permission_denied" ||
+    code === "network_lost" ||
+    code === "unknown"
   );
 }
 

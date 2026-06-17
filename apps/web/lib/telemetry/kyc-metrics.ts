@@ -106,6 +106,7 @@ const SDK_TOKEN_EXPIRED_CODE = ["sdk", "token_expired"].join("_");
 const ERROR_CODE_VALUES: ReadonlySet<string> = new Set([
   "sdk_load_failed",
   SDK_TOKEN_EXPIRED_CODE,
+  "provider_unavailable",
   "browser_unsupported",
   "permission_denied",
   "network_lost",

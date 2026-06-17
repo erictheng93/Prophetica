@@ -206,6 +206,7 @@ function isRecoverableErrorCode(code: KycErrorCode): boolean {
     case "permission_denied":
     case "network_lost":
       return true;
+    case "provider_unavailable":
     case "browser_unsupported":
     case "unknown":
       return false;

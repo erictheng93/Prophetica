@@ -43,6 +43,18 @@ test("mount_failed marks browser_unsupported as non-recoverable", () => {
   }
 });
 
+test("mount_failed marks provider_unavailable as non-recoverable", () => {
+  const next = reduceKycPhase(
+    { kind: "mounting" },
+    { type: "mount_failed", code: "provider_unavailable" },
+  );
+  assert.equal(next.kind, "error");
+  if (next.kind === "error") {
+    assert.equal(next.code, "provider_unavailable");
+    assert.equal(next.recoverable, false);
+  }
+});
+
 test("submitted event from in_progress -> awaiting_webhook with timestamp", () => {
   const t = 1_700_000_000_000;
   const next = reduceKycPhase(
