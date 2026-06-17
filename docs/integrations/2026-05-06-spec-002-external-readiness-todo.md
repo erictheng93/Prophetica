@@ -5,6 +5,13 @@
 
 This checklist tracks what must be prepared outside the core Rust unit-test layer before SPEC-002 can be considered fully production-ready.
 
+Latest blocker assessment: see
+`docs/launch-blockers/2026-06-17-public-beta-external-readiness.md`.
+Several local skeletons now exist (gateway adapter trait, reconciliation finding
+persistence, local audit archive, and api-gateway JWT verification), but this
+checklist remains incomplete until the external provider, database, R2, 1M
+acceptance, and E2E evidence items are recorded.
+
 ## 1. Postgres Integration Test Environment
 
 - [ ] Create a dedicated test database, for example `prophetica_wallet_ledger_test`.

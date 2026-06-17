@@ -2,6 +2,37 @@
 
 Last updated: 2026-05-18
 
+## Local Progress Queue
+
+These items can move forward without waiting on external provider credentials,
+target-account access, staging evidence, or manual device evidence.
+
+- Split, verify, commit, and push the current uncommitted work in coherent
+  batches before starting new launch-gate work.
+- MVP Phase 2 local infra / observability:
+  - Promote `make dev-infra` into the Phase 2 local integration entrypoint.
+  - Add the lightweight compose smoke command for dependency health,
+    service `/healthz/ready`, Prometheus scrape reachability, and Grafana
+    dashboard import.
+  - Document macOS / OrbStack resource expectations.
+- KYC / AML local readiness:
+  - Add transaction-boundary tests for provider webhook record updates plus
+    screening-event inserts.
+  - Keep SQLx metadata refresh scoped to any later compile-time checked query
+    adoption.
+- Affiliate / referral local P1:
+  - Add admin approve / reject actions for affiliate commission adjustment
+    reviews and payout reviews.
+  - Replace or strictly gate remaining affiliate demo / fallback surfaces.
+  - Align affiliate portal language with the single-level referral model.
+  - Add end-to-end affiliate flow coverage for login, referred member creation,
+    qualification, commission accrual, payout review, and dashboard display.
+- Support / incident readiness local pack:
+  - Draft the public-beta support queue / escalation owner map.
+  - Prepare the sample customer-support evidence pack.
+  - Add S0 / S1 incident drill templates and link the final runbooks from the
+    launch-gate evidence package.
+
 ## MVP Phase 2: Local Infra And Observability Stack
 
 Phase 1 MVP development intentionally starts with the player-facing web app and
@@ -42,6 +73,9 @@ LINE/LIFF and manual QA evidence that cannot be generated from this workstation.
 Keep `tools/scripts/check-spec-022-complete.mjs` failing until all items below
 are recorded and the manifest has no blockers.
 
+Latest external-readiness assessment:
+`docs/launch-blockers/2026-06-17-public-beta-external-readiness.md`.
+
 - Collect live LIFF identity-bridge evidence:
   - Configure the target environment with `NEXT_PUBLIC_LIFF_ID`,
     `USER_SERVICE_LINE_LOGIN_CHANNEL_ID`, and `USER_SERVICE_BASE_URL`.
@@ -69,6 +103,9 @@ are recorded and the manifest has no blockers.
 These items are not complete enough to count the Public Beta gate as passed.
 They are tracked here so the current completed work can be committed without
 losing the remaining launch work.
+
+Latest external-readiness assessment:
+`docs/launch-blockers/2026-06-17-public-beta-external-readiness.md`.
 
 ### LG-3: KYC / AML Provider Readiness
 
@@ -152,27 +189,23 @@ separate mock-auth product path.
 
 ### LG-8: PWA / RWD followups
 
-Phase A-C of the responsive + PWA pass landed 2026-05-10; the remaining
-items below are deliberately deferred because they require either a
-production deploy or backend coordination.
+Phase A-C of the responsive + PWA pass landed 2026-05-10. Code follow-ups are
+now closed; only staging evidence capture remains external-environment gated.
 
-- Generalized background sync allowlist framework. Phase 1 now limits offline
-  queuing to trading order placement / cancellation with api-gateway
-  `Idempotency-Key` replay protection. A later phase should promote this into
-  a generic api-gateway mutation allowlist with per-route reconciliation
-  policies before any ledger, payment, admin, KYC, or support mutation is
-  allowed into silent background replay.
-- Pending mutation UI for trading. The Phase 1 queue returns a `202 queued`
-  response and drains through Background Sync, but the trading surface still
-  needs explicit pending / replayed / failed order state once the order form is
-  wired to the real api-gateway mutation client.
-- Lighthouse PWA score validation. Local `next dev` cannot reach 100/100
-  because Lighthouse insists on HTTPS for installability. Validate after
-  the staging deploy and capture the run as evidence under SPEC-007.
-- Real maskable icon artwork. `app/icon{0,1}.tsx` currently render a
-  placeholder "P" glyph against Action Blue. Brand will supply a final
-  mark; swap into the same ImageResponse generators (or precomputed
-  PNGs) without changing the manifest URLs.
+- Background sync allowlist framework is generalized in
+  `apps/web/lib/offline-mutation-queue.ts` and mirrored in `apps/web/public/sw.js`.
+  Phase 1 still allowlists only trading order placement / cancellation, but the
+  policy shape now carries per-route reconciliation metadata before any ledger,
+  payment, admin, KYC, or support mutation can be added.
+- Trading pending mutation UI is implemented in `apps/web/components/trade-panel.tsx`.
+  A `202 queued` service-worker response surfaces pending state; online /
+  foreground retries drain the IndexedDB queue and show replayed / failed state.
+- Lighthouse PWA score validation remains blocked on an HTTPS staging deploy.
+  Capture it with `tools/scripts/record-lg8-pwa-lighthouse-evidence.mjs` and
+  verify it with `tools/scripts/check-lg8-pwa-evidence.mjs`; evidence belongs in
+  `docs/evidence/lg-8-pwa/latest.json`.
+- Maskable icon artwork is now generated as deterministic static PNG assets via
+  `tools/scripts/generate-web-pwa-icons.mjs` without changing manifest URLs.
 
 ### LG-9: Affiliate / referral production readiness
 
