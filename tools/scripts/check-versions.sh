@@ -13,7 +13,7 @@ check() {
 }
 
 status=0
-check "rust 1.85" "rustc --version | grep -E '1\\.85\\.'" || status=1
+check "rust stable" "rustup show active-toolchain | grep -E '^stable'" || status=1
 check "cargo" "cargo --version" || status=1
 check "node 20+" "node --version | grep -E '^v2[0-9]\\.'" || status=1
 check "pnpm 9+" "pnpm --version | grep -E '^9\\.'" || status=1

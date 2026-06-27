@@ -1,4 +1,4 @@
-FROM rust:1.85-bookworm AS builder
+FROM rust:stable-bookworm AS builder
 WORKDIR /repo
 COPY . .
 RUN cargo build --release --locked -p mock-payment

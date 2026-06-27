@@ -666,7 +666,6 @@ Owns the 4 PG tables and the job lifecycle. Nothing calls this service until api
 name = "analytics-reporting-service"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
@@ -2409,5 +2408,4 @@ git commit -m "docs(spec-020): update §9 implementation status with real-API ch
 - [ ] No remaining `InMemoryAnalyticsReportingStore` in `services/api-gateway/`.
 - [ ] `cargo test --workspace` and `pnpm --filter @prophetica/admin test` both green.
 - [ ] Staging evidence captured for SPEC-013.
-
 

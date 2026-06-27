@@ -13,8 +13,7 @@ jobs:
       CARGO_INCREMENTAL: "0" # sccache cannot cache incremental units
     steps:
       - uses: actions/checkout@v6
-      # Project toolchain single-sourced from rust-toolchain.toml (channel 1.85);
-      # the extra 1.88 toolchain below is installed only for cargo-deny.
+      # Project toolchain single-sourced from rust-toolchain.toml.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache: false # caching is handled explicitly below (Swatinem + sccache)
@@ -26,14 +25,13 @@ jobs:
       - name: install cargo-geiger
         timeout-minutes: 20
         run: cargo install cargo-geiger --locked
-      - uses: dtolnay/rust-toolchain@1.88
       - name: install cargo-deny
         timeout-minutes: 20
-        run: cargo +1.88 install cargo-deny --version 0.19.4 --locked
+        run: cargo install cargo-deny --version 0.19.4 --locked
       - name: cargo deny
-        run: cargo +1.88 deny check
+        run: cargo deny check
       - name: cargo geiger
-        run: cargo +1.85 geiger --workspace --output-format Json > geiger.json
+        run: cargo geiger --workspace --output-format Json > geiger.json
       - name: forbid unsafe regression
         run: ./tools/scripts/check-geiger.sh geiger.json
       - name: upload geiger artifact

@@ -62,7 +62,7 @@ Rust/pnpm monorepo. Backend is a Cargo workspace (`Cargo.toml`); frontend is pnp
 This is the key non-obvious structure. `services/*` (e.g. `api-gateway`, `matching-engine`, `wallet-ledger-service`) are **library crates** holding domain logic. `services/_binaries/*` (e.g. `core-api`, `realtime-gateway`, `matching-engine-hot`) are the thin **deployable binaries** that compose one or more service crates into a runnable process. When adding behavior, put logic in the service crate; wire it into a binary only at the composition layer.
 
 - Shared crates: `crates/sdk`, `crates/proto`.
-- Rust edition 2024, toolchain 1.85, `unsafe_code` forbidden. Clippy `all` + `pedantic` warn; `unwrap_used`/`expect_used` warn — avoid `unwrap()`/`expect()` on production paths.
+- Rust edition 2024, stable toolchain, `unsafe_code` forbidden. Clippy `all` + `pedantic` warn; `unwrap_used`/`expect_used` warn — avoid `unwrap()`/`expect()` on production paths.
 - SQLx runs in **offline mode** — query metadata is committed in `.sqlx/` and CI sets `SQLX_OFFLINE=true`. Regenerate it intentionally when queries change.
 
 ### Protobuf pipeline
