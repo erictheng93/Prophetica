@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     body::{Body, Bytes},
-    extract::{Path, Query, State},
+    extract::{OriginalUri, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::Response,
     routing::{get, post},
@@ -290,29 +290,19 @@ where
 async fn get_internal_tier<S>(
     State(state): State<ApiState<S>>,
     headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
     Path(user_id): Path<String>,
 ) -> Result<Json<KycTierResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
-    let path = format!("/internal/kyc/users/{user_id}/tier");
-    verify_internal_call(
+    verify_internal_request(
         &headers,
         "GET",
-        &path,
+        uri.path(),
         b"",
         &state.internal_call_secret,
-        current_unix_timestamp(),
-    )
-    .map_err(|InternalCallRejection::Unauthorized| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ApiErrorResponse {
-                error: "unauthorized",
-                message: "Internal call signature missing or invalid".to_owned(),
-            }),
-        )
-    })?;
+    )?;
     let record = state
         .store
         .current_record(&user_id)
@@ -534,11 +524,23 @@ where
 
 async fn screening_rescan<S>(
     State(state): State<ApiState<S>>,
-    Json(request): Json<ScreeningRescanRequest>,
+    headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
+    body: Bytes,
 ) -> Result<Json<ScreeningRescanResponse>, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
+    verify_internal_request(
+        &headers,
+        "POST",
+        uri.path(),
+        &body,
+        &state.internal_call_secret,
+    )?;
+    let request = serde_json::from_slice::<ScreeningRescanRequest>(&body).map_err(|error| {
+        validation_error(format!("invalid screening rescan request body: {error}"))
+    })?;
     let matches = request
         .matches
         .into_iter()
@@ -687,6 +689,32 @@ fn unauthorized_webhook() -> (StatusCode, Json<ApiErrorResponse>) {
     )
 }
 
+fn verify_internal_request(
+    headers: &HeaderMap,
+    method: &str,
+    path: &str,
+    body: &[u8],
+    secret: &str,
+) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
+    verify_internal_call(
+        headers,
+        method,
+        path,
+        body,
+        secret,
+        current_unix_timestamp(),
+    )
+    .map_err(|InternalCallRejection::Unauthorized| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiErrorResponse {
+                error: "unauthorized",
+                message: "Internal call signature missing or invalid".to_owned(),
+            }),
+        )
+    })
+}
+
 fn validate_start_upgrade(
     request: &StartUpgradeRequest,
 ) -> Result<(), (StatusCode, Json<ApiErrorResponse>)> {
@@ -833,11 +861,19 @@ fn is_kyc_reviewer_role(role: &str) -> bool {
 async fn list_member_documents<S>(
     State(state): State<ApiState<S>>,
     headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
     Path(user_id): Path<String>,
 ) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
+    verify_internal_request(
+        &headers,
+        "GET",
+        uri.path(),
+        b"",
+        &state.internal_call_secret,
+    )?;
     let (reviewer_id, reviewer_role, request_id) = extract_actor_headers(&headers);
 
     if !is_kyc_reviewer_role(&reviewer_role) {
@@ -939,11 +975,19 @@ where
 async fn get_member_document<S>(
     State(state): State<ApiState<S>>,
     headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
     Path((user_id, doc_id)): Path<(String, String)>,
 ) -> Result<Response, (StatusCode, Json<ApiErrorResponse>)>
 where
     S: KycStore,
 {
+    verify_internal_request(
+        &headers,
+        "GET",
+        uri.path(),
+        b"",
+        &state.internal_call_secret,
+    )?;
     let (reviewer_id, reviewer_role, request_id) = extract_actor_headers(&headers);
 
     if !is_kyc_reviewer_role(&reviewer_role) {

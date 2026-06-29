@@ -9,6 +9,7 @@ use http_body_util::BodyExt;
 use kyc_service::{
     SecretConfig,
     api::router_with_provider_client,
+    internal_auth,
     kyc::{InMemoryKycStore, KycStore, KycTier, StartUpgradeDraft},
     provider_documents::{ProviderDocument, ProviderDocumentClient},
 };
@@ -53,6 +54,32 @@ async fn seed_tier2_user(store: &InMemoryKycStore, user_id: &str) -> String {
 }
 
 fn request_as_role(uri: &str, role: &str) -> Request<Body> {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0_i64, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+    let signature = internal_auth::sign_internal_call(
+        "GET",
+        uri,
+        b"",
+        timestamp,
+        &SecretConfig::dev_default().internal_call_secret,
+    );
+    Request::builder()
+        .method("GET")
+        .uri(uri)
+        .header("x-actor-id", "reviewer_1")
+        .header("x-operator-role", role)
+        .header("x-request-id", "req-test-001")
+        .header(
+            internal_auth::INTERNAL_CALL_TIMESTAMP_HEADER,
+            timestamp.to_string(),
+        )
+        .header(internal_auth::INTERNAL_CALL_SIGNATURE_HEADER, signature)
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn unsigned_request_as_role(uri: &str, role: &str) -> Request<Body> {
     Request::builder()
         .method("GET")
         .uri(uri)
@@ -65,6 +92,10 @@ fn request_as_role(uri: &str, role: &str) -> Request<Body> {
 
 fn admin_get(uri: &str) -> Request<Body> {
     request_as_role(uri, "admin")
+}
+
+fn unsigned_admin_get(uri: &str) -> Request<Body> {
+    unsigned_request_as_role(uri, "admin")
 }
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -99,6 +130,32 @@ fn sample_doc(doc_id: &str) -> ProviderDocument {
         content_type: "image/png".to_owned(),
         captured_at: "2026-05-19T00:00:00Z".to_owned(),
     }
+}
+
+#[tokio::test]
+async fn document_list_rejects_unsigned_internal_call() {
+    let server = MockServer::start().await;
+    let response = test_router_with_server(test_store(), &server.uri())
+        .oneshot(unsigned_admin_get(
+            "/v1/internal/admin/kyc/members/user_docs_unsigned/documents",
+        ))
+        .await
+        .expect("request should be handled");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn document_image_rejects_unsigned_internal_call() {
+    let server = MockServer::start().await;
+    let response = test_router_with_server(test_store(), &server.uri())
+        .oneshot(unsigned_admin_get(
+            "/v1/internal/admin/kyc/members/user_docs_unsigned/documents/doc_1",
+        ))
+        .await
+        .expect("request should be handled");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 // ---------------------------------------------------------------------------

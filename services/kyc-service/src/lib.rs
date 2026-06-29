@@ -665,15 +665,16 @@ mod api_contract_tests {
             .await
             .expect("pep upgrade should be handled");
 
+        let rescan_body = json!({
+            "matches": [
+                { "user_id": "user_sdn", "match_type": "sanction", "list_name": "OFAC SDN" },
+                { "user_id": "user_pep", "match_type": "pep", "list_name": "PEP" }
+            ]
+        });
         let rescan = test_router(store.clone())
-            .oneshot(json_post(
+            .oneshot(signed_internal_json_post(
                 "/internal/screening/rescans",
-                &json!({
-                    "matches": [
-                        { "user_id": "user_sdn", "match_type": "sanction", "list_name": "OFAC SDN" },
-                        { "user_id": "user_pep", "match_type": "pep", "list_name": "PEP" }
-                    ]
-                }),
+                &rescan_body,
             ))
             .await
             .expect("rescan request should be handled");
@@ -700,6 +701,25 @@ mod api_contract_tests {
         let pep_body = response_json(pep_status).await;
         assert_eq!(pep_body["current_tier"], json!("TIER_3"));
         assert_eq!(pep_body["status"], json!("pending"));
+    }
+
+    #[tokio::test]
+    async fn screening_rescan_rejects_unsigned_call() {
+        let response = test_router(test_store())
+            .oneshot(json_post(
+                "/internal/screening/rescans",
+                &json!({
+                    "matches": [
+                        { "user_id": "user_sdn", "match_type": "sanction", "list_name": "OFAC SDN" }
+                    ]
+                }),
+            ))
+            .await
+            .expect("rescan request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], json!("unauthorized"));
     }
 
     fn json_post(uri: &str, body: &Value) -> Request<Body> {
@@ -833,6 +853,37 @@ mod api_contract_tests {
         {
             Ok(request) => request,
             Err(error) => panic!("signed internal tier request should build: {error}"),
+        }
+    }
+
+    fn signed_internal_json_post(uri: &str, body: &Value) -> Request<Body> {
+        let body_string = body.to_string();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0_i64, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+        let signature = crate::internal_auth::sign_internal_call(
+            "POST",
+            uri,
+            body_string.as_bytes(),
+            timestamp,
+            &crate::SecretConfig::dev_default().internal_call_secret,
+        );
+        match Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("content-type", "application/json")
+            .header(
+                crate::internal_auth::INTERNAL_CALL_TIMESTAMP_HEADER,
+                timestamp.to_string(),
+            )
+            .header(
+                crate::internal_auth::INTERNAL_CALL_SIGNATURE_HEADER,
+                signature,
+            )
+            .body(Body::from(body_string))
+        {
+            Ok(request) => request,
+            Err(error) => panic!("signed internal json request should build: {error}"),
         }
     }
 }

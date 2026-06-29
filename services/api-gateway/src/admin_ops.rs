@@ -132,6 +132,19 @@ pub trait AdminOpsStore {
     fn kyc_service_base_url(&self) -> String {
         crate::kyc_service_base_url_from_env()
     }
+
+    /// Returns the service-to-service HMAC secret used when forwarding KYC
+    /// document requests to kyc-service.
+    fn kyc_internal_call_secret(&self) -> Option<String> {
+        match env::var("INTERNAL_CALL_HMAC_SECRET")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+        {
+            Some(value) => Some(value),
+            None if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") => None,
+            None => Some("dev-analytics-internal-call-secret".to_owned()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -964,6 +977,13 @@ where
     let Ok((kyc_url, client)) = kyc_proxy_upstream_from(&kyc_base) else {
         return kyc_proxy_error(StatusCode::INTERNAL_SERVER_ERROR, "kyc_proxy_bad_url");
     };
+    let Some(kyc_internal_secret) = store.kyc_internal_call_secret() else {
+        tracing::error!("INTERNAL_CALL_HMAC_SECRET is not set; rejecting KYC proxy request");
+        return kyc_proxy_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "kyc_internal_secret_unconfigured",
+        );
+    };
 
     let upstream_path = format!(
         "/v1/internal/admin/kyc/members/{}/documents",
@@ -975,6 +995,8 @@ where
 
     let mut fwd_request = client.get(upstream_url);
     fwd_request = forward_proxy_headers(fwd_request, &headers);
+    fwd_request =
+        sign_kyc_service_request(fwd_request, "GET", &upstream_path, &kyc_internal_secret);
 
     kyc_proxy_stream(fwd_request, false).await
 }
@@ -1007,6 +1029,13 @@ where
     let Ok((kyc_url, client)) = kyc_proxy_upstream_from(&kyc_base) else {
         return kyc_proxy_error(StatusCode::INTERNAL_SERVER_ERROR, "kyc_proxy_bad_url");
     };
+    let Some(kyc_internal_secret) = store.kyc_internal_call_secret() else {
+        tracing::error!("INTERNAL_CALL_HMAC_SECRET is not set; rejecting KYC proxy request");
+        return kyc_proxy_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "kyc_internal_secret_unconfigured",
+        );
+    };
 
     let upstream_path = format!(
         "/v1/internal/admin/kyc/members/{}/documents/{}",
@@ -1019,6 +1048,8 @@ where
 
     let mut fwd_request = client.get(upstream_url);
     fwd_request = forward_proxy_headers(fwd_request, &headers);
+    fwd_request =
+        sign_kyc_service_request(fwd_request, "GET", &upstream_path, &kyc_internal_secret);
 
     kyc_proxy_stream(fwd_request, true).await
 }
@@ -1074,6 +1105,26 @@ fn forward_proxy_headers(
         }
     }
     request
+}
+
+fn sign_kyc_service_request(
+    request: reqwest::RequestBuilder,
+    method: &str,
+    path: &str,
+    secret: &str,
+) -> reqwest::RequestBuilder {
+    let timestamp = current_epoch_seconds();
+    let signature =
+        crate::internal_kyc_auth::sign_internal_call_for_kyc(method, path, b"", timestamp, secret);
+    request
+        .header(
+            crate::internal_kyc_auth::INTERNAL_CALL_TIMESTAMP_HEADER,
+            timestamp.to_string(),
+        )
+        .header(
+            crate::internal_kyc_auth::INTERNAL_CALL_SIGNATURE_HEADER,
+            signature,
+        )
 }
 
 /// Sends the upstream reqwest request and streams its response body back as an
@@ -4500,6 +4551,8 @@ pub struct InMemoryAdminOpsStore {
     state: Arc<Mutex<AdminOpsState>>,
     /// Test-only: override for `ADMIN_INTERNAL_CALL_SECRET`.
     kyc_secret_override: Option<String>,
+    /// Test-only: override for `INTERNAL_CALL_HMAC_SECRET`.
+    kyc_internal_secret_override: Option<String>,
     /// Test-only: override for `KYC_SERVICE_URL`.
     kyc_url_override: Option<String>,
     compensation_known_members: Vec<String>,
@@ -4537,7 +4590,15 @@ impl InMemoryAdminOpsStore {
         kyc_service_url: impl Into<String>,
     ) -> Self {
         self.kyc_secret_override = Some(secret.into());
+        self.kyc_internal_secret_override = Some("dev-analytics-internal-call-secret".to_owned());
         self.kyc_url_override = Some(kyc_service_url.into());
+        self
+    }
+
+    /// Overrides the KYC service-to-service signing secret for proxy tests.
+    #[must_use]
+    pub fn with_kyc_internal_call_secret(mut self, secret: impl Into<String>) -> Self {
+        self.kyc_internal_secret_override = Some(secret.into());
         self
     }
 
@@ -5099,6 +5160,21 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
         self.kyc_secret_override
             .clone()
             .or_else(|| env::var("ADMIN_INTERNAL_CALL_SECRET").ok())
+    }
+
+    fn kyc_internal_call_secret(&self) -> Option<String> {
+        self.kyc_internal_secret_override.clone().or_else(|| {
+            env::var("INTERNAL_CALL_HMAC_SECRET")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") {
+                        None
+                    } else {
+                        Some("dev-analytics-internal-call-secret".to_owned())
+                    }
+                })
+        })
     }
 
     fn kyc_service_base_url(&self) -> String {

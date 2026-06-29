@@ -5,6 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use api_gateway::{
     admin_ops::{InMemoryAdminOpsStore, internal_admin_router},
     internal_call_auth::sign_internal_call,
+    internal_kyc_auth::{
+        INTERNAL_CALL_SIGNATURE_HEADER, INTERNAL_CALL_TIMESTAMP_HEADER, sign_internal_call_for_kyc,
+    },
 };
 use axum::{
     body::Body,
@@ -14,10 +17,12 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
+    http::HeaderName as WiremockHeaderName,
     matchers::{method, path},
 };
 
 const SECRET: &str = "test-kyc-proxy-secret-32-bytes!!";
+const KYC_INTERNAL_SECRET: &str = "dev-analytics-internal-call-secret";
 const NOW: i64 = 1_780_000_000;
 
 fn signed_headers(
@@ -58,6 +63,36 @@ fn now_ts() -> i64 {
 
 fn store_with_kyc_config(kyc_url: &str) -> InMemoryAdminOpsStore {
     InMemoryAdminOpsStore::default().with_kyc_proxy_config(SECRET, kyc_url)
+}
+
+async fn assert_upstream_request_was_signed(server: &MockServer, method: &str, path: &str) {
+    let requests = server
+        .received_requests()
+        .await
+        .expect("received requests should be available");
+    let request = requests
+        .iter()
+        .find(|request| request.method.to_string() == method && request.url.path() == path)
+        .expect("expected upstream request should be present");
+    let timestamp_header = WiremockHeaderName::from_string(INTERNAL_CALL_TIMESTAMP_HEADER.into())
+        .expect("timestamp header name should be valid");
+    let signature_header = WiremockHeaderName::from_string(INTERNAL_CALL_SIGNATURE_HEADER.into())
+        .expect("signature header name should be valid");
+    let timestamp = request
+        .headers
+        .get(&timestamp_header)
+        .map(|values| values.last().as_str().to_owned())
+        .and_then(|value| value.parse::<i64>().ok())
+        .expect("upstream request should include a valid internal timestamp");
+    let signature = request
+        .headers
+        .get(&signature_header)
+        .map(|values| values.last().as_str().to_owned())
+        .expect("upstream request should include internal signature");
+    assert_eq!(
+        signature,
+        sign_internal_call_for_kyc(method, path, b"", timestamp, KYC_INTERNAL_SECRET)
+    );
 }
 
 // ─── Test 1: missing / invalid signed-call headers → 401 ──────────────────────
@@ -153,6 +188,12 @@ async fn valid_signed_call_streams_image_bytes_and_content_type() {
         .expect("body")
         .to_bytes();
     assert_eq!(body_bytes.as_ref(), png_bytes);
+    assert_upstream_request_was_signed(
+        &server,
+        "GET",
+        "/v1/internal/admin/kyc/members/user-1/documents/doc-1",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -190,6 +231,12 @@ async fn valid_signed_call_streams_document_list_json() {
     let body_json: serde_json::Value =
         serde_json::from_slice(&body_bytes).expect("valid JSON response");
     assert_eq!(body_json["documents"][0]["doc_id"], "doc-1");
+    assert_upstream_request_was_signed(
+        &server,
+        "GET",
+        "/v1/internal/admin/kyc/members/user-1/documents",
+    )
+    .await;
 }
 
 // ─── Test 3: valid signed call + kyc-service 404 → gateway passes through 404 ─
