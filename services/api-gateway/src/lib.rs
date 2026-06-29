@@ -10,8 +10,10 @@ use std::{
 use async_trait::async_trait;
 use axum::{
     Extension, Json, Router,
-    extract::{FromRequestParts, Path, Query, State},
+    body::{Body, to_bytes},
+    extract::{FromRequestParts, Path, Query, Request, State},
     http::{HeaderMap, StatusCode, header::HeaderName, request::Parts},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
 };
@@ -4123,6 +4125,46 @@ where
         responsible_gaming::InMemorySelfExclusionStore::default(),
         responsible_gaming::ResponsibleGamingClock::system(),
     );
+    let state = Arc::new(
+        AppStateWithServices::new_with_market_fees_position_projection_and_trade_stores(
+            wallet_ledger,
+            engine,
+            referral,
+            kyc,
+            market_fees,
+            position_projection,
+            stores,
+        ),
+    );
+    let admin_router = Router::new()
+        .route(
+            "/api/internal/admin/affiliates",
+            get(list_admin_affiliates::<W, E, R, K>).post(create_admin_affiliate::<W, E, R, K>),
+        )
+        .route(
+            "/api/internal/admin/affiliate-accounts",
+            post(create_affiliate_account_saga::<W, E, R, K>),
+        )
+        .route(
+            "/api/internal/admin/affiliate-account-sagas/:idempotency_key",
+            get(get_affiliate_account_saga::<W, E, R, K>),
+        )
+        .route(
+            "/api/internal/admin/affiliates/:affiliate_id",
+            get(get_admin_affiliate_detail::<W, E, R, K>)
+                .patch(update_admin_affiliate::<W, E, R, K>)
+                .delete(archive_admin_affiliate::<W, E, R, K>),
+        )
+        .route(
+            "/api/internal/admin/affiliate-commission-adjustments",
+            get(list_commission_adjustment_reviews::<W, E, R, K>),
+        )
+        .route(
+            "/api/internal/admin/affiliate-payouts",
+            get(list_affiliate_payout_reviews::<W, E, R, K>),
+        )
+        .route_layer(middleware::from_fn(verify_admin_proxy_internal_call))
+        .with_state(state.clone());
 
     Router::new()
         .route(
@@ -4161,43 +4203,8 @@ where
             "/api/internal/referrals/capture",
             post(capture_referral::<W, E, R, K>),
         )
-        .route(
-            "/api/internal/admin/affiliates",
-            get(list_admin_affiliates::<W, E, R, K>).post(create_admin_affiliate::<W, E, R, K>),
-        )
-        .route(
-            "/api/internal/admin/affiliate-accounts",
-            post(create_affiliate_account_saga::<W, E, R, K>),
-        )
-        .route(
-            "/api/internal/admin/affiliate-account-sagas/:idempotency_key",
-            get(get_affiliate_account_saga::<W, E, R, K>),
-        )
-        .route(
-            "/api/internal/admin/affiliates/:affiliate_id",
-            get(get_admin_affiliate_detail::<W, E, R, K>)
-                .patch(update_admin_affiliate::<W, E, R, K>)
-                .delete(archive_admin_affiliate::<W, E, R, K>),
-        )
-        .route(
-            "/api/internal/admin/affiliate-commission-adjustments",
-            get(list_commission_adjustment_reviews::<W, E, R, K>),
-        )
-        .route(
-            "/api/internal/admin/affiliate-payouts",
-            get(list_affiliate_payout_reviews::<W, E, R, K>),
-        )
-        .with_state(Arc::new(
-            AppStateWithServices::new_with_market_fees_position_projection_and_trade_stores(
-                wallet_ledger,
-                engine,
-                referral,
-                kyc,
-                market_fees,
-                position_projection,
-                stores,
-            ),
-        ))
+        .with_state(state)
+        .merge(admin_router)
         .merge(rg_router)
         .merge(payments_real_money_router(payment_flags))
 }
@@ -4224,6 +4231,24 @@ where
         responsible_gaming::InMemorySelfExclusionStore::default(),
         responsible_gaming::ResponsibleGamingClock::system(),
     );
+    let state = Arc::new(
+        AppStateWithServices::new_with_market_fees_position_projection_and_trade_stores(
+            wallet_ledger,
+            engine,
+            referral,
+            AllowAllKycTierClient,
+            DefaultMarketFeeReader,
+            NoopPositionProjectionClient,
+            GatewayStateStores {
+                trade: TradeFillStores::in_memory(),
+                affiliate_admin: AffiliateAdminStores {
+                    affiliate_credentials: Arc::new(affiliate_credentials),
+                    affiliate_account_sagas: Arc::new(affiliate_account_sagas),
+                    gateway_denied_audits: Arc::new(gateway_denied_audits),
+                },
+            },
+        ),
+    );
 
     Router::new()
         .route(
@@ -4238,24 +4263,8 @@ where
             "/api/internal/admin/affiliates/:affiliate_id",
             axum::routing::patch(update_admin_affiliate::<W, E, R, AllowAllKycTierClient>),
         )
-        .with_state(Arc::new(
-            AppStateWithServices::new_with_market_fees_position_projection_and_trade_stores(
-                wallet_ledger,
-                engine,
-                referral,
-                AllowAllKycTierClient,
-                DefaultMarketFeeReader,
-                NoopPositionProjectionClient,
-                GatewayStateStores {
-                    trade: TradeFillStores::in_memory(),
-                    affiliate_admin: AffiliateAdminStores {
-                        affiliate_credentials: Arc::new(affiliate_credentials),
-                        affiliate_account_sagas: Arc::new(affiliate_account_sagas),
-                        gateway_denied_audits: Arc::new(gateway_denied_audits),
-                    },
-                },
-            ),
-        ))
+        .route_layer(middleware::from_fn(verify_admin_proxy_internal_call))
+        .with_state(state)
         .merge(rg_router)
 }
 
@@ -5015,16 +5024,17 @@ where
     C: WalletLedgerClient + Send + Sync,
 {
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
+    let account_code = wallet_account_code(&auth.user_id);
     let entries = state
         .wallet_ledger
-        .list_entries(&query.account_code, limit)
+        .list_entries(&account_code, limit)
         .await?;
     Ok(Json(LedgerEntriesResponse { entries }))
 }
 
 async fn list_ledger_entries_with_engine<W, E, K>(
     State(state): State<Arc<AppStateWithEngine<W, E, K>>>,
-    _auth: AuthContext,
+    auth: AuthContext,
     Query(query): Query<LedgerEntriesQuery>,
 ) -> Result<Json<LedgerEntriesResponse>, ApiError>
 where
@@ -5033,11 +5043,16 @@ where
     K: KycTierClient + Send + Sync,
 {
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
+    let account_code = wallet_account_code(&auth.user_id);
     let entries = state
         .wallet_ledger
-        .list_entries(&query.account_code, limit)
+        .list_entries(&account_code, limit)
         .await?;
     Ok(Json(LedgerEntriesResponse { entries }))
+}
+
+fn wallet_account_code(user_id: &str) -> String {
+    format!("Player.Wallet.{user_id}")
 }
 
 #[tracing::instrument(fields(service.name = SERVICE_NAME, proph.user_id = %auth.user_id, proph.market_id = %market_id, latency.budget.api_order_submit_e2e = 0.030), skip(state, request))]
@@ -5216,7 +5231,7 @@ where
 
 async fn list_ledger_entries_with_services<W, E, R, K>(
     State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
-    _auth: AuthContext,
+    auth: AuthContext,
     Query(query): Query<LedgerEntriesQuery>,
 ) -> Result<Json<LedgerEntriesResponse>, ApiError>
 where
@@ -5226,9 +5241,10 @@ where
     K: KycTierClient + Send + Sync,
 {
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
+    let account_code = wallet_account_code(&auth.user_id);
     let entries = state
         .wallet_ledger
-        .list_entries(&query.account_code, limit)
+        .list_entries(&account_code, limit)
         .await?;
     Ok(Json(LedgerEntriesResponse { entries }))
 }
@@ -5883,6 +5899,52 @@ fn admin_proxy_context(headers: &HeaderMap) -> Result<AdminProxyContext, ApiErro
         role,
         request_id: header_string(headers, "x-request-id"),
     })
+}
+
+async fn verify_admin_proxy_internal_call(request: Request, next: Next) -> Response {
+    let secret = match admin_internal_call_secret() {
+        Ok(secret) => secret,
+        Err(error) => return error.into_response(),
+    };
+    let (parts, body) = request.into_parts();
+    let method = parts.method.clone();
+    let path = parts.uri.path().to_owned();
+    let headers = parts.headers.clone();
+    let body_bytes = match to_bytes(body, 1_048_576).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return ApiError::bad_request(
+                "admin_internal_call_bad_body",
+                "admin internal request body could not be read",
+            )
+            .into_response();
+        }
+    };
+    let now = i64::try_from(unix_now_seconds()).unwrap_or(i64::MAX);
+    if internal_call_auth::verify_internal_call(
+        &headers,
+        method.as_str(),
+        &path,
+        &body_bytes,
+        &secret,
+        now,
+    )
+    .is_err()
+    {
+        return ApiError::unauthorized("admin internal call signature is invalid").into_response();
+    }
+    next.run(Request::from_parts(parts, Body::from(body_bytes)))
+        .await
+}
+
+fn admin_internal_call_secret() -> Result<String, ApiError> {
+    env::var("ADMIN_INTERNAL_CALL_SECRET")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| (!is_production_env()).then(|| "dev-admin-internal-call-secret".to_owned()))
+        .ok_or_else(|| {
+            ApiError::internal("ADMIN_INTERNAL_CALL_SECRET is required for admin internal routes")
+        })
 }
 
 fn required_idempotency_key(headers: &HeaderMap) -> Result<String, ApiError> {
@@ -6579,8 +6641,8 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/ledger/entries?account_code=Player.Wallet.user_01&limit=999")
-                    .header("x-user-id", "admin_01")
+                    .uri("/v1/ledger/entries?account_code=Player.Wallet.victim&limit=999")
+                    .header("x-user-id", "user_01")
                     .body(Body::empty())
                     .unwrap_or_else(|error| panic!("request should build: {error}")),
             )
@@ -7791,7 +7853,7 @@ mod tests {
 
         let commission_reviews = app
             .clone()
-            .oneshot(empty_get(
+            .oneshot(admin_empty_get(
                 "/api/internal/admin/affiliate-commission-adjustments",
             ))
             .await
@@ -7802,13 +7864,37 @@ mod tests {
         assert_eq!(body[0]["affiliateId"], json!("AFF-001"));
 
         let payout_reviews = app
-            .oneshot(empty_get("/api/internal/admin/affiliate-payouts"))
+            .oneshot(admin_empty_get("/api/internal/admin/affiliate-payouts"))
             .await
             .expect("request should be handled");
         assert_eq!(payout_reviews.status(), StatusCode::OK);
         let body = response_json(payout_reviews).await;
         assert_eq!(body[0]["id"], json!("PAY-2026-0514-001"));
         assert_eq!(body[0]["status"], json!("pending"));
+    }
+
+    #[tokio::test]
+    async fn affiliate_admin_rejects_unsigned_forged_actor_headers() {
+        let app = router_with_services(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            InMemoryReferralClient::default(),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/internal/admin/affiliates")
+                    .header("x-actor-id", "attacker-admin")
+                    .header("x-operator-role", "admin")
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
@@ -8132,25 +8218,33 @@ mod tests {
     }
 
     fn admin_empty_get(uri: &str) -> Request<Body> {
+        let body = Vec::new();
+        let (timestamp, signature) = signed_admin_request("GET", uri, &body);
         Request::builder()
             .method("GET")
             .uri(uri)
             .header("x-actor-id", "admin-1")
             .header("x-operator-role", "admin")
             .header("x-request-id", "req-1")
-            .body(Body::empty())
+            .header("x-internal-call-timestamp", timestamp)
+            .header("x-internal-call-signature", signature)
+            .body(Body::from(body))
             .unwrap_or_else(|error| panic!("request should build: {error}"))
     }
 
     fn admin_json_request(method: &str, uri: &str, body: &Value) -> Request<Body> {
+        let body = body.to_string();
+        let (timestamp, signature) = signed_admin_request(method, uri, body.as_bytes());
         Request::builder()
             .method(method)
             .uri(uri)
             .header("x-actor-id", "admin-1")
             .header("x-operator-role", "admin")
             .header("x-request-id", "req-1")
+            .header("x-internal-call-timestamp", timestamp)
+            .header("x-internal-call-signature", signature)
             .header("content-type", "application/json")
-            .body(Body::from(body.to_string()))
+            .body(Body::from(body))
             .unwrap_or_else(|error| panic!("request should build: {error}"))
     }
 
@@ -8160,6 +8254,8 @@ mod tests {
         idempotency_key: &str,
         body: &Value,
     ) -> Request<Body> {
+        let body = body.to_string();
+        let (timestamp, signature) = signed_admin_request(method, uri, body.as_bytes());
         Request::builder()
             .method(method)
             .uri(uri)
@@ -8167,9 +8263,26 @@ mod tests {
             .header("x-operator-role", "admin")
             .header("x-request-id", "req-1")
             .header("idempotency-key", idempotency_key)
+            .header("x-internal-call-timestamp", timestamp)
+            .header("x-internal-call-signature", signature)
             .header("content-type", "application/json")
-            .body(Body::from(body.to_string()))
+            .body(Body::from(body))
             .unwrap_or_else(|error| panic!("request should build: {error}"))
+    }
+
+    fn signed_admin_request(method: &str, uri: &str, body: &[u8]) -> (String, String) {
+        let timestamp = i64::try_from(super::unix_now_seconds()).unwrap_or(i64::MAX);
+        let path = uri.split('?').next().unwrap_or(uri);
+        let signature = crate::internal_call_auth::sign_internal_call(
+            method,
+            path,
+            body,
+            timestamp,
+            "admin-1",
+            "admin",
+            "dev-admin-internal-call-secret",
+        );
+        (timestamp.to_string(), signature)
     }
 
     fn affiliate_account_payload() -> Value {

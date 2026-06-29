@@ -7,9 +7,10 @@ use std::{
 use async_trait::async_trait;
 use axum::{
     Json, Router,
-    body::Body,
-    extract::{OriginalUri, Path, Query, State},
+    body::{Body, to_bytes},
+    extract::{OriginalUri, Path, Query, Request, State},
     http::{HeaderMap, StatusCode, header},
+    middleware::{self, Next},
     response::Response,
     routing::{delete, get, patch, post},
 };
@@ -558,6 +559,7 @@ pub fn internal_admin_router<S>(store: S) -> Router
 where
     S: AdminOpsStore + Clone + Send + Sync + 'static,
 {
+    let auth_store = store.clone();
     Router::new()
         .route("/api/internal/admin/members", get(list_members::<S>))
         .route(
@@ -621,7 +623,50 @@ where
             "/api/internal/admin/members/:user_id/kyc-documents/:doc_id",
             get(proxy_kyc_document_image::<S>),
         )
+        .route_layer(middleware::from_fn_with_state(
+            auth_store,
+            verify_admin_internal_call::<S>,
+        ))
         .with_state(store)
+}
+
+async fn verify_admin_internal_call<S>(
+    State(store): State<S>,
+    request: Request,
+    next: Next,
+) -> Response
+where
+    S: AdminOpsStore,
+{
+    let Some(secret) = store.kyc_proxy_secret() else {
+        tracing::error!("ADMIN_INTERNAL_CALL_SECRET is not set; rejecting admin internal request");
+        return kyc_proxy_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "admin_internal_call_secret_unconfigured",
+        );
+    };
+    let (parts, body) = request.into_parts();
+    let method = parts.method.clone();
+    let path = parts.uri.path().to_owned();
+    let headers = parts.headers.clone();
+    let Ok(body_bytes) = to_bytes(body, 1_048_576).await else {
+        return kyc_proxy_error(StatusCode::BAD_REQUEST, "admin_internal_call_bad_body");
+    };
+    let now = current_epoch_seconds();
+    if crate::internal_call_auth::verify_internal_call(
+        &headers,
+        method.as_str(),
+        &path,
+        &body_bytes,
+        &secret,
+        now,
+    )
+    .is_err()
+    {
+        return kyc_proxy_error(StatusCode::UNAUTHORIZED, "admin_internal_call_unauthorized");
+    }
+    next.run(Request::from_parts(parts, Body::from(body_bytes)))
+        .await
 }
 
 async fn list_members<S>(
@@ -5393,5 +5438,111 @@ fn compensation_audit_metadata(
         approval_roles: vec![actor_role.to_owned()],
         proposer_kind: proposal.proposer_kind.clone(),
         ledger_transaction_posted,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt;
+    use serde_json::{Value, json};
+    use tower::ServiceExt;
+
+    use super::{InMemoryAdminOpsStore, internal_admin_router};
+
+    const ADMIN_SECRET: &str = "test-admin-internal-call-secret";
+
+    #[tokio::test]
+    async fn admin_compensation_rejects_unsigned_forged_actor_headers() {
+        let store = InMemoryAdminOpsStore::default()
+            .with_kyc_proxy_config(ADMIN_SECRET, "http://127.0.0.1:1")
+            .with_compensation_known_members(vec!["user_01".to_owned()]);
+        let app = internal_admin_router(store.clone());
+        let body = json!({
+            "ticket_id": "CS-1",
+            "reason": "customer support adjustment",
+            "amount_minor_units": 100
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/internal/admin/members/user_01/compensation-proposals")
+                    .header("x-actor-id", "attacker-admin")
+                    .header("x-operator-role", "admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(store.audit_records().is_empty());
+    }
+
+    #[tokio::test]
+    async fn admin_compensation_accepts_signed_internal_call() {
+        let store = InMemoryAdminOpsStore::default()
+            .with_kyc_proxy_config(ADMIN_SECRET, "http://127.0.0.1:1")
+            .with_compensation_known_members(vec!["user_01".to_owned()]);
+        let app = internal_admin_router(store.clone());
+        let body = json!({
+            "ticket_id": "CS-1",
+            "reason": "customer support adjustment",
+            "amount_minor_units": 100
+        });
+
+        let response = app
+            .oneshot(signed_admin_json_request(
+                "POST",
+                "/api/internal/admin/members/user_01/compensation-proposals",
+                &body,
+            ))
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["proposal"]["proposal_id"], json!("cmp-000001"));
+        assert_eq!(store.audit_records().len(), 1);
+    }
+
+    fn signed_admin_json_request(method: &str, uri: &str, body: &Value) -> Request<Body> {
+        let body = body.to_string();
+        let timestamp = super::current_epoch_seconds();
+        let signature = crate::internal_call_auth::sign_internal_call(
+            method,
+            uri,
+            body.as_bytes(),
+            timestamp,
+            "admin-1",
+            "admin",
+            ADMIN_SECRET,
+        );
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("x-actor-id", "admin-1")
+            .header("x-operator-role", "admin")
+            .header("x-internal-call-timestamp", timestamp.to_string())
+            .header("x-internal-call-signature", signature)
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap_or_else(|error| panic!("request should build: {error}"))
+    }
+
+    async fn response_json(response: axum::response::Response) -> Value {
+        let collected = response
+            .into_body()
+            .collect()
+            .await
+            .unwrap_or_else(|error| panic!("response body should collect: {error}"));
+        serde_json::from_slice(&collected.to_bytes())
+            .unwrap_or_else(|error| panic!("response should be json: {error}"))
     }
 }
