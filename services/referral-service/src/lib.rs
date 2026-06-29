@@ -519,6 +519,20 @@ pub struct AdminAffiliateMutationResponse {
     pub audit_correlation_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateReviewDecisionRequest {
+    pub decision: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AffiliateReviewDecisionResponse<T> {
+    pub review: T,
+    pub audit_correlation_id: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdminAffiliateActor {
     pub actor_id: String,
@@ -753,7 +767,24 @@ pub trait AffiliateDashboardStore {
         &self,
     ) -> Result<Vec<AffiliateCommissionAdjustmentReview>, ReferralStoreError>;
 
+    async fn review_commission_adjustment(
+        &self,
+        adjustment_id: &str,
+        request: AffiliateReviewDecisionRequest,
+        actor: AdminAffiliateActor,
+    ) -> Result<
+        AffiliateReviewDecisionResponse<AffiliateCommissionAdjustmentReview>,
+        ReferralStoreError,
+    >;
+
     async fn list_payout_reviews(&self) -> Result<Vec<AffiliatePayoutReview>, ReferralStoreError>;
+
+    async fn review_payout(
+        &self,
+        payout_id: &str,
+        request: AffiliateReviewDecisionRequest,
+        actor: AdminAffiliateActor,
+    ) -> Result<AffiliateReviewDecisionResponse<AffiliatePayoutReview>, ReferralStoreError>;
 
     async fn referral_subject_scope(
         &self,
@@ -1042,8 +1073,9 @@ pub struct InMemoryAffiliateDashboardStore {
     commission_accruals_by_trade: Arc<tokio::sync::Mutex<HashMap<String, CommissionAccrual>>>,
     commission_payouts_by_txn: Arc<tokio::sync::Mutex<HashMap<i64, CommissionPayoutResponse>>>,
     summaries_by_referrer: HashMap<String, AffiliateCommissionSummary>,
-    commission_adjustment_reviews: Vec<AffiliateCommissionAdjustmentReview>,
-    payout_reviews: Vec<AffiliatePayoutReview>,
+    commission_adjustment_reviews:
+        Arc<tokio::sync::Mutex<Vec<AffiliateCommissionAdjustmentReview>>>,
+    payout_reviews: Arc<tokio::sync::Mutex<Vec<AffiliatePayoutReview>>>,
     admin_affiliates: Arc<tokio::sync::Mutex<HashMap<String, AffiliateDetail>>>,
     affiliate_operation_audit_logs: Arc<tokio::sync::Mutex<Vec<AffiliateOperationAuditLog>>>,
     affiliate_denied_operation_audit_logs:
@@ -1065,8 +1097,8 @@ impl InMemoryAffiliateDashboardStore {
             commission_accruals_by_trade: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             commission_payouts_by_txn: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             summaries_by_referrer,
-            commission_adjustment_reviews: Vec::new(),
-            payout_reviews: Vec::new(),
+            commission_adjustment_reviews: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            payout_reviews: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             admin_affiliates: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             affiliate_operation_audit_logs: Arc::new(tokio::sync::Mutex::new(Vec::new())),
             affiliate_denied_operation_audit_logs: Arc::new(tokio::sync::Mutex::new(Vec::new())),
@@ -1080,8 +1112,9 @@ impl InMemoryAffiliateDashboardStore {
         commission_adjustment_reviews: Vec<AffiliateCommissionAdjustmentReview>,
         payout_reviews: Vec<AffiliatePayoutReview>,
     ) -> Self {
-        self.commission_adjustment_reviews = commission_adjustment_reviews;
-        self.payout_reviews = payout_reviews;
+        self.commission_adjustment_reviews =
+            Arc::new(tokio::sync::Mutex::new(commission_adjustment_reviews));
+        self.payout_reviews = Arc::new(tokio::sync::Mutex::new(payout_reviews));
         self
     }
 
@@ -1720,11 +1753,83 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
     async fn list_commission_adjustment_reviews(
         &self,
     ) -> Result<Vec<AffiliateCommissionAdjustmentReview>, ReferralStoreError> {
-        Ok(self.commission_adjustment_reviews.clone())
+        Ok(self
+            .commission_adjustment_reviews
+            .lock()
+            .await
+            .iter()
+            .filter(|review| matches!(review.status.as_str(), "pending" | "reviewing"))
+            .cloned()
+            .collect())
+    }
+
+    async fn review_commission_adjustment(
+        &self,
+        adjustment_id: &str,
+        request: AffiliateReviewDecisionRequest,
+        actor: AdminAffiliateActor,
+    ) -> Result<
+        AffiliateReviewDecisionResponse<AffiliateCommissionAdjustmentReview>,
+        ReferralStoreError,
+    > {
+        let decision = validate_affiliate_review_decision(&request, &actor)?;
+        let audit_correlation_id = audit_correlation_id(
+            "affiliate-commission-adjustment-review",
+            adjustment_id,
+            &actor,
+        );
+        let mut reviews = self.commission_adjustment_reviews.lock().await;
+        let review = reviews
+            .iter_mut()
+            .find(|review| review.id == adjustment_id)
+            .ok_or(ReferralStoreError::NotFound)?;
+        if !matches!(review.status.as_str(), "pending" | "reviewing") {
+            return Err(ReferralStoreError::Invalid(
+                "commission adjustment review is already decided".to_owned(),
+            ));
+        }
+        review.status = decision.to_owned();
+        Ok(AffiliateReviewDecisionResponse {
+            review: review.clone(),
+            audit_correlation_id,
+        })
     }
 
     async fn list_payout_reviews(&self) -> Result<Vec<AffiliatePayoutReview>, ReferralStoreError> {
-        Ok(self.payout_reviews.clone())
+        Ok(self
+            .payout_reviews
+            .lock()
+            .await
+            .iter()
+            .filter(|review| matches!(review.status.as_str(), "pending" | "blocked"))
+            .cloned()
+            .collect())
+    }
+
+    async fn review_payout(
+        &self,
+        payout_id: &str,
+        request: AffiliateReviewDecisionRequest,
+        actor: AdminAffiliateActor,
+    ) -> Result<AffiliateReviewDecisionResponse<AffiliatePayoutReview>, ReferralStoreError> {
+        let decision = validate_affiliate_review_decision(&request, &actor)?;
+        let audit_correlation_id =
+            audit_correlation_id("affiliate-payout-review", payout_id, &actor);
+        let mut reviews = self.payout_reviews.lock().await;
+        let review = reviews
+            .iter_mut()
+            .find(|review| review.id == payout_id)
+            .ok_or(ReferralStoreError::NotFound)?;
+        if !matches!(review.status.as_str(), "pending" | "blocked") {
+            return Err(ReferralStoreError::Invalid(
+                "affiliate payout review is already decided".to_owned(),
+            ));
+        }
+        review.status = decision.to_owned();
+        Ok(AffiliateReviewDecisionResponse {
+            review: review.clone(),
+            audit_correlation_id,
+        })
     }
 
     async fn referral_subject_scope(
@@ -1928,8 +2033,16 @@ where
             get(list_commission_adjustment_reviews::<S>),
         )
         .route(
+            "/internal/admin/affiliate-commission-adjustments/:adjustment_id/review",
+            post(review_commission_adjustment::<S>),
+        )
+        .route(
             "/internal/admin/affiliate-payouts",
             get(list_payout_reviews::<S>),
+        )
+        .route(
+            "/internal/admin/affiliate-payouts/:payout_id/review",
+            post(review_payout::<S>),
         )
         .layer(Extension(Arc::new(scope_auth)))
         .with_state(state)
@@ -2275,6 +2388,46 @@ where
     Ok(Json(reviews))
 }
 
+async fn review_commission_adjustment<S>(
+    State(store): State<Arc<S>>,
+    headers: HeaderMap,
+    Path(adjustment_id): Path<String>,
+    Json(request): Json<AffiliateReviewDecisionRequest>,
+) -> Result<
+    Json<AffiliateReviewDecisionResponse<AffiliateCommissionAdjustmentReview>>,
+    (StatusCode, Json<ApiErrorResponse>),
+>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let actor = admin_actor_from_headers(&headers).map_err(|error| api_error(&error))?;
+    let response = store
+        .review_commission_adjustment(&adjustment_id, request, actor)
+        .await
+        .map_err(|error| api_error(&error))?;
+    Ok(Json(response))
+}
+
+async fn review_payout<S>(
+    State(store): State<Arc<S>>,
+    headers: HeaderMap,
+    Path(payout_id): Path<String>,
+    Json(request): Json<AffiliateReviewDecisionRequest>,
+) -> Result<
+    Json<AffiliateReviewDecisionResponse<AffiliatePayoutReview>>,
+    (StatusCode, Json<ApiErrorResponse>),
+>
+where
+    S: AffiliateDashboardStore + Send + Sync,
+{
+    let actor = admin_actor_from_headers(&headers).map_err(|error| api_error(&error))?;
+    let response = store
+        .review_payout(&payout_id, request, actor)
+        .await
+        .map_err(|error| api_error(&error))?;
+    Ok(Json(response))
+}
+
 fn api_error(error: &ReferralStoreError) -> (StatusCode, Json<ApiErrorResponse>) {
     match error {
         ReferralStoreError::NotFound => (
@@ -2512,6 +2665,29 @@ fn validate_admin_affiliate_mutation(
         ));
     }
     Ok(())
+}
+
+fn validate_affiliate_review_decision(
+    request: &AffiliateReviewDecisionRequest,
+    actor: &AdminAffiliateActor,
+) -> Result<&'static str, ReferralStoreError> {
+    if actor.role != "admin" && actor.role != "manager" {
+        return Err(ReferralStoreError::Forbidden(
+            "only admin or manager can review affiliate queue items".to_owned(),
+        ));
+    }
+    if request.reason.trim().is_empty() {
+        return Err(ReferralStoreError::Invalid(
+            "review reason is required".to_owned(),
+        ));
+    }
+    match request.decision.as_str() {
+        "approved" => Ok("approved"),
+        "rejected" => Ok("rejected"),
+        _ => Err(ReferralStoreError::Invalid(
+            "decision must be approved or rejected".to_owned(),
+        )),
+    }
 }
 
 fn affiliate_in_actor_scope(summary: &AffiliateSummary, actor: &AdminAffiliateActor) -> bool {
@@ -4103,6 +4279,53 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         rows.iter().map(commission_adjustment_from_row).collect()
     }
 
+    async fn review_commission_adjustment(
+        &self,
+        adjustment_id: &str,
+        request: AffiliateReviewDecisionRequest,
+        actor: AdminAffiliateActor,
+    ) -> Result<
+        AffiliateReviewDecisionResponse<AffiliateCommissionAdjustmentReview>,
+        ReferralStoreError,
+    > {
+        let decision = validate_affiliate_review_decision(&request, &actor)?;
+        let audit_correlation_id = audit_correlation_id(
+            "affiliate-commission-adjustment-review",
+            adjustment_id,
+            &actor,
+        );
+        let row = sqlx::query(
+            r"
+            UPDATE affiliate_commission_adjustment_reviews
+            SET status = $2,
+                reviewed_by = $3,
+                reviewed_at = now(),
+                review_reason = $4,
+                audit_correlation_ids = array_append(audit_correlation_ids, $5),
+                updated_at = now()
+            WHERE adjustment_id = $1
+              AND status IN ('pending', 'reviewing')
+            RETURNING adjustment_id, affiliate_id, adjustment_type, amount_minor, currency,
+                      reason, status, requested_by,
+                      to_char(requested_at, 'YYYY-MM-DD HH24:MI') AS requested_at
+            ",
+        )
+        .bind(adjustment_id)
+        .bind(decision)
+        .bind(&actor.actor_id)
+        .bind(request.reason.trim())
+        .bind(&audit_correlation_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(ReferralStoreError::from)?
+        .ok_or(ReferralStoreError::NotFound)?;
+
+        Ok(AffiliateReviewDecisionResponse {
+            review: commission_adjustment_from_row(&row)?,
+            audit_correlation_id,
+        })
+    }
+
     async fn list_payout_reviews(&self) -> Result<Vec<AffiliatePayoutReview>, ReferralStoreError> {
         let rows = sqlx::query(
             r"
@@ -4120,6 +4343,46 @@ impl AffiliateDashboardStore for PostgresAffiliateStore {
         .map_err(ReferralStoreError::from)?;
 
         rows.iter().map(payout_review_from_row).collect()
+    }
+
+    async fn review_payout(
+        &self,
+        payout_id: &str,
+        request: AffiliateReviewDecisionRequest,
+        actor: AdminAffiliateActor,
+    ) -> Result<AffiliateReviewDecisionResponse<AffiliatePayoutReview>, ReferralStoreError> {
+        let decision = validate_affiliate_review_decision(&request, &actor)?;
+        let audit_correlation_id =
+            audit_correlation_id("affiliate-payout-review", payout_id, &actor);
+        let row = sqlx::query(
+            r"
+            UPDATE affiliate_payouts
+            SET status = $2,
+                reviewed_by = $3,
+                reviewed_at = now(),
+                review_reason = $4,
+                audit_correlation_ids = array_append(audit_correlation_ids, $5)
+            WHERE payout_id = $1
+              AND status IN ('pending', 'blocked')
+            RETURNING payout_id, affiliate_id, amount_minor, currency,
+                      to_char(created_at, 'YYYY-MM-DD HH24:MI') AS requested_at,
+                      status
+            ",
+        )
+        .bind(payout_id)
+        .bind(decision)
+        .bind(&actor.actor_id)
+        .bind(request.reason.trim())
+        .bind(&audit_correlation_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(ReferralStoreError::from)?
+        .ok_or(ReferralStoreError::NotFound)?;
+
+        Ok(AffiliateReviewDecisionResponse {
+            review: payout_review_from_row(&row)?,
+            audit_correlation_id,
+        })
     }
 
     async fn referral_subject_scope(

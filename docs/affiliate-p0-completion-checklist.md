@@ -1,10 +1,12 @@
 # Affiliate / Referral P0 Completion Checklist
 
-Last updated: 2026-05-17
+Last updated: 2026-06-30
 
 This checklist maps the P0 completion objective to concrete artifacts, commands,
 and evidence. Treat the P0 objective as incomplete until every row is complete
 and `tools/scripts/check-affiliate-p0-complete.mjs` exits successfully.
+
+Operational unblock steps are tracked in `docs/blocker-register.md`.
 
 ## Success criteria
 
@@ -13,12 +15,13 @@ and `tools/scripts/check-affiliate-p0-complete.mjs` exits successfully.
 | Public signup captures and persists referral attribution through durable login | `docs/evidence/public-signup-referral/latest.json` | JSON markers: `signup_submit_path`, `referral_cookie_submitted`, `registration_endpoint_confirmed`, `durable_login_confirmed`, `referral_capture_confirmed` all `true` | Complete based on existing evidence manifest |
 | Browser WebAuthn/passkey lifecycle works end to end | `docs/evidence/webauthn-passkey/latest.json` | JSON markers: registration, assertion, replay rejection, wrong-origin rejection, unknown credential rejection, revoked credential rejection, fresh MFA session, fresh admin step-up accept, stale admin step-up reject all `true` | Complete based on recorded browser evidence |
 | User service supports WebAuthn credential revocation | `services/user-service/src/auth.rs`, `services/user-service/tests/auth.rs` | Targeted Rust test `rtk cargo test -p user-service --test auth webauthn_credential_revoke_requires_session_and_removes_active_credential --locked` passed earlier | Complete based on targeted test evidence |
-| Admin passkey UI and BFF proxy support register/assert/revoke and session refresh | `apps/admin/components/passkey-security-panel.tsx`, `apps/admin/app/api/auth/passkeys/[action]/route.ts`, `apps/admin/lib/passkey-client.ts`, `apps/admin/tests/passkey-security.test.ts` | `rtk pnpm --filter @prophetica/admin test` and `rtk pnpm --filter @prophetica/admin test:e2e:passkey` passed earlier | Complete based on targeted test evidence |
+| Server-side WebAuthn/passkey APIs support register/assert/revoke and fresh MFA session claims | `services/user-service/src/auth.rs`, `services/user-service/src/webauthn_runtime.rs`, `services/user-service/src/webauthn_store.rs`, `services/user-service/tests/auth.rs`, `docs/evidence/webauthn-passkey/latest.json` | Targeted user-service auth/WebAuthn tests passed earlier; recorded browser evidence proves registration, assertion, replay rejection, wrong-origin rejection, unknown credential rejection, revoked credential rejection, and fresh admin step-up markers | Complete based on service-side tests and recorded browser evidence |
+| Admin affiliate review decisions complete the commission-adjustment and payout review flow | `apps/admin/tests/e2e/affiliate-review.spec.ts`, `tools/scripts/check-affiliate-p0-complete.test.mjs` | `rtk pnpm --filter @prophetica/admin test:e2e tests/e2e/affiliate-review.spec.ts`: 2 passed, covering admin approve, manager reject, and read-only rows after decision through signed gateway calls; `rtk node --test tools/scripts/check-affiliate-p0-complete.test.mjs`: 4 passed, proving the global gate requires the E2E evidence id and restores the blocked manifest when external evidence is missing | Complete based on targeted browser and gate evidence |
 | Cloudflare Access policy exists structurally for public login/affiliate routes and protected internal admin routes | `infra/cloudflare/zero-trust/admin-access.tf`, `tools/scripts/validate-cloudflare-admin-access.mjs` | `rtk node tools/scripts/validate-cloudflare-admin-access.mjs` passed 9 checks earlier | Structurally complete |
-| Cloudflare Access policy has been applied to the real target account | `docs/evidence/cloudflare-admin-access/latest.json` | `plan_log` and `apply_log` each contain a 64-character SHA-256, positive byte count, and non-empty success summary from real Terraform/OpenTofu logs | Blocked: target-account evidence missing |
+| Cloudflare Access policy has been applied to the real target account | `docs/evidence/cloudflare-admin-access/latest.json` | `target_account` contains hashed account/domain review metadata; `plan_log` and `apply_log` each contain a 64-character SHA-256, positive byte count, and non-empty success summary from real Terraform/OpenTofu logs | Blocked: target-account evidence missing |
 | Cloudflare target environment is ready before apply | `tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply` | Command exits successfully in the target environment with `terraform` or `tofu` and required Cloudflare variables present | Blocked in this environment |
-| Cloudflare apply logs are captured and recorded through the approved path | `tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply`, `tools/scripts/record-cloudflare-admin-access-evidence.mjs` | Wrapper completes, recorder writes `docs/evidence/cloudflare-admin-access/latest.json` and rejects failed or malformed logs | Blocked until target-account apply |
-| Global P0 gate accepts the current state | `tools/scripts/check-affiliate-p0-complete.mjs` | Command exits successfully and reports complete manifest evidence count | Blocked by Cloudflare apply evidence |
+| Cloudflare apply logs are captured and recorded through the approved path | `tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply`, `tools/scripts/record-cloudflare-admin-access-evidence.mjs` | Wrapper completes, recorder writes `docs/evidence/cloudflare-admin-access/latest.json`, rejects failed or malformed logs, and records non-secret target metadata without storing the API token or breakglass email plaintext | Blocked until target-account apply |
+| Global P0 gate accepts the current state | `tools/scripts/finalize-affiliate-p0-complete.mjs`, `tools/scripts/check-affiliate-p0-complete.mjs` | Finalizer updates the manifest only when the checker passes; checker exits successfully and reports complete manifest evidence count | Blocked by Cloudflare apply evidence |
 
 ## Final declaration procedure
 
@@ -28,10 +31,10 @@ Run the Cloudflare sequence in the target account environment:
 rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply
 rtk node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply
 rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs
+rtk node tools/scripts/finalize-affiliate-p0-complete.mjs
 rtk node tools/scripts/check-affiliate-p0-complete.mjs
 ```
 
-Only after the global P0 gate succeeds should
-`docs/affiliate-p0-evidence-manifest.json` be changed to `status: "complete"`
-with no `blocking_items`, followed by another successful
-`rtk node tools/scripts/check-affiliate-p0-complete.mjs`.
+Do not edit `docs/affiliate-p0-evidence-manifest.json` to complete by hand.
+`finalize-affiliate-p0-complete.mjs` writes the completion candidate and restores
+the blocked manifest if any required evidence is still missing or malformed.

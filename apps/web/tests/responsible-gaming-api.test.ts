@@ -8,7 +8,23 @@ import {
   type CooldownDuration,
 } from "../lib/responsible-gaming-api.js";
 
-test("fetchCooldownStatus calls api-gateway cooldown endpoint with transition x-user-id fallback", async () => {
+test("fetchCooldownStatus returns fallback without bearer auth", async () => {
+  let called = false;
+  const status = await fetchCooldownStatus({
+    baseUrl: "http://api.local",
+    userId: "user_42",
+    fetcher: async (): Promise<Response> => {
+      called = true;
+      return Response.json({});
+    },
+  });
+
+  assert.equal(called, false);
+  assert.equal(status.source, "fallback:api-gateway-unavailable");
+  assert.equal(status.userId, "user_42");
+});
+
+test("fetchCooldownStatus calls api-gateway cooldown endpoint with bearer auth", async () => {
   const calls: Array<{ url: string; headers: Record<string, string> }> = [];
   const fetcher = async (
     input: string | URL,
@@ -33,7 +49,7 @@ test("fetchCooldownStatus calls api-gateway cooldown endpoint with transition x-
   const status = await fetchCooldownStatus({
     baseUrl: "http://api.local",
     userId: "user_42",
-    allowUserIdFallback: true,
+    bearerToken: "jwt-user-service",
     fetcher,
   });
 
@@ -41,8 +57,8 @@ test("fetchCooldownStatus calls api-gateway cooldown endpoint with transition x-
     calls[0]?.url,
     "http://api.local/v1/me/responsible-gaming/cooldown",
   );
-  assert.equal(calls[0]?.headers["x-user-id"], "user_42");
-  assert.equal(calls[0]?.headers["x-transition-caller"], "apps-web-dev-bff");
+  assert.equal(calls[0]?.headers.authorization, "Bearer jwt-user-service");
+  assert.equal(calls[0]?.headers["x-user-id"], undefined);
   assert.equal(status.userId, "user_42");
   assert.equal(status.active, true);
   assert.equal(status.duration, "24h");
@@ -124,7 +140,7 @@ test("startCooldown posts selected duration and consent to api-gateway", async (
     {
       baseUrl: "http://api.local",
       userId: "user_42",
-      allowUserIdFallback: true,
+      bearerToken: "jwt-user-service",
       fetcher,
     },
   );
@@ -167,7 +183,7 @@ test("fetchCooldownStatus returns inactive fallback when api-gateway is unavaila
   const status = await fetchCooldownStatus({
     baseUrl: "http://api.local",
     userId: "user_42",
-    allowUserIdFallback: true,
+    bearerToken: "jwt-user-service",
     fetcher: async () => {
       throw new Error("connection refused");
     },

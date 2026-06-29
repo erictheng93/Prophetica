@@ -22,7 +22,9 @@ test("default fetcher attaches traceparent header on outgoing requests", async (
         cache: "no-store",
         headers: {
           accept: "application/json",
-          "x-user-id": auth?.userId ?? "",
+          ...(auth?.bearerToken
+            ? { authorization: `Bearer ${auth.bearerToken}` }
+            : {}),
         },
       });
       const balance = (await res.json()) as {
@@ -67,7 +69,7 @@ test("default fetcher attaches traceparent header on outgoing requests", async (
     await fetchWalletOverview({
       baseUrl: "http://api.local",
       userId: "user_99",
-      allowUserIdFallback: true,
+      bearerToken: "jwt-user-service",
       walletClientFactory: intercepting,
     });
   } finally {

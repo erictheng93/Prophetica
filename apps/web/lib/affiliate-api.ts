@@ -2,8 +2,8 @@
 //
 // Hits the api-gateway public route added in services/api-gateway/src/lib.rs:
 //   GET /v1/account/affiliate?limit=N
-// Prefer the user-service bearer session for gateway auth. x-user-id remains
-// only as a transitional fallback for local callers that have not migrated.
+// Uses the user-service bearer session for gateway auth. Missing bearer
+// credentials render a safe empty dashboard instead of falling back to x-user-id.
 //
 // Falls back to an empty dashboard when the gateway is unavailable so the
 // page can still render its disclaimers and CTAs.
@@ -12,8 +12,6 @@ const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
 const DEFAULT_DEV_USER_ID = "user_01";
 const DEFAULT_REFERRAL_LIMIT = 25;
 const POINTS_PER_TWD = 100; // SPEC-002 §3.1: 1 點 = TWD 1; 100 minor units = 1 點.
-const TRANSITION_CALLER_HEADER = "x-transition-caller";
-const APPS_WEB_DEV_BFF_TRANSITION_CALLER = "apps-web-dev-bff";
 
 export type AffiliateReferralStatus =
   | "pending"
@@ -84,7 +82,6 @@ export interface FetchAffiliateDashboardOptions {
   baseUrl?: string;
   userId?: string;
   bearerToken?: string;
-  allowUserIdFallback?: boolean;
   fetcher?: Fetcher;
   limit?: number;
 }
@@ -136,7 +133,6 @@ export async function fetchAffiliateDashboard({
   baseUrl = process.env.API_GATEWAY_BASE_URL ?? DEFAULT_API_GATEWAY_BASE_URL,
   userId = process.env.PROPHETICA_DEV_USER_ID ?? DEFAULT_DEV_USER_ID,
   bearerToken,
-  allowUserIdFallback,
   fetcher = fetch,
   limit = DEFAULT_REFERRAL_LIMIT,
 }: FetchAffiliateDashboardOptions = {}): Promise<AffiliateDashboard> {
@@ -144,18 +140,13 @@ export async function fetchAffiliateDashboard({
     `/v1/account/affiliate?limit=${limit}`,
     trimTrailingSlash(baseUrl) + "/",
   );
-  if (!bearerToken && !allowUserIdFallback) {
+  if (!bearerToken) {
     return emptyDashboard(userId, "fallback:api-gateway-unavailable");
   }
 
   try {
     const headers = new Headers({ accept: "application/json" });
-    if (bearerToken) {
-      headers.set("authorization", `Bearer ${bearerToken}`);
-    } else {
-      headers.set("x-user-id", userId);
-      headers.set(TRANSITION_CALLER_HEADER, APPS_WEB_DEV_BFF_TRANSITION_CALLER);
-    }
+    headers.set("authorization", `Bearer ${bearerToken}`);
     const response = await fetcher(url, {
       cache: "no-store",
       headers,

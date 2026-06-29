@@ -115,68 +115,7 @@ pub struct XUserIdTransitionAllowlistEntry {
     pub expires_on: &'static str,
 }
 
-pub const X_USER_ID_TRANSITION_ALLOWLIST: &[XUserIdTransitionAllowlistEntry] = &[
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "GET",
-        path_pattern: "/v1/me/wallet/balance",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "GET",
-        path_pattern: "/v1/ledger/entries",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "POST",
-        path_pattern: "/v1/markets/:market_id/orders",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "GET",
-        path_pattern: "/v1/account/affiliate",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "GET",
-        path_pattern: "/v1/account/affiliate/referrals",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "GET",
-        path_pattern: "/v1/account/affiliate/commission-summary",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "GET",
-        path_pattern: "/v1/me/responsible-gaming/cooldown",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "POST",
-        path_pattern: "/v1/me/responsible-gaming/cooldown",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "GET",
-        path_pattern: "/v1/responsible-gaming/self-exclusion",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-    XUserIdTransitionAllowlistEntry {
-        caller: X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        method: "POST",
-        path_pattern: "/v1/responsible-gaming/self-exclusion",
-        expires_on: X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-    },
-];
+pub const X_USER_ID_TRANSITION_ALLOWLIST: &[XUserIdTransitionAllowlistEntry] = &[];
 
 fn gateway_auth_validation_failed_total() -> &'static IntCounterVec {
     static COUNTER: OnceLock<IntCounterVec> = OnceLock::new();
@@ -1461,7 +1400,21 @@ pub trait ReferralClient {
 
     async fn list_commission_adjustment_reviews(&self) -> Result<serde_json::Value, ApiError>;
 
+    async fn review_commission_adjustment(
+        &self,
+        adjustment_id: &str,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError>;
+
     async fn list_affiliate_payout_reviews(&self) -> Result<serde_json::Value, ApiError>;
+
+    async fn review_affiliate_payout(
+        &self,
+        payout_id: &str,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError>;
 }
 
 #[async_trait]
@@ -3040,6 +2993,33 @@ impl ReferralClient for HttpReferralClient {
             .map_err(|error| ApiError::referral_service(error.to_string()))
     }
 
+    async fn review_commission_adjustment(
+        &self,
+        adjustment_id: &str,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!(
+                "/internal/admin/affiliate-commission-adjustments/{}/review",
+                url_encode_path_segment(adjustment_id)
+            ))
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .post(url)
+            .headers(admin_proxy_headers(context)?)
+            .json(&request)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
+
     async fn list_affiliate_payout_reviews(&self) -> Result<serde_json::Value, ApiError> {
         let url = self
             .base_url
@@ -3047,6 +3027,33 @@ impl ReferralClient for HttpReferralClient {
             .map_err(|error| ApiError::referral_service(error.to_string()))?;
         self.client
             .get(url)
+            .send()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .error_for_status()
+            .map_err(|error| ApiError::referral_service(error.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|error| ApiError::referral_service(error.to_string()))
+    }
+
+    async fn review_affiliate_payout(
+        &self,
+        payout_id: &str,
+        request: serde_json::Value,
+        context: AdminProxyContext,
+    ) -> Result<serde_json::Value, ApiError> {
+        let url = self
+            .base_url
+            .join(&format!(
+                "/internal/admin/affiliate-payouts/{}/review",
+                url_encode_path_segment(payout_id)
+            ))
+            .map_err(|error| ApiError::referral_service(error.to_string()))?;
+        self.client
+            .post(url)
+            .headers(admin_proxy_headers(context)?)
+            .json(&request)
             .send()
             .await
             .map_err(|error| ApiError::referral_service(error.to_string()))?
@@ -3306,6 +3313,10 @@ fn admin_proxy_headers(context: AdminProxyContext) -> Result<reqwest::header::He
         );
     }
     Ok(headers)
+}
+
+fn url_encode_path_segment(value: &str) -> String {
+    value.replace('/', "%2F")
 }
 
 impl IdempotencyStore {
@@ -4160,8 +4171,16 @@ where
             get(list_commission_adjustment_reviews::<W, E, R, K>),
         )
         .route(
+            "/api/internal/admin/affiliate-commission-adjustments/:adjustment_id/review",
+            post(review_commission_adjustment::<W, E, R, K>),
+        )
+        .route(
             "/api/internal/admin/affiliate-payouts",
             get(list_affiliate_payout_reviews::<W, E, R, K>),
+        )
+        .route(
+            "/api/internal/admin/affiliate-payouts/:payout_id/review",
+            post(review_affiliate_payout::<W, E, R, K>),
         )
         .route_layer(middleware::from_fn(verify_admin_proxy_internal_call))
         .with_state(state.clone());
@@ -6094,6 +6113,46 @@ where
     Ok(Json(reviews))
 }
 
+async fn review_commission_adjustment<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
+    headers: HeaderMap,
+    Path(adjustment_id): Path<String>,
+    Json(request): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
+{
+    let context = admin_proxy_context(&headers)?;
+    let response = state
+        .referral
+        .review_commission_adjustment(&adjustment_id, request, context)
+        .await?;
+    Ok(Json(response))
+}
+
+async fn review_affiliate_payout<W, E, R, K>(
+    State(state): State<Arc<AppStateWithServices<W, E, R, K>>>,
+    headers: HeaderMap,
+    Path(payout_id): Path<String>,
+    Json(request): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError>
+where
+    W: WalletLedgerClient + Send + Sync,
+    E: MatchingEngineClient + Send + Sync,
+    R: ReferralClient + Send + Sync,
+    K: KycTierClient + Send + Sync,
+{
+    let context = admin_proxy_context(&headers)?;
+    let response = state
+        .referral
+        .review_affiliate_payout(&payout_id, request, context)
+        .await?;
+    Ok(Json(response))
+}
+
 struct ApiGatewayDurabilitySetup {
     order_owners: Arc<dyn OrderOwnerRepository>,
     trade_sagas: Arc<dyn TradeFillSagaStore>,
@@ -7633,6 +7692,170 @@ mod tests {
         assert!(metrics.contains(r#"reason="missing_bearer""#));
     }
 
+    #[tokio::test]
+    async fn strict_auth_rejects_order_transition_user_id_fallback() {
+        let engine = InMemoryMatchingEngineClient::default();
+        let app = router_with_engine(InMemoryWalletLedgerClient::default(), engine.clone())
+            .layer(test_auth_extension());
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/markets/mkt-election/orders")
+                    .header("x-user-id", "dev_user")
+                    .header(
+                        "x-transition-caller",
+                        X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                    )
+                    .header("idempotency-key", "idem-order-transition-fallback")
+                    .header("content-type", "application/json")
+                    .body(Body::from(order_request_body(3).to_string()))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(engine.place_requests(), Vec::new());
+    }
+
+    #[tokio::test]
+    async fn strict_auth_rejects_affiliate_transition_user_id_fallback() {
+        let referral = InMemoryReferralClient::default();
+        let app = router_with_services(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            referral.clone(),
+        )
+        .layer(test_auth_extension());
+
+        for uri in [
+            "/v1/account/affiliate?limit=10",
+            "/v1/account/affiliate/referrals?limit=10",
+            "/v1/account/affiliate/commission-summary",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("GET")
+                        .uri(uri)
+                        .header("x-user-id", "user_referrer")
+                        .header(
+                            "x-transition-caller",
+                            X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                        )
+                        .body(Body::empty())
+                        .unwrap_or_else(|error| panic!("request should build: {error}")),
+                )
+                .await
+                .expect("request should be handled");
+
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{uri}");
+        }
+
+        assert_eq!(referral.dashboard_requests(), Vec::new());
+        assert_eq!(referral.referral_requests(), Vec::new());
+        assert_eq!(referral.summary_requests(), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn strict_auth_rejects_responsible_gaming_transition_user_id_fallback() {
+        let app = router_with_services(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            InMemoryReferralClient::default(),
+        )
+        .merge(super::responsible_gaming::cooldown_router(
+            super::responsible_gaming::InMemoryCooldownStore::default(),
+            super::responsible_gaming::ResponsibleGamingClock::system(),
+        ))
+        .layer(test_auth_extension());
+
+        for (method, uri, body) in [
+            ("GET", "/v1/me/responsible-gaming/cooldown", None),
+            (
+                "POST",
+                "/v1/me/responsible-gaming/cooldown",
+                Some(json!({ "duration": "24h", "consent": true })),
+            ),
+            ("GET", "/v1/responsible-gaming/self-exclusion", None),
+            (
+                "POST",
+                "/v1/responsible-gaming/self-exclusion",
+                Some(json!({
+                    "mode": "timeout",
+                    "period": "six_months",
+                    "consent": true
+                })),
+            ),
+        ] {
+            let mut builder = Request::builder()
+                .method(method)
+                .uri(uri)
+                .header("x-user-id", "user_42")
+                .header(
+                    "x-transition-caller",
+                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                );
+            let request_body = if let Some(body) = body {
+                builder = builder.header("content-type", "application/json");
+                Body::from(body.to_string())
+            } else {
+                Body::empty()
+            };
+            let response = app
+                .clone()
+                .oneshot(
+                    builder
+                        .body(request_body)
+                        .unwrap_or_else(|error| panic!("request should build: {error}")),
+                )
+                .await
+                .expect("request should be handled");
+
+            assert_eq!(
+                response.status(),
+                StatusCode::UNAUTHORIZED,
+                "{method} {uri}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn strict_auth_rejects_wallet_ledger_transition_user_id_fallback() {
+        let wallet = InMemoryWalletLedgerClient::default();
+        let app = router(wallet.clone()).layer(test_auth_extension());
+
+        for uri in [
+            "/v1/me/wallet/balance",
+            "/v1/ledger/entries?account_code=Player.Wallet.user_42&limit=25",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("GET")
+                        .uri(uri)
+                        .header("x-user-id", "user_42")
+                        .header(
+                            "x-transition-caller",
+                            X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+                        )
+                        .body(Body::empty())
+                        .unwrap_or_else(|error| panic!("request should build: {error}")),
+                )
+                .await
+                .expect("request should be handled");
+
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{uri}");
+        }
+
+        assert_eq!(wallet.requested_user_ids(), Vec::<String>::new());
+        assert_eq!(wallet.entry_requests(), Vec::<(String, i64)>::new());
+    }
+
     #[test]
     fn x_user_id_transition_allowlist_is_explicit_and_time_limited() {
         let actual = X_USER_ID_TRANSITION_ALLOWLIST
@@ -7647,71 +7870,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            actual,
-            vec![
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "GET",
-                    "/v1/me/wallet/balance",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "GET",
-                    "/v1/ledger/entries",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "POST",
-                    "/v1/markets/:market_id/orders",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "GET",
-                    "/v1/account/affiliate",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "GET",
-                    "/v1/account/affiliate/referrals",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "GET",
-                    "/v1/account/affiliate/commission-summary",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "GET",
-                    "/v1/me/responsible-gaming/cooldown",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "POST",
-                    "/v1/me/responsible-gaming/cooldown",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "GET",
-                    "/v1/responsible-gaming/self-exclusion",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-                (
-                    X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-                    "POST",
-                    "/v1/responsible-gaming/self-exclusion",
-                    X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-                ),
-            ]
-        );
+        assert_eq!(actual, Vec::<(&str, &str, &str, &str)>::new());
         assert!(actual.iter().all(|(_, _, path, expires_on)| {
             !path.contains('*') && *expires_on <= "2026-08-31"
         }));
@@ -7719,13 +7878,23 @@ mod tests {
 
     #[test]
     fn x_user_id_transition_allowlist_matches_only_named_caller_routes() {
-        assert!(super::x_user_id_transition_fallback_allowed_for(
-            X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-            "POST",
-            "/v1/markets/mkt-election/orders",
-        ));
         assert!(!super::x_user_id_transition_fallback_allowed_for(
             "unknown-caller",
+            "GET",
+            "/v1/me/wallet/balance",
+        ));
+        assert!(!super::x_user_id_transition_fallback_allowed_for(
+            X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+            "GET",
+            "/v1/me/wallet/balance",
+        ));
+        assert!(!super::x_user_id_transition_fallback_allowed_for(
+            X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+            "GET",
+            "/v1/ledger/entries",
+        ));
+        assert!(!super::x_user_id_transition_fallback_allowed_for(
+            X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
             "POST",
             "/v1/markets/mkt-election/orders",
         ));
@@ -8031,6 +8200,48 @@ mod tests {
         let body = response_json(payout_reviews).await;
         assert_eq!(body[0]["id"], json!("PAY-2026-0514-001"));
         assert_eq!(body[0]["status"], json!("pending"));
+    }
+
+    #[tokio::test]
+    async fn affiliate_admin_review_decisions_proxy_referral_service() {
+        let app = router_with_services(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            InMemoryReferralClient::default(),
+        );
+
+        let approved_adjustment = app
+            .clone()
+            .oneshot(admin_json_request(
+                "POST",
+                "/api/internal/admin/affiliate-commission-adjustments/COM-2026-0514-001/review",
+                &json!({
+                    "decision": "approved",
+                    "reason": "invoice reconciled"
+                }),
+            ))
+            .await
+            .expect("request should be handled");
+        assert_eq!(approved_adjustment.status(), StatusCode::OK);
+        let body = response_json(approved_adjustment).await;
+        assert_eq!(body["review"]["id"], json!("COM-2026-0514-001"));
+        assert_eq!(body["review"]["status"], json!("approved"));
+
+        let rejected_payout = app
+            .oneshot(admin_json_request(
+                "POST",
+                "/api/internal/admin/affiliate-payouts/PAY-2026-0514-001/review",
+                &json!({
+                    "decision": "rejected",
+                    "reason": "bank verification failed"
+                }),
+            ))
+            .await
+            .expect("request should be handled");
+        assert_eq!(rejected_payout.status(), StatusCode::OK);
+        let body = response_json(rejected_payout).await;
+        assert_eq!(body["review"]["id"], json!("PAY-2026-0514-001"));
+        assert_eq!(body["review"]["status"], json!("rejected"));
     }
 
     #[tokio::test]
@@ -9583,6 +9794,21 @@ mod tests {
             }]))
         }
 
+        async fn review_commission_adjustment(
+            &self,
+            adjustment_id: &str,
+            request: serde_json::Value,
+            context: AdminProxyContext,
+        ) -> Result<serde_json::Value, ApiError> {
+            Ok(serde_json::json!({
+                "review": {
+                    "id": adjustment_id,
+                    "status": request["decision"]
+                },
+                "auditCorrelationId": format!("audit:affiliate-commission-adjustment-review:{adjustment_id}:{}", context.actor_id)
+            }))
+        }
+
         async fn list_affiliate_payout_reviews(&self) -> Result<serde_json::Value, ApiError> {
             Ok(serde_json::json!([{
                 "id": "PAY-2026-0514-001",
@@ -9592,6 +9818,21 @@ mod tests {
                 "requestedAt": "2026-05-14 10:05",
                 "status": "pending"
             }]))
+        }
+
+        async fn review_affiliate_payout(
+            &self,
+            payout_id: &str,
+            request: serde_json::Value,
+            context: AdminProxyContext,
+        ) -> Result<serde_json::Value, ApiError> {
+            Ok(serde_json::json!({
+                "review": {
+                    "id": payout_id,
+                    "status": request["decision"]
+                },
+                "auditCorrelationId": format!("audit:affiliate-payout-review:{payout_id}:{}", context.actor_id)
+            }))
         }
     }
 

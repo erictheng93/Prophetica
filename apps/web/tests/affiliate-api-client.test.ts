@@ -33,24 +33,39 @@ const apiDashboard = {
   ],
 };
 
-test("fetchAffiliateDashboard hits api-gateway with transition x-user-id fallback and maps minor units to points", async () => {
+test("fetchAffiliateDashboard returns a safe dashboard without bearer auth", async () => {
+  let called = false;
+  const dashboard = await fetchAffiliateDashboard({
+    baseUrl: "http://gateway.local",
+    userId: "user_01",
+    limit: 10,
+    fetcher: async (): Promise<Response> => {
+      called = true;
+      return Response.json(apiDashboard);
+    },
+  });
+
+  assert.equal(called, false);
+  assert.equal(dashboard.source, "fallback:api-gateway-unavailable");
+  assert.equal(dashboard.userId, "user_01");
+});
+
+test("fetchAffiliateDashboard hits api-gateway with bearer auth and maps minor units to points", async () => {
   const calls: {
     url: string;
-    userIdHeader: string | undefined;
-    transitionCallerHeader: string | undefined;
+    authorization: string | undefined;
   }[] = [];
 
   const dashboard = await fetchAffiliateDashboard({
     baseUrl: "http://gateway.local",
     userId: "user_01",
-    allowUserIdFallback: true,
+    bearerToken: "jwt-user-service",
     limit: 10,
     fetcher: async (input, init): Promise<Response> => {
       const headers = new Headers(init?.headers);
       calls.push({
         url: String(input),
-        userIdHeader: headers.get("x-user-id") ?? undefined,
-        transitionCallerHeader: headers.get("x-transition-caller") ?? undefined,
+        authorization: headers.get("authorization") ?? undefined,
       });
       return Response.json(apiDashboard);
     },
@@ -60,8 +75,7 @@ test("fetchAffiliateDashboard hits api-gateway with transition x-user-id fallbac
     calls[0]?.url,
     "http://gateway.local/v1/account/affiliate?limit=10",
   );
-  assert.equal(calls[0]?.userIdHeader, "user_01");
-  assert.equal(calls[0]?.transitionCallerHeader, "apps-web-dev-bff");
+  assert.equal(calls[0]?.authorization, "Bearer jwt-user-service");
   assert.equal(dashboard.source, "api-gateway");
   assert.equal(dashboard.referralCode, "a3f9c12be801_X9PK");
   assert.equal(dashboard.shareUrl, "https://proph.net/?ref=a3f9c12be801_X9PK");
@@ -116,7 +130,7 @@ test("fetchAffiliateDashboard returns empty dashboard when api-gateway is unavai
   const dashboard = await fetchAffiliateDashboard({
     baseUrl: "http://gateway.local",
     userId: "user_01",
-    allowUserIdFallback: true,
+    bearerToken: "jwt-user-service",
     fetcher: async () => {
       throw new Error("connection refused");
     },
@@ -132,7 +146,7 @@ test("fetchAffiliateDashboard returns empty dashboard when affiliate data is not
   const dashboard = await fetchAffiliateDashboard({
     baseUrl: "http://gateway.local",
     userId: "user_99",
-    allowUserIdFallback: true,
+    bearerToken: "jwt-user-service",
     fetcher: async () =>
       new Response(
         JSON.stringify({ error: "affiliate_not_found", message: "no data" }),
@@ -147,7 +161,7 @@ test("fetchAffiliateDashboard returns empty dashboard when affiliate data is not
 test("fetchAffiliateDashboard normalizes unknown statuses to pending", async () => {
   const dashboard = await fetchAffiliateDashboard({
     baseUrl: "http://gateway.local",
-    allowUserIdFallback: true,
+    bearerToken: "jwt-user-service",
     fetcher: async () =>
       Response.json({
         ...apiDashboard,

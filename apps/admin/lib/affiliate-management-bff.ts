@@ -2,9 +2,6 @@ import { cache } from "react";
 import { signInternalCall } from "./internal-call.js";
 import type { SessionPayload } from "./session-crypto.js";
 import {
-  allowsAffiliateMockFallback,
-  getAffiliateDetail,
-  getAffiliatesSnapshot,
   type AffiliateMutationPayload,
   type AffiliateMutationResponse,
   type AffiliateDetail,
@@ -20,7 +17,7 @@ export async function fetchAdminAffiliateList(
     adminPath: "/api/internal/admin/affiliates",
   });
   if (response?.ok) return (await response.json()) as AffiliateSummary[];
-  return allowsAffiliateMockFallback() ? getAffiliatesSnapshot() : [];
+  return [];
 }
 
 export async function fetchAdminAffiliateDetail(
@@ -33,9 +30,7 @@ export async function fetchAdminAffiliateDetail(
     adminPath: `/api/internal/admin/affiliates/${encodeURIComponent(affiliateId)}`,
   });
   if (response?.ok) return (await response.json()) as AffiliateDetail;
-  return allowsAffiliateMockFallback()
-    ? (getAffiliateDetail(affiliateId) ?? null)
-    : null;
+  return null;
 }
 
 export async function createAdminAffiliate(
@@ -144,20 +139,56 @@ export async function fetchAffiliatePayoutReviews(
   return (await response.json()) as AffiliatePayoutReview[];
 }
 
+export async function reviewAffiliateCommissionAdjustment(
+  viewer: SessionPayload,
+  reviewId: string,
+  payload: AffiliateReviewDecisionPayload,
+): Promise<AffiliateReviewDecisionResponse<AffiliateCommissionAdjustmentReview> | null> {
+  if (viewer.role !== "admin" && viewer.role !== "manager") return null;
+  const response = await proxyAffiliateGatewayRequest(viewer, {
+    method: "POST",
+    adminPath: `/api/internal/admin/affiliate-commission-adjustments/${encodeURIComponent(reviewId)}/review`,
+    body: JSON.stringify(payload),
+  });
+  if (!response?.ok) return null;
+  return (await response.json()) as AffiliateReviewDecisionResponse<AffiliateCommissionAdjustmentReview>;
+}
+
+export async function reviewAffiliatePayout(
+  viewer: SessionPayload,
+  reviewId: string,
+  payload: AffiliateReviewDecisionPayload,
+): Promise<AffiliateReviewDecisionResponse<AffiliatePayoutReview> | null> {
+  if (viewer.role !== "admin" && viewer.role !== "manager") return null;
+  const response = await proxyAffiliateGatewayRequest(viewer, {
+    method: "POST",
+    adminPath: `/api/internal/admin/affiliate-payouts/${encodeURIComponent(reviewId)}/review`,
+    body: JSON.stringify(payload),
+  });
+  if (!response?.ok) return null;
+  return (await response.json()) as AffiliateReviewDecisionResponse<AffiliatePayoutReview>;
+}
+
 export async function fetchAffiliateDashboard(
   viewer: SessionPayload,
+  bearerToken?: string | null,
 ): Promise<AffiliatePortalDashboard | null> {
-  return fetchAffiliateDashboardForViewer(viewer.sub, viewer.role);
+  return fetchAffiliateDashboardForViewer(
+    viewer.sub,
+    viewer.role,
+    bearerToken ?? null,
+  );
 }
 
 const fetchAffiliateDashboardForViewer = cache(
   async function fetchAffiliateDashboardForViewer(
     sub: string,
     role: SessionPayload["role"],
+    bearerToken: string | null,
   ): Promise<AffiliatePortalDashboard | null> {
-    if (role !== "affiliate") return null;
+    if (role !== "affiliate" || !bearerToken) return null;
     const response = await proxyAccountGatewayRequest(
-      sub,
+      bearerToken,
       "/v1/account/affiliate?limit=200",
     );
     if (!response?.ok) return null;
@@ -190,7 +221,9 @@ async function proxyAffiliateGatewayRequest(
     headers: {
       ...headers,
       "x-request-id": crypto.randomUUID(),
-      ...(input.idempotencyKey ? { "idempotency-key": input.idempotencyKey } : {}),
+      ...(input.idempotencyKey
+        ? { "idempotency-key": input.idempotencyKey }
+        : {}),
       ...(body ? { "content-type": "application/json" } : {}),
     },
     body: body || undefined,
@@ -228,7 +261,7 @@ function affiliateAccountSagaPayload(
 }
 
 async function proxyAccountGatewayRequest(
-  sub: string,
+  bearerToken: string,
   path: string,
 ): Promise<Response | null> {
   const gatewayUrl = process.env.API_GATEWAY_URL;
@@ -236,7 +269,7 @@ async function proxyAccountGatewayRequest(
   return fetch(new URL(path, gatewayUrl), {
     method: "GET",
     headers: {
-      "x-user-id": sub,
+      authorization: `Bearer ${bearerToken}`,
       "x-request-id": crypto.randomUUID(),
     },
     cache: "no-store",
@@ -283,6 +316,16 @@ export interface AffiliatePayoutReview {
   currency: "USDT";
   requestedAt: string;
   status: string;
+}
+
+export interface AffiliateReviewDecisionPayload {
+  decision: "approved" | "rejected";
+  reason: string;
+}
+
+export interface AffiliateReviewDecisionResponse<TReview> {
+  review: TReview;
+  auditCorrelationId: string;
 }
 
 interface AffiliateAccountCreatePayload {

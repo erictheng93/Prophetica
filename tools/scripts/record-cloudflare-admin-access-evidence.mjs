@@ -27,6 +27,7 @@ const evidence = {
   scope: "Cloudflare Zero Trust admin Access policy",
   expected_policy: "infra/cloudflare/zero-trust/admin-access.tf",
   structural_verifier: "tools/scripts/validate-cloudflare-admin-access.mjs",
+  target_account: targetAccountEvidence(process.env),
   plan_log: {
     file: basename(planLogPath),
     sha256: sha256(planLog),
@@ -51,6 +52,42 @@ console.log(`Cloudflare admin Access evidence recorded: ${resolve(evidenceDir, "
 
 function sha256(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
+}
+
+function sha256Text(value) {
+  return sha256(Buffer.from(value, "utf8"));
+}
+
+function targetAccountEvidence(env) {
+  const accountId = requiredEnv(env, "CLOUDFLARE_ACCOUNT_ID");
+  requiredEnv(env, "CLOUDFLARE_API_TOKEN");
+  const adminAppDomain = requiredEnv(env, "TF_VAR_admin_app_domain");
+  const allowedEmailDomains = requiredEnv(
+    env,
+    "TF_VAR_admin_allowed_email_domains",
+  );
+  const breakglassEmail = requiredEnv(env, "TF_VAR_admin_breakglass_email");
+  const internalServiceTokenName = requiredEnv(
+    env,
+    "TF_VAR_internal_service_token_name",
+  );
+
+  return {
+    account_id_sha256: sha256Text(accountId),
+    account_id_suffix: accountId.slice(-6),
+    admin_app_domain: adminAppDomain,
+    allowed_email_domains_sha256: sha256Text(allowedEmailDomains),
+    breakglass_email_sha256: sha256Text(breakglassEmail),
+    internal_service_token_name: internalServiceTokenName,
+  };
+}
+
+function requiredEnv(env, name) {
+  const value = env[name];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    fail(`Required target-account environment variable is missing: ${name}`);
+  }
+  return value.trim();
 }
 
 function validatePlanLog(buffer) {

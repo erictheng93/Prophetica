@@ -36,7 +36,8 @@ test("getJourneyState derives authenticated state from server viewer session", (
     source,
     /balanceMinor: pointsToMinorUnits\(walletOverview\.balance\.availablePoints\)/,
   );
-  assert.match(source, /allowUserIdFallback: devBffFallbackEnabled\(\)/);
+  assert.doesNotMatch(source, /devBffFallbackEnabled/);
+  assert.doesNotMatch(source, /allowUserIdFallback/);
   assert.doesNotMatch(
     source,
     /process\.env\.NODE_ENV !== "production"/,

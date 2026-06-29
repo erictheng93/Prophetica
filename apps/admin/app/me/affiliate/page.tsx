@@ -1,12 +1,16 @@
 import { RoleGate } from "@/components/role-gate";
 import { fetchAffiliateDashboard } from "@/lib/affiliate-management-bff";
 import { formatMinor } from "@/lib/affiliates";
+import { getUpstreamSessionToken } from "@/lib/upstream-session";
 
 export default function AffiliateHomePage() {
   return (
     <RoleGate allow={["affiliate"]}>
       {async (viewer) => {
-        const dashboard = await fetchAffiliateDashboard(viewer);
+        const dashboard = await fetchAffiliateDashboard(
+          viewer,
+          await getUpstreamSessionToken(),
+        );
         return (
           <div className="space-y-8">
             <section

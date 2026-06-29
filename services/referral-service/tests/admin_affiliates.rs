@@ -641,6 +641,199 @@ async fn daily_worker_posts_commission_payout_and_marks_accruals_paid() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn full_affiliate_e2e_covers_capture_qualification_bonus_commission_payout_and_review() {
+    let store = InMemoryAffiliateDashboardStore::new(
+        [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
+        HashMap::default(),
+        HashMap::default(),
+    )
+    .with_admin_review_queues(
+        vec![referral_service::AffiliateCommissionAdjustmentReview {
+            id: "COM-E2E-001".to_owned(),
+            affiliate_id: "AFF-100".to_owned(),
+            adjustment_type: "credit".to_owned(),
+            amount_minor: 600,
+            currency: "USDT".to_owned(),
+            reason: "full-chain reconciliation adjustment".to_owned(),
+            status: "pending".to_owned(),
+            requested_by: "referral-worker".to_owned(),
+            requested_at: "2026-06-29 09:00".to_owned(),
+        }],
+        vec![referral_service::AffiliatePayoutReview {
+            id: "PAY-E2E-001".to_owned(),
+            affiliate_id: "AFF-100".to_owned(),
+            amount_minor: 600,
+            currency: "USDT".to_owned(),
+            requested_at: "2026-06-29 09:05".to_owned(),
+            status: "pending".to_owned(),
+        }],
+    );
+    let app = router(store.clone());
+
+    let captured = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/internal/referrals/capture",
+            &json!({
+                "referral_code": "AFF-100",
+                "referred_user_id": "user_new_e2e",
+                "referred_at_day": 20_000
+            }),
+        ))
+        .await
+        .expect("capture should be handled");
+    assert_eq!(captured.status(), StatusCode::CREATED);
+    let body = response_json(captured).await;
+    assert_eq!(body["referrer_id"], "user_aff_100");
+    assert_eq!(body["status"], "pending");
+
+    let worker = ReferralDailyWorker::new(store, CleanQualificationInputs, FixedLedgerPoster);
+    let qualification = worker
+        .run_qualification_batch(20_030, 100)
+        .await
+        .expect("worker should qualify the referral and post signup bonus");
+    assert_eq!(qualification.scanned_count, 1);
+    assert_eq!(qualification.qualified_count, 1);
+    assert_eq!(qualification.signup_bonus_posted_count, 1);
+
+    for trade_id in ["trade_e2e_1", "trade_e2e_2"] {
+        let accrued = app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/internal/referrals/commission-accruals",
+                &json!({
+                    "referred_id": "user_new_e2e",
+                    "trade_id": trade_id,
+                    "traded_at_day": 20_031,
+                    "maker_fee_minor_units": 1_000,
+                    "taker_fee_minor_units": 2_000,
+                    "anti_abuse": clean_anti_abuse_json(),
+                    "referrer_group_id": null
+                }),
+            ))
+            .await
+            .expect("accrual should be handled");
+        assert_eq!(accrued.status(), StatusCode::OK);
+        assert_eq!(
+            response_json(accrued).await["commission_amount_minor_units"],
+            300
+        );
+    }
+
+    let payout_reports = worker
+        .run_due_commission_payouts(20_032, 100)
+        .await
+        .expect("worker should post due commission payout");
+    assert_eq!(payout_reports.len(), 1);
+    assert_eq!(payout_reports[0].referrer_id, "user_aff_100");
+    assert_eq!(payout_reports[0].paid_out_txn_id, 9_902);
+    assert_eq!(payout_reports[0].accrual_count, 2);
+    assert_eq!(payout_reports[0].total_commission_minor_units, 600);
+
+    let pending_adjustments = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/internal/admin/affiliate-commission-adjustments")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("adjustment review list should be handled");
+    assert_eq!(pending_adjustments.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(pending_adjustments)
+            .await
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+
+    let approved_adjustment = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/internal/admin/affiliate-commission-adjustments/COM-E2E-001/review",
+            &json!({
+                "decision": "approved",
+                "reason": "full affiliate E2E approved adjustment"
+            }),
+        ))
+        .await
+        .expect("commission adjustment review should be handled");
+    assert_eq!(approved_adjustment.status(), StatusCode::OK);
+    let body = response_json(approved_adjustment).await;
+    assert_eq!(body["review"]["status"], "approved");
+    assert_eq!(
+        body["auditCorrelationId"],
+        "audit:affiliate-commission-adjustment-review:COM-E2E-001:req-1"
+    );
+
+    let pending_payouts = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/internal/admin/affiliate-payouts")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("payout review list should be handled");
+    assert_eq!(pending_payouts.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(pending_payouts)
+            .await
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+
+    let approved_payout = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/internal/admin/affiliate-payouts/PAY-E2E-001/review",
+            &json!({
+                "decision": "approved",
+                "reason": "full affiliate E2E approved payout"
+            }),
+        ))
+        .await
+        .expect("payout review should be handled");
+    assert_eq!(approved_payout.status(), StatusCode::OK);
+    let body = response_json(approved_payout).await;
+    assert_eq!(body["review"]["status"], "approved");
+    assert_eq!(
+        body["auditCorrelationId"],
+        "audit:affiliate-payout-review:PAY-E2E-001:req-1"
+    );
+
+    let remaining_payouts = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/internal/admin/affiliate-payouts")
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await
+        .expect("payout review list should be handled");
+    assert_eq!(remaining_payouts.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(remaining_payouts)
+            .await
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+}
+
+#[tokio::test]
 async fn commission_payout_marks_unpaid_accruals_and_is_idempotent_by_ledger_txn() {
     let store = InMemoryAffiliateDashboardStore::new(
         [("user_aff_100".to_owned(), "AFF-100".to_owned())].into(),
@@ -1331,6 +1524,113 @@ async fn affiliate_mutations_write_success_and_denied_audit_logs() {
         denied_audits[1]
             .reason_or_error_code
             .contains("cannot reassign")
+    );
+}
+
+#[tokio::test]
+async fn admin_review_decisions_update_commission_adjustments_and_payouts() {
+    let store = InMemoryAffiliateDashboardStore::default().with_admin_review_queues(
+        vec![referral_service::AffiliateCommissionAdjustmentReview {
+            id: "COM-2026-0514-001".to_owned(),
+            affiliate_id: "AFF-001".to_owned(),
+            adjustment_type: "credit".to_owned(),
+            amount_minor: 42_000,
+            currency: "USDT".to_owned(),
+            reason: "活動轉換補發".to_owned(),
+            status: "pending".to_owned(),
+            requested_by: "admin_ops".to_owned(),
+            requested_at: "2026-05-14 09:20".to_owned(),
+        }],
+        vec![referral_service::AffiliatePayoutReview {
+            id: "PAY-2026-0514-001".to_owned(),
+            affiliate_id: "AFF-001".to_owned(),
+            amount_minor: 128_400,
+            currency: "USDT".to_owned(),
+            requested_at: "2026-05-14 10:05".to_owned(),
+            status: "pending".to_owned(),
+        }],
+    );
+    let app = router(store);
+
+    let approved_adjustment = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/internal/admin/affiliate-commission-adjustments/COM-2026-0514-001/review",
+            &json!({
+                "decision": "approved",
+                "reason": "supporting invoice reconciled"
+            }),
+        ))
+        .await
+        .expect("commission adjustment review should be handled");
+    assert_eq!(approved_adjustment.status(), StatusCode::OK);
+    let body = response_json(approved_adjustment).await;
+    assert_eq!(body["review"]["id"], json!("COM-2026-0514-001"));
+    assert_eq!(body["review"]["status"], json!("approved"));
+    assert_eq!(
+        body["auditCorrelationId"],
+        json!("audit:affiliate-commission-adjustment-review:COM-2026-0514-001:req-1")
+    );
+
+    let remaining_adjustments = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/internal/admin/affiliate-commission-adjustments")
+                .body(Body::empty())
+                .unwrap_or_else(|error| panic!("request should build: {error}")),
+        )
+        .await
+        .expect("request should be handled");
+    assert_eq!(remaining_adjustments.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(remaining_adjustments)
+            .await
+            .as_array()
+            .map(Vec::len),
+        Some(0)
+    );
+
+    let rejected_payout = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/internal/admin/affiliate-payouts/PAY-2026-0514-001/review",
+            &json!({
+                "decision": "rejected",
+                "reason": "bank account verification failed"
+            }),
+        ))
+        .await
+        .expect("payout review should be handled");
+    assert_eq!(rejected_payout.status(), StatusCode::OK);
+    let body = response_json(rejected_payout).await;
+    assert_eq!(body["review"]["id"], json!("PAY-2026-0514-001"));
+    assert_eq!(body["review"]["status"], json!("rejected"));
+    assert_eq!(
+        body["auditCorrelationId"],
+        json!("audit:affiliate-payout-review:PAY-2026-0514-001:req-1")
+    );
+
+    let remaining_payouts = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/internal/admin/affiliate-payouts")
+                .body(Body::empty())
+                .unwrap_or_else(|error| panic!("request should build: {error}")),
+        )
+        .await
+        .expect("request should be handled");
+    assert_eq!(remaining_payouts.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(remaining_payouts)
+            .await
+            .as_array()
+            .map(Vec::len),
+        Some(0)
     );
 }
 

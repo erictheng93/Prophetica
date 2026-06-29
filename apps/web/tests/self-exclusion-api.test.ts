@@ -6,17 +6,33 @@ import {
   requestSelfExclusion,
 } from "../lib/responsible-gaming-api.js";
 
-test("fetchSelfExclusionStatus maps live api-gateway response with transition x-user-id fallback", async () => {
+test("fetchSelfExclusionStatus returns fallback without bearer auth", async () => {
+  let called = false;
+  const status = await fetchSelfExclusionStatus({
+    baseUrl: "http://gateway.local",
+    userId: "user_42",
+    fetcher: async (): Promise<Response> => {
+      called = true;
+      return Response.json({});
+    },
+  });
+
+  assert.equal(called, false);
+  assert.equal(status.source, "fallback:api-gateway-unavailable");
+  assert.equal(status.userId, "user_42");
+});
+
+test("fetchSelfExclusionStatus maps live api-gateway response with bearer auth", async () => {
   const calls: Array<{
     url: string;
+    authorization: string | null;
     userIdHeader: string | null;
-    transitionCallerHeader: string | null;
   }> = [];
 
   const status = await fetchSelfExclusionStatus({
     baseUrl: "http://gateway.local",
     userId: "user_42",
-    allowUserIdFallback: true,
+    bearerToken: "jwt-user-service",
     fetcher: async (
       input: string | URL,
       init?: RequestInit,
@@ -24,8 +40,8 @@ test("fetchSelfExclusionStatus maps live api-gateway response with transition x-
       const headers = new Headers(init?.headers);
       calls.push({
         url: String(input),
+        authorization: headers.get("authorization"),
         userIdHeader: headers.get("x-user-id"),
-        transitionCallerHeader: headers.get("x-transition-caller"),
       });
       return Response.json({
         user_id: "user_42",
@@ -50,8 +66,8 @@ test("fetchSelfExclusionStatus maps live api-gateway response with transition x-
     calls[0]?.url,
     "http://gateway.local/v1/responsible-gaming/self-exclusion",
   );
-  assert.equal(calls[0]?.userIdHeader, "user_42");
-  assert.equal(calls[0]?.transitionCallerHeader, "apps-web-dev-bff");
+  assert.equal(calls[0]?.authorization, "Bearer jwt-user-service");
+  assert.equal(calls[0]?.userIdHeader, null);
   assert.equal(status.source, "api-gateway");
   assert.equal(status.active, true);
   assert.equal(status.record?.frozenPoints, 125);
@@ -103,7 +119,7 @@ test("requestSelfExclusion posts through the SDK client and returns fallback whe
     mode: "timeout",
     period: "six_months",
     consent: true,
-    allowUserIdFallback: true,
+    bearerToken: "jwt-user-service",
     responsibleGamingClientFactory: ({ auth }) => ({
       async getSelfExclusionStatus() {
         throw new Error("not used");
@@ -135,7 +151,7 @@ test("requestSelfExclusion posts through the SDK client and returns fallback whe
   }
   assert.deepEqual(calls, [
     {
-      auth: { userId: "user_42" },
+      auth: { bearerToken: "jwt-user-service" },
       request: {
         mode: "timeout",
         period: "six_months",
@@ -148,7 +164,18 @@ test("requestSelfExclusion posts through the SDK client and returns fallback whe
     mode: "timeout",
     period: "six_months",
     consent: true,
-    allowUserIdFallback: true,
+    responsibleGamingClientFactory: () => {
+      throw new Error("factory should not be called without bearer");
+    },
+  });
+  assert.equal(fallback.source, "fallback:api-gateway-unavailable");
+});
+
+test("requestSelfExclusion skips client calls without bearer auth", async () => {
+  const fallback = await requestSelfExclusion({
+    mode: "timeout",
+    period: "six_months",
+    consent: true,
     responsibleGamingClientFactory: () => ({
       async getSelfExclusionStatus() {
         throw new Error("not used");

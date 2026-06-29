@@ -1,16 +1,17 @@
 {
-  "last_updated": "2026-05-17",
+  "last_updated": "2026-06-30",
   "scope": "LG-9 Affiliate / referral production readiness P0",
   "status": "blocked",
   "blocking_items": [
     {
       "id": "cloudflare-access-apply-evidence",
-      "reason": "Cloudflare Zero Trust Terraform is present, but target-account apply evidence is still missing. This environment has no terraform/tofu binary, no Cloudflare target-account variables, and no archived docs/evidence/cloudflare-admin-access/latest.json plan/apply evidence with hashes, byte counts, and success summaries. Run tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply in the target environment, then tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply.",
+      "reason": "Cloudflare Zero Trust Terraform is present, but target-account apply evidence is still missing. This environment has no terraform/tofu binary, no Cloudflare target-account variables, and no archived docs/evidence/cloudflare-admin-access/latest.json plan/apply evidence with target_account metadata, hashes, byte counts, and success summaries. Run tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply in the target environment, then tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply.",
       "terraform": "infra/cloudflare/zero-trust/admin-access.tf",
       "verifier": "tools/scripts/validate-cloudflare-admin-access.mjs",
       "evidence_recorder": "tools/scripts/record-cloudflare-admin-access-evidence.mjs",
       "preflight": "tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply",
       "apply_wrapper": "tools/scripts/apply-cloudflare-admin-access-evidence.mjs",
+      "runbook": "docs/blocker-register.md",
       "required_evidence": "docs/evidence/cloudflare-admin-access/latest.json"
     }
   ],
@@ -32,26 +33,23 @@
         "services/user-service/src/webauthn_store.rs",
         "services/user-service/tests/webauthn_store.rs",
         "services/user-service/src/webauthn_runtime.rs",
-        "apps/admin/components/passkey-security-panel.tsx",
-        "apps/admin/lib/passkey-client.ts",
-        "apps/admin/app/api/auth/passkeys/[action]/route.ts",
-        "apps/admin/tests/e2e/passkey-webauthn.spec.ts",
-        "apps/admin/playwright.passkey.config.ts",
         "services/_binaries/core-api/src/main.rs",
+        "docs/evidence/webauthn-passkey/latest.json",
         "tools/scripts/record-webauthn-passkey-evidence.mjs"
       ],
-      "evidence": "rtk cargo fmt -p user-service => passed; rtk cargo test -p user-service --test auth --locked => 16 passed, including WebAuthn registration finish and assertion finish fail-closed invalid browser payload coverage plus env-backed WebAuthn config; webauthn migration structural check passed; rtk cargo test -p user-service --test webauthn_store --locked => 2 passed; rtk cargo test -p user-service webauthn_runtime --locked => 6 passed, 26 filtered out; rtk cargo check -p core-api --locked => passed with PostgresWebauthnStore wiring; rtk node --check tools/scripts/record-webauthn-passkey-evidence.mjs => passed; admin passkey UX/proxy/client source and passkey browser evidence spec added; rtk pnpm --filter @prophetica/admin test:e2e:passkey => 1 passed, recording registration/assertion round trip, replay rejection, unknown credential rejection, fresh/stale hardware MFA step-up, wrong-origin rejection, and revoked-credential rejection; rtk node tools/scripts/record-webauthn-passkey-evidence.mjs .tmp/webauthn-passkey.log => recorded docs/evidence/webauthn-passkey/latest.json"
+      "evidence": "rtk cargo fmt -p user-service => passed; rtk cargo test -p user-service --test auth --locked => 16 passed, including WebAuthn registration finish and assertion finish fail-closed invalid browser payload coverage plus env-backed WebAuthn config; webauthn migration structural check passed; rtk cargo test -p user-service --test webauthn_store --locked => 2 passed; rtk cargo test -p user-service webauthn_runtime --locked => 6 passed, 26 filtered out; rtk cargo check -p core-api --locked => passed with PostgresWebauthnStore wiring; rtk node --check tools/scripts/record-webauthn-passkey-evidence.mjs => passed; recorded docs/evidence/webauthn-passkey/latest.json contains registration/assertion round trip, replay rejection, unknown credential rejection, fresh/stale hardware MFA step-up, wrong-origin rejection, and revoked-credential rejection markers."
     },
     {
       "id": "admin-session-ed25519-and-step-up",
       "artifacts": [
         "apps/admin/lib/session-crypto.ts",
-        "apps/admin/lib/step-up-mfa-policy.ts",
-        "apps/admin/middleware.ts",
+        "apps/admin/lib/session.ts",
+        "apps/admin/proxy.ts",
+        "apps/admin/lib/production-access-gate.ts",
         "apps/admin/tests/session.test.ts",
-        "apps/admin/tests/step-up-mfa-policy.test.ts"
+        "apps/admin/tests/production-access-gate.test.ts"
       ],
-      "evidence": "Targeted admin session / step-up test suite => 13 passed"
+      "evidence": "Targeted admin session, Ed25519/JWKS, production access gate, and proxy enforcement coverage passed in the admin test suite."
     },
     {
       "id": "admin-login-mfa-forwarding",
@@ -70,12 +68,30 @@
         "infra/cloudflare/zero-trust/README.md",
         "tools/scripts/validate-cloudflare-admin-access.mjs",
         "tools/scripts/record-cloudflare-admin-access-evidence.mjs",
+        "tools/scripts/record-cloudflare-admin-access-evidence.test.mjs",
         "tools/scripts/preflight-cloudflare-admin-access-evidence.mjs",
+        "tools/scripts/preflight-cloudflare-admin-access-evidence.test.mjs",
         "tools/scripts/apply-cloudflare-admin-access-evidence.mjs",
+        "tools/scripts/finalize-affiliate-p0-complete.mjs",
+        "tools/scripts/check-affiliate-p0-complete.mjs",
+        "tools/scripts/check-affiliate-p0-complete.test.mjs",
         "docs/evidence/cloudflare-admin-access/README.md",
         "docs/affiliate-p0-completion-checklist.md"
       ],
-      "evidence": "rtk node tools/scripts/validate-cloudflare-admin-access.mjs => 9 checks passed earlier; target-account apply evidence remains blocked until docs/evidence/cloudflare-admin-access/latest.json is recorded with plan/apply hashes, byte counts, and success summaries."
+      "evidence": "rtk node tools/scripts/validate-cloudflare-admin-access.mjs => 9 checks passed earlier; rtk node --test tools/scripts/record-cloudflare-admin-access-evidence.test.mjs => 2 passed, including fail-closed coverage when CLOUDFLARE_API_TOKEN is missing; rtk node --test tools/scripts/preflight-cloudflare-admin-access-evidence.test.mjs => 3 passed, including non-hex SHA-256 rejection; rtk node --test tools/scripts/check-affiliate-p0-complete.test.mjs => 4 passed, including fail-closed finalization coverage; rtk node --test tools/scripts/*.test.mjs => 28 passed; affiliate manifest artifact sweep => 0 missing completed-evidence artifacts. Target-account apply evidence remains blocked until docs/evidence/cloudflare-admin-access/latest.json is recorded with target_account metadata plus plan/apply hashes, byte counts, and success summaries."
+    },
+    {
+      "id": "admin-affiliate-review-e2e",
+      "artifacts": [
+        "apps/admin/app/affiliate/commissions/page.tsx",
+        "apps/admin/app/affiliate/payouts/page.tsx",
+        "apps/admin/app/affiliate/actions.ts",
+        "apps/admin/lib/affiliate-management-bff.ts",
+        "apps/admin/tests/e2e/affiliate-review.spec.ts",
+        "tools/scripts/check-affiliate-p0-complete.mjs",
+        "tools/scripts/check-affiliate-p0-complete.test.mjs"
+      ],
+      "evidence": "rtk pnpm --filter @prophetica/admin test:e2e tests/e2e/affiliate-review.spec.ts => 2 passed, covering admin approval of commission adjustment reviews, manager rejection of payout reviews, and read-only rows after decisions through signed referral-service gateway calls. rtk node --test tools/scripts/check-affiliate-p0-complete.test.mjs => 4 passed, proving the global P0 gate requires admin-affiliate-review-e2e evidence before completion and restores the blocked manifest when external evidence is missing."
     },
     {
       "id": "first-touch-referral-capture",

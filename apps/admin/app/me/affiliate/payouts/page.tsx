@@ -2,12 +2,16 @@ import { RoleGate } from "@/components/role-gate";
 import { adminCopy } from "@/lib/admin-copy";
 import { fetchAffiliateDashboard } from "@/lib/affiliate-management-bff";
 import { formatMinor } from "@/lib/affiliates";
+import { getUpstreamSessionToken } from "@/lib/upstream-session";
 
 export default function AffiliatePayoutsPage() {
   return (
     <RoleGate allow={["affiliate"]}>
       {async (viewer) => {
-        const dashboard = await fetchAffiliateDashboard(viewer);
+        const dashboard = await fetchAffiliateDashboard(
+          viewer,
+          await getUpstreamSessionToken(),
+        );
         return (
           <section
             aria-labelledby="payouts-title"

@@ -1,6 +1,7 @@
 import { AdminShell } from "@/components/admin-shell";
 import { RoleGate } from "@/components/role-gate";
 import { StatusPill } from "@/components/status-pill";
+import { reviewCommissionAdjustmentAction } from "@/app/affiliate/actions";
 import { adminCopy } from "@/lib/admin-copy";
 import { fetchCommissionAdjustmentReviews } from "@/lib/affiliate-management-bff";
 import { formatMinor } from "@/lib/affiliates";
@@ -64,6 +65,9 @@ export default function AffiliateCommissionsPage() {
                           <th className="border-b border-proph-hairline py-3 pl-4">
                             狀態
                           </th>
+                          <th className="border-b border-proph-hairline py-3 pl-4">
+                            審核
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -94,6 +98,55 @@ export default function AffiliateCommissionsPage() {
                             </td>
                             <td className="border-b border-proph-divider-soft py-4 pl-4">
                               {item.status}
+                            </td>
+                            <td className="min-w-[280px] border-b border-proph-divider-soft py-4 pl-4">
+                              {item.status === "pending" ? (
+                                <form
+                                  action={reviewCommissionAdjustmentAction}
+                                  className="grid gap-2"
+                                >
+                                  <input
+                                    type="hidden"
+                                    name="reviewId"
+                                    value={item.id}
+                                  />
+                                  <label
+                                    htmlFor={`commission-review-reason-${item.id}`}
+                                    className="sr-only"
+                                  >
+                                    佣金調整審核原因
+                                  </label>
+                                  <input
+                                    id={`commission-review-reason-${item.id}`}
+                                    name="reason"
+                                    required
+                                    className="min-h-10 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 text-[13px] text-proph-ink"
+                                    placeholder="review reason"
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="submit"
+                                      name="decision"
+                                      value="approved"
+                                      className="min-h-9 rounded-proph-pill bg-proph-primary px-4 text-[13px] font-semibold text-proph-on-primary"
+                                    >
+                                      approve
+                                    </button>
+                                    <button
+                                      type="submit"
+                                      name="decision"
+                                      value="rejected"
+                                      className="min-h-9 rounded-proph-pill border border-proph-hairline px-4 text-[13px] font-semibold text-proph-ink-muted-80"
+                                    >
+                                      reject
+                                    </button>
+                                  </div>
+                                </form>
+                              ) : (
+                                <span className="text-[13px] text-proph-ink-muted-80">
+                                  已完成審核
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}

@@ -369,18 +369,7 @@ const affiliates: readonly AffiliateDetail[] = [
   },
 ];
 
-export function allowsAffiliateMockFallback(
-  env: Record<string, string | undefined> = process.env,
-): boolean {
-  if (env.PROPHETICA_ENV?.toLowerCase() === "production") return false;
-  return env.AFFILIATE_ADMIN_ALLOW_MOCK_FALLBACK === "true";
-}
-
-export function getAffiliatesSnapshot(
-  env: Record<string, string | undefined> = process.env,
-): AffiliateSummary[] {
-  if (!allowsAffiliateMockFallback(env)) return [];
-
+export function getAffiliatesSnapshot(): AffiliateSummary[] {
   return affiliates.map(
     ({
       subTreeBreakdown: _b,
@@ -393,12 +382,7 @@ export function getAffiliatesSnapshot(
   );
 }
 
-export function getAffiliateDetail(
-  id: string,
-  env: Record<string, string | undefined> = process.env,
-): AffiliateDetail | undefined {
-  if (!allowsAffiliateMockFallback(env)) return undefined;
-
+export function getAffiliateDetail(id: string): AffiliateDetail | undefined {
   return affiliates.find((row) => row.id === id);
 }
 

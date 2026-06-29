@@ -87,7 +87,7 @@ test("placeMarketOrder posts with idempotency to the same-origin order proxy and
 
   assert.equal(calls[0]?.url, "/api/engine/markets/mkt-election/orders");
   assert.equal(calls[0]?.method, "POST");
-  assert.equal(calls[0]?.headers["x-user-id"], "42");
+  assert.equal(calls[0]?.headers["x-user-id"], undefined);
   assert.equal(calls[0]?.headers["x-client-order-id"], "client-01");
   assert.match(
     calls[0]?.headers["idempotency-key"] ?? "",

@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import { devBffFallbackEnabled } from "@/lib/dev-bff-flag";
-import { getUpstreamSessionToken, getViewer } from "@/lib/session";
-
-const FALLBACK_REDEMPTION_DEV_USER_ID = "user_01";
+import { getUpstreamSessionToken } from "@/lib/session";
 
 interface ApiCatalogItem {
   sku_id: string;
@@ -52,16 +49,8 @@ export const dynamic = "force-dynamic";
 export async function GET(): Promise<
   NextResponse<ApiCatalogResponse | { error: string }>
 > {
-  const allowDevFallback = devBffFallbackEnabled();
   const bearerToken = await getUpstreamSessionToken();
-  const viewer = await getViewer();
-  const userId =
-    viewer?.userId ??
-    (allowDevFallback
-      ? process.env.PROPHETICA_DEV_USER_ID ?? FALLBACK_REDEMPTION_DEV_USER_ID
-      : null);
-
-  if (!bearerToken && !userId) {
+  if (!bearerToken) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

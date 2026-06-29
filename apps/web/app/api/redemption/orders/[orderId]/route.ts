@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
-import { devBffFallbackEnabled } from "@/lib/dev-bff-flag";
-import { getUpstreamSessionToken, getViewer } from "@/lib/session";
+import { getUpstreamSessionToken } from "@/lib/session";
 
 const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
-const DEFAULT_REDEMPTION_DEV_USER_ID = "user_01";
-const TRANSITION_CALLER_HEADER = "x-transition-caller";
-const APPS_WEB_DEV_BFF_TRANSITION_CALLER = "apps-web-dev-bff";
 
 interface RouteContext {
   params: Promise<{ orderId: string }>;
@@ -34,7 +30,9 @@ export async function GET(
 
   try {
     const response = await fetch(
-      apiGatewayUrl(`/v1/redemption/orders/${encodeURIComponent(orderIdValue)}`),
+      apiGatewayUrl(
+        `/v1/redemption/orders/${encodeURIComponent(orderIdValue)}`,
+      ),
       {
         cache: "no-store",
         headers: auth.headers,
@@ -54,29 +52,18 @@ export async function GET(
   }
 }
 
-async function buildAuthHeaders(): Promise<
-  { headers: Record<string, string> } | null
-> {
+async function buildAuthHeaders(): Promise<{
+  headers: Record<string, string>;
+} | null> {
   const bearerToken = await getUpstreamSessionToken();
-  const allowDevFallback = devBffFallbackEnabled();
-  const viewer = await getViewer();
-  const userId =
-    viewer?.userId ??
-    (allowDevFallback
-      ? process.env.PROPHETICA_DEV_USER_ID ?? DEFAULT_REDEMPTION_DEV_USER_ID
-      : null);
-
-  if (!bearerToken && !userId) {
+  if (!bearerToken) {
     return null;
   }
 
-  const headers: Record<string, string> = { accept: "application/json" };
-  if (bearerToken) {
-    headers.authorization = `Bearer ${bearerToken}`;
-  } else {
-    headers["x-user-id"] = userId as string;
-    headers[TRANSITION_CALLER_HEADER] = APPS_WEB_DEV_BFF_TRANSITION_CALLER;
-  }
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    authorization: `Bearer ${bearerToken}`,
+  };
 
   return { headers };
 }

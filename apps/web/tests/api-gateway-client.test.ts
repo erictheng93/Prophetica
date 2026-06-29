@@ -25,7 +25,24 @@ test("web declares ts-sdk as the wallet client dependency", async () => {
   assert.equal(packageJson.dependencies?.["@prophetica/ts-sdk"], "workspace:*");
 });
 
-test("fetchWalletOverview calls api-gateway wallet and ledger endpoints with transition x-user-id fallback", async () => {
+test("fetchWalletOverview returns safe fallback without bearer auth", async () => {
+  let called = false;
+  const overview = await fetchWalletOverview({
+    baseUrl: "http://api.local",
+    userId: "user_42",
+    fetcher: async (): Promise<Response> => {
+      called = true;
+      return Response.json({});
+    },
+    walletClientFactory: createFetchBackedWalletClient,
+  });
+
+  assert.equal(called, false);
+  assert.equal(overview.source, "fallback:api-gateway-unavailable");
+  assert.equal(overview.balance.userId, "user_42");
+});
+
+test("fetchWalletOverview calls api-gateway wallet and ledger endpoints with bearer auth", async () => {
   const calls: Array<{ url: string; headers: Record<string, string> }> = [];
   const fetcher = async (
     input: string | URL,
@@ -61,7 +78,7 @@ test("fetchWalletOverview calls api-gateway wallet and ledger endpoints with tra
   const overview = await fetchWalletOverview({
     baseUrl: "http://api.local",
     userId: "user_42",
-    allowUserIdFallback: true,
+    bearerToken: "jwt-user-service",
     fetcher,
     walletClientFactory: createFetchBackedWalletClient,
   });
@@ -74,10 +91,10 @@ test("fetchWalletOverview calls api-gateway wallet and ledger endpoints with tra
     calls[1]?.url,
     "http://api.local/v1/ledger/entries?account_code=Player.Wallet.user_42&limit=25",
   );
-  assert.equal(calls[0]?.headers["x-user-id"], "user_42");
-  assert.equal(calls[1]?.headers["x-user-id"], "user_42");
-  assert.equal(calls[0]?.headers["x-transition-caller"], "apps-web-dev-bff");
-  assert.equal(calls[1]?.headers["x-transition-caller"], "apps-web-dev-bff");
+  assert.equal(calls[0]?.headers.authorization, "Bearer jwt-user-service");
+  assert.equal(calls[1]?.headers.authorization, "Bearer jwt-user-service");
+  assert.equal(calls[0]?.headers["x-user-id"], undefined);
+  assert.equal(calls[1]?.headers["x-user-id"], undefined);
 });
 
 test("fetchWalletOverview does not call api-gateway without bearer token by default", async () => {

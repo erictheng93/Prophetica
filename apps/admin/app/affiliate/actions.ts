@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import {
   archiveAdminAffiliate,
   createAdminAffiliate,
+  reviewAffiliateCommissionAdjustment,
+  reviewAffiliatePayout,
   updateAdminAffiliate,
 } from "@/lib/affiliate-management-bff";
 import type {
@@ -62,12 +64,44 @@ export async function archiveAffiliateAction(
   redirect("/affiliate");
 }
 
+export async function reviewCommissionAdjustmentAction(
+  formData: FormData,
+): Promise<void> {
+  const viewer = await requireAdminViewer();
+  const reviewId = requiredText(formData, "reviewId");
+  const result = await reviewAffiliateCommissionAdjustment(viewer, reviewId, {
+    decision: reviewDecision(formData),
+    reason: requiredText(formData, "reason"),
+  });
+  if (!result) redirect("/affiliate/commissions?error=review-failed");
+  revalidatePath("/affiliate/commissions");
+}
+
+export async function reviewPayoutAction(formData: FormData): Promise<void> {
+  const viewer = await requireAdminViewer();
+  const reviewId = requiredText(formData, "reviewId");
+  const result = await reviewAffiliatePayout(viewer, reviewId, {
+    decision: reviewDecision(formData),
+    reason: requiredText(formData, "reason"),
+  });
+  if (!result) redirect("/affiliate/payouts?error=review-failed");
+  revalidatePath("/affiliate/payouts");
+}
+
 async function requireAdminViewer() {
   const viewer = await getViewer();
   if (!viewer || (viewer.role !== "admin" && viewer.role !== "manager")) {
     redirect("/403");
   }
   return viewer;
+}
+
+function reviewDecision(formData: FormData): "approved" | "rejected" {
+  const decision = requiredText(formData, "decision");
+  if (decision !== "approved" && decision !== "rejected") {
+    throw new Error("decision is invalid");
+  }
+  return decision;
 }
 
 function mutationPayloadFromForm(formData: FormData): AffiliateMutationPayload {

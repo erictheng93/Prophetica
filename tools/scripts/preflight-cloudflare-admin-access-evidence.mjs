@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { access, constants } from "node:fs/promises";
 import { delimiter, resolve } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(new URL("../..", import.meta.url).pathname);
 const evidencePath = resolve(
@@ -53,12 +54,16 @@ function hasNonEmptyEnv(name) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function validateEvidenceShape(evidence) {
+export function validateEvidenceShape(evidence) {
   const failures = [];
 
   if (!evidence || typeof evidence !== "object") {
     failures.push("evidence JSON is missing or invalid");
     return failures;
+  }
+
+  if (!isValidCloudflareTargetEvidence(evidence.target_account)) {
+    failures.push("target_account is missing valid target-account metadata");
   }
 
   for (const key of ["plan_log", "apply_log"]) {
@@ -67,7 +72,10 @@ function validateEvidenceShape(evidence) {
       failures.push(`${key} is missing`);
       continue;
     }
-    if (typeof entry.sha256 !== "string" || entry.sha256.length !== 64) {
+    if (
+      typeof entry.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/i.test(entry.sha256)
+    ) {
       failures.push(`${key}.sha256 must be a 64-character hex digest`);
     }
     if (!Number.isInteger(entry.bytes) || entry.bytes <= 0) {
@@ -81,55 +89,79 @@ function validateEvidenceShape(evidence) {
   return failures;
 }
 
-const terraformAvailable = await executableExists("terraform");
-const tofuAvailable = await executableExists("tofu");
-const missingEnv = requiredTargetVariables.filter((name) => !hasNonEmptyEnv(name));
-const policyExists = existsSync(terraformPolicyPath);
-const evidenceExists = existsSync(evidencePath);
-const evidence = !beforeApply && evidenceExists ? readJson(evidencePath) : null;
-const evidenceFailures = beforeApply
-  ? []
-  : evidenceExists
-    ? validateEvidenceShape(evidence)
-    : ["Cloudflare Access plan/apply evidence is missing"];
-
-const failures = [];
-
-if (!terraformAvailable && !tofuAvailable) {
-  failures.push("Neither terraform nor tofu is available on PATH");
+function isValidCloudflareTargetEvidence(targetEvidence) {
+  return (
+    targetEvidence &&
+    typeof targetEvidence.account_id_sha256 === "string" &&
+    /^[a-f0-9]{64}$/i.test(targetEvidence.account_id_sha256) &&
+    typeof targetEvidence.account_id_suffix === "string" &&
+    /^[A-Za-z0-9_-]{4,16}$/.test(targetEvidence.account_id_suffix) &&
+    typeof targetEvidence.admin_app_domain === "string" &&
+    targetEvidence.admin_app_domain.trim().length > 0 &&
+    typeof targetEvidence.allowed_email_domains_sha256 === "string" &&
+    /^[a-f0-9]{64}$/i.test(targetEvidence.allowed_email_domains_sha256) &&
+    typeof targetEvidence.breakglass_email_sha256 === "string" &&
+    /^[a-f0-9]{64}$/i.test(targetEvidence.breakglass_email_sha256) &&
+    typeof targetEvidence.internal_service_token_name === "string" &&
+    targetEvidence.internal_service_token_name.trim().length > 0
+  );
 }
 
-if (!policyExists) {
-  failures.push(`Terraform policy file is missing: ${terraformPolicyPath}`);
+async function runCli() {
+  const terraformAvailable = await executableExists("terraform");
+  const tofuAvailable = await executableExists("tofu");
+  const missingEnv = requiredTargetVariables.filter((name) => !hasNonEmptyEnv(name));
+  const policyExists = existsSync(terraformPolicyPath);
+  const evidenceExists = existsSync(evidencePath);
+  const evidence = !beforeApply && evidenceExists ? readJson(evidencePath) : null;
+  const evidenceFailures = beforeApply
+    ? []
+    : evidenceExists
+      ? validateEvidenceShape(evidence)
+      : ["Cloudflare Access plan/apply evidence is missing"];
+
+  const failures = [];
+
+  if (!terraformAvailable && !tofuAvailable) {
+    failures.push("Neither terraform nor tofu is available on PATH");
+  }
+
+  if (!policyExists) {
+    failures.push(`Terraform policy file is missing: ${terraformPolicyPath}`);
+  }
+
+  for (const name of missingEnv) {
+    failures.push(`Required target-account variable is missing: ${name}`);
+  }
+
+  for (const failure of evidenceFailures) {
+    failures.push(failure);
+  }
+
+  const report = {
+    status: failures.length === 0 ? "ready" : "blocked",
+    mode: beforeApply ? "before_apply" : "full_gate",
+    checked_at: new Date().toISOString(),
+    terraform_or_tofu_available: terraformAvailable || tofuAvailable,
+    terraform_available: terraformAvailable,
+    tofu_available: tofuAvailable,
+    terraform_policy_path: terraformPolicyPath,
+    terraform_policy_exists: policyExists,
+    evidence_path: evidencePath,
+    evidence_exists: evidenceExists,
+    evidence_required: !beforeApply,
+    required_target_variables_present: requiredTargetVariables.filter(hasNonEmptyEnv),
+    required_target_variables_missing: missingEnv,
+    failures,
+  };
+
+  console.log(JSON.stringify(report, null, 2));
+
+  if (failures.length > 0) {
+    process.exitCode = 1;
+  }
 }
 
-for (const name of missingEnv) {
-  failures.push(`Required target-account variable is missing: ${name}`);
-}
-
-for (const failure of evidenceFailures) {
-  failures.push(failure);
-}
-
-const report = {
-  status: failures.length === 0 ? "ready" : "blocked",
-  mode: beforeApply ? "before_apply" : "full_gate",
-  checked_at: new Date().toISOString(),
-  terraform_or_tofu_available: terraformAvailable || tofuAvailable,
-  terraform_available: terraformAvailable,
-  tofu_available: tofuAvailable,
-  terraform_policy_path: terraformPolicyPath,
-  terraform_policy_exists: policyExists,
-  evidence_path: evidencePath,
-  evidence_exists: evidenceExists,
-  evidence_required: !beforeApply,
-  required_target_variables_present: requiredTargetVariables.filter(hasNonEmptyEnv),
-  required_target_variables_missing: missingEnv,
-  failures,
-};
-
-console.log(JSON.stringify(report, null, 2));
-
-if (failures.length > 0) {
-  process.exitCode = 1;
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  await runCli();
 }

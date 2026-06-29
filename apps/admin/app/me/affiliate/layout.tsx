@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AffiliateShell } from "@/components/affiliate-shell";
 import { RoleGate } from "@/components/role-gate";
 import { fetchAffiliateDashboard } from "@/lib/affiliate-management-bff";
+import { getUpstreamSessionToken } from "@/lib/upstream-session";
 
 export default function AffiliatePortalLayout({
   children,
@@ -11,7 +12,10 @@ export default function AffiliatePortalLayout({
   return (
     <RoleGate allow={["affiliate"]}>
       {async (viewer) => {
-        const dashboard = await fetchAffiliateDashboard(viewer);
+        const dashboard = await fetchAffiliateDashboard(
+          viewer,
+          await getUpstreamSessionToken(),
+        );
 
         return (
           <AffiliateShell

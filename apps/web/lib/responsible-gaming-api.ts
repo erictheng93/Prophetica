@@ -13,8 +13,6 @@ const DEFAULT_DEV_USER_ID = "user_01";
 const POINTS_PER_TWD = 100;
 const COOLDOWN_PATH = "/v1/me/responsible-gaming/cooldown";
 const SELF_EXCLUSION_PATH = "/v1/responsible-gaming/self-exclusion";
-const TRANSITION_CALLER_HEADER = "x-transition-caller";
-const APPS_WEB_DEV_BFF_TRANSITION_CALLER = "apps-web-dev-bff";
 
 export const COOLDOWN_DURATIONS = ["24h", "7d", "30d"] as const;
 
@@ -77,7 +75,6 @@ export interface FetchSelfExclusionStatusOptions {
   baseUrl?: string;
   userId?: string;
   bearerToken?: string;
-  allowUserIdFallback?: boolean;
   fetcher?: Fetcher;
   responsibleGamingClientFactory?: ResponsibleGamingClientFactory;
 }
@@ -138,16 +135,15 @@ export class ResponsibleGamingApiError extends Error {
 export async function fetchCooldownStatus(
   options: FetchSelfExclusionStatusOptions = {},
 ): Promise<CooldownStatusView> {
-  const { baseUrl, userId, bearerToken, allowUserIdFallback, fetcher } =
-    transportContext(options);
-  if (!bearerToken && !allowUserIdFallback) {
+  const { baseUrl, userId, bearerToken, fetcher } = transportContext(options);
+  if (!bearerToken) {
     return fallbackCooldownStatus(userId);
   }
 
   try {
     const response = await fetcher(`${baseUrl}${COOLDOWN_PATH}`, {
       cache: "no-store",
-      headers: requestHeaders(userId, bearerToken),
+      headers: requestHeaders(bearerToken),
     });
     if (!response.ok) {
       return fallbackCooldownStatus(userId);
@@ -166,9 +162,8 @@ export async function startCooldown(
   input: StartCooldownInput,
   options: FetchSelfExclusionStatusOptions = {},
 ): Promise<CooldownStatusView> {
-  const { baseUrl, userId, bearerToken, allowUserIdFallback, fetcher } =
-    transportContext(options);
-  if (!bearerToken && !allowUserIdFallback) {
+  const { baseUrl, userId, bearerToken, fetcher } = transportContext(options);
+  if (!bearerToken) {
     throw new ResponsibleGamingApiError(
       401,
       "unauthorized",
@@ -179,7 +174,7 @@ export async function startCooldown(
     method: "POST",
     cache: "no-store",
     headers: {
-      ...requestHeaders(userId, bearerToken),
+      ...requestHeaders(bearerToken),
       "content-type": "application/json",
     },
     body: JSON.stringify(input),
@@ -203,9 +198,8 @@ export async function startCooldown(
 export async function fetchSelfExclusionStatus(
   options: FetchSelfExclusionStatusOptions = {},
 ): Promise<SelfExclusionStatusView> {
-  const { baseUrl, userId, bearerToken, allowUserIdFallback, fetcher } =
-    transportContext(options);
-  if (!bearerToken && !allowUserIdFallback) {
+  const { baseUrl, userId, bearerToken, fetcher } = transportContext(options);
+  if (!bearerToken) {
     return fallbackStatus(userId);
   }
 
@@ -223,7 +217,7 @@ export async function fetchSelfExclusionStatus(
 
     const response = await fetcher(`${baseUrl}${SELF_EXCLUSION_PATH}`, {
       cache: "no-store",
-      headers: requestHeaders(userId, bearerToken),
+      headers: requestHeaders(bearerToken),
     });
     if (!response.ok) {
       return fallbackStatus(userId);
@@ -246,9 +240,8 @@ export async function requestSelfExclusion(
 ): Promise<
   SelfExclusionSubmissionView | { source: "fallback:api-gateway-unavailable" }
 > {
-  const { baseUrl, userId, bearerToken, allowUserIdFallback, fetcher } =
-    transportContext(options);
-  if (!bearerToken && !allowUserIdFallback) {
+  const { baseUrl, userId, bearerToken, fetcher } = transportContext(options);
+  if (!bearerToken) {
     return { source: "fallback:api-gateway-unavailable" };
   }
 
@@ -270,7 +263,7 @@ export async function requestSelfExclusion(
       method: "POST",
       cache: "no-store",
       headers: {
-        ...requestHeaders(userId, bearerToken),
+        ...requestHeaders(bearerToken),
         "content-type": "application/json",
         "idempotency-key": options.idempotencyKey ?? generateIdempotencyKey(),
       },
@@ -293,22 +286,17 @@ export async function requestSelfExclusion(
 }
 
 async function clientContext(options: FetchSelfExclusionStatusOptions) {
-  const { baseUrl, userId, bearerToken, allowUserIdFallback, fetcher } =
-    transportContext(options);
+  const { baseUrl, bearerToken, fetcher } = transportContext(options);
   const factory =
     options.responsibleGamingClientFactory ??
     (await loadResponsibleGamingClientFactory());
   const client = factory({
     baseUrl,
-    auth: bearerToken
-      ? { bearerToken }
-      : allowUserIdFallback
-        ? { userId }
-        : undefined,
+    auth: bearerToken ? { bearerToken } : undefined,
     fetcher,
   });
 
-  return { userId, client };
+  return { client };
 }
 
 function transportContext(options: FetchSelfExclusionStatusOptions) {
@@ -320,10 +308,9 @@ function transportContext(options: FetchSelfExclusionStatusOptions) {
   const userId =
     options.userId ?? process.env.PROPHETICA_DEV_USER_ID ?? DEFAULT_DEV_USER_ID;
   const bearerToken = options.bearerToken;
-  const allowUserIdFallback = options.allowUserIdFallback ?? false;
   const fetcher =
     options.fetcher ?? ((input, init) => tracedFetch(input, init));
-  return { baseUrl, userId, bearerToken, allowUserIdFallback, fetcher };
+  return { baseUrl, userId, bearerToken, fetcher };
 }
 
 async function loadResponsibleGamingClientFactory(): Promise<ResponsibleGamingClientFactory> {
@@ -421,17 +408,8 @@ function fallbackCooldownStatus(userId: string): CooldownStatusView {
   };
 }
 
-function requestHeaders(
-  userId: string,
-  bearerToken?: string,
-): Record<string, string> {
-  return bearerToken
-    ? { accept: "application/json", authorization: `Bearer ${bearerToken}` }
-    : {
-        accept: "application/json",
-        "x-user-id": userId,
-        [TRANSITION_CALLER_HEADER]: APPS_WEB_DEV_BFF_TRANSITION_CALLER,
-      };
+function requestHeaders(bearerToken?: string): Record<string, string> {
+  return { accept: "application/json", authorization: `Bearer ${bearerToken}` };
 }
 
 function isCooldownDuration(value: unknown): value is CooldownDuration {

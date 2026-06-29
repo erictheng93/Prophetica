@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
-import { devBffFallbackEnabled } from "@/lib/dev-bff-flag";
-import { getUpstreamSessionToken, getViewer } from "@/lib/session";
+import { getUpstreamSessionToken } from "@/lib/session";
 
 const DEFAULT_API_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
-const DEFAULT_REDEMPTION_DEV_USER_ID = "user_01";
-const TRANSITION_CALLER_HEADER = "x-transition-caller";
-const APPS_WEB_DEV_BFF_TRANSITION_CALLER = "apps-web-dev-bff";
 
 interface CreateRedemptionOrderPayload {
   skuId?: unknown;
@@ -51,7 +47,9 @@ export async function POST(request: Request): Promise<NextResponse> {
         idempotency_key:
           parseString((body as Record<string, unknown>).idempotencyKey) ??
           crypto.randomUUID(),
-        correlation_id: parseString((body as Record<string, unknown>).correlationId),
+        correlation_id: parseString(
+          (body as Record<string, unknown>).correlationId,
+        ),
       }),
     });
 
@@ -68,34 +66,21 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 }
 
-async function buildAuthHeaders(): Promise<
-  { userId: string; headers: Record<string, string> } | null
-> {
+async function buildAuthHeaders(): Promise<{
+  headers: Record<string, string>;
+} | null> {
   const bearerToken = await getUpstreamSessionToken();
-  const allowDevFallback = devBffFallbackEnabled();
-  const viewer = await getViewer();
-  const userId =
-    viewer?.userId ??
-    (allowDevFallback
-      ? process.env.PROPHETICA_DEV_USER_ID ?? DEFAULT_REDEMPTION_DEV_USER_ID
-      : null);
-
-  if (!bearerToken && !userId) {
+  if (!bearerToken) {
     return null;
   }
 
   const headers: Record<string, string> = {
     accept: "application/json",
     "content-type": "application/json",
+    authorization: `Bearer ${bearerToken}`,
   };
-  if (bearerToken) {
-    headers.authorization = `Bearer ${bearerToken}`;
-  } else {
-    headers["x-user-id"] = userId as string;
-    headers[TRANSITION_CALLER_HEADER] = APPS_WEB_DEV_BFF_TRANSITION_CALLER;
-  }
 
-  return { userId: userId as string, headers };
+  return { headers };
 }
 
 function parseString(value: unknown): string | undefined {

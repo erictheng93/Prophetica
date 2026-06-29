@@ -1,17 +1,23 @@
-# Cloudflare Admin Access P0 Evidence
+# Cloudflare Admin Access Evidence
 
 This directory stores the target-account evidence required to close the
-Cloudflare Access P0 blocker.
+affiliate / referral P0 Cloudflare Access blocker.
 
-The P0 gate is blocked until `latest.json` exists and contains SHA-256 digests
-and success summaries for real Terraform/OpenTofu plan and apply logs from the
-Cloudflare account that protects the admin app.
+For the full unblock checklist and failure triage, see
+`docs/blocker-register.md`.
 
-## Required target environment
+Run evidence collection only in the intended Cloudflare account environment:
 
-Run these commands only in an environment with:
+```bash
+rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply
+rtk node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply
+rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs
+rtk node tools/scripts/finalize-affiliate-p0-complete.mjs
+rtk node tools/scripts/check-affiliate-p0-complete.mjs
+```
 
-- `terraform` or `tofu` on `PATH`
+Required environment:
+
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 - `TF_VAR_admin_app_domain`
@@ -19,31 +25,15 @@ Run these commands only in an environment with:
 - `TF_VAR_admin_breakglass_email`
 - `TF_VAR_internal_service_token_name`
 
-Do not commit secrets or raw Cloudflare credentials.
+`latest.json` must include Terraform/OpenTofu plan and apply log hashes, byte
+counts, and success summaries. It also records target-account metadata:
 
-## Procedure
+- `account_id_sha256` and `account_id_suffix`
+- `admin_app_domain`
+- `allowed_email_domains_sha256`
+- `breakglass_email_sha256`
+- `internal_service_token_name`
 
-1. Check prerequisites:
-
-   ```bash
-   rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply
-   ```
-
-2. Apply the Access policy and record evidence:
-
-   ```bash
-   rtk node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply
-   ```
-
-3. Confirm the global P0 gate:
-
-   ```bash
-   rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs
-   rtk node tools/scripts/check-affiliate-p0-complete.mjs
-   ```
-
-The apply wrapper writes temporary logs under `.tmp/` and then records
-`docs/evidence/cloudflare-admin-access/latest.json` through
-`tools/scripts/record-cloudflare-admin-access-evidence.mjs`. The recorder fails
-closed if either log is empty, contains an error marker, or lacks a recognized
-Terraform/OpenTofu success summary.
+Do not commit raw Terraform logs, Cloudflare API tokens, or breakglass email
+plaintext. The recorder intentionally hashes sensitive target identifiers where
+plain text is not required for review.

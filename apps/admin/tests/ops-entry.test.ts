@@ -291,9 +291,37 @@ test("affiliate portal dashboard reads are render-pass cached by stable primitiv
   assert.match(bffSource, /const fetchAffiliateDashboardForViewer = cache/);
   assert.match(
     bffSource,
-    /return fetchAffiliateDashboardForViewer\(viewer\.sub, viewer\.role\)/,
+    /return fetchAffiliateDashboardForViewer\(\s*viewer\.sub,\s*viewer\.role,\s*bearerToken \?\? null,\s*\)/,
   );
-  assert.match(bffSource, /proxyAccountGatewayRequest\(\s*sub,/);
+  assert.match(bffSource, /proxyAccountGatewayRequest\(\s*bearerToken,/);
+  assert.match(bffSource, /authorization: `Bearer \$\{bearerToken\}`/);
+  assert.doesNotMatch(bffSource, /"x-user-id": sub/);
+});
+
+test("affiliate review pages expose approve and reject server actions", () => {
+  const commissionPageSource = readAdminFile(
+    "app/affiliate/commissions/page.tsx",
+  );
+  const payoutPageSource = readAdminFile("app/affiliate/payouts/page.tsx");
+  const actionsSource = readAdminFile("app/affiliate/actions.ts");
+  const bffSource = readAdminFile("lib/affiliate-management-bff.ts");
+
+  assert.match(commissionPageSource, /reviewCommissionAdjustmentAction/);
+  assert.match(commissionPageSource, /item\.status === "pending"/);
+  assert.match(commissionPageSource, /htmlFor=\{`commission-review-reason-\$\{item\.id\}`\}/);
+  assert.match(commissionPageSource, /name="decision"/);
+  assert.match(commissionPageSource, /value="approved"/);
+  assert.match(commissionPageSource, /value="rejected"/);
+  assert.match(payoutPageSource, /reviewPayoutAction/);
+  assert.match(payoutPageSource, /item\.status === "pending"/);
+  assert.match(payoutPageSource, /htmlFor=\{`payout-review-reason-\$\{item\.id\}`\}/);
+  assert.match(payoutPageSource, /name="decision"/);
+  assert.match(payoutPageSource, /value="approved"/);
+  assert.match(payoutPageSource, /value="rejected"/);
+  assert.match(actionsSource, /reviewAffiliateCommissionAdjustment/);
+  assert.match(actionsSource, /reviewAffiliatePayout/);
+  assert.match(bffSource, /\/affiliate-commission-adjustments\/.*\/review/);
+  assert.match(bffSource, /\/affiliate-payouts\/.*\/review/);
 });
 
 test("admin pages do not ship forms with unsupported aria-disabled", () => {
@@ -342,9 +370,15 @@ test("admin worker has KYC R2 archive bucket bindings", () => {
 
   assert.match(wranglerConfig, /^\[\[r2_buckets\]\]$/m);
   assert.match(wranglerConfig, /^binding = ["']KYC_DOCUMENTS_BUCKET["']$/m);
-  assert.match(wranglerConfig, /^bucket_name = ["']prophetica-kyc-documents["']$/m);
+  assert.match(
+    wranglerConfig,
+    /^bucket_name = ["']prophetica-kyc-documents["']$/m,
+  );
   assert.match(wranglerConfig, /^binding = ["']KYC_LIVENESS_BUCKET["']$/m);
-  assert.match(wranglerConfig, /^bucket_name = ["']prophetica-kyc-liveness["']$/m);
+  assert.match(
+    wranglerConfig,
+    /^bucket_name = ["']prophetica-kyc-liveness["']$/m,
+  );
   assert.match(envSource, /KYC_DOCUMENTS_BUCKET\?: R2Bucket/);
   assert.match(envSource, /KYC_LIVENESS_BUCKET\?: R2Bucket/);
 });

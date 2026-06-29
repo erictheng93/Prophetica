@@ -7,6 +7,8 @@ Public Beta launch gates, and SPEC-022. It separates items that are already
 locally actionable from items that require external providers, staging
 environments, devices, or manual operator evidence.
 
+Central checkbox register: `docs/blocker-register.md`.
+
 ## Summary
 
 | Area | Current status | Local action taken | Remaining blocker |
@@ -79,9 +81,12 @@ Source checklist:
   layer identifiers and can persist `reconciliation_findings`.
 - `services/wallet-ledger-service/src/archive.rs` provides a local
   `AuditArchive` implementation and manifest-chain verification.
-- `services/api-gateway/src/lib.rs` includes EdDSA JWKS / JWT verification, but
-  transition `x-user-id` paths still exist outside production and downstream
-  services still rely on gateway-asserted identity headers.
+- `services/api-gateway/src/lib.rs` includes EdDSA JWKS / JWT verification and
+  an empty caller/path allowlist for non-production transition `x-user-id`
+  fallback. Player order placement, affiliate dashboard/referral summary,
+  responsible-gaming cooldown/self-exclusion, and wallet/ledger reads have all
+  been cut over to Bearer-only gateway calls; downstream services still rely on
+  gateway-asserted identity headers.
 
 ### Can Be Handled Locally Now
 
@@ -116,9 +121,16 @@ dedicated database URL and resulting evidence.
   implement the R2 `AuditArchive` adapter.
 - Run 1M ledger-entry acceptance for Layer 2 reconciliation and record hardware
   or container resources, runtime, and pass/fail evidence.
-- Replace all remaining external `x-user-id` trust paths with verified
-  JWT/session auth and explicitly define trusted internal headers from
-  api-gateway to services.
+- Keep external `x-user-id` trust paths on verified JWT/session auth and
+  explicitly define trusted internal headers from api-gateway to services. The
+  player order placement path is cut over:
+  `apps/web` must send a user-service Bearer token to api-gateway, and
+  api-gateway rejects `x-transition-caller` + bare `x-user-id` for
+  `POST /v1/markets/:market_id/orders`. Affiliate dashboard, referrals, and
+  commission-summary are also cut over to Bearer-only gateway calls.
+  Responsible-gaming cooldown and self-exclusion calls are Bearer-only as well.
+  Wallet balance and ledger entry reads are Bearer-only as well; the transition
+  allowlist is empty.
 - Add E2E evidence for UI -> api-gateway -> wallet-ledger -> Postgres, payment
   webhook -> ledger -> idempotency replay, reconciliation worker -> finding /
   alert, and archive job -> WORM/local archive -> verify command.

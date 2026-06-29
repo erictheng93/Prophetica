@@ -1,5 +1,4 @@
 import { fetchWalletOverview } from "./api-gateway";
-import { devBffFallbackEnabled } from "./dev-bff-flag";
 import { fetchKycOverview } from "./kyc-api";
 import { getUpstreamSessionToken, getViewer } from "./session";
 
@@ -24,7 +23,6 @@ export async function getJourneyState(): Promise<JourneyState> {
     fetchWalletOverview({
       userId: viewer.userId,
       bearerToken: bearerToken ?? undefined,
-      allowUserIdFallback: devBffFallbackEnabled(),
     }),
   ]);
 

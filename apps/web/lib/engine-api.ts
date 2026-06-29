@@ -151,7 +151,6 @@ export async function fetchOrderBookSnapshot({
 export async function placeMarketOrder({
   orderProxyBaseUrl = DEFAULT_ORDER_PROXY_BASE_URL,
   marketId,
-  userId,
   bearerToken,
   side,
   outcome,
@@ -168,8 +167,6 @@ export async function placeMarketOrder({
   });
   if (bearerToken) {
     headers.set("authorization", `Bearer ${bearerToken}`);
-  } else if (userId) {
-    headers.set("x-user-id", userId);
   }
   if (clientOrderId) {
     headers.set("x-client-order-id", clientOrderId);

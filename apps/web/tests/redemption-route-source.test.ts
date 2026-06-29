@@ -26,20 +26,30 @@ const cancelRouteSource = readFileSync(
 
 test("catalog proxy keeps auth guard and returns configured catalog payload", () => {
   assert.match(catalogRouteSource, /FALLBACK_CATALOG/);
+  assert.doesNotMatch(catalogRouteSource, /devBffFallbackEnabled/);
   assert.match(
     catalogRouteSource,
     /NextResponse\.json\(\{ error: "unauthorized" \}, \{ status: 401 \}\)/,
   );
 });
 
-test("entitlements proxy forwards viewer id and user-id/authorization headers", () => {
-  assert.match(entitlementsRouteSource, /x-user-id/);
-  assert.match(entitlementsRouteSource, /headers\.authorization\s*=\s*`Bearer/);
+test("entitlements proxy forwards viewer id with bearer authorization only", () => {
+  assert.doesNotMatch(entitlementsRouteSource, /x-user-id/);
+  assert.doesNotMatch(entitlementsRouteSource, /x-transition-caller/);
+  assert.doesNotMatch(entitlementsRouteSource, /devBffFallbackEnabled/);
+  assert.match(entitlementsRouteSource, /authorization:\s*`Bearer/);
   assert.match(entitlementsRouteSource, /\/v1\/redemption\/entitlements\//);
-  assert.match(entitlementsRouteSource, /NextResponse\.json\(parsed, \{ status: response\.status \}\)/);
+  assert.match(
+    entitlementsRouteSource,
+    /NextResponse\.json\(parsed, \{ status: response\.status \}\)/,
+  );
 });
 
 test("orders proxy sends body to gateway endpoint and preserves status", () => {
+  assert.doesNotMatch(ordersRouteSource, /x-user-id/);
+  assert.doesNotMatch(ordersRouteSource, /x-transition-caller/);
+  assert.doesNotMatch(ordersRouteSource, /devBffFallbackEnabled/);
+  assert.match(ordersRouteSource, /authorization:\s*`Bearer/);
   assert.match(ordersRouteSource, /sku_id:\s*skuId/);
   assert.match(ordersRouteSource, /idempotency_key:/);
   assert.match(ordersRouteSource, /correlation_id:/);
@@ -49,17 +59,31 @@ test("orders proxy sends body to gateway endpoint and preserves status", () => {
 });
 
 test("orders detail proxy maps /orders/:orderId path and preserves payload", () => {
+  assert.doesNotMatch(orderRouteSource, /x-user-id/);
+  assert.doesNotMatch(orderRouteSource, /x-transition-caller/);
+  assert.doesNotMatch(orderRouteSource, /devBffFallbackEnabled/);
+  assert.match(orderRouteSource, /authorization:\s*`Bearer/);
   assert.match(
     orderRouteSource,
-    /apiGatewayUrl\(`\/v1\/redemption\/orders\/\$\{encodeURIComponent\(orderIdValue\)\}`\)/,
+    /\/v1\/redemption\/orders\/\$\{encodeURIComponent\(orderIdValue\)\}/,
   );
-  assert.match(orderRouteSource, /Response\.json\(payload, \{ status: response\.status \}\)/);
+  assert.match(
+    orderRouteSource,
+    /Response\.json\(payload, \{ status: response\.status \}\)/,
+  );
 });
 
 test("order cancel proxy maps /orders/:orderId/cancel path and preserves status", () => {
+  assert.doesNotMatch(cancelRouteSource, /x-user-id/);
+  assert.doesNotMatch(cancelRouteSource, /x-transition-caller/);
+  assert.doesNotMatch(cancelRouteSource, /devBffFallbackEnabled/);
+  assert.match(cancelRouteSource, /authorization:\s*`Bearer/);
   assert.match(
     cancelRouteSource,
     /\`\/v1\/redemption\/orders\/\$\{encodeURIComponent\(trimmedOrderId\)\}\/cancel\`/,
   );
-  assert.match(cancelRouteSource, /NextResponse\.json\(payload, \{ status: response\.status \}\)/);
+  assert.match(
+    cancelRouteSource,
+    /NextResponse\.json\(payload, \{ status: response\.status \}\)/,
+  );
 });
