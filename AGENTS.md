@@ -36,6 +36,13 @@ commands include:
 - `rtk cargo nextest run --workspace --locked`
 - `rtk cargo build --workspace --release`
 
+Rust builds also share `sccache` and a common Cargo target directory (normally
+`/Users/eric/.cargo/target`) across local sessions and agents. Treat these as
+shared resources: do not casually run broad whole-crate tests such as
+`rtk cargo test -p api-gateway --locked` on the shared local machine. Prefer
+`--lib`, named test filters, or a single `--test <integration_test>` target, and
+ask before running a command that may occupy shared compiler/linker resources.
+
 For shared crates, `Cargo.toml`/`Cargo.lock`, generated Rust/protobuf/SQLx
 artifacts, or cross-service behavior, push the branch and run heavy workspace
 verification on a stronger build host or in GitHub Actions. Document which

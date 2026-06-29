@@ -22,6 +22,34 @@ cargo check < cargo clippy < cargo test / cargo nextest < cargo build --release
 Actual cost depends on cache state, changed crates, enabled targets, and whether
 the command covers one package or the whole workspace.
 
+## Shared Rust Build Resources
+
+This repository uses shared Rust build resources on local development machines:
+
+- `sccache` is shared across sessions and agents.
+- Cargo artifacts are written to a shared target directory, currently under
+  `/Users/eric/.cargo/target` unless the environment explicitly overrides
+  `CARGO_TARGET_DIR`.
+
+Treat those resources as shared infrastructure. A broad `cargo test`, especially
+for dependency-heavy crates such as `api-gateway`, can occupy compiler/linker
+processes, mutate shared incremental state, and slow or interfere with other
+active work. Before running a Rust command that may compile many targets, prefer
+the narrowest command that proves the touched behavior:
+
+```bash
+rtk cargo check -p <crate> --lib --locked
+rtk cargo test -p <crate> --lib <test_name> --locked
+rtk cargo test -p <crate> --test <integration_test> <test_name> --locked
+```
+
+Do not start a whole-crate Rust test such as `rtk cargo test -p api-gateway
+--locked` on a shared local machine unless the user explicitly approves the
+shared-cache / shared-target impact or no narrower validation can prove the
+change. If a broad Rust command is accidentally started, check for remaining
+`cargo`, `rustc`, linker, and `sccache` child processes and stop only the
+processes from that command before continuing.
+
 ## Local Development On A Resource-Constrained Mac
 
 Use the weaker macOS machine for editing and targeted checks. Prefer package- or

@@ -147,12 +147,17 @@ Docker validation example from PowerShell:
 
 ```powershell
 rtk docker run --rm `
-  -e CARGO_TARGET_DIR=/work/target/docker-codex `
+  -e CARGO_TARGET_DIR=/cargo-target `
   -v "${PWD}:/work" `
+  -v "$env:USERPROFILE\.cargo\target:/cargo-target" `
   -w /work `
   prophetica-rust-builddeps:codex `
   cargo test -p api-gateway --lib --locked
 ```
+
+Keep Docker Cargo outputs outside `/work`. The mounted `/work` path is the
+repository checkout; writing Cargo artifacts there creates project-local
+`target/` residue instead of using the shared target cache.
 
 ## Current MVP Gaps
 
