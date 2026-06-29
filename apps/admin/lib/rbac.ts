@@ -27,8 +27,8 @@ type RouteRule = {
 const routeRules: readonly RouteRule[] = [
   { path: "/login", allow: ALL_ROLES },
   { path: "/403", allow: ALL_ROLES },
-  { path: "/api/points/wallets", isPrefix: true, allow: ALL_ROLES },
-  { path: "/api/points/manual-adjustments", allow: ALL_ROLES },
+  { path: "/api/points/wallets", isPrefix: true, allow: ["admin", "manager"] },
+  { path: "/api/points/manual-adjustments", allow: ["admin"] },
   { path: "/api/members", isPrefix: true, allow: ALL_ROLES },
   { path: "/api/manager-accounts", isPrefix: true, allow: ["admin"] },
   { path: "/api/login-events", allow: ["admin", "manager"] },

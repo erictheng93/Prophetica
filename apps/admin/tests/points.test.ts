@@ -22,6 +22,12 @@ const affiliateViewer = {
   iat: 1,
   exp: 2,
 };
+const managerViewer = {
+  sub: "U-MGR-001",
+  role: "manager" as const,
+  iat: 1,
+  exp: 2,
+};
 
 test("parsePointAmountToMinorUnits accepts positive amounts with two decimals", () => {
   assert.equal(parsePointAmountToMinorUnits("1"), 100);
@@ -69,32 +75,20 @@ test("proxyPointsBalanceRequest forwards audited admin balance reads", async () 
   assert.match(headers["x-request-id"], /^admin-points:/);
 });
 
-test("proxyPointsBalanceRequest allows audited affiliate balance reads", async () => {
-  const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+test("proxyPointsBalanceRequest rejects affiliate balance reads before upstream", async () => {
+  let called = false;
   const response = await proxyPointsBalanceRequest({
     viewer: affiliateViewer,
     userId: "user_123",
     ledgerUrl: "http://ledger.local",
-    fetchImpl: async (input, init) => {
-      calls.push([input, init]);
-      return Response.json({
-        user_id: "user_123",
-        available_minor_units: -100,
-        locked_minor_units: 0,
-        frozen_minor_units: 0,
-      });
+    fetchImpl: async () => {
+      called = true;
+      return Response.json({});
     },
   });
 
-  assert.equal(response.status, 200);
-  assert.equal(
-    String(calls[0]?.[0]),
-    "http://ledger.local/internal/ledger/wallets/user_123/balance",
-  );
-  const headers = calls[0]?.[1]?.headers as Record<string, string>;
-  assert.equal(headers["x-actor-id"], "U-AFF-001");
-  assert.equal(headers["x-operator-role"], "affiliate");
-  assert.equal(headers["x-affiliate-id"], "AFF-001");
+  assert.equal(response.status, 403);
+  assert.equal(called, false);
 });
 
 test("proxyManualPointsAdjustment overwrites actor fields and forwards idempotency", async () => {
@@ -142,51 +136,37 @@ test("proxyManualPointsAdjustment overwrites actor fields and forwards idempoten
   assert.equal(body.delta_minor_units, 2500);
 });
 
-test("proxyManualPointsAdjustment allows affiliate grants with affiliate id", async () => {
-  const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+test("points proxy rejects manager direct adjustments before upstream", async () => {
+  let called = false;
   const response = await proxyManualPointsAdjustment({
-    viewer: affiliateViewer,
-    ledgerUrl: "http://ledger.local",
+    viewer: managerViewer,
     request: {
       target_user_id: "user_123",
-      direction: "grant",
+      direction: "deduct",
       delta_minor_units: 100,
-      reason_code: "campaign",
-      reason_text: "affiliate campaign grant",
-      idempotency_key: "manual-points:grant:affiliate",
+      reason_code: "ops_adjustment",
+      reason_text: "manager should propose instead",
     },
-    fetchImpl: async (input, init) => {
-      calls.push([input, init]);
-      return Response.json({
-        txn_id: 77,
-        idempotency_key: "manual-points:grant:affiliate",
-        replayed: false,
-        audit_log_id: "audit:manual-points:grant:affiliate",
-      });
+    fetchImpl: async () => {
+      called = true;
+      return Response.json({});
     },
   });
 
-  assert.equal(response.status, 200);
-  const init = calls[0]?.[1];
-  const headers = init?.headers as Record<string, string>;
-  assert.equal(headers["x-affiliate-id"], "AFF-001");
-  const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-  assert.equal(body.actor_user_id, "U-AFF-001");
-  assert.equal(body.actor_role, "affiliate");
-  assert.equal(body.affiliate_id, "AFF-001");
-  assert.equal(body.direction, "grant");
+  assert.equal(response.status, 403);
+  assert.equal(called, false);
 });
 
-test("points proxy rejects affiliate deduct before upstream", async () => {
+test("points proxy rejects affiliate grants before upstream", async () => {
   let called = false;
   const response = await proxyManualPointsAdjustment({
     viewer: affiliateViewer,
     request: {
       target_user_id: "user_123",
-      direction: "deduct",
+      direction: "grant",
       delta_minor_units: 100,
       reason_code: "campaign",
-      reason_text: "bad call",
+      reason_text: "affiliate should not write ledger directly",
     },
     fetchImpl: async () => {
       called = true;

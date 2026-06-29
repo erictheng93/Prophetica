@@ -68,19 +68,14 @@ test("only affiliate can reach /me/affiliate and its descendants", () => {
   }
 });
 
-test("points BFF routes are reachable by every signed-in role", () => {
-  for (const role of ALL_ROLES) {
-    assert.equal(
-      canAccess("/api/points/wallets/user_123/balance", role),
-      true,
-      `${role} -> balance BFF`,
-    );
-    assert.equal(
-      canAccess("/api/points/manual-adjustments", role),
-      true,
-      `${role} -> manual adjustment BFF`,
-    );
-  }
+test("points BFF routes enforce read and mutation authority by role", () => {
+  assert.equal(canAccess("/api/points/wallets/user_123/balance", "admin"), true);
+  assert.equal(canAccess("/api/points/wallets/user_123/balance", "manager"), true);
+  assert.equal(canAccess("/api/points/wallets/user_123/balance", "affiliate"), false);
+
+  assert.equal(canAccess("/api/points/manual-adjustments", "admin"), true);
+  assert.equal(canAccess("/api/points/manual-adjustments", "manager"), false);
+  assert.equal(canAccess("/api/points/manual-adjustments", "affiliate"), false);
 });
 
 test("FAQ catalog route is limited to admin and manager sessions", () => {

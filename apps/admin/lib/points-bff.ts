@@ -59,15 +59,6 @@ export async function proxyManualPointsAdjustment(
   if ("error" in parsed) {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
-  if (input.viewer.role === "affiliate") {
-    if (parsed.value.direction !== "grant") {
-      return Response.json({ error: "forbidden_direction" }, { status: 403 });
-    }
-    if (!input.viewer.affiliateId) {
-      return Response.json({ error: "affiliate_id_required" }, { status: 403 });
-    }
-  }
-
   const correlationId =
     parsed.value.correlation_id?.trim() || `admin-points:${randomUUID()}`;
   const idempotencyKey =
@@ -104,21 +95,13 @@ export async function proxyManualPointsAdjustment(
 function canReadPoints(
   viewer: SessionPayload | null,
 ): viewer is SessionPayload {
-  return (
-    viewer?.role === "admin" ||
-    viewer?.role === "manager" ||
-    viewer?.role === "affiliate"
-  );
+  return viewer?.role === "admin" || viewer?.role === "manager";
 }
 
 function canAdjustPoints(
   viewer: SessionPayload | null,
 ): viewer is SessionPayload {
-  return (
-    viewer?.role === "admin" ||
-    viewer?.role === "manager" ||
-    viewer?.role === "affiliate"
-  );
+  return viewer?.role === "admin";
 }
 
 function parseManualPointsAdjustment(

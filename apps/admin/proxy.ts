@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requiresCloudflareAccess } from "@/lib/cloudflare-access-policy";
+import { hasTrustedProductionAccessSignal } from "@/lib/production-access-gate";
 import { canAccess, defaultLandingFor } from "@/lib/rbac";
 import { verifyAdminSessionToken } from "@/lib/session-crypto";
 
@@ -48,12 +49,10 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Phase 3 — replace with real Cf-Mtls-Verified header check. Today this
-  // only fail-closes in production when the placeholder header is missing.
   if (
     process.env.NODE_ENV === "production" &&
     requiresCloudflareAccess(pathname) &&
-    !req.headers.get("x-internal-mtls")
+    !hasTrustedProductionAccessSignal(req.headers)
   ) {
     return new NextResponse("Forbidden", {
       status: 403,
