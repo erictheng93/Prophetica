@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -17,9 +18,14 @@ use ulid::Ulid;
 
 use crate::{
     durability::EngineDurabilityGuard,
+    metrics,
     order_book::{
         AddOrderResult, NewOrder, OrderBook, OrderBookError, OrderBookSnapshot, OrderId, OrderSide,
         OrderType, Price, Quantity, SnapshotRestingOrder, Symbol, TradeEvent,
+    },
+    projection::{
+        ProjectionSink, project_engine_event, projection_key, projection_topic,
+        serialize_projection_event,
     },
     shard::{MarketCommand, MarketEvent, MarketShard},
     snapshot::{PersistedOrderBookSnapshot, read_persisted_snapshot, write_persisted_snapshot},
@@ -33,13 +39,30 @@ pub struct EngineEvent {
     pub event: MarketEvent,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct InMemoryEngineService {
     shards: Arc<Mutex<HashMap<String, mpsc::Sender<MarketCommand>>>>,
     order_routes: Arc<Mutex<HashMap<Vec<u8>, OrderRoute>>>,
     events: broadcast::Sender<EngineEvent>,
+    projection_sink: Option<Arc<dyn ProjectionSink + Send + Sync>>,
     wal_dir: Option<Arc<PathBuf>>,
     durability: EngineDurabilityGuard,
+}
+
+impl fmt::Debug for InMemoryEngineService {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("InMemoryEngineService")
+            .field("shards", &self.shards)
+            .field("order_routes", &self.order_routes)
+            .field("wal_dir", &self.wal_dir)
+            .field("durability", &self.durability)
+            .field(
+                "projection_sink_configured",
+                &self.projection_sink.is_some(),
+            )
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for InMemoryEngineService {
@@ -49,6 +72,7 @@ impl Default for InMemoryEngineService {
             shards: Arc::default(),
             order_routes: Arc::default(),
             events,
+            projection_sink: None,
             wal_dir: None,
             durability: EngineDurabilityGuard::default(),
         }
@@ -107,6 +131,7 @@ impl EngineService for InMemoryEngineService {
 
         let sender = self.sender_for_market(&market_id).await;
         let (reply_to, reply_rx) = oneshot::channel();
+        let timer = metrics::Timer::start();
         sender
             .send(MarketCommand::PlaceOrder {
                 order: command_order.clone(),
@@ -114,10 +139,12 @@ impl EngineService for InMemoryEngineService {
             })
             .await
             .map_err(|_| Status::unavailable("market shard stopped"))?;
+        record_command_queue_depth(&market_id, &sender);
         let result = reply_rx
             .await
             .map_err(|_| Status::unavailable("market shard dropped place order reply"))?
             .map_err(|error| map_order_book_error(&error))?;
+        metrics::observe_command("place_order", &market_id, timer.elapsed());
         let wal_records = place_order_wal_records(command_order, &result);
         self.append_wal_records(&market_id, &wal_records)?;
 
@@ -165,6 +192,7 @@ impl EngineService for InMemoryEngineService {
             .ok_or_else(|| Status::not_found("order route not found"))?;
         let sender = self.sender_for_market(&route.market_id).await;
         let (reply_to, reply_rx) = oneshot::channel();
+        let timer = metrics::Timer::start();
         sender
             .send(MarketCommand::CancelOrderForUser {
                 order_id: route.internal_order_id.clone(),
@@ -173,10 +201,12 @@ impl EngineService for InMemoryEngineService {
             })
             .await
             .map_err(|_| Status::unavailable("market shard stopped"))?;
+        record_command_queue_depth(&route.market_id, &sender);
         let result = reply_rx
             .await
             .map_err(|_| Status::unavailable("market shard dropped cancel reply"))?
             .map_err(|error| map_order_book_error(&error))?;
+        metrics::observe_command("cancel_order", &route.market_id, timer.elapsed());
         self.append_wal_record(
             &route.market_id,
             &WalRecord::CancelOrder(route.internal_order_id.clone()),
@@ -208,13 +238,16 @@ impl EngineService for InMemoryEngineService {
             .clamp(1, 100);
         let sender = self.sender_for_market(&market_id).await;
         let (reply_to, reply_rx) = oneshot::channel();
+        let timer = metrics::Timer::start();
         sender
             .send(MarketCommand::GetSnapshot { reply_to })
             .await
             .map_err(|_| Status::unavailable("market shard stopped"))?;
+        record_command_queue_depth(&market_id, &sender);
         let snapshot = reply_rx
             .await
             .map_err(|_| Status::unavailable("market shard dropped snapshot reply"))?;
+        metrics::observe_command("get_book_snapshot", &market_id, timer.elapsed());
 
         Ok(Response::new(book_snapshot_response(snapshot, depth)))
     }
@@ -233,6 +266,17 @@ impl InMemoryEngineService {
     pub fn with_durability_guard(durability: EngineDurabilityGuard) -> Self {
         Self {
             durability,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn with_projection_sink<S>(sink: S) -> Self
+    where
+        S: ProjectionSink + Send + Sync + 'static,
+    {
+        Self {
+            projection_sink: Some(Arc::new(sink)),
             ..Self::default()
         }
     }
@@ -340,15 +384,20 @@ impl InMemoryEngineService {
         let (command_tx, command_rx) = mpsc::channel(1024);
         let (event_tx, mut event_rx) = mpsc::channel(1024);
         let event_broadcast = self.events.clone();
+        let projection_sink = self.projection_sink.clone();
         let event_market_id = market_id.to_string();
         tokio::spawn(async move {
             let mut sequence = 1;
             while let Some(event) = event_rx.recv().await {
-                let _ = event_broadcast.send(EngineEvent {
-                    market_id: event_market_id.clone(),
-                    sequence,
-                    event,
-                });
+                publish_engine_event(
+                    &event_broadcast,
+                    projection_sink.as_deref(),
+                    EngineEvent {
+                        market_id: event_market_id.clone(),
+                        sequence,
+                        event,
+                    },
+                );
                 sequence += 1;
             }
         });
@@ -396,15 +445,20 @@ impl InMemoryEngineService {
         let (command_tx, command_rx) = mpsc::channel(1024);
         let (event_tx, mut event_rx) = mpsc::channel(1024);
         let event_broadcast = self.events.clone();
+        let projection_sink = self.projection_sink.clone();
         let event_market_id = market_id.to_string();
         tokio::spawn(async move {
             let mut sequence = 1;
             while let Some(event) = event_rx.recv().await {
-                let _ = event_broadcast.send(EngineEvent {
-                    market_id: event_market_id.clone(),
-                    sequence,
-                    event,
-                });
+                publish_engine_event(
+                    &event_broadcast,
+                    projection_sink.as_deref(),
+                    EngineEvent {
+                        market_id: event_market_id.clone(),
+                        sequence,
+                        event,
+                    },
+                );
                 sequence += 1;
             }
         });
@@ -459,15 +513,20 @@ impl InMemoryEngineService {
         let (command_tx, command_rx) = mpsc::channel(1024);
         let (event_tx, mut event_rx) = mpsc::channel(1024);
         let event_broadcast = self.events.clone();
+        let projection_sink = self.projection_sink.clone();
         let event_market_id = market_id.to_string();
         tokio::spawn(async move {
             let mut sequence = 1;
             while let Some(event) = event_rx.recv().await {
-                let _ = event_broadcast.send(EngineEvent {
-                    market_id: event_market_id.clone(),
-                    sequence,
-                    event,
-                });
+                publish_engine_event(
+                    &event_broadcast,
+                    projection_sink.as_deref(),
+                    EngineEvent {
+                        market_id: event_market_id.clone(),
+                        sequence,
+                        event,
+                    },
+                );
                 sequence += 1;
             }
         });
@@ -511,6 +570,38 @@ impl InMemoryEngineService {
 
         Ok(())
     }
+}
+
+fn publish_engine_event(
+    event_broadcast: &broadcast::Sender<EngineEvent>,
+    projection_sink: Option<&(dyn ProjectionSink + Send + Sync)>,
+    event: EngineEvent,
+) {
+    if let Some(sink) = projection_sink {
+        for projected in project_engine_event(event.clone()) {
+            let topic = projection_topic(&projected);
+            let key = projection_key(&projected);
+            match serialize_projection_event(&projected) {
+                Ok(payload) => {
+                    if let Err(error) = sink.publish(topic, key, &payload) {
+                        tracing::error!(%error, topic, key, "failed to publish projection event");
+                    }
+                }
+                Err(error) => {
+                    tracing::error!(%error, topic, key, "failed to serialize projection event");
+                }
+            }
+        }
+    }
+
+    let _ = event_broadcast.send(event);
+}
+
+fn record_command_queue_depth(market_id: &str, sender: &mpsc::Sender<MarketCommand>) {
+    metrics::set_command_queue_depth(
+        market_id,
+        sender.max_capacity().saturating_sub(sender.capacity()),
+    );
 }
 
 fn market_wal_path(wal_dir: &Path, market_id: &str) -> PathBuf {

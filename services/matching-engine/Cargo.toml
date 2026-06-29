@@ -13,6 +13,7 @@ kafka = ["dep:rdkafka"]
 anyhow.workspace = true
 axum = { workspace = true, features = ["ws"] }
 proto = { path = "../../crates/proto" }
+prometheus.workspace = true
 rdkafka = { workspace = true, optional = true }
 sdk = { path = "../../crates/sdk" }
 serde.workspace = true

@@ -1,18 +1,22 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    env,
     future::Future,
     net::SocketAddr,
     sync::Arc,
+    time::Duration,
 };
 
 use axum::{
     Json, Router,
+    body::Body,
     extract::{
-        Path, Query, State,
+        MatchedPath, Path, Query, Request as AxumRequest, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{delete, get, post},
 };
 use proto::proph::v1::{
@@ -21,6 +25,7 @@ use proto::proph::v1::{
     TimeInForce, Trade as ProtoTrade, UserId,
     engine_service_server::{EngineService, EngineServiceServer},
 };
+use sdk::service_stub::{ReadinessDependency, ReadinessState};
 use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, signal};
 use tonic::{Code, Request, Status, transport::Server};
@@ -34,6 +39,9 @@ use crate::{
     },
     service::InMemoryEngineService,
 };
+
+#[cfg(feature = "kafka")]
+use crate::projection::KafkaProjectionSink;
 
 #[derive(Debug, Clone)]
 struct AppState {
@@ -149,6 +157,7 @@ pub fn service_router(service: InMemoryEngineService) -> Router {
         .route("/ws/markets/:market_id/book", get(book_websocket))
         .route("/ws/markets/:market_id/trades", get(trade_websocket))
         .route("/ws/users/:user_id/orders", get(order_websocket))
+        .layer(middleware::from_fn(record_http_metrics))
         .with_state(ServiceState { service })
 }
 
@@ -159,7 +168,11 @@ pub fn service_router(service: InMemoryEngineService) -> Router {
 /// Returns an error when either HTTP or gRPC serving fails.
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
 pub async fn run() -> anyhow::Result<()> {
-    let ((), ()) = tokio::try_join!(run_http(), run_grpc())?;
+    let service = engine_service_from_env()?;
+    let ((), ()) = tokio::try_join!(
+        run_http_with_service(service.clone()),
+        run_grpc_with_service(service)
+    )?;
     Ok(())
 }
 
@@ -170,12 +183,22 @@ pub async fn run() -> anyhow::Result<()> {
 /// Returns an error when configuration loading, socket binding, or serving fails.
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
 pub async fn run_http() -> anyhow::Result<()> {
+    run_http_with_service(engine_service_from_env()?).await
+}
+
+/// Runs the matching-engine HTTP server with an existing service instance.
+///
+/// # Errors
+///
+/// Returns an error when configuration loading, socket binding, or serving fails.
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
+pub async fn run_http_with_service(service: InMemoryEngineService) -> anyhow::Result<()> {
     let config = sdk::config::ServiceConfig::from_env(crate::SERVICE_NAME, crate::DEFAULT_PORT)?;
     tracing::info!(?config, "matching engine config loaded");
 
-    let app = sdk::service_stub::router(&config)
+    let app = sdk::service_stub::router_with_readiness(&config, readiness_state_from_env())
         .merge(router(std::iter::empty()))
-        .merge(service_router(InMemoryEngineService::default()));
+        .merge(service_router(service));
     let listener = TcpListener::bind(config.bind_addr).await?;
     tracing::info!(addr = %config.bind_addr, "matching engine listening");
 
@@ -193,9 +216,19 @@ pub async fn run_http() -> anyhow::Result<()> {
 /// Returns an error when socket binding or serving fails.
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
 pub async fn run_grpc() -> anyhow::Result<()> {
+    run_grpc_with_service(engine_service_from_env()?).await
+}
+
+/// Runs the matching-engine gRPC server with an existing service instance.
+///
+/// # Errors
+///
+/// Returns an error when socket binding or serving fails.
+#[tracing::instrument(fields(service.name = crate::SERVICE_NAME), skip_all)]
+pub async fn run_grpc_with_service(service: InMemoryEngineService) -> anyhow::Result<()> {
     let bind_addr = grpc_bind_addr_from_env();
     tracing::info!(addr = %bind_addr, "matching engine grpc listening");
-    run_grpc_on_addr(bind_addr, shutdown_signal()).await
+    run_grpc_on_addr_with_service(bind_addr, service, shutdown_signal()).await
 }
 
 /// Runs the matching-engine gRPC server on a concrete address.
@@ -207,12 +240,87 @@ pub async fn run_grpc_on_addr(
     bind_addr: SocketAddr,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> anyhow::Result<()> {
+    run_grpc_on_addr_with_service(bind_addr, InMemoryEngineService::default(), shutdown).await
+}
+
+/// Runs the matching-engine gRPC server on a concrete address with an existing service instance.
+///
+/// # Errors
+///
+/// Returns an error when tonic fails to serve the gRPC endpoint.
+pub async fn run_grpc_on_addr_with_service(
+    bind_addr: SocketAddr,
+    service: InMemoryEngineService,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> anyhow::Result<()> {
     Server::builder()
-        .add_service(EngineServiceServer::new(InMemoryEngineService::default()))
+        .add_service(EngineServiceServer::new(service))
         .serve_with_shutdown(bind_addr, shutdown)
         .await?;
 
     Ok(())
+}
+
+async fn record_http_metrics(request: AxumRequest<Body>, next: Next) -> Response {
+    let method = request.method().clone();
+    let route = request.extensions().get::<MatchedPath>().map_or_else(
+        || request.uri().path().to_string(),
+        |path| path.as_str().to_string(),
+    );
+    let timer = crate::metrics::Timer::start();
+    let response = next.run(request).await;
+    crate::metrics::observe_http_request(
+        method.as_str(),
+        &route,
+        response.status().as_u16(),
+        timer.elapsed(),
+    );
+    response
+}
+
+fn engine_service_from_env() -> anyhow::Result<InMemoryEngineService> {
+    match kafka_brokers_from_env() {
+        Some(brokers) => engine_service_with_kafka_projection(&brokers),
+        None => Ok(InMemoryEngineService::default()),
+    }
+}
+
+fn readiness_state_from_env() -> ReadinessState {
+    let Some(brokers) = kafka_brokers_from_env() else {
+        return ReadinessState::ready();
+    };
+
+    ReadinessState::from_dependencies(
+        brokers
+            .split(',')
+            .map(str::trim)
+            .filter(|broker| !broker.is_empty())
+            .map(|broker| ReadinessDependency::Tcp {
+                name: format!("kafka:{broker}"),
+                addr: broker.to_string(),
+                timeout: Duration::from_millis(500),
+            })
+            .collect(),
+    )
+}
+
+fn kafka_brokers_from_env() -> Option<String> {
+    env::var("MATCHING_ENGINE_KAFKA_BROKERS")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[cfg(feature = "kafka")]
+fn engine_service_with_kafka_projection(brokers: &str) -> anyhow::Result<InMemoryEngineService> {
+    let sink = KafkaProjectionSink::from_brokers(brokers)?;
+    tracing::info!(brokers, "matching engine Kafka projection sink configured");
+    Ok(InMemoryEngineService::with_projection_sink(sink))
+}
+
+#[cfg(not(feature = "kafka"))]
+fn engine_service_with_kafka_projection(_brokers: &str) -> anyhow::Result<InMemoryEngineService> {
+    anyhow::bail!("MATCHING_ENGINE_KAFKA_BROKERS requires matching-engine kafka feature")
 }
 
 #[tracing::instrument(fields(service.name = crate::SERVICE_NAME, proph.market_id = %market_id), skip(state))]

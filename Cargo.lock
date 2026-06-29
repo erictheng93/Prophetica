@@ -1741,6 +1741,7 @@ dependencies = [
  "axum 0.7.9",
  "futures-util",
  "http-body-util",
+ "prometheus",
  "proptest",
  "proto",
  "rdkafka",

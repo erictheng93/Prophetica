@@ -9,8 +9,12 @@ use matching_engine::{
         ProjectionPublisher, book_stream_message, project_engine_event, projection_topic,
         serialize_projection_event,
     },
-    service::EngineEvent,
+    service::{EngineEvent, InMemoryEngineService},
     shard::MarketEvent,
+};
+use proto::proph::v1::{
+    MarketId, OrderType as ProtoOrderType, PlaceOrderRequest, Side, TimeInForce, UserId,
+    engine_service_server::EngineService,
 };
 
 fn id(value: &str) -> OrderId {
@@ -176,6 +180,39 @@ fn projection_publisher_sends_topic_key_and_payload() {
     assert!(emitted[0].payload.contains(r#""seq_no":13"#));
 }
 
+#[tokio::test]
+async fn engine_service_publishes_projection_events_to_configured_sink() {
+    let sink = InMemoryProjectionSink::default();
+    let service = InMemoryEngineService::with_projection_sink(sink.clone());
+
+    service
+        .place_order(tonic::Request::new(place_order_request(
+            10,
+            Side::Ask,
+            55,
+            3,
+            "maker",
+        )))
+        .await
+        .expect("resting order should be accepted");
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if !sink.published().is_empty() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("projection sink should receive order update event");
+
+    let emitted = sink.published();
+    assert_eq!(emitted[0].topic, "engine.order_update");
+    assert_eq!(emitted[0].key, "mkt-election");
+    assert!(emitted[0].payload.contains(r#""kind":"order_update""#));
+}
+
 #[cfg(feature = "kafka")]
 #[test]
 fn kafka_projection_sink_can_be_constructed_from_brokers() {
@@ -218,4 +255,29 @@ fn book_stream_message_filters_market_book_deltas() {
         book_stream_message("mkt-election", &delta).expect("book delta should serialize"),
         r#"{"type":"delta","market_id":"mkt-election","seq":3,"side":"Sell","price_pts":57,"qty_delta":-3}"#
     );
+}
+
+fn place_order_request(
+    user_id: u64,
+    side: Side,
+    price_pts: i32,
+    quantity: i64,
+    client_order_id: &str,
+) -> PlaceOrderRequest {
+    PlaceOrderRequest {
+        audit: None,
+        user_id: Some(UserId { value: user_id }),
+        market_id: Some(MarketId {
+            value: "mkt-election".to_string(),
+        }),
+        side: side.into(),
+        outcome: 1,
+        r#type: ProtoOrderType::Limit.into(),
+        price_pts,
+        quantity,
+        tif: TimeInForce::Gtc.into(),
+        post_only: false,
+        client_order_id: client_order_id.to_string(),
+        fee_curve_bps: 0,
+    }
 }

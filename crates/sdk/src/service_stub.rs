@@ -1,6 +1,11 @@
-use axum::{Json, Router, response::IntoResponse, routing::get};
+use std::{sync::Arc, time::Duration};
+
+use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::get};
 use serde::Serialize;
-use tokio::{net::TcpListener, signal};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    signal,
+};
 use tower_http::trace::TraceLayer;
 
 use crate::{config::ServiceConfig, observability};
@@ -16,9 +21,52 @@ struct HealthResponse {
     status: &'static str,
     service: &'static str,
     check: &'static str,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    dependencies: Vec<HealthDependencyResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct HealthDependencyResponse {
+    name: String,
+    status: &'static str,
+    message: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReadinessState {
+    dependencies: Arc<Vec<ReadinessDependency>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReadinessDependency {
+    Tcp {
+        name: String,
+        addr: String,
+        timeout: Duration,
+    },
+}
+
+impl ReadinessState {
+    #[must_use]
+    pub fn ready() -> Self {
+        Self {
+            dependencies: Arc::new(Vec::new()),
+        }
+    }
+
+    #[must_use]
+    pub fn from_dependencies(dependencies: Vec<ReadinessDependency>) -> Self {
+        Self {
+            dependencies: Arc::new(dependencies),
+        }
+    }
 }
 
 pub fn router(config: &ServiceConfig) -> Router {
+    router_with_readiness(config, ReadinessState::ready())
+}
+
+pub fn router_with_readiness(config: &ServiceConfig, readiness: ReadinessState) -> Router {
     let live = config.service_name;
     let ready = config.service_name;
     let startup = config.service_name;
@@ -31,7 +79,10 @@ pub fn router(config: &ServiceConfig) -> Router {
         )
         .route(
             "/healthz/ready",
-            get(move || async move { Json(health_response("ready", ready)) }),
+            get(move || {
+                let readiness = readiness.clone();
+                async move { readiness_response(ready, readiness).await }
+            }),
         )
         .route(
             "/healthz/startup",
@@ -71,6 +122,66 @@ fn health_response(check: &'static str, service: &'static str) -> HealthResponse
         status: "ok",
         service,
         check,
+        dependencies: Vec::new(),
+    }
+}
+
+async fn readiness_response(service: &'static str, readiness: ReadinessState) -> impl IntoResponse {
+    let (ready, dependencies) = readiness_report(&readiness).await;
+    let status = if ready { "ok" } else { "unavailable" };
+    let http_status = if ready {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+
+    (
+        http_status,
+        Json(HealthResponse {
+            status,
+            service,
+            check: "ready",
+            dependencies,
+        }),
+    )
+}
+
+async fn readiness_report(readiness: &ReadinessState) -> (bool, Vec<HealthDependencyResponse>) {
+    let mut all_ready = true;
+    let mut dependencies = Vec::with_capacity(readiness.dependencies.len());
+
+    for dependency in readiness.dependencies.iter() {
+        let dependency = check_dependency(dependency).await;
+        all_ready &= dependency.status == "ok";
+        dependencies.push(dependency);
+    }
+
+    (all_ready, dependencies)
+}
+
+async fn check_dependency(dependency: &ReadinessDependency) -> HealthDependencyResponse {
+    match dependency {
+        ReadinessDependency::Tcp {
+            name,
+            addr,
+            timeout,
+        } => match tokio::time::timeout(*timeout, TcpStream::connect(addr.as_str())).await {
+            Ok(Ok(_stream)) => HealthDependencyResponse {
+                name: name.clone(),
+                status: "ok",
+                message: format!("tcp dependency reachable at {addr}"),
+            },
+            Ok(Err(error)) => HealthDependencyResponse {
+                name: name.clone(),
+                status: "unavailable",
+                message: format!("tcp dependency unreachable at {addr}: {error}"),
+            },
+            Err(_elapsed) => HealthDependencyResponse {
+                name: name.clone(),
+                status: "unavailable",
+                message: format!("tcp dependency timed out at {addr}"),
+            },
+        },
     }
 }
 
@@ -116,7 +227,11 @@ async fn shutdown_signal(service_name: &'static str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{health_response, metrics_body};
+    use std::time::Duration;
+
+    use super::{
+        ReadinessDependency, ReadinessState, health_response, metrics_body, readiness_report,
+    };
 
     #[test]
     fn metrics_body_exposes_proph_service_metrics_with_service_label() {
@@ -134,5 +249,44 @@ mod tests {
         assert_eq!(response.status, "ok");
         assert_eq!(response.service, "matching-engine");
         assert_eq!(response.check, "startup");
+    }
+
+    #[tokio::test]
+    async fn readiness_report_marks_reachable_tcp_dependency_ok() {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .expect("listener should bind");
+        let addr = listener.local_addr().expect("listener should expose addr");
+        let state = readiness_state_for_addr(addr);
+
+        let (ready, dependencies) = readiness_report(&state).await;
+
+        assert!(ready);
+        assert_eq!(dependencies[0].name, "kafka");
+        assert_eq!(dependencies[0].status, "ok");
+    }
+
+    #[tokio::test]
+    async fn readiness_report_marks_unreachable_tcp_dependency_unavailable() {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .expect("listener should bind");
+        let addr = listener.local_addr().expect("listener should expose addr");
+        drop(listener);
+        let state = readiness_state_for_addr(addr);
+
+        let (ready, dependencies) = readiness_report(&state).await;
+
+        assert!(!ready);
+        assert_eq!(dependencies[0].name, "kafka");
+        assert_eq!(dependencies[0].status, "unavailable");
+    }
+
+    fn readiness_state_for_addr(addr: std::net::SocketAddr) -> ReadinessState {
+        ReadinessState::from_dependencies(vec![ReadinessDependency::Tcp {
+            name: "kafka".to_string(),
+            addr: addr.to_string(),
+            timeout: Duration::from_millis(50),
+        }])
     }
 }

@@ -18,7 +18,7 @@ groups:
         expr: |
           (
             histogram_quantile(0.99, sum(rate(proph_latency_budget_hop_seconds_bucket[5m])) by (le, span))
-            > on (span) group_left
+            > on (span)
             (1.5 * proph_latency_budget_hop_budget_seconds)
           )
         for: 5m
@@ -34,7 +34,7 @@ groups:
         expr: |
           (
             histogram_quantile(0.99, sum(rate(proph_latency_budget_hop_seconds_bucket[5m])) by (le, span))
-            > on (span) group_left
+            > on (span)
             (2 * proph_latency_budget_hop_budget_seconds)
           )
         for: 2m
@@ -65,6 +65,47 @@ groups:
           runbook: runbooks/engine-p99-over-50ms.md
         annotations:
           summary: Matching engine P99 exceeded 50ms.
+
+      - alert: PropheticaMatchingEngineOrderRouteP99Over30ms
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum(rate(proph_engine_http_request_duration_seconds_bucket{route="/api/v1/markets/:market_id/orders"}[5m])) by (le, route)
+          ) > 0.030
+        for: 5m
+        labels:
+          severity: P1
+          spec: SPEC-003-11
+          runbook: runbooks/engine-p99-over-50ms.md
+        annotations:
+          summary: Matching engine order route P99 exceeded the 30ms L1/L2 budget.
+          description: Check hot-market skew, command queue depth, Kafka publish latency, and CPU saturation.
+
+      - alert: PropheticaMatchingEngineCommandP99Over5ms
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum(rate(proph_engine_command_duration_seconds_bucket[5m])) by (le, command)
+          ) > 0.005
+        for: 5m
+        labels:
+          severity: P1
+          spec: SPEC-003-11
+          runbook: runbooks/engine-p99-over-50ms.md
+        annotations:
+          summary: Matching engine internal command P99 exceeded 5ms.
+          description: Internal command latency is above the SPEC-003 matching hot-path budget.
+
+      - alert: PropheticaMatchingEngineCommandQueueDepthHigh
+        expr: max_over_time(proph_engine_command_queue_depth[5m]) > 512
+        for: 5m
+        labels:
+          severity: P1
+          spec: SPEC-003-11
+          runbook: runbooks/engine-p99-over-50ms.md
+        annotations:
+          summary: Matching engine command queue depth is above the hot-market threshold.
+          description: Sustained command queue depth indicates hot-market overload or blocked shard processing.
 
       - alert: PropheticaApi5xxHigh
         expr: |

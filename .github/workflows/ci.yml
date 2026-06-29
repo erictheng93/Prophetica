@@ -32,8 +32,18 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+      - name: install script validation tools
+        run: sudo apt-get update && sudo apt-get install -y shellcheck prometheus
       - name: test repository scripts
-        run: node --test tools/scripts/*.test.mjs
+        run: find tools/scripts -name '*.test.mjs' -print0 | xargs -0 node --test
+      - name: validate matching-engine phase 2 evidence artifacts
+        run: |
+          bash -n tools/scripts/smoke/matching-engine-compose-smoke.sh
+          shellcheck tools/scripts/smoke/matching-engine-compose-smoke.sh
+          node --check tools/scripts/load/matching-engine-hot-market-load.mjs
+          node --check tools/scripts/load/matching-engine-production-evidence.mjs
+          ruby -e 'require "yaml"; YAML.load_stream(File.read("infra/k8s/matching-engine-hot-market.yaml")); YAML.load_stream(File.read("infra/prometheus/rules/latency-budget.yml")); puts "yaml ok"'
+          promtool check rules infra/prometheus/rules/latency-budget.yml
 
   proto-drift:
     # Regenerate the committed protobuf stubs from packages/proto/v1/*.proto and

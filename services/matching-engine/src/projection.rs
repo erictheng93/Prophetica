@@ -5,7 +5,7 @@ use std::time::Duration;
 #[cfg(feature = "kafka")]
 use rdkafka::{
     config::ClientConfig,
-    producer::{BaseProducer, BaseRecord},
+    producer::{BaseProducer, BaseRecord, Producer},
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -201,6 +201,7 @@ impl KafkaTopicDurabilityPolicy {
 #[cfg(feature = "kafka")]
 pub struct KafkaProjectionSink {
     producer: BaseProducer,
+    flush_timeout: Duration,
 }
 
 #[cfg(feature = "kafka")]
@@ -229,7 +230,10 @@ impl KafkaProjectionSink {
             )
             .create()?;
 
-        Ok(Self { producer })
+        Ok(Self {
+            producer,
+            flush_timeout: Duration::from_millis(settings.message_timeout_ms),
+        })
     }
 }
 
@@ -240,6 +244,7 @@ impl ProjectionSink for KafkaProjectionSink {
             .send(BaseRecord::to(topic).key(key).payload(payload))
             .map_err(|(error, _message)| anyhow::anyhow!(error))?;
         self.producer.poll(Duration::ZERO);
+        self.producer.flush(self.flush_timeout)?;
         Ok(())
     }
 }

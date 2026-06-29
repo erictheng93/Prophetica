@@ -15,6 +15,7 @@ use proto::proph::v1::{
     MarketId, OrderType as ProtoOrderType, PlaceOrderRequest, Side, TimeInForce, UserId,
     engine_service_server::EngineService,
 };
+use sdk::config::{ConfigPresence, ServiceConfig, ServiceDependencies};
 use serde_json::{Value, json};
 use tokio::{net::TcpListener, time::Duration};
 use tokio_tungstenite::connect_async;
@@ -121,6 +122,54 @@ async fn rest_order_flow_uses_matching_engine_service_state() {
     let body = response_json(cancelled).await;
     assert_eq!(body["status"], json!("CANCELLED"));
     assert_eq!(body["remaining_qty"], json!(0));
+}
+
+#[tokio::test]
+async fn metrics_endpoint_exposes_matching_engine_latency_and_queue_signals() {
+    let config = ServiceConfig {
+        service_name: "matching-engine",
+        bind_addr: "127.0.0.1:0".parse().expect("test bind addr should parse"),
+        dependencies: ServiceDependencies {
+            database_url: ConfigPresence::Missing,
+            redis_url: ConfigPresence::Missing,
+            kafka_brokers: ConfigPresence::Missing,
+            otlp_endpoint: ConfigPresence::Missing,
+        },
+    };
+    let app =
+        sdk::service_stub::router(&config).merge(service_router(InMemoryEngineService::default()));
+
+    let response = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/v1/markets/mkt-election/orders",
+            Some(10),
+            &json!({
+                "side": "sell",
+                "outcome": "YES",
+                "type": "LIMIT",
+                "price_pts": 55,
+                "quantity": 3,
+                "time_in_force": "GTC"
+            }),
+        ))
+        .await
+        .expect("request should be handled");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let metrics = app
+        .oneshot(empty_get("/metrics"))
+        .await
+        .expect("metrics request should be handled");
+    assert_eq!(metrics.status(), StatusCode::OK);
+    let body = response_text(metrics).await;
+
+    assert!(body.contains("proph_engine_http_request_duration_seconds_bucket"));
+    assert!(body.contains(r#"route="/api/v1/markets/:market_id/orders""#));
+    assert!(body.contains("proph_engine_command_duration_seconds_bucket"));
+    assert!(body.contains("proph_engine_command_queue_depth"));
+    assert!(body.contains(r#"market_id="mkt-election""#));
 }
 
 #[tokio::test]
@@ -457,4 +506,13 @@ async fn response_json(response: axum::response::Response) -> Value {
         .await
         .expect("response body should collect");
     serde_json::from_slice(&collected.to_bytes()).expect("response should be json")
+}
+
+async fn response_text(response: axum::response::Response) -> String {
+    let collected = response
+        .into_body()
+        .collect()
+        .await
+        .expect("response body should collect");
+    String::from_utf8(collected.to_bytes().to_vec()).expect("response should be utf-8")
 }

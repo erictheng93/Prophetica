@@ -55,17 +55,21 @@ Current blockers:
 - `matching-engine` startup uses a single `current_thread` runtime pinned to one CPU
   core. That can be valid for a hot-shard model, but it is not yet a complete horizontal
   scaling model.
-- HTTP and gRPC currently construct separate `InMemoryEngineService::default()`
-  instances, so the two transport surfaces can diverge in state.
-- Kafka projection code exists, but production startup does not yet wire it into the
-  matching event path.
+- HTTP and gRPC now share one `InMemoryEngineService` when launched through
+  `matching_engine::api::run()`. Production evidence is still required for the
+  intended hot/cold deployment topology and routing model.
+- Kafka projection code is wired into the matching event path when
+  `MATCHING_ENGINE_KAFKA_BROKERS` is set and the binary is built with the `kafka`
+  feature. Production broker/topic evidence is still required.
 - `ws-gateway` is still a shared service stub plus payload helpers, not a production
   fan-out gateway.
-- `/healthz/ready` returns a static OK response rather than checking PostgreSQL, Redis,
+- `matching-engine` readiness now checks configured Kafka broker TCP dependencies.
+  Other services still need dependency-aware readiness coverage for PostgreSQL, Redis,
   Kafka, and downstream service dependencies.
-- Metrics are mostly bootstrap metrics. Required P99/P999 latency, queue length,
-  backpressure, Kafka lag, DB contention, and WS fan-out metrics are not yet fully
-  emitted by service code.
+- `matching-engine` now emits HTTP route latency, internal command latency, and
+  per-market command queue depth metrics. Remaining observability gaps include
+  production dashboard snapshots, Kafka lag capture, DB contention, backpressure,
+  and WS fan-out metrics across the rest of the critical path.
 - Production K8s, HPA, pod disruption budgets, rollout manifests, GitOps wiring, and
   release automation are not present as executable deployment artifacts.
 
@@ -224,13 +228,15 @@ The next work should land in this order:
    surfaces into explicit read/write roles.
 2. Make wallet-ledger PostgreSQL pool sizing configurable by environment.
 3. Replace static readiness with dependency-aware readiness checks.
-4. Add per-route latency, error ratio, queue depth, DB pool saturation, advisory-lock
-   wait, Kafka lag, and WS fan-out metrics.
+4. Extend the new matching-engine route latency / command latency / queue depth
+   metrics across DB pool saturation, advisory-lock wait, Kafka lag, and WS fan-out.
 5. Wire Kafka projection into the matching-engine production event path.
 6. Implement a production WS gateway fan-out path with backpressure and sequence-gap
    recovery.
 7. Add executable deployment manifests with probes, HPA, resource requests, and PDBs.
-8. Add repeatable L1 load-test scripts and the first `docs/capacity-reports/` report.
+8. Run the repeatable matching-engine hot-market load harness plus
+   `tools/scripts/load/matching-engine-production-evidence.mjs` in staging/prod-like
+   infrastructure and attach the generated `docs/capacity-reports/` report.
 
 ## 9. References
 
