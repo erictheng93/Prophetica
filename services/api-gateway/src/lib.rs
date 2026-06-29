@@ -4303,6 +4303,19 @@ pub(crate) fn redemption_router<R>(redemption_client: R) -> Router
 where
     R: RedemptionClient + Clone + Send + Sync + 'static,
 {
+    let state = Arc::new(RedemptionState::new(redemption_client));
+    let admin_refund_router = Router::new()
+        .route(
+            "/v1/admin/redemption/orders/:order_id/refund-proposals",
+            post(propose_redemption_cs_refund::<R>),
+        )
+        .route(
+            "/v1/admin/redemption/refund-proposals/:proposal_id/approve",
+            post(approve_redemption_cs_refund::<R>),
+        )
+        .route_layer(middleware::from_fn(verify_admin_proxy_internal_call))
+        .with_state(state.clone());
+
     Router::new()
         .route("/v1/redemption/orders", post(submit_redemption_order::<R>))
         .route(
@@ -4317,15 +4330,8 @@ where
             "/v1/redemption/entitlements/:user_id",
             get(list_my_entitlements::<R>),
         )
-        .route(
-            "/v1/admin/redemption/orders/:order_id/refund-proposals",
-            post(propose_redemption_cs_refund::<R>),
-        )
-        .route(
-            "/v1/admin/redemption/refund-proposals/:proposal_id/approve",
-            post(approve_redemption_cs_refund::<R>),
-        )
-        .with_state(Arc::new(RedemptionState::new(redemption_client)))
+        .with_state(state)
+        .merge(admin_refund_router)
 }
 
 async fn submit_redemption_order<R>(
@@ -4419,13 +4425,14 @@ where
 
 async fn propose_redemption_cs_refund<R>(
     State(state): State<Arc<RedemptionState<R>>>,
-    auth: AuthContext,
+    headers: HeaderMap,
     Path(order_id): Path<String>,
     Json(request): Json<ProposeRedemptionRefundRequest>,
 ) -> Result<(StatusCode, Json<CsRefundProposal>), ApiError>
 where
     R: RedemptionClient + Send + Sync,
 {
+    let context = redemption_refund_admin_context(&headers)?;
     if request.reason.trim().is_empty() {
         return Err(ApiError::bad_request(
             "empty_reason",
@@ -4435,24 +4442,37 @@ where
 
     let (status, proposal) = state
         .client
-        .propose_cs_refund(&order_id, &auth.user_id, &request.reason)
+        .propose_cs_refund(&order_id, &context.actor_id, &request.reason)
         .await?;
     Ok((status, Json(proposal)))
 }
 
 async fn approve_redemption_cs_refund<R>(
     State(state): State<Arc<RedemptionState<R>>>,
-    auth: AuthContext,
+    headers: HeaderMap,
     Path(proposal_id): Path<String>,
 ) -> Result<(StatusCode, Json<OrderView>), ApiError>
 where
     R: RedemptionClient + Send + Sync,
 {
+    let context = redemption_refund_admin_context(&headers)?;
     let (status, order) = state
         .client
-        .approve_cs_refund(&proposal_id, &auth.user_id)
+        .approve_cs_refund(&proposal_id, &context.actor_id)
         .await?;
     Ok((status, Json(order)))
+}
+
+fn redemption_refund_admin_context(headers: &HeaderMap) -> Result<AdminProxyContext, ApiError> {
+    let context = admin_proxy_context(headers)?;
+    if !matches!(context.role.as_str(), "admin" | "cs") {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "redemption_refund_admin_forbidden",
+            "only admin or cs can manage redemption refund proposals",
+        ));
+    }
+    Ok(context)
 }
 
 async fn list_public_markets<M>(
@@ -6401,23 +6421,26 @@ mod tests {
         AdminProxyContext, AffiliateCommissionSummary, AffiliateCredentialClient,
         AffiliateCredentialCreateRequest, AffiliateDashboardResponse, AffiliateReferralListItem,
         ApiError, AuthVerifier, BookLevel, BookSnapshotResponse, CaptureReferralRequest,
-        DEFAULT_TAKER_FEE_CURVE_BPS, InMemoryAffiliateAccountSagaStore, InMemoryFeatureFlagStore,
+        CsRefundProposal, DEFAULT_TAKER_FEE_CURVE_BPS, Entitlement,
+        InMemoryAffiliateAccountSagaStore, InMemoryFeatureFlagStore,
         InMemoryGatewayDeniedAuditStore, InMemoryTradeFillSagaStore, KycTier, KycTierClient,
         LedgerEntry, LedgerPostResult, Market, MarketListResponse, MarketServiceClient,
         MatchingEngineClient, OrderActionResponse, OrderFill, OrderFillSettlement, OrderOwnerStore,
-        PlaceOrderRequest, Position, PositionFillProjectionRequest, PositionListResponse,
-        PositionProjectionClient, PositionServiceClient, ReferralClient, SERVICE_NAME,
-        TRADE_FILL_SAGA_BATCH_LIMIT, TradeFillSagaStatus, TradeSettlementRequest, WalletBalance,
-        WalletLedgerClient, X_USER_ID_TRANSITION_ALLOWLIST,
-        X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
-        drain_due_trade_fill_sagas, market_router, matching_engine_user_id_header_value,
-        observability, positions_router, router, router_with_engine, router_with_engine_and_kyc,
+        OrderView, PlaceOrderRequest, Position, PositionFillProjectionRequest,
+        PositionListResponse, PositionProjectionClient, PositionServiceClient, RedemptionClient,
+        ReferralClient, SERVICE_NAME, SubmitRedemptionOrderRequest, TRADE_FILL_SAGA_BATCH_LIMIT,
+        TradeFillSagaStatus, TradeSettlementRequest, WalletBalance, WalletLedgerClient,
+        X_USER_ID_TRANSITION_ALLOWLIST, X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
+        X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF, drain_due_trade_fill_sagas, market_router,
+        matching_engine_user_id_header_value, observability, positions_router, redemption_router,
+        router, router_with_engine, router_with_engine_and_kyc,
         router_with_engine_and_kyc_and_market_fees,
         router_with_engine_and_kyc_and_market_fees_and_position_projection,
         router_with_payment_flags, router_with_services,
         router_with_services_and_affiliate_account_clients, settle_and_project_order_fills,
         wallet_spendable_minor_units,
     };
+    use redemption_service::{cs_refund::ProposalStatus, order::OrderState};
 
     #[tokio::test]
     async fn wallet_balance_requires_auth_context() {
@@ -6608,6 +6631,143 @@ mod tests {
         assert_eq!(
             positions.requests(),
             vec![("MEM-42".to_owned(), Some("active".to_owned()))]
+        );
+    }
+
+    #[tokio::test]
+    async fn redemption_admin_refund_routes_reject_normal_bearer_auth() {
+        let redemption = InMemoryRedemptionClient::default();
+        let app = redemption_router(redemption.clone()).layer(test_auth_extension());
+        let token = test_jwt("ordinary-user");
+
+        let propose = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/redemption/orders/order-1/refund-proposals")
+                    .header("authorization", format!("Bearer {token}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "reason": "support" }).to_string()))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(propose.status(), StatusCode::UNAUTHORIZED);
+
+        let approve = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/redemption/refund-proposals/proposal-1/approve")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(approve.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            redemption.refund_proposals(),
+            Vec::<(String, String, String)>::new()
+        );
+        assert_eq!(
+            redemption.refund_approvals(),
+            Vec::<(String, String)>::new()
+        );
+    }
+
+    #[tokio::test]
+    async fn redemption_admin_refund_routes_reject_unsigned_and_non_admin_context() {
+        let redemption = InMemoryRedemptionClient::default();
+        let app = redemption_router(redemption.clone()).layer(test_auth_extension());
+
+        let unsigned = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/redemption/orders/order-1/refund-proposals")
+                    .header("x-actor-id", "attacker-admin")
+                    .header("x-operator-role", "admin")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "reason": "support" }).to_string()))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(unsigned.status(), StatusCode::UNAUTHORIZED);
+
+        let body = json!({ "reason": "support" }).to_string();
+        let (timestamp, signature) = signed_admin_request_with_actor_role(
+            "POST",
+            "/v1/admin/redemption/orders/order-1/refund-proposals",
+            body.as_bytes(),
+            "ordinary-user",
+            "user",
+        );
+        let signed_non_admin = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/admin/redemption/orders/order-1/refund-proposals")
+                    .header("x-actor-id", "ordinary-user")
+                    .header("x-operator-role", "user")
+                    .header("x-internal-call-timestamp", timestamp)
+                    .header("x-internal-call-signature", signature)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap_or_else(|error| panic!("request should build: {error}")),
+            )
+            .await
+            .expect("request should be handled");
+        assert_eq!(signed_non_admin.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            redemption.refund_proposals(),
+            Vec::<(String, String, String)>::new()
+        );
+    }
+
+    #[tokio::test]
+    async fn redemption_admin_refund_routes_proxy_signed_admin_context() {
+        let redemption = InMemoryRedemptionClient::default();
+        let app = redemption_router(redemption.clone()).layer(test_auth_extension());
+
+        let propose = app
+            .clone()
+            .oneshot(admin_json_request(
+                "POST",
+                "/v1/admin/redemption/orders/order-1/refund-proposals",
+                &json!({ "reason": "customer support refund" }),
+            ))
+            .await
+            .expect("request should be handled");
+        assert_eq!(propose.status(), StatusCode::CREATED);
+        assert_eq!(
+            response_json(propose).await["proposed_by"],
+            json!("admin-1")
+        );
+
+        let approve = app
+            .oneshot(admin_empty_post(
+                "/v1/admin/redemption/refund-proposals/proposal-1/approve",
+            ))
+            .await
+            .expect("request should be handled");
+        assert_eq!(approve.status(), StatusCode::OK);
+        assert_eq!(response_json(approve).await["user_id"], json!("admin-1"));
+
+        assert_eq!(
+            redemption.refund_proposals(),
+            vec![(
+                "order-1".to_owned(),
+                "admin-1".to_owned(),
+                "customer support refund".to_owned()
+            )]
+        );
+        assert_eq!(
+            redemption.refund_approvals(),
+            vec![("proposal-1".to_owned(), "admin-1".to_owned())]
         );
     }
 
@@ -8232,6 +8392,21 @@ mod tests {
             .unwrap_or_else(|error| panic!("request should build: {error}"))
     }
 
+    fn admin_empty_post(uri: &str) -> Request<Body> {
+        let body = Vec::new();
+        let (timestamp, signature) = signed_admin_request("POST", uri, &body);
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("x-actor-id", "admin-1")
+            .header("x-operator-role", "admin")
+            .header("x-request-id", "req-1")
+            .header("x-internal-call-timestamp", timestamp)
+            .header("x-internal-call-signature", signature)
+            .body(Body::from(body))
+            .unwrap_or_else(|error| panic!("request should build: {error}"))
+    }
+
     fn admin_json_request(method: &str, uri: &str, body: &Value) -> Request<Body> {
         let body = body.to_string();
         let (timestamp, signature) = signed_admin_request(method, uri, body.as_bytes());
@@ -8271,6 +8446,16 @@ mod tests {
     }
 
     fn signed_admin_request(method: &str, uri: &str, body: &[u8]) -> (String, String) {
+        signed_admin_request_with_actor_role(method, uri, body, "admin-1", "admin")
+    }
+
+    fn signed_admin_request_with_actor_role(
+        method: &str,
+        uri: &str,
+        body: &[u8],
+        actor_id: &str,
+        role: &str,
+    ) -> (String, String) {
         let timestamp = i64::try_from(super::unix_now_seconds()).unwrap_or(i64::MAX);
         let path = uri.split('?').next().unwrap_or(uri);
         let signature = crate::internal_call_auth::sign_internal_call(
@@ -8278,8 +8463,8 @@ mod tests {
             path,
             body,
             timestamp,
-            "admin-1",
-            "admin",
+            actor_id,
+            role,
             "dev-admin-internal-call-secret",
         );
         (timestamp.to_string(), signature)
@@ -8596,6 +8781,12 @@ mod tests {
         fee_bps: Option<u32>,
     }
 
+    #[derive(Clone, Default)]
+    struct InMemoryRedemptionClient {
+        refund_proposals: Arc<Mutex<Vec<(String, String, String)>>>,
+        refund_approvals: Arc<Mutex<Vec<(String, String)>>>,
+    }
+
     #[derive(Clone)]
     struct InMemoryKycTierClient {
         tier: Option<KycTier>,
@@ -8692,6 +8883,26 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|error| {
                     panic!("position projection requests lock should not poison: {error}")
+                })
+                .clone()
+        }
+    }
+
+    impl InMemoryRedemptionClient {
+        fn refund_proposals(&self) -> Vec<(String, String, String)> {
+            self.refund_proposals
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("redemption refund proposal lock should not poison: {error}")
+                })
+                .clone()
+        }
+
+        fn refund_approvals(&self) -> Vec<(String, String)> {
+            self.refund_approvals
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("redemption refund approval lock should not poison: {error}")
                 })
                 .clone()
         }
@@ -8896,6 +9107,86 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait]
+    impl RedemptionClient for InMemoryRedemptionClient {
+        async fn submit_order(
+            &self,
+            user_id: &str,
+            request: SubmitRedemptionOrderRequest,
+        ) -> Result<(StatusCode, OrderView), ApiError> {
+            Ok((
+                StatusCode::CREATED,
+                redemption_order(user_id, &request.sku_id),
+            ))
+        }
+
+        async fn get_order(&self, order_id: &str) -> Result<Option<OrderView>, ApiError> {
+            Ok(Some(OrderView {
+                order_id: order_id.to_owned(),
+                ..redemption_order("user-1", "sku-1")
+            }))
+        }
+
+        async fn cancel_order(&self, order_id: &str) -> Result<OrderView, ApiError> {
+            Ok(OrderView {
+                order_id: order_id.to_owned(),
+                state: OrderState::Refunded,
+                ..redemption_order("user-1", "sku-1")
+            })
+        }
+
+        async fn list_entitlements(&self, _user_id: &str) -> Result<Vec<Entitlement>, ApiError> {
+            Ok(Vec::new())
+        }
+
+        async fn propose_cs_refund(
+            &self,
+            order_id: &str,
+            user_id: &str,
+            reason: &str,
+        ) -> Result<(StatusCode, CsRefundProposal), ApiError> {
+            self.refund_proposals
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("redemption refund proposal lock should not poison: {error}")
+                })
+                .push((order_id.to_owned(), user_id.to_owned(), reason.to_owned()));
+            Ok((
+                StatusCode::CREATED,
+                CsRefundProposal {
+                    proposal_id: "proposal-1".to_owned(),
+                    order_id: order_id.to_owned(),
+                    proposed_by: user_id.to_owned(),
+                    reason: reason.to_owned(),
+                    status: ProposalStatus::Pending,
+                    proposed_at_unix_secs: 1_800_000_000,
+                    resolved_at_unix_secs: None,
+                    resolved_by: None,
+                },
+            ))
+        }
+
+        async fn approve_cs_refund(
+            &self,
+            proposal_id: &str,
+            approver_user_id: &str,
+        ) -> Result<(StatusCode, OrderView), ApiError> {
+            self.refund_approvals
+                .lock()
+                .unwrap_or_else(|error| {
+                    panic!("redemption refund approval lock should not poison: {error}")
+                })
+                .push((proposal_id.to_owned(), approver_user_id.to_owned()));
+            Ok((
+                StatusCode::OK,
+                OrderView {
+                    state: OrderState::Refunded,
+                    ..redemption_order(approver_user_id, "sku-1")
+                },
+            ))
+        }
+    }
+
     impl InMemoryMarketServiceClient {
         fn market(&self) -> Market {
             Market {
@@ -8923,6 +9214,19 @@ mod tests {
             oracle_source: "official".to_owned(),
             resolved_outcome: None,
             resolved_at: None,
+        }
+    }
+
+    fn redemption_order(user_id: &str, sku_id: &str) -> OrderView {
+        OrderView {
+            order_id: "order-1".to_owned(),
+            state: OrderState::Committed,
+            user_id: user_id.to_owned(),
+            sku_id: sku_id.to_owned(),
+            price_minor_units: 1_000,
+            entitlement_id: Some("entitlement-1".to_owned()),
+            idempotency_key: "idem-1".to_owned(),
+            replayed: false,
         }
     }
 
