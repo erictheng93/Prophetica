@@ -2672,10 +2672,10 @@ struct PostLedgerTransactionResponse {
 }
 
 fn matching_engine_user_id_header_value(user_id: &str) -> String {
-    if let Ok(parsed) = user_id.parse::<u64>() {
-        if parsed >= 9 {
-            return parsed.to_string();
-        }
+    if let Ok(parsed) = user_id.parse::<u64>()
+        && parsed >= 9
+    {
+        return parsed.to_string();
     }
 
     let digest = Sha256::digest(user_id.as_bytes());
@@ -3266,7 +3266,7 @@ where
                             .and_then(serde_json::Value::as_str)
                             .map(ToOwned::to_owned)
                     })
-                    .unwrap_or_else(|| text.to_string())
+                    .unwrap_or_else(|| text.clone())
             },
         );
         return Err(ApiError::redemption_service_status(status, message));
@@ -4101,6 +4101,7 @@ struct GatewayRouterServices<W, E, R, K, F, M, P> {
     position_projection: P,
 }
 
+#[allow(clippy::too_many_lines)]
 fn router_with_services_kyc_payment_flags_market_fees_position_projection_and_trade_stores<
     W,
     E,
@@ -5607,28 +5608,27 @@ where
                 "manager cannot reassign affiliate ownership",
             ));
         }
-        if context.role == "admin" {
-            if let Err(error) = state
+        if context.role == "admin"
+            && let Err(error) = state
                 .affiliate_credentials
                 .verify_active_manager(manager_id, context.clone())
                 .await
-            {
-                record_gateway_denied(
-                    &state,
-                    &context,
-                    GatewayDeniedEvent {
-                        domain: "affiliate",
-                        target_type: "manager",
-                        target_id: Some(manager_id.to_owned()),
-                        action: "update",
-                        reason_or_error_code: error.error,
-                        attempted_payload: request.clone(),
-                        idempotency_key: None,
-                    },
-                )
-                .await?;
-                return Err(error);
-            }
+        {
+            record_gateway_denied(
+                &state,
+                &context,
+                GatewayDeniedEvent {
+                    domain: "affiliate",
+                    target_type: "manager",
+                    target_id: Some(manager_id.to_owned()),
+                    action: "update",
+                    reason_or_error_code: error.error,
+                    attempted_payload: request.clone(),
+                    idempotency_key: None,
+                },
+            )
+            .await?;
+            return Err(error);
         }
     }
     let affiliate = state
@@ -5949,15 +5949,12 @@ async fn verify_admin_proxy_internal_call(request: Request, next: Next) -> Respo
     let method = parts.method.clone();
     let path = parts.uri.path().to_owned();
     let headers = parts.headers.clone();
-    let body_bytes = match to_bytes(body, 1_048_576).await {
-        Ok(bytes) => bytes,
-        Err(_) => {
-            return ApiError::bad_request(
-                "admin_internal_call_bad_body",
-                "admin internal request body could not be read",
-            )
-            .into_response();
-        }
+    let Ok(body_bytes) = to_bytes(body, 1_048_576).await else {
+        return ApiError::bad_request(
+            "admin_internal_call_bad_body",
+            "admin internal request body could not be read",
+        )
+        .into_response();
     };
     let now = i64::try_from(unix_now_seconds()).unwrap_or(i64::MAX);
     if internal_call_auth::verify_internal_call(
@@ -6489,11 +6486,10 @@ mod tests {
         PositionListResponse, PositionProjectionClient, PositionServiceClient, RedemptionClient,
         ReferralClient, SERVICE_NAME, SubmitRedemptionOrderRequest, TRADE_FILL_SAGA_BATCH_LIMIT,
         TradeFillSagaStatus, TradeSettlementRequest, WalletBalance, WalletLedgerClient,
-        X_USER_ID_TRANSITION_ALLOWLIST, X_USER_ID_TRANSITION_ALLOWLIST_EXPIRES_ON,
-        X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF, drain_due_trade_fill_sagas, market_router,
-        matching_engine_user_id_header_value, observability, positions_router, redemption_router,
-        router, router_with_engine, router_with_engine_and_kyc,
-        router_with_engine_and_kyc_and_market_fees,
+        X_USER_ID_TRANSITION_ALLOWLIST, X_USER_ID_TRANSITION_CALLER_APPS_WEB_DEV_BFF,
+        drain_due_trade_fill_sagas, market_router, matching_engine_user_id_header_value,
+        observability, positions_router, redemption_router, router, router_with_engine,
+        router_with_engine_and_kyc, router_with_engine_and_kyc_and_market_fees,
         router_with_engine_and_kyc_and_market_fees_and_position_projection,
         router_with_payment_flags, router_with_services,
         router_with_services_and_affiliate_account_clients, settle_and_project_order_fills,
@@ -7494,9 +7490,9 @@ mod tests {
         assert_eq!(engine.place_requests()[0].2.fee_curve_bps, Some(700));
     }
 
-    /// Regression: ASK orders 也必須帶 per-market fee_curve_bps。先前 gateway 對 ASK
-    /// short-circuit 回 DEFAULT_TAKER_FEE_CURVE_BPS，導致跨側成交時若 taker 落在 ASK
-    /// 端會以 default 而非 market 設定收費（market.fee_bps > DEFAULT 時漏費）。
+    // Regression: ASK orders 也必須帶 per-market fee_curve_bps。先前 gateway 對 ASK
+    // short-circuit 回 DEFAULT_TAKER_FEE_CURVE_BPS，導致跨側成交時若 taker 落在 ASK
+    // 端會以 default 而非 market 設定收費（market.fee_bps > DEFAULT 時漏費）。
     #[tokio::test]
     async fn place_order_passes_market_fee_curve_to_matching_engine_on_ask_side() {
         let wallet = InMemoryWalletLedgerClient::with_available_minor_units(1_000);

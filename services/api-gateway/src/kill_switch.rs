@@ -480,7 +480,7 @@ impl MultiSigReleaseRequest {
                 .evaluated_at
                 .duration_since(signer.mfa_verified_at)
                 .map_err(|_| multisig_rejected())?;
-            if age > Duration::from_secs(30 * 60) {
+            if age > Duration::from_mins(30) {
                 return Err(multisig_rejected());
             }
 

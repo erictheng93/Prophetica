@@ -122,9 +122,8 @@ mod tests {
             ("o", "", "reason", "proposed_by"),
             ("o", "alice", "   ", "reason"),
         ] {
-            let error = match CsRefundProposal::propose(order, proposer, reason, 0) {
-                Ok(_) => panic!("empty {expected_field} must error"),
-                Err(error) => error,
+            let Err(error) = CsRefundProposal::propose(order, proposer, reason, 0) else {
+                panic!("empty {expected_field} must error");
             };
             match error {
                 CsRefundError::EmptyField { field } => assert_eq!(field, expected_field),

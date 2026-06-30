@@ -231,10 +231,10 @@ impl RedemptionStore for InMemoryRedemptionStore {
     async fn record_order(&self, order: RedemptionOrder) -> Result<RedemptionOrder, StoreError> {
         let mut guard = self.lock()?;
         let storage_key = idempotency_storage_key(&order.user_id, &order.idempotency_key);
-        if let Some(prior_id) = guard.orders_by_idempotency.get(&storage_key) {
-            if let Some(prior) = guard.orders.get(prior_id) {
-                return Ok(prior.clone());
-            }
+        if let Some(prior_id) = guard.orders_by_idempotency.get(&storage_key)
+            && let Some(prior) = guard.orders.get(prior_id)
+        {
+            return Ok(prior.clone());
         }
         guard
             .orders_by_idempotency
@@ -371,7 +371,7 @@ impl RedemptionStore for InMemoryRedemptionStore {
             .collect();
         // Deterministic ordering: oldest expires_at first so the worker
         // processes the most-overdue orders before fresher ones in a batch.
-        hits.sort_by(|a, b| a.expires_at_unix_secs.cmp(&b.expires_at_unix_secs));
+        hits.sort_by_key(|hit| hit.expires_at_unix_secs);
         hits.truncate(limit);
         Ok(hits)
     }

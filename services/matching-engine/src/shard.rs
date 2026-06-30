@@ -219,17 +219,14 @@ async fn publish_add_order_events(
             i64::try_from(result.remaining_quantity).unwrap_or(i64::MAX),
         )
         .await;
-    } else if result.remaining_quantity > 0
-        && events
+    } else if result.remaining_quantity > 0 {
+        let _ = events
             .send(MarketEvent::OrderCancelled {
                 order_id: result.order_id.clone(),
                 user_id: Some(order.user_id),
                 canceled_quantity: result.remaining_quantity,
             })
-            .await
-            .is_err()
-    {
-        return;
+            .await;
     }
 }
 

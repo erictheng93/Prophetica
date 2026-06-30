@@ -174,7 +174,7 @@ async fn list_documents_returns_doc_array_for_tier2_user() {
         .and(path(format!(
             "/mock/provider/applicants/{applicant_id}/documents"
         )))
-        .respond_with(mount_doc_list(&applicant_id, &[doc.clone()]))
+        .respond_with(mount_doc_list(&applicant_id, std::slice::from_ref(&doc)))
         .mount(&server)
         .await;
 

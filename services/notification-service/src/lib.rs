@@ -398,10 +398,7 @@ fn validate_reminder_request(
         return Err(invalid_reminder());
     }
 
-    let sends_email = request
-        .channels
-        .iter()
-        .any(|channel| *channel == NotificationChannel::Email);
+    let sends_email = request.channels.contains(&NotificationChannel::Email);
     for recipient in &request.recipients {
         if recipient.recipient_role.trim().is_empty()
             || (sends_email

@@ -1416,12 +1416,11 @@ mod tests {
         let ledger = Arc::new(InMemoryLedgerClient::new());
         let service = RedemptionService::new(store.clone() as Arc<_>, ledger.clone() as Arc<_>);
 
-        let error = match service
+        let Err(error) = service
             .submit_order(submit_request("user_42", "nonexistent", "k"))
             .await
-        {
-            Ok(_) => panic!("unknown sku should be rejected"),
-            Err(error) => error,
+        else {
+            panic!("unknown sku should be rejected");
         };
         assert!(matches!(error, RedemptionError::SkuNotFound { .. }));
     }
@@ -1432,12 +1431,11 @@ mod tests {
             build_service_with_sku("sku_a", 500, FulfillmentMode::DigitalImmediate).await;
         // No deposit; user has 0 balance.
 
-        let error = match service
+        let Err(error) = service
             .submit_order(submit_request("user_42", "sku_a", "k"))
             .await
-        {
-            Ok(_) => panic!("zero balance should be rejected"),
-            Err(error) => error,
+        else {
+            panic!("zero balance should be rejected");
         };
         assert!(matches!(error, RedemptionError::InsufficientBalance { .. }));
 
@@ -1458,9 +1456,8 @@ mod tests {
             ("u", "", "k", "sku_id"),
             ("u", "sku_a", "", "idempotency_key"),
         ] {
-            let error = match service.submit_order(submit_request(user, sku, key)).await {
-                Ok(_) => panic!("empty field must error"),
-                Err(error) => error,
+            let Err(error) = service.submit_order(submit_request(user, sku, key)).await else {
+                panic!("empty field must error");
             };
             match error {
                 RedemptionError::EmptyField { field } => assert_eq!(field, expected_field),
@@ -1662,12 +1659,11 @@ mod tests {
             .await
             .expect("submit");
         assert_eq!(view.state, OrderState::Fulfilled);
-        let error = match service
+        let Err(error) = service
             .cancel_order(&view.order_id, current_unix_secs())
             .await
-        {
-            Ok(_) => panic!("cancel_order on Fulfilled must error"),
-            Err(error) => error,
+        else {
+            panic!("cancel_order on Fulfilled must error");
         };
         match error {
             RedemptionError::OrderStateNotAllowed {
@@ -1701,12 +1697,11 @@ mod tests {
         assert_eq!(first.state, OrderState::Refunded);
 
         // Second cancel fails — already terminal.
-        let err = match service
+        let Err(err) = service
             .cancel_order(&view.order_id, current_unix_secs())
             .await
-        {
-            Ok(_) => panic!("second cancel on Refunded must error"),
-            Err(error) => error,
+        else {
+            panic!("second cancel on Refunded must error");
         };
         assert!(matches!(err, RedemptionError::OrderStateNotAllowed { .. }));
 
@@ -1793,9 +1788,8 @@ mod tests {
             .committed_at_unix_secs
             .expect("submit must stamp committed_at");
         let now_past = committed_at2 + 61;
-        let error = match service.cancel_order(&view2.order_id, now_past).await {
-            Ok(_) => panic!("past-deadline cancel must be rejected"),
-            Err(error) => error,
+        let Err(error) = service.cancel_order(&view2.order_id, now_past).await else {
+            panic!("past-deadline cancel must be rejected");
         };
         match error {
             RedemptionError::CancelWindowExpired {
@@ -1850,12 +1844,11 @@ mod tests {
             .expect("submit");
         assert_eq!(view.state, OrderState::Fulfilled);
 
-        let error = match service
+        let Err(error) = service
             .cs_refund_with_4eye(&view.order_id, "ops_alice", "ops_alice", "test")
             .await
-        {
-            Ok(_) => panic!("same proposer + approver must violate 4-eye"),
-            Err(error) => error,
+        else {
+            panic!("same proposer + approver must violate 4-eye");
         };
         match error {
             RedemptionError::FourEyeViolation { actor } => assert_eq!(actor, "ops_alice"),
@@ -1896,9 +1889,8 @@ mod tests {
             .expect("submit");
         assert_eq!(view.state, OrderState::Committed);
 
-        let err = match service.refund_fulfilled_order_cs(&view.order_id).await {
-            Ok(_) => panic!("cs refund on Committed must error"),
-            Err(error) => error,
+        let Err(err) = service.refund_fulfilled_order_cs(&view.order_id).await else {
+            panic!("cs refund on Committed must error");
         };
         assert!(matches!(err, RedemptionError::OrderStateNotAllowed { .. }));
     }
@@ -2061,16 +2053,14 @@ mod tests {
             .submit_order(submit_request("user_42", "sku_a", "k1"))
             .await
             .expect("submit 1");
-        let err = match service.expire_order(&view.order_id).await {
-            Ok(_) => panic!("expire on Fulfilled must error"),
-            Err(error) => error,
+        let Err(err) = service.expire_order(&view.order_id).await else {
+            panic!("expire on Fulfilled must error");
         };
         assert!(matches!(err, RedemptionError::OrderStateNotAllowed { .. }));
 
         // Try to expire a non-existent order — OrderNotFound.
-        let err = match service.expire_order("01HX-DOES-NOT-EXIST").await {
-            Ok(_) => panic!("unknown order must error"),
-            Err(error) => error,
+        let Err(err) = service.expire_order("01HX-DOES-NOT-EXIST").await else {
+            panic!("unknown order must error");
         };
         assert!(matches!(err, RedemptionError::OrderNotFound { .. }));
     }

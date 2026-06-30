@@ -773,10 +773,10 @@ impl AuthConfig {
             return false;
         }
         consumed.insert(key);
-        if let Some(path) = self.consumed_recovery_code_store_path.as_deref() {
-            if persist_consumed_recovery_codes(path, &consumed).is_err() {
-                return false;
-            }
+        if let Some(path) = self.consumed_recovery_code_store_path.as_deref()
+            && persist_consumed_recovery_codes(path, &consumed).is_err()
+        {
+            return false;
         }
         true
     }
@@ -1888,7 +1888,7 @@ async fn webauthn_assert_finish(
         store_successful_webauthn_assertion(&config, credentials, assertion, now).await;
     if let Err(response) = store_result {
         return response;
-    };
+    }
 
     successful_login(
         &config,
@@ -2490,17 +2490,16 @@ async fn write_login_event(config: &AuthConfig, event: LoginEventInput) {
                 .login_event_metrics
                 .failed
                 .fetch_add(1, Ordering::Relaxed);
-            if let Some(outbox) = config.login_event_outbox.as_ref() {
-                if outbox
+            if let Some(outbox) = config.login_event_outbox.as_ref()
+                && outbox
                     .enqueue(outbox_fallback, "login_events_write_failed")
                     .await
                     .is_ok()
-                {
-                    config
-                        .login_event_metrics
-                        .outbox_enqueued
-                        .fetch_add(1, Ordering::Relaxed);
-                }
+            {
+                config
+                    .login_event_metrics
+                    .outbox_enqueued
+                    .fetch_add(1, Ordering::Relaxed);
             }
             tracing::error!("login event write failed");
         }

@@ -3,18 +3,22 @@
 use std::sync::{Arc, Mutex};
 
 use api_gateway::{
-    ApiError, WalletBalance, WalletLedgerClient,
+    ApiError, AuthVerifier, WalletBalance, WalletLedgerClient,
     responsible_gaming::{
         InMemorySelfExclusionStore, ResponsibleGamingClock, responsible_gaming_router,
     },
 };
 use axum::{
+    Extension,
     body::Body,
     http::{Request, StatusCode},
 };
+use ed25519_dalek::{Signer, SigningKey};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
+
+const NOW: i64 = 1_780_000_000;
 
 #[tokio::test]
 async fn self_exclusion_submit_freezes_available_wallet_and_records_status() {
@@ -22,8 +26,9 @@ async fn self_exclusion_submit_freezes_available_wallet_and_records_status() {
     let app = responsible_gaming_router(
         wallet.clone(),
         InMemorySelfExclusionStore::default(),
-        ResponsibleGamingClock::fixed(1_780_000_000),
-    );
+        ResponsibleGamingClock::fixed(NOW),
+    )
+    .layer(test_auth_extension());
 
     let response = app
         .clone()
@@ -81,8 +86,9 @@ async fn self_exclusion_replays_same_idempotency_key_without_second_freeze() {
     let app = responsible_gaming_router(
         wallet.clone(),
         InMemorySelfExclusionStore::default(),
-        ResponsibleGamingClock::fixed(1_780_000_000),
-    );
+        ResponsibleGamingClock::fixed(NOW),
+    )
+    .layer(test_auth_extension());
     let request = json!({
         "mode": "permanent",
         "points_disposition": "hold",
@@ -118,8 +124,9 @@ async fn self_exclusion_rejects_missing_consent() {
     let app = responsible_gaming_router(
         RecordingWalletLedgerClient::with_available_minor_units(-12_500),
         InMemorySelfExclusionStore::default(),
-        ResponsibleGamingClock::fixed(1_780_000_000),
-    );
+        ResponsibleGamingClock::fixed(NOW),
+    )
+    .layer(test_auth_extension());
 
     let response = app
         .oneshot(json_post(
@@ -204,8 +211,7 @@ fn json_post(uri: &str, idempotency_key: &str, body: &Value) -> Request<Body> {
     Request::builder()
         .method("POST")
         .uri(uri)
-        .header("x-user-id", "user_42")
-        .header("x-transition-caller", "apps-web-dev-bff")
+        .header("authorization", format!("Bearer {}", test_jwt("user_42")))
         .header("idempotency-key", idempotency_key)
         .header("content-type", "application/json")
         .body(Body::from(body.to_string()))
@@ -216,10 +222,89 @@ fn empty_get(uri: &str) -> Request<Body> {
     Request::builder()
         .method("GET")
         .uri(uri)
-        .header("x-user-id", "user_42")
-        .header("x-transition-caller", "apps-web-dev-bff")
+        .header("authorization", format!("Bearer {}", test_jwt("user_42")))
         .body(Body::empty())
         .expect("request should build")
+}
+
+fn test_auth_extension() -> Extension<AuthVerifier> {
+    Extension(
+        AuthVerifier::from_jwks_json(&test_jwks_json(), true)
+            .unwrap_or_else(|error| panic!("test JWKS should parse: {error}")),
+    )
+}
+
+fn test_jwks_json() -> String {
+    let key = test_signing_key();
+    json!({
+        "keys": [{
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "kid": "test-key",
+            "alg": "EdDSA",
+            "use": "sig",
+            "x": base64_url_encode(&key.verifying_key().to_bytes())
+        }]
+    })
+    .to_string()
+}
+
+fn test_jwt(subject: &str) -> String {
+    let key = test_signing_key();
+    let header = base64_url_encode(
+        json!({
+            "alg": "EdDSA",
+            "kid": "test-key",
+            "typ": "JWT"
+        })
+        .to_string()
+        .as_bytes(),
+    );
+    let payload = base64_url_encode(
+        json!({
+            "sub": subject,
+            "role": "user",
+            "iat": NOW,
+            "exp": 1_900_000_000_u64
+        })
+        .to_string()
+        .as_bytes(),
+    );
+    let signing_input = format!("{header}.{payload}");
+    let signature = key.sign(signing_input.as_bytes());
+    format!(
+        "{signing_input}.{}",
+        base64_url_encode(&signature.to_bytes())
+    )
+}
+
+fn test_signing_key() -> SigningKey {
+    SigningKey::from_bytes(&[7; 32])
+}
+
+fn base64_url_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::with_capacity((bytes.len() * 4).div_ceil(3));
+    let mut index = 0;
+    while index < bytes.len() {
+        let b0 = bytes[index];
+        let b1 = bytes.get(index + 1).copied();
+        let b2 = bytes.get(index + 2).copied();
+        out.push(TABLE[(b0 >> 2) as usize] as char);
+        out.push(
+            TABLE[(((b0 & 0b0000_0011) << 4) | (b1.unwrap_or_default() >> 4)) as usize] as char,
+        );
+        if let Some(b1) = b1 {
+            out.push(
+                TABLE[(((b1 & 0b0000_1111) << 2) | (b2.unwrap_or_default() >> 6)) as usize] as char,
+            );
+        }
+        if let Some(b2) = b2 {
+            out.push(TABLE[(b2 & 0b0011_1111) as usize] as char);
+        }
+        index += 3;
+    }
+    out
 }
 
 async fn response_json(response: axum::response::Response) -> Value {

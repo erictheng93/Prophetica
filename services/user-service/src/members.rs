@@ -1777,13 +1777,12 @@ fn store_error(error: MemberStoreError) -> (StatusCode, Json<ErrorResponse>) {
 }
 
 fn sqlx_store_error(error: sqlx::Error) -> MemberStoreError {
-    if let sqlx::Error::Database(database_error) = &error {
-        if database_error
+    if let sqlx::Error::Database(database_error) = &error
+        && database_error
             .constraint()
             .is_some_and(|constraint| constraint == "user_members_pkey")
-        {
-            return MemberStoreError::Duplicate;
-        }
+    {
+        return MemberStoreError::Duplicate;
     }
     drop(error);
     MemberStoreError::Unavailable

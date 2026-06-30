@@ -543,10 +543,10 @@ impl OrderBook {
             maker.quantity -= fill_quantity;
             *remaining_quantity -= fill_quantity;
 
-            if maker.quantity == 0 {
-                if let Some(filled) = level.pop_front() {
-                    self.orders.remove(&filled.order_id);
-                }
+            if maker.quantity == 0
+                && let Some(filled) = level.pop_front()
+            {
+                self.orders.remove(&filled.order_id);
             }
 
             remove_level = level.is_empty();
@@ -586,10 +586,10 @@ impl OrderBook {
             maker.quantity -= fill_quantity;
             *remaining_quantity -= fill_quantity;
 
-            if maker.quantity == 0 {
-                if let Some(filled) = level.pop_front() {
-                    self.orders.remove(&filled.order_id);
-                }
+            if maker.quantity == 0
+                && let Some(filled) = level.pop_front()
+            {
+                self.orders.remove(&filled.order_id);
             }
 
             remove_level = level.is_empty();

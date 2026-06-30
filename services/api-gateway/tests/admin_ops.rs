@@ -1,8 +1,8 @@
 #![allow(clippy::expect_used)]
 
 use api_gateway::admin_ops::{
-    HttpAdminOpsStore, InMemoryAdminOpsStore, PostgresCompensationProposalStore,
-    ProductionAdminOpsStore, internal_admin_router,
+    DEV_ADMIN_INTERNAL_CALL_SECRET, HttpAdminOpsStore, InMemoryAdminOpsStore,
+    PostgresCompensationProposalStore, ProductionAdminOpsStore, internal_admin_router,
 };
 use axum::{
     Json, Router,
@@ -35,13 +35,7 @@ async fn summary_returns_aggregate_shape() {
     let app = internal_admin_router(InMemoryAdminOpsStore::default());
 
     let response = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/internal/admin/members/user_123/summary")
-                .body(Body::empty())
-                .unwrap_or_else(|error| panic!("request should build: {error}")),
-        )
+        .oneshot(empty_get("/api/internal/admin/members/user_123/summary"))
         .await
         .expect("summary request should be handled");
 
@@ -129,13 +123,9 @@ async fn pending_member_cases_filter_and_paginate() {
     let app = internal_admin_router(InMemoryAdminOpsStore::default());
 
     let response = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/internal/admin/members/pending-cases?status=restricted&page=1&page_size=1")
-                .body(Body::empty())
-                .unwrap_or_else(|error| panic!("request should build: {error}")),
-        )
+        .oneshot(empty_get(
+            "/api/internal/admin/members/pending-cases?status=restricted&page=1&page_size=1",
+        ))
         .await
         .expect("pending cases request should be handled");
 
@@ -207,13 +197,9 @@ async fn pending_member_cases_proxy_to_kyc_service() {
     let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
     let app = internal_admin_router(store);
     let response = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/internal/admin/members/pending-cases?q=member_from_kyc")
-                .body(Body::empty())
-                .expect("request builds"),
-        )
+        .oneshot(empty_get(
+            "/api/internal/admin/members/pending-cases?q=member_from_kyc",
+        ))
         .await
         .expect("handled");
 
@@ -238,13 +224,9 @@ async fn pending_member_cases_returns_bad_gateway_when_kyc_service_is_unavailabl
     let store = HttpAdminOpsStore::new(upstream_url.clone(), upstream_url).expect("store config");
     let app = internal_admin_router(store);
     let response = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/internal/admin/members/pending-cases?restriction=manual_review_required")
-                .body(Body::empty())
-                .expect("request builds"),
-        )
+        .oneshot(empty_get(
+            "/api/internal/admin/members/pending-cases?restriction=manual_review_required",
+        ))
         .await
         .expect("handled");
 
@@ -432,28 +414,20 @@ async fn member_management_proxy_to_user_service() {
         .expect("handled");
     let updated = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .method("PATCH")
-                .uri("/api/internal/admin/members/MEM-900")
-                .header("x-actor-id", "admin-1")
-                .header("x-operator-role", "admin")
-                .header("content-type", "application/json")
-                .body(Body::from(json!({ "display_name": "Updated" }).to_string()))
-                .expect("request builds"),
-        )
+        .oneshot(signed_patch_as(
+            "/api/internal/admin/members/MEM-900",
+            "admin-1",
+            "admin",
+            &json!({ "display_name": "Updated" }),
+        ))
         .await
         .expect("handled");
     let deleted = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/api/internal/admin/members/MEM-900")
-                .header("x-actor-id", "admin-1")
-                .header("x-operator-role", "admin")
-                .body(Body::empty())
-                .expect("request builds"),
-        )
+        .oneshot(signed_delete_as(
+            "/api/internal/admin/members/MEM-900",
+            "admin-1",
+            "admin",
+        ))
         .await
         .expect("handled");
 
@@ -584,15 +558,11 @@ async fn manager_disable_is_blocked_when_active_affiliates_remain() {
     let app = internal_admin_router(store);
 
     let response = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/api/internal/admin/members/MAN-ORPHAN")
-                .header("x-actor-id", "admin-1")
-                .header("x-operator-role", "admin")
-                .body(Body::empty())
-                .expect("request builds"),
-        )
+        .oneshot(signed_delete_as(
+            "/api/internal/admin/members/MAN-ORPHAN",
+            "admin-1",
+            "admin",
+        ))
         .await
         .expect("handled");
 
@@ -666,15 +636,11 @@ async fn manager_disable_succeeds_after_affiliates_are_reassigned() {
     let app = internal_admin_router(store);
 
     let response = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/api/internal/admin/members/MAN-REASSIGNED")
-                .header("x-actor-id", "admin-1")
-                .header("x-operator-role", "admin")
-                .body(Body::empty())
-                .expect("request builds"),
-        )
+        .oneshot(signed_delete_as(
+            "/api/internal/admin/members/MAN-REASSIGNED",
+            "admin-1",
+            "admin",
+        ))
         .await
         .expect("handled");
 
@@ -734,21 +700,16 @@ async fn member_management_proxy_persists_to_postgres_user_service() {
 
     let updated = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .method("PATCH")
-                .uri(format!("/api/internal/admin/members/{user_id}"))
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "kyc_status": "verified",
-                        "risk_level": "low",
-                        "risk_score": 7
-                    })
-                    .to_string(),
-                ))
-                .expect("request builds"),
-        )
+        .oneshot(signed_patch_as(
+            &format!("/api/internal/admin/members/{user_id}"),
+            "admin-1",
+            "admin",
+            &json!({
+                "kyc_status": "verified",
+                "risk_level": "low",
+                "risk_score": 7
+            }),
+        ))
         .await
         .expect("update request should be handled");
     assert_eq!(updated.status(), StatusCode::OK);
@@ -771,13 +732,11 @@ async fn member_management_proxy_persists_to_postgres_user_service() {
     assert_eq!(listed_body["members"][0]["member"]["user_id"], user_id);
 
     let deleted = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri(format!("/api/internal/admin/members/{user_id}"))
-                .body(Body::empty())
-                .expect("request builds"),
-        )
+        .oneshot(signed_delete_as(
+            &format!("/api/internal/admin/members/{user_id}"),
+            "admin-1",
+            "admin",
+        ))
         .await
         .expect("delete request should be handled");
     assert_eq!(deleted.status(), StatusCode::OK);
@@ -2050,7 +2009,7 @@ async fn member_action_rejects_self_approval_and_supports_rejection() {
 }
 
 #[tokio::test]
-async fn member_action_requires_actor_context() {
+async fn member_action_rejects_unsigned_internal_call() {
     let app = internal_admin_router(InMemoryAdminOpsStore::default());
 
     let response = app
@@ -2071,12 +2030,12 @@ async fn member_action_requires_actor_context() {
                 .expect("request builds"),
         )
         .await
-        .expect("missing context request should be handled");
+        .expect("unsigned request should be handled");
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         response_json(response).await["error"],
-        json!("ERROR_CODE_MISSING_ADMIN_CONTEXT")
+        json!("admin_internal_call_unauthorized")
     );
 }
 
@@ -2111,23 +2070,16 @@ async fn role_account_mutations_reject_non_admin_before_upstream() {
     );
 
     let update = app
-        .oneshot(
-            Request::builder()
-                .method("PATCH")
-                .uri("/api/internal/admin/members/MAN-002")
-                .header("x-actor-id", "manager-1")
-                .header("x-operator-role", "manager")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "role": "admin",
-                        "reason": "self elevation",
-                        "authorization_basis": "none"
-                    })
-                    .to_string(),
-                ))
-                .expect("request builds"),
-        )
+        .oneshot(signed_patch_as(
+            "/api/internal/admin/members/MAN-002",
+            "manager-1",
+            "manager",
+            &json!({
+                "role": "admin",
+                "reason": "self elevation",
+                "authorization_basis": "none"
+            }),
+        ))
         .await
         .expect("update should be handled");
     assert_eq!(update.status(), StatusCode::FORBIDDEN);
@@ -2142,32 +2094,112 @@ fn json_post(uri: &str, body: &Value) -> Request<Body> {
 }
 
 fn json_post_as(uri: &str, actor_id: &str, role: &str, body: &Value) -> Request<Body> {
+    let body = body.to_string();
+    let timestamp = current_epoch_seconds();
+    let signature = api_gateway::internal_call_auth::sign_internal_call(
+        "POST",
+        uri_path(uri),
+        body.as_bytes(),
+        timestamp,
+        actor_id,
+        role,
+        DEV_ADMIN_INTERNAL_CALL_SECRET,
+    );
     Request::builder()
         .method("POST")
         .uri(uri)
         .header("x-actor-id", actor_id)
         .header("x-operator-role", role)
+        .header("x-internal-call-timestamp", timestamp.to_string())
+        .header("x-internal-call-signature", signature)
         .header("content-type", "application/json")
-        .body(Body::from(body.to_string()))
+        .body(Body::from(body))
         .unwrap_or_else(|error| panic!("request should build: {error}"))
 }
 
 fn empty_get(uri: &str) -> Request<Body> {
-    Request::builder()
-        .method("GET")
-        .uri(uri)
-        .body(Body::empty())
-        .unwrap_or_else(|error| panic!("request should build: {error}"))
+    empty_get_as(uri, "admin-1", "admin")
 }
 
 fn empty_get_as(uri: &str, actor_id: &str, role: &str) -> Request<Body> {
+    let timestamp = current_epoch_seconds();
+    let signature = api_gateway::internal_call_auth::sign_internal_call(
+        "GET",
+        uri_path(uri),
+        &[],
+        timestamp,
+        actor_id,
+        role,
+        DEV_ADMIN_INTERNAL_CALL_SECRET,
+    );
     Request::builder()
         .method("GET")
         .uri(uri)
         .header("x-actor-id", actor_id)
         .header("x-operator-role", role)
+        .header("x-internal-call-timestamp", timestamp.to_string())
+        .header("x-internal-call-signature", signature)
         .body(Body::empty())
         .unwrap_or_else(|error| panic!("request should build: {error}"))
+}
+
+fn signed_patch_as(uri: &str, actor_id: &str, role: &str, body: &Value) -> Request<Body> {
+    let body = body.to_string();
+    let timestamp = current_epoch_seconds();
+    let signature = api_gateway::internal_call_auth::sign_internal_call(
+        "PATCH",
+        uri_path(uri),
+        body.as_bytes(),
+        timestamp,
+        actor_id,
+        role,
+        DEV_ADMIN_INTERNAL_CALL_SECRET,
+    );
+    Request::builder()
+        .method("PATCH")
+        .uri(uri)
+        .header("x-actor-id", actor_id)
+        .header("x-operator-role", role)
+        .header("x-internal-call-timestamp", timestamp.to_string())
+        .header("x-internal-call-signature", signature)
+        .header("content-type", "application/json")
+        .body(Body::from(body))
+        .unwrap_or_else(|error| panic!("request should build: {error}"))
+}
+
+fn signed_delete_as(uri: &str, actor_id: &str, role: &str) -> Request<Body> {
+    let timestamp = current_epoch_seconds();
+    let signature = api_gateway::internal_call_auth::sign_internal_call(
+        "DELETE",
+        uri_path(uri),
+        &[],
+        timestamp,
+        actor_id,
+        role,
+        DEV_ADMIN_INTERNAL_CALL_SECRET,
+    );
+    Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .header("x-actor-id", actor_id)
+        .header("x-operator-role", role)
+        .header("x-internal-call-timestamp", timestamp.to_string())
+        .header("x-internal-call-signature", signature)
+        .body(Body::empty())
+        .unwrap_or_else(|error| panic!("request should build: {error}"))
+}
+
+fn uri_path(uri: &str) -> &str {
+    uri.split_once('?').map_or(uri, |(path, _query)| path)
+}
+
+fn current_epoch_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|error| panic!("system clock should be after unix epoch: {error}"))
+        .as_secs()
+        .try_into()
+        .unwrap_or_else(|error| panic!("epoch seconds should fit i64: {error}"))
 }
 
 async fn response_json(response: axum::response::Response) -> Value {

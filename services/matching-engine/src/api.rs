@@ -529,10 +529,10 @@ async fn stream_book_deltas(
         };
 
         for projected in project_engine_event(event) {
-            if let Some(message) = book_stream_message(&market_id, &projected) {
-                if socket.send(Message::Text(message)).await.is_err() {
-                    return;
-                }
+            if let Some(message) = book_stream_message(&market_id, &projected)
+                && socket.send(Message::Text(message)).await.is_err()
+            {
+                return;
             }
         }
     }
@@ -547,10 +547,10 @@ async fn stream_trades(mut socket: WebSocket, service: InMemoryEngineService, ma
         };
 
         for projected in project_engine_event(event) {
-            if let Some(message) = trade_stream_message(&market_id, &projected) {
-                if socket.send(Message::Text(message)).await.is_err() {
-                    return;
-                }
+            if let Some(message) = trade_stream_message(&market_id, &projected)
+                && socket.send(Message::Text(message)).await.is_err()
+            {
+                return;
             }
         }
     }
@@ -565,10 +565,10 @@ async fn stream_order_updates(mut socket: WebSocket, service: InMemoryEngineServ
         };
 
         for projected in project_engine_event(event) {
-            if let Some(message) = order_update_stream_message(user_id, &projected) {
-                if socket.send(Message::Text(message)).await.is_err() {
-                    return;
-                }
+            if let Some(message) = order_update_stream_message(user_id, &projected)
+                && socket.send(Message::Text(message)).await.is_err()
+            {
+                return;
             }
         }
     }

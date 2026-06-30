@@ -142,13 +142,10 @@ fn chaos_rto_harness_covers_spec_008_failure_table() {
     let harness = ChaosRtoHarness;
     let outcomes = [
         (ChaosScenario::EnginePodCrash, Duration::from_secs(29)),
-        (ChaosScenario::HostPowerLoss, Duration::from_secs(4 * 60)),
-        (ChaosScenario::RegionFailure, Duration::from_secs(4 * 60)),
-        (ChaosScenario::WalDiskFailure, Duration::from_secs(9 * 60)),
-        (
-            ChaosScenario::KafkaClusterFailure,
-            Duration::from_secs(4 * 60),
-        ),
+        (ChaosScenario::HostPowerLoss, Duration::from_mins(4)),
+        (ChaosScenario::RegionFailure, Duration::from_mins(4)),
+        (ChaosScenario::WalDiskFailure, Duration::from_mins(9)),
+        (ChaosScenario::KafkaClusterFailure, Duration::from_mins(4)),
     ];
 
     for (scenario, measured_rto) in outcomes {

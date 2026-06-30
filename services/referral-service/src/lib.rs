@@ -1788,7 +1788,7 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
                 "commission adjustment review is already decided".to_owned(),
             ));
         }
-        review.status = decision.to_owned();
+        decision.clone_into(&mut review.status);
         Ok(AffiliateReviewDecisionResponse {
             review: review.clone(),
             audit_correlation_id,
@@ -1825,7 +1825,7 @@ impl AffiliateDashboardStore for InMemoryAffiliateDashboardStore {
                 "affiliate payout review is already decided".to_owned(),
             ));
         }
-        review.status = decision.to_owned();
+        decision.clone_into(&mut review.status);
         Ok(AffiliateReviewDecisionResponse {
             review: review.clone(),
             audit_correlation_id,

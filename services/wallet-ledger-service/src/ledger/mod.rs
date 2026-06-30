@@ -930,9 +930,8 @@ mod tests {
             Err(error) => panic!("first post should commit: {error}"),
         }
 
-        let error = match service.post_transaction(second).await {
-            Ok(_) => panic!("different payload with same idempotency key must fail"),
-            Err(error) => error,
+        let Err(error) = service.post_transaction(second).await else {
+            panic!("different payload with same idempotency key must fail");
         };
 
         assert!(matches!(
@@ -1158,9 +1157,8 @@ mod tests {
             ],
         };
 
-        let error = match service.post_transaction(draft).await {
-            Ok(_) => panic!("wallet debit should be rejected"),
-            Err(error) => error,
+        let Err(error) = service.post_transaction(draft).await else {
+            panic!("wallet debit should be rejected");
         };
 
         assert_eq!(
@@ -1240,9 +1238,8 @@ mod tests {
             ],
         };
 
-        let error = match service.post_transaction(draft).await {
-            Ok(_) => panic!("imbalanced transaction should be rejected"),
-            Err(error) => error,
+        let Err(error) = service.post_transaction(draft).await else {
+            panic!("imbalanced transaction should be rejected");
         };
 
         assert_eq!(
@@ -1403,23 +1400,21 @@ mod tests {
             Err(error) => panic!("post should commit: {error}"),
         };
 
-        let update_error = match sqlx::query(
+        let Err(update_error) = sqlx::query(
             "UPDATE ledger_entries SET balance_after = balance_after WHERE txn_id = $1",
         )
         .bind(transaction.id)
         .execute(&pool)
         .await
-        {
-            Ok(_) => panic!("ledger entry update should be rejected"),
-            Err(error) => error,
+        else {
+            panic!("ledger entry update should be rejected");
         };
-        let delete_error = match sqlx::query("DELETE FROM ledger_entries WHERE txn_id = $1")
+        let Err(delete_error) = sqlx::query("DELETE FROM ledger_entries WHERE txn_id = $1")
             .bind(transaction.id)
             .execute(&pool)
             .await
-        {
-            Ok(_) => panic!("ledger entry delete should be rejected"),
-            Err(error) => error,
+        else {
+            panic!("ledger entry delete should be rejected");
         };
 
         assert!(

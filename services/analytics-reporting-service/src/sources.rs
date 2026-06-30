@@ -240,12 +240,11 @@ impl SourceClients {
         Ok(rows
             .into_iter()
             .map(|mut row| {
-                if let Some(member_id) = row.get("member_id").and_then(Value::as_str) {
-                    if let Some(email) = contacts.get(member_id) {
-                        if let Some(object) = row.as_object_mut() {
-                            object.insert("member_email".to_owned(), Value::String(email.clone()));
-                        }
-                    }
+                if let Some(member_id) = row.get("member_id").and_then(Value::as_str)
+                    && let Some(email) = contacts.get(member_id)
+                    && let Some(object) = row.as_object_mut()
+                {
+                    object.insert("member_email".to_owned(), Value::String(email.clone()));
                 }
                 row
             })

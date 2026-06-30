@@ -49,9 +49,9 @@ impl ChaosScenario {
         match self {
             Self::EnginePodCrash => Duration::from_secs(30),
             Self::HostPowerLoss | Self::RegionFailure | Self::KafkaClusterFailure => {
-                Duration::from_secs(5 * 60)
+                Duration::from_mins(5)
             }
-            Self::WalDiskFailure => Duration::from_secs(10 * 60),
+            Self::WalDiskFailure => Duration::from_mins(10),
         }
     }
 }

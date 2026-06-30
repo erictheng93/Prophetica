@@ -252,11 +252,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn readiness_report_marks_reachable_tcp_dependency_ok() {
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-            .await
-            .expect("listener should bind");
-        let addr = listener.local_addr().expect("listener should expose addr");
+    async fn readiness_report_marks_reachable_tcp_dependency_ok()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
+        let addr = listener.local_addr()?;
         let state = readiness_state_for_addr(addr);
 
         let (ready, dependencies) = readiness_report(&state).await;
@@ -264,14 +263,14 @@ mod tests {
         assert!(ready);
         assert_eq!(dependencies[0].name, "kafka");
         assert_eq!(dependencies[0].status, "ok");
+        Ok(())
     }
 
     #[tokio::test]
-    async fn readiness_report_marks_unreachable_tcp_dependency_unavailable() {
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-            .await
-            .expect("listener should bind");
-        let addr = listener.local_addr().expect("listener should expose addr");
+    async fn readiness_report_marks_unreachable_tcp_dependency_unavailable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
+        let addr = listener.local_addr()?;
         drop(listener);
         let state = readiness_state_for_addr(addr);
 
@@ -280,6 +279,7 @@ mod tests {
         assert!(!ready);
         assert_eq!(dependencies[0].name, "kafka");
         assert_eq!(dependencies[0].status, "unavailable");
+        Ok(())
     }
 
     fn readiness_state_for_addr(addr: std::net::SocketAddr) -> ReadinessState {

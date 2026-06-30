@@ -1387,13 +1387,12 @@ fn count_to_usize(value: i64) -> Result<usize, KycStoreError> {
 }
 
 fn sqlx_store_error(error: sqlx::Error) -> KycStoreError {
-    if let sqlx::Error::Database(database_error) = &error {
-        if database_error
+    if let sqlx::Error::Database(database_error) = &error
+        && database_error
             .constraint()
             .is_some_and(|constraint| constraint == "idx_kyc_document_hash_unique")
-        {
-            return KycStoreError::DuplicateDocument;
-        }
+    {
+        return KycStoreError::DuplicateDocument;
     }
     drop(error);
     KycStoreError::Unavailable

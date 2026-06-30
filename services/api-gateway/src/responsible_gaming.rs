@@ -557,10 +557,10 @@ impl CooldownStore for InMemoryCooldownStore {
             .lock()
             .map_err(|_| ApiError::internal("cooldown store lock poisoned"))?;
 
-        if let Some(record) = cooldowns.get(user_id).cloned() {
-            if record.ends_at_epoch_seconds > now_epoch_seconds {
-                return Ok(active_cooldown_status(user_id, &record, now_epoch_seconds));
-            }
+        if let Some(record) = cooldowns.get(user_id).cloned()
+            && record.ends_at_epoch_seconds > now_epoch_seconds
+        {
+            return Ok(active_cooldown_status(user_id, &record, now_epoch_seconds));
         }
 
         let record = CooldownRecord {

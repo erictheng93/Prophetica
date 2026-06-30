@@ -38,7 +38,7 @@ pub fn observe_command(command: &str, market_id: &str, elapsed: Duration) {
 pub fn set_command_queue_depth(market_id: &str, depth: usize) {
     engine_command_queue_depth()
         .with_label_values(&[market_id])
-        .set(depth as f64);
+        .set(f64::from(u32::try_from(depth).unwrap_or(u32::MAX)));
 }
 
 fn engine_http_request_duration_seconds() -> &'static HistogramVec {

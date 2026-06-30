@@ -20,6 +20,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, QueryBuilder, Row};
 
+pub const DEV_ADMIN_INTERNAL_CALL_SECRET: &str = "dev-admin-internal-call-secret";
+
 #[async_trait]
 pub trait AdminOpsStore {
     /// Lists members that need operational attention.
@@ -123,7 +125,7 @@ pub trait AdminOpsStore {
     /// the KYC document proxy. Reads `ADMIN_INTERNAL_CALL_SECRET` from the process
     /// environment by default; implementors may override this for testing.
     fn kyc_proxy_secret(&self) -> Option<String> {
-        env::var("ADMIN_INTERNAL_CALL_SECRET").ok()
+        admin_internal_call_secret_from_env()
     }
 
     /// Returns the base URL of the KYC service for the document proxy.
@@ -144,6 +146,17 @@ pub trait AdminOpsStore {
             None if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") => None,
             None => Some("dev-analytics-internal-call-secret".to_owned()),
         }
+    }
+}
+
+fn admin_internal_call_secret_from_env() -> Option<String> {
+    match env::var("ADMIN_INTERNAL_CALL_SECRET")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    {
+        Some(value) => Some(value),
+        None if env::var("PROPHETICA_ENV").is_ok_and(|value| value == "production") => None,
+        None => Some(DEV_ADMIN_INTERNAL_CALL_SECRET.to_owned()),
     }
 }
 
@@ -1057,6 +1070,7 @@ where
 /// Verifies the internal-call HMAC signature for a KYC proxy request.
 ///
 /// Returns `Err(Response)` with 401 when verification fails.
+#[allow(clippy::result_large_err)]
 fn verify_kyc_proxy_auth_with_secret(
     headers: &HeaderMap,
     method: &str,
@@ -1088,6 +1102,7 @@ fn current_epoch_seconds() -> i64 {
 /// Resolves the KYC-service base URL and a reqwest client for the proxy.
 ///
 /// Returns `Err(Response)` with 500 when the URL cannot be parsed.
+#[allow(clippy::result_large_err)]
 fn kyc_proxy_upstream_from(raw_url: &str) -> Result<(Url, reqwest::Client), Response> {
     let url = Url::parse(raw_url)
         .map_err(|_| kyc_proxy_error(StatusCode::INTERNAL_SERVER_ERROR, "kyc_proxy_bad_url"))?;
@@ -1155,10 +1170,8 @@ async fn kyc_proxy_stream(request: reqwest::RequestBuilder, add_cache_control: b
     if let Some(ct) = content_type {
         response.headers_mut().insert(header::CONTENT_TYPE, ct);
     }
-    if add_cache_control {
-        if let Ok(value) = "private, no-store".parse() {
-            response.headers_mut().insert(header::CACHE_CONTROL, value);
-        }
+    if add_cache_control && let Ok(value) = "private, no-store".parse() {
+        response.headers_mut().insert(header::CACHE_CONTROL, value);
     }
     response
 }
@@ -3390,13 +3403,12 @@ impl PostgresCompensationProposalStore {
         context: AdminOpsRequestContext,
     ) -> Result<CompensationProposalResponse, AdminOpsStoreError> {
         let request_hash = request_hash(&request)?;
-        if let Some(idempotency_key) = context.idempotency_key.as_deref() {
-            if let Some(existing) = self
+        if let Some(idempotency_key) = context.idempotency_key.as_deref()
+            && let Some(existing) = self
                 .find_compensation_by_idempotency_key(idempotency_key, &request_hash)
                 .await?
-            {
-                return Ok(existing);
-            }
+        {
+            return Ok(existing);
         }
         let ticket_id = request
             .ticket_id
@@ -3490,13 +3502,12 @@ impl PostgresCompensationProposalStore {
         context: AdminOpsRequestContext,
     ) -> Result<MemberActionResponse, AdminOpsStoreError> {
         let request_hash = request_hash(&request)?;
-        if let Some(idempotency_key) = context.idempotency_key.as_deref() {
-            if let Some(existing) = self
+        if let Some(idempotency_key) = context.idempotency_key.as_deref()
+            && let Some(existing) = self
                 .find_member_action_by_idempotency_key(idempotency_key, &request_hash)
                 .await?
-            {
-                return Ok(existing);
-            }
+        {
+            return Ok(existing);
         }
         let requires_second_approval = request.action_type != "add_note";
         let status = if requires_second_approval {
@@ -5159,7 +5170,7 @@ impl AdminOpsStore for InMemoryAdminOpsStore {
     fn kyc_proxy_secret(&self) -> Option<String> {
         self.kyc_secret_override
             .clone()
-            .or_else(|| env::var("ADMIN_INTERNAL_CALL_SECRET").ok())
+            .or_else(admin_internal_call_secret_from_env)
     }
 
     fn kyc_internal_call_secret(&self) -> Option<String> {

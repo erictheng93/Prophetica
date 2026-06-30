@@ -576,9 +576,8 @@ mod tests {
             metadata: HashMap::new(),
         };
 
-        let error = match client.post_transaction(request).await {
-            Ok(_) => panic!("cross-user redemption must be rejected by SDK INV-7"),
-            Err(error) => error,
+        let Err(error) = client.post_transaction(request).await else {
+            panic!("cross-user redemption must be rejected by SDK INV-7");
         };
         assert!(matches!(error, LedgerClientError::Validation(_)));
     }

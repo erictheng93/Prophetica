@@ -139,9 +139,8 @@ mod tests {
     #[tokio::test]
     async fn claim_returns_exhausted_when_pool_empty() {
         let vault = InMemoryVault::new();
-        let error = match vault.claim_code("sku_a").await {
-            Ok(_) => panic!("empty pool must error"),
-            Err(error) => error,
+        let Err(error) = vault.claim_code("sku_a").await else {
+            panic!("empty pool must error");
         };
         assert_eq!(
             error,

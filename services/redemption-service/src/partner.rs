@@ -246,9 +246,8 @@ mod tests {
     #[tokio::test]
     async fn status_for_unknown_booking_returns_unknown_error() {
         let adapter = InMemoryPartnerAdapter::new();
-        let error = match adapter.status("ghost-booking").await {
-            Ok(_) => panic!("unknown booking must error"),
-            Err(error) => error,
+        let Err(error) = adapter.status("ghost-booking").await else {
+            panic!("unknown booking must error");
         };
         assert_eq!(
             error,

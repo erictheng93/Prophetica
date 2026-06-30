@@ -31,9 +31,9 @@ fn single_signer_release_is_rejected_with_multisig_error() {
         vec![SignerApproval::hardware_mfa(
             "cto-1",
             MultiSigRole::Cto,
-            SystemTime::UNIX_EPOCH + Duration::from_secs(60),
+            SystemTime::UNIX_EPOCH + Duration::from_mins(1),
         )],
-        SystemTime::UNIX_EPOCH + Duration::from_secs(120),
+        SystemTime::UNIX_EPOCH + Duration::from_mins(2),
         "incident resolved",
     );
 
@@ -52,7 +52,7 @@ fn same_user_double_signature_is_rejected() {
             SignerApproval::hardware_mfa(
                 "senior-1",
                 MultiSigRole::SeniorEngineer,
-                SystemTime::UNIX_EPOCH + Duration::from_secs(60),
+                SystemTime::UNIX_EPOCH + Duration::from_mins(1),
             ),
             SignerApproval::hardware_mfa(
                 "senior-1",
@@ -60,7 +60,7 @@ fn same_user_double_signature_is_rejected() {
                 SystemTime::UNIX_EPOCH + Duration::from_secs(70),
             ),
         ],
-        SystemTime::UNIX_EPOCH + Duration::from_secs(120),
+        SystemTime::UNIX_EPOCH + Duration::from_mins(2),
         "incident resolved",
     );
 
@@ -83,7 +83,7 @@ fn stale_or_non_hardware_mfa_signature_is_rejected() {
                 SystemTime::UNIX_EPOCH + Duration::from_secs(119),
             ),
         ],
-        SystemTime::UNIX_EPOCH + Duration::from_secs(31 * 60),
+        SystemTime::UNIX_EPOCH + Duration::from_mins(31),
         "incident resolved",
     );
 
@@ -102,7 +102,7 @@ fn two_of_three_valid_ms9_release_writes_audit_metadata() {
             SignerApproval::hardware_mfa(
                 "cto-1",
                 MultiSigRole::Cto,
-                SystemTime::UNIX_EPOCH + Duration::from_secs(60),
+                SystemTime::UNIX_EPOCH + Duration::from_mins(1),
             ),
             SignerApproval::hardware_mfa(
                 "compliance-1",
@@ -110,7 +110,7 @@ fn two_of_three_valid_ms9_release_writes_audit_metadata() {
                 SystemTime::UNIX_EPOCH + Duration::from_secs(90),
             ),
         ],
-        SystemTime::UNIX_EPOCH + Duration::from_secs(120),
+        SystemTime::UNIX_EPOCH + Duration::from_mins(2),
         "incident resolved",
     );
 
