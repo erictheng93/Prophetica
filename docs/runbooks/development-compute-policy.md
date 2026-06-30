@@ -66,7 +66,8 @@ rtk pnpm lint
 rtk pnpm test
 ```
 
-Avoid running these routinely on weak macOS hardware:
+Full workspace Rust verification is allowed on the local development machine
+when cross-crate confidence is needed:
 
 ```bash
 rtk cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -75,13 +76,13 @@ rtk cargo build --workspace --release
 rtk pnpm build
 ```
 
-Run the heavy commands locally only when the developer explicitly chooses to
-spend the resources or when the local machine is the intended validation host.
+Use targeted checks for quick iteration, and use the full workspace commands
+before declaring broad cross-crate Rust changes fully verified.
 
-## Heavy Verification On A Build Host
+## Heavy Verification Locally Or In CI
 
-For Rust-heavy changes, prefer a stronger Linux/Windows/macOS build host with a
-persistent checkout and warmed Cargo cache.
+For Rust-heavy changes, run full verification on the local development machine
+or in CI with a persistent checkout and warmed Cargo cache.
 
 On the development machine:
 
@@ -92,7 +93,7 @@ rtk git commit -m "<type(scope): summary>"
 rtk git push -u origin feat/<topic>
 ```
 
-On the build host:
+Locally or on the CI/build host:
 
 ```bash
 rtk git fetch origin
@@ -108,7 +109,7 @@ If the branch already exists on both machines, the steady-state loop is:
 # development machine
 rtk git push
 
-# build host
+# local machine or CI/build host
 rtk git pull --ff-only
 rtk cargo clippy --workspace --all-targets --locked -- -D warnings
 rtk cargo nextest run --workspace --locked
@@ -152,6 +153,6 @@ Run full release builds only when:
 
 ## PR Expectations
 
-PR descriptions should list which commands ran locally and which ran on the
-build host or CI. If heavy workspace verification was intentionally skipped,
-state where it will run before merge.
+PR descriptions should list which commands ran locally and which ran in CI. If
+heavy workspace verification was intentionally skipped, state where it will run
+before merge.

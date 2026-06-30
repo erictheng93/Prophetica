@@ -21,16 +21,15 @@ Use `rtk` before external CLI commands when invoking developer tools from Codex.
 
 ## Development Compute Policy
 
-See `docs/runbooks/development-compute-policy.md` for the full policy. On
-resource-constrained macOS machines, prefer targeted Rust checks such as
+See `docs/runbooks/development-compute-policy.md` for the full policy. For
+quick local iteration, targeted Rust checks remain useful:
 
 - `rtk cargo check -p <crate> --locked`
 - `rtk cargo clippy -p <crate> --all-targets --locked -- -D warnings`
 - `rtk cargo test -p <crate> --locked`
 
-Do not routinely run heavy workspace commands on weak macOS hardware unless the
-user explicitly asks or the machine is the intended validation host. Heavy
-commands include:
+Full workspace Rust verification is allowed on this machine when cross-crate
+confidence is needed. Heavy commands include:
 
 - `rtk cargo clippy --workspace --all-targets --locked -- -D warnings`
 - `rtk cargo nextest run --workspace --locked`
@@ -44,9 +43,9 @@ shared resources: do not casually run broad whole-crate tests such as
 ask before running a command that may occupy shared compiler/linker resources.
 
 For shared crates, `Cargo.toml`/`Cargo.lock`, generated Rust/protobuf/SQLx
-artifacts, or cross-service behavior, push the branch and run heavy workspace
-verification on a stronger build host or in GitHub Actions. Document which
-machine or CI run performed heavy verification.
+artifacts, or cross-service behavior, prefer running heavy workspace
+verification locally or in CI, and document which machine or CI run performed
+the verification.
 
 ## Coding Style & Naming Conventions
 

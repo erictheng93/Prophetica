@@ -77,7 +77,7 @@ Admin login uses `user-service` local accounts (`admin`/`manager`/`affiliate` @ 
 
 ## Development Compute Policy
 
-Full policy: `docs/runbooks/development-compute-policy.md`. On resource-constrained machines, **do not** routinely run heavy workspace commands (`cargo clippy --workspace`, `cargo nextest run --workspace`, `cargo build --release`). Use the targeted `-p <crate>` forms above. For changes to shared crates, `Cargo.lock`, or generated proto/SQLx artifacts, push the branch and let CI or a stronger host run full verification — and document which host did so.
+Full policy: `docs/runbooks/development-compute-policy.md`. Full workspace Rust verification is allowed on this machine when cross-crate confidence is needed (`cargo clippy --workspace`, `cargo nextest run --workspace`, `cargo build --release`). Use targeted `-p <crate>` forms for quick iteration, and document whether full verification ran locally or in CI.
 
 ## Style
 
