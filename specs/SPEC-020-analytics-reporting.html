@@ -103,7 +103,7 @@
   <h2>9. 實作狀態（2026-05-11）</h2>
   <p>SPEC-020 v0.1.0 已落地於 <code>apps/admin/lib/analytics-reporting.ts</code>、<code>apps/admin/app/dashboard/page.tsx</code> 與 <code>services/api-gateway/src/analytics_reporting.rs</code>。管理員與主管可進入 analytics reporting dashboard；代理角色不可查看。報表 job 具備 <code>schema_version</code>、<code>generated_at</code>、版本號、<code>row_hash</code>、CSV/JSON/XLSX 匯出、敏感欄位遮罩、admin 二次授權明文檢視、重跑 hash 比對、刪除稽核鏈與 12 個月/7 年留存策略。</p>
   <p>後端資料模型已補於 <code>services/api-gateway/migrations/202605110001_create_analytics_reporting.sql</code>，包含 <code>report_templates</code>、<code>report_jobs</code>、<code>report_shares</code>、<code>report_audit</code>。</p>
-  <p>驗證命令：<code>rtk pnpm --filter @prophetica/admin test</code>、<code>rtk pnpm --filter @prophetica/admin lint</code>、<code>rtk cargo check -p api-gateway --tests</code>、<code>rtk cargo clippy -p api-gateway --all-targets -- -D warnings</code>。</p>
+  <p>驗證命令：<code>pnpm --filter @prophetica/admin test</code>、<code>pnpm --filter @prophetica/admin lint</code>、<code>cargo check -p api-gateway --tests</code>、<code>cargo clippy -p api-gateway --all-targets -- -D warnings</code>。</p>
   <p><strong>v0.1.1 nav 狀態註記（2026-05-18）</strong>：決策支援（<code>/dashboard</code>）與分析報表（<code>/analytics</code>）前端頁面雖已落地，但在 <code>analytics-reporting-service</code> 於目標環境完成接線與產品驗收前，admin 左側 nav 對此二項顯示「開發中」標籤（與 <code>/approvals</code> 工單審批同一處理方式；參 SPEC-017 §6.3）。在後端未連線時，頁面本身已透過 <code>AnalyticsUnavailableState</code> 呈現「分析報表服務尚未連線」。標籤實作見 <code>apps/admin/app/layout.tsx</code> 之 <code>buildAdminNavLinks</code>；功能完成驗收後，移除該二 nav 子項的 <code>badge</code> 欄位即可，毋須改動路由或 §4 權限。</p>
 </section>
 </body>

@@ -170,7 +170,7 @@ test("accepts complete affiliate P0 manifest with admin review E2E evidence", as
           "apps/admin/lib/affiliate-management-bff.ts",
           "apps/admin/tests/e2e/affiliate-review.spec.ts",
         ],
-        evidence: "rtk pnpm --filter @prophetica/admin test:e2e tests/e2e/affiliate-review.spec.ts => 2 passed",
+        evidence: "pnpm --filter @prophetica/admin test:e2e tests/e2e/affiliate-review.spec.ts => 2 passed",
       },
     ],
   });

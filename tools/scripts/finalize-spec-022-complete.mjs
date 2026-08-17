@@ -32,7 +32,7 @@ export function finalizeSpec022Complete(repoRoot) {
           "tools/scripts/check-spec-022-complete.mjs",
         ],
         evidence:
-          "External LIFF and manual QA evidence were recorded, then rtk node tools/scripts/finalize-spec-022-complete.mjs and rtk node tools/scripts/check-spec-022-complete.mjs passed.",
+          "External LIFF and manual QA evidence were recorded, then node tools/scripts/finalize-spec-022-complete.mjs and node tools/scripts/check-spec-022-complete.mjs passed.",
       },
     ],
   };

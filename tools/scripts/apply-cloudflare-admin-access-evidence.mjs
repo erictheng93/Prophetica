@@ -17,7 +17,7 @@ const recorderPath = resolve(
 
 const usage = [
   "Usage:",
-  "  rtk node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply",
+  "  node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply",
   "",
   "Required environment:",
   "  CLOUDFLARE_ACCOUNT_ID",

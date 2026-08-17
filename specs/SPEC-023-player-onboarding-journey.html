@@ -627,12 +627,12 @@
 
     <h2>9. Commands</h2>
     <p>實作本 SPEC 時依實際觸碰範圍選擇最小驗證命令。常用命令如下：</p>
-    <pre><code>rtk pnpm lint
-rtk pnpm typecheck
-rtk pnpm test
-rtk cargo check -p &lt;crate&gt; --locked
-rtk cargo test -p &lt;crate&gt; --locked
-rtk cargo clippy -p &lt;crate&gt; --all-targets --locked -- -D warnings</code></pre>
+    <pre><code>pnpm lint
+pnpm typecheck
+pnpm test
+cargo check -p &lt;crate&gt; --locked
+cargo test -p &lt;crate&gt; --locked
+cargo clippy -p &lt;crate&gt; --all-targets --locked -- -D warnings</code></pre>
     <p>
       本 SPEC 旅程跨 <code>apps/web</code> 前端與 <code>api-gateway</code> /
       <code>user-service</code> 等後端；若變更跨服務認證契約或共享資料模型，需依

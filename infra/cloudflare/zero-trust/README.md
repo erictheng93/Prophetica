@@ -36,8 +36,8 @@ If the target tenant uses a dedicated identity provider allowlist, pass
 Capture the plan and apply logs, then record evidence:
 
 ```sh
-rtk node tools/scripts/validate-cloudflare-admin-access.mjs
-rtk node tools/scripts/record-cloudflare-admin-access-evidence.mjs \
+node tools/scripts/validate-cloudflare-admin-access.mjs
+node tools/scripts/record-cloudflare-admin-access-evidence.mjs \
   path/to/terraform-plan.log \
   path/to/terraform-apply.log
 ```

@@ -83,7 +83,7 @@ Latest external-readiness assessment:
   - Capture iOS and Android LINE LIFF login runs that produce `login_success`
     events with `login_surface = liff`.
   - Save the sanitized marker log at `.tmp/spec-022-liff.log`, then run
-    `rtk node tools/scripts/record-spec-022-liff-evidence.mjs .tmp/spec-022-liff.log`
+    `node tools/scripts/record-spec-022-liff-evidence.mjs .tmp/spec-022-liff.log`
     to create `docs/evidence/spec-022-liff/latest.json`.
 - Collect manual QA evidence:
   - Verify desktop and mobile self-service recent-login pages show approximate
@@ -91,12 +91,12 @@ Latest external-readiness assessment:
   - Verify admin login-events RBAC, audit, query, and LIFF/WebView visibility.
   - Verify unknown location fallback renders `未知` instead of blank fields.
   - Save the sanitized marker log at `.tmp/spec-022-manual-qa.log`, then run
-    `rtk node tools/scripts/record-spec-022-manual-qa-evidence.mjs .tmp/spec-022-manual-qa.log`
+    `node tools/scripts/record-spec-022-manual-qa-evidence.mjs .tmp/spec-022-manual-qa.log`
     to create `docs/evidence/spec-022-manual-qa/latest.json`.
 - Finalize only after both evidence JSON files exist and pass:
-  - `rtk node tools/scripts/preflight-spec-022-evidence.mjs`
-  - `rtk node tools/scripts/finalize-spec-022-complete.mjs`
-  - `rtk node tools/scripts/check-spec-022-complete.mjs`
+  - `node tools/scripts/preflight-spec-022-evidence.mjs`
+  - `node tools/scripts/finalize-spec-022-complete.mjs`
+  - `node tools/scripts/check-spec-022-complete.mjs`
 
 ## Public Beta Launch Gate Blockers
 
@@ -259,10 +259,10 @@ fails closed while blocking items remain.
   passkey browser evidence is recorded at
   `docs/evidence/webauthn-passkey/latest.json`. Remaining work: rotate recovery
   codes operationally, run
-  `rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply`
+  `node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply`
   in the target environment, install/provide Terraform or OpenTofu plus Cloudflare
   target-account variables, then run
-  `rtk node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply`
+  `node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply`
   to capture plan/apply logs and record the evidence. The operator procedure is
   documented in `docs/evidence/cloudflare-admin-access/README.md`.
   target-account variables, apply Cloudflare policy in the target account, and

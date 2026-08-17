@@ -251,10 +251,10 @@
 - [ ] push branch；CI 跑 `make test` + `make lint` 全量、`sqlx prepare --check`、`cargo geiger`。記錄驗證主機（CLAUDE.md Compute Policy）。
 
 **2026-05-23 本機驗證記錄：**
-- [x] `rtk make test`：通過；Rust nextest 495 passed / 1 skipped，pnpm turbo test/build 通過。
-- [x] `rtk make lint`：通過；pnpm lint 8/8、workspace clippy `-D warnings`、`cargo fmt --all -- --check` 通過。
-- [x] `rtk cargo sqlx prepare --workspace --check`：通過；需本地 Postgres，已以 `rtk docker compose -f infra/docker-compose.local.yaml up -d postgres` 啟動單一 postgres service。
-- [x] `cargo geiger` 本機 fallback：`cargo-geiger 0.13.0` 不能直接對 virtual workspace manifest 跑 `--workspace`；完整 dependency JSON scan 在本機 package manifest 模式過慢且不穩定。已逐一對所有 workspace package manifest 跑 `rtk cargo geiger --manifest-path <package>/Cargo.toml --forbid-only --output-format Json` 並用 `tools/scripts/check-geiger.sh` 檢查，全部通過。完整 CI 版仍需依 `.github/workflows/security-audit.yml` 用 stable toolchain 跑 `cargo geiger --workspace --output-format Json`。
+- [x] `make test`：通過；Rust nextest 495 passed / 1 skipped，pnpm turbo test/build 通過。
+- [x] `make lint`：通過；pnpm lint 8/8、workspace clippy `-D warnings`、`cargo fmt --all -- --check` 通過。
+- [x] `cargo sqlx prepare --workspace --check`：通過；需本地 Postgres，已以 `docker compose -f infra/docker-compose.local.yaml up -d postgres` 啟動單一 postgres service。
+- [x] `cargo geiger` 本機 fallback：`cargo-geiger 0.13.0` 不能直接對 virtual workspace manifest 跑 `--workspace`；完整 dependency JSON scan 在本機 package manifest 模式過慢且不穩定。已逐一對所有 workspace package manifest 跑 `cargo geiger --manifest-path <package>/Cargo.toml --forbid-only --output-format Json` 並用 `tools/scripts/check-geiger.sh` 檢查，全部通過。完整 CI 版仍需依 `.github/workflows/security-audit.yml` 用 stable toolchain 跑 `cargo geiger --workspace --output-format Json`。
 
 ---
 

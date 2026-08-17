@@ -38,12 +38,12 @@ active work. Before running a Rust command that may compile many targets, prefer
 the narrowest command that proves the touched behavior:
 
 ```bash
-rtk cargo check -p <crate> --lib --locked
-rtk cargo test -p <crate> --lib <test_name> --locked
-rtk cargo test -p <crate> --test <integration_test> <test_name> --locked
+cargo check -p <crate> --lib --locked
+cargo test -p <crate> --lib <test_name> --locked
+cargo test -p <crate> --test <integration_test> <test_name> --locked
 ```
 
-Do not start a whole-crate Rust test such as `rtk cargo test -p api-gateway
+Do not start a whole-crate Rust test such as `cargo test -p api-gateway
 --locked` on a shared local machine unless the user explicitly approves the
 shared-cache / shared-target impact or no narrower validation can prove the
 change. If a broad Rust command is accidentally started, check for remaining
@@ -56,24 +56,24 @@ Use the weaker macOS machine for editing and targeted checks. Prefer package- or
 feature-scoped commands:
 
 ```bash
-rtk cargo fmt --all -- --check
-rtk cargo check -p <crate> --locked
-rtk cargo clippy -p <crate> --all-targets --locked -- -D warnings
-rtk cargo test -p <crate> --locked
-rtk cargo test -p <crate> --test <integration_test> --locked
-rtk pnpm typecheck
-rtk pnpm lint
-rtk pnpm test
+cargo fmt --all -- --check
+cargo check -p <crate> --locked
+cargo clippy -p <crate> --all-targets --locked -- -D warnings
+cargo test -p <crate> --locked
+cargo test -p <crate> --test <integration_test> --locked
+pnpm typecheck
+pnpm lint
+pnpm test
 ```
 
 Full workspace Rust verification is allowed on the local development machine
 when cross-crate confidence is needed:
 
 ```bash
-rtk cargo clippy --workspace --all-targets --locked -- -D warnings
-rtk cargo nextest run --workspace --locked
-rtk cargo build --workspace --release
-rtk pnpm build
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo nextest run --workspace --locked
+cargo build --workspace --release
+pnpm build
 ```
 
 Use targeted checks for quick iteration, and use the full workspace commands
@@ -87,32 +87,32 @@ or in CI with a persistent checkout and warmed Cargo cache.
 On the development machine:
 
 ```bash
-rtk git checkout -b feat/<topic>
-rtk git add <files>
-rtk git commit -m "<type(scope): summary>"
-rtk git push -u origin feat/<topic>
+git checkout -b feat/<topic>
+git add <files>
+git commit -m "<type(scope): summary>"
+git push -u origin feat/<topic>
 ```
 
 Locally or on the CI/build host:
 
 ```bash
-rtk git fetch origin
-rtk git checkout feat/<topic>
-rtk git pull --ff-only
-rtk cargo clippy --workspace --all-targets --locked -- -D warnings
-rtk cargo nextest run --workspace --locked
+git fetch origin
+git checkout feat/<topic>
+git pull --ff-only
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo nextest run --workspace --locked
 ```
 
 If the branch already exists on both machines, the steady-state loop is:
 
 ```bash
 # development machine
-rtk git push
+git push
 
 # local machine or CI/build host
-rtk git pull --ff-only
-rtk cargo clippy --workspace --all-targets --locked -- -D warnings
-rtk cargo nextest run --workspace --locked
+git pull --ff-only
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo nextest run --workspace --locked
 ```
 
 Use GitHub pull request CI when a shared, auditable validation result is needed.

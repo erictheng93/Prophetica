@@ -23,13 +23,13 @@ acceptance, and E2E evidence items are recorded.
   - [ ] idempotency records persistence
   - [ ] 1000 concurrent deposits
   - [ ] `ledger_entries` immutability trigger
-- [ ] Add a CI job that provisions Postgres and runs `rtk cargo nextest run -p wallet-ledger-service --locked`.
+- [ ] Add a CI job that provisions Postgres and runs `cargo nextest run -p wallet-ledger-service --locked`.
 
 Suggested local command:
 
 ```powershell
 $env:WALLET_LEDGER_TEST_DATABASE_URL="postgres://user:pass@localhost:5432/prophetica_wallet_ledger_test"
-rtk cargo nextest run -p wallet-ledger-service --locked
+cargo nextest run -p wallet-ledger-service --locked
 ```
 
 ## 2. Payment Gateway Fixtures

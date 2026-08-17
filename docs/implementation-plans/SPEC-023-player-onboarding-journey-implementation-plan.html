@@ -1384,17 +1384,17 @@
     <section>
       <h2>9. 驗證命令</h2>
       <pre><code># 後端 — gateway 與相依 service
-rtk cargo check -p api-gateway --locked
-rtk cargo clippy -p api-gateway --all-targets --locked -- -D warnings
-rtk cargo nextest run -p api-gateway --locked
-rtk cargo nextest run -p user-service --locked
+cargo check -p api-gateway --locked
+cargo clippy -p api-gateway --all-targets --locked -- -D warnings
+cargo nextest run -p api-gateway --locked
+cargo nextest run -p user-service --locked
 
 # 前端 — apps/web
-rtk pnpm --filter @prophetica/web lint
-rtk pnpm --filter @prophetica/web test
+pnpm --filter @prophetica/web lint
+pnpm --filter @prophetica/web test
 
 # E2E（先由 Task 0.6 新增或確認實際 runner；現況僅有 signup referral e2e script）
-rtk pnpm --filter @prophetica/web test:e2e:journey</code></pre>
+pnpm --filter @prophetica/web test:e2e:journey</code></pre>
       <p>
         若變更跨服務 proto / sdk / 共享 crate，依
         <code>AGENTS.md</code> Development Compute Policy 安排 CI 全 workspace

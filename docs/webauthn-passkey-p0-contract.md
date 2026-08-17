@@ -124,7 +124,7 @@ Implemented:
 
 Completion evidence:
 
-- `rtk pnpm --filter @prophetica/admin test:e2e:passkey`: 1 passed.
-- `rtk node tools/scripts/record-webauthn-passkey-evidence.mjs
+- `pnpm --filter @prophetica/admin test:e2e:passkey`: 1 passed.
+- `node tools/scripts/record-webauthn-passkey-evidence.mjs
   .tmp/webauthn-passkey.log`: recorded
   `docs/evidence/webauthn-passkey/latest.json` with every required marker true.

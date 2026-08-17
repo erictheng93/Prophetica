@@ -171,24 +171,24 @@
     </p>
     <p>完成驗證：</p>
     <ul>
-      <li><code>rtk cargo test -p kyc-service --locked</code></li>
+      <li><code>cargo test -p kyc-service --locked</code></li>
       <li>
         <code
-          >rtk cargo clippy -p kyc-service --all-targets --locked -- -D
+          >cargo clippy -p kyc-service --all-targets --locked -- -D
           warnings</code
         >
       </li>
-      <li><code>rtk cargo test -p mock-provider --locked</code></li>
+      <li><code>cargo test -p mock-provider --locked</code></li>
       <li>
         <code
-          >rtk cargo clippy -p mock-provider --all-targets --locked -- -D
+          >cargo clippy -p mock-provider --all-targets --locked -- -D
           warnings</code
         >
       </li>
-      <li><code>rtk pnpm --filter @prophetica/ts-sdk test</code></li>
-      <li><code>rtk pnpm --filter @prophetica/ts-sdk lint</code></li>
-      <li><code>rtk pnpm --filter @prophetica/web test</code></li>
-      <li><code>rtk pnpm --filter @prophetica/web lint</code></li>
+      <li><code>pnpm --filter @prophetica/ts-sdk test</code></li>
+      <li><code>pnpm --filter @prophetica/ts-sdk lint</code></li>
+      <li><code>pnpm --filter @prophetica/web test</code></li>
+      <li><code>pnpm --filter @prophetica/web lint</code></li>
     </ul>
     <h3>0.2 Backend P0 follow-up（PR #1 前後分流）</h3>
     <table>

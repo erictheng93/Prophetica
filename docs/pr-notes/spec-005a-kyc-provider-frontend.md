@@ -34,6 +34,6 @@
 
 ## Validation
 
-- `rtk pnpm --filter @prophetica/ts-sdk test`
-- `rtk pnpm --filter @prophetica/web test`
-- `rtk cargo nextest run -p kyc-service --locked`
+- `pnpm --filter @prophetica/ts-sdk test`
+- `pnpm --filter @prophetica/web test`
+- `cargo nextest run -p kyc-service --locked`

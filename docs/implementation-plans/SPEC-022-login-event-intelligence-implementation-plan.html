@@ -383,11 +383,11 @@ CREATE INDEX login_events_identifier_hash_time_idx
 
   <section>
     <h2>15. 驗證命令</h2>
-    <pre><code>rtk cargo test -p user-service --locked
-rtk cargo clippy -p user-service --all-targets --locked -- -D warnings
-rtk pnpm --filter admin test
-rtk pnpm --filter web test
-rtk pnpm typecheck</code></pre>
+    <pre><code>cargo test -p user-service --locked
+cargo clippy -p user-service --all-targets --locked -- -D warnings
+pnpm --filter admin test
+pnpm --filter web test
+pnpm typecheck</code></pre>
     <p>若 migration、SQLx metadata、共享 proto / SDK 或跨服務事件契約有變更，需依 development compute policy 追加 CI 或強機 workspace 驗證。</p>
   </section>
 

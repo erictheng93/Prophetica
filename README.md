@@ -143,13 +143,13 @@ This repository now uses the SPEC-017 monorepo scaffold:
 Common commands:
 
 ```bash
-rtk make doctor
-rtk make bootstrap
-rtk pnpm dev
-rtk pnpm dev:core-api
-rtk make dev-infra
-rtk make test
-rtk make lint
+make doctor
+make bootstrap
+pnpm dev
+pnpm dev:core-api
+make dev-infra
+make test
+make lint
 ```
 
 See [`docs/runbooks/local-development.md`](./docs/runbooks/local-development.md)
@@ -160,8 +160,8 @@ MVP local development starts the core API bundle, wallet-ledger-service, the
 player-facing web app, and the admin app:
 
 ```bash
-rtk make dev-infra
-rtk pnpm dev
+make dev-infra
+pnpm dev
 # api-gateway:   http://localhost:8080
 # wallet-ledger: http://localhost:8086
 # web:           http://localhost:3000

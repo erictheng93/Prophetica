@@ -21,7 +21,7 @@ Use this file as the working checklist:
 Source gate:
 
 ```bash
-rtk node tools/scripts/check-affiliate-p0-complete.mjs
+node tools/scripts/check-affiliate-p0-complete.mjs
 ```
 
 Current top-level manifest blocker:
@@ -79,11 +79,11 @@ Checklist:
 Unblock procedure:
 
 ```bash
-rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply
-rtk node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply
-rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs
-rtk node tools/scripts/finalize-affiliate-p0-complete.mjs
-rtk node tools/scripts/check-affiliate-p0-complete.mjs
+node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply
+node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply
+node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs
+node tools/scripts/finalize-affiliate-p0-complete.mjs
+node tools/scripts/check-affiliate-p0-complete.mjs
 ```
 
 Evidence contract for `docs/evidence/cloudflare-admin-access/latest.json`:
@@ -123,7 +123,7 @@ Failure triage:
   summary, the apply log has `Apply complete! Resources: ...`, and neither log
   contains `Error:`.
 - If finalization fails, run
-  `rtk node tools/scripts/check-affiliate-p0-complete.mjs`, fix the first
+  `node tools/scripts/check-affiliate-p0-complete.mjs`, fix the first
   missing or malformed artifact, then re-run the finalizer.
 
 ### SPEC-022: Login Event Intelligence External Evidence
@@ -133,7 +133,7 @@ Source manifest: `docs/spec-022-evidence-manifest.json`
 Source gate:
 
 ```bash
-rtk node tools/scripts/check-spec-022-complete.mjs
+node tools/scripts/check-spec-022-complete.mjs
 ```
 
 Checklist:
@@ -207,7 +207,7 @@ Source document: `docs/architecture/high-peak-capacity-matrix.md`
   - Completed evidence:
     `apps/admin/tests/e2e/affiliate-review.spec.ts`
   - Validation:
-    `rtk pnpm --filter @prophetica/admin test:e2e tests/e2e/affiliate-review.spec.ts`
+    `pnpm --filter @prophetica/admin test:e2e tests/e2e/affiliate-review.spec.ts`
     passed with 2 tests covering commission adjustment approval, payout
     rejection, signed gateway calls, and read-only rows after decision.
   - Gate coverage:
@@ -219,10 +219,10 @@ Source document: `docs/architecture/high-peak-capacity-matrix.md`
 These commands validate blocker tooling without satisfying external blockers:
 
 ```bash
-rtk node --test tools/scripts/*.test.mjs
-rtk pnpm --filter @prophetica/admin test:e2e tests/e2e/affiliate-review.spec.ts
-rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply
-rtk node tools/scripts/check-affiliate-p0-complete.mjs
+node --test tools/scripts/*.test.mjs
+pnpm --filter @prophetica/admin test:e2e tests/e2e/affiliate-review.spec.ts
+node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply
+node tools/scripts/check-affiliate-p0-complete.mjs
 ```
 
 On this local machine, the last two commands are expected to fail closed until

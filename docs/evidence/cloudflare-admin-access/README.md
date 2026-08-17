@@ -9,11 +9,11 @@ For the full unblock checklist and failure triage, see
 Run evidence collection only in the intended Cloudflare account environment:
 
 ```bash
-rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply
-rtk node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply
-rtk node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs
-rtk node tools/scripts/finalize-affiliate-p0-complete.mjs
-rtk node tools/scripts/check-affiliate-p0-complete.mjs
+node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs --before-apply
+node tools/scripts/apply-cloudflare-admin-access-evidence.mjs --apply
+node tools/scripts/preflight-cloudflare-admin-access-evidence.mjs
+node tools/scripts/finalize-affiliate-p0-complete.mjs
+node tools/scripts/check-affiliate-p0-complete.mjs
 ```
 
 Required environment:

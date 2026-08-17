@@ -6,39 +6,37 @@ Prophetica is a Rust/pnpm monorepo. Frontend apps live in `apps/` (`web`, `admin
 
 ## Build, Test, and Development Commands
 
-Use `rtk` before external CLI commands when invoking developer tools from Codex.
-
-- `rtk pnpm dev`: run the MVP player web app and admin app in parallel.
-- `rtk pnpm dev:all-apps`: run all Turbo `dev` tasks in parallel for every app under `apps/`, including LIFF and landing variants.
-- `rtk pnpm build`: build all pnpm workspace targets.
-- `rtk pnpm lint` / `rtk pnpm typecheck`: run linting and TypeScript checks.
-- `rtk pnpm test`: run pnpm workspace tests.
-- `rtk cargo nextest run --workspace --locked`: run Rust tests.
-- `rtk cargo clippy --workspace --all-targets --locked -- -D warnings`: enforce Rust lints.
-- `rtk make dev`: run the MVP player web app and admin app in parallel.
-- `rtk make dev-infra` / `rtk make down`: start or stop local Docker dependencies.
-- `rtk make proto`: regenerate protobuf outputs with Buf.
+- `pnpm dev`: run the MVP player web app and admin app in parallel.
+- `pnpm dev:all-apps`: run all Turbo `dev` tasks in parallel for every app under `apps/`, including LIFF and landing variants.
+- `pnpm build`: build all pnpm workspace targets.
+- `pnpm lint` / `pnpm typecheck`: run linting and TypeScript checks.
+- `pnpm test`: run pnpm workspace tests.
+- `cargo nextest run --workspace --locked`: run Rust tests.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: enforce Rust lints.
+- `make dev`: run the MVP player web app and admin app in parallel.
+- `make dev-infra` / `make down`: start or stop local Docker dependencies.
+- `make proto`: regenerate protobuf outputs with Buf.
 
 ## Development Compute Policy
 
 See `docs/runbooks/development-compute-policy.md` for the full policy. For
 quick local iteration, targeted Rust checks remain useful:
 
-- `rtk cargo check -p <crate> --locked`
-- `rtk cargo clippy -p <crate> --all-targets --locked -- -D warnings`
-- `rtk cargo test -p <crate> --locked`
+- `cargo check -p <crate> --locked`
+- `cargo clippy -p <crate> --all-targets --locked -- -D warnings`
+- `cargo test -p <crate> --locked`
 
 Full workspace Rust verification is allowed on this machine when cross-crate
 confidence is needed. Heavy commands include:
 
-- `rtk cargo clippy --workspace --all-targets --locked -- -D warnings`
-- `rtk cargo nextest run --workspace --locked`
-- `rtk cargo build --workspace --release`
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`
+- `cargo nextest run --workspace --locked`
+- `cargo build --workspace --release`
 
 Rust builds also share `sccache` and a common Cargo target directory (normally
 `/Users/eric/.cargo/target`) across local sessions and agents. Treat these as
 shared resources: do not casually run broad whole-crate tests such as
-`rtk cargo test -p api-gateway --locked` on the shared local machine. Prefer
+`cargo test -p api-gateway --locked` on the shared local machine. Prefer
 `--lib`, named test filters, or a single `--test <integration_test>` target, and
 ask before running a command that may occupy shared compiler/linker resources.
 
@@ -57,7 +55,7 @@ CI enforces `cargo fmt --all -- --check` (in `ci.yml` and `release.yml`). To cat
 
 ## Testing Guidelines
 
-Place Rust unit tests near code under `#[cfg(test)]` and integration tests in crate or service `tests/` directories. Frontend/package tests should live beside the feature or follow local app conventions. Run both `rtk pnpm test` and `rtk cargo nextest run --workspace --locked` before PRs that touch shared behavior.
+Place Rust unit tests near code under `#[cfg(test)]` and integration tests in crate or service `tests/` directories. Frontend/package tests should live beside the feature or follow local app conventions. Run both `pnpm test` and `cargo nextest run --workspace --locked` before PRs that touch shared behavior.
 
 Codex may run targeted tests, type checks, lint checks, builds, and other
 reasonable validation commands on its own after completing each coherent part of
@@ -96,13 +94,3 @@ state must be enforced by Rust backend services and, where applicable, ledger
 or database invariants. Next.js routes and client components may proxy requests
 or display derived state, but they must not be the authoritative decision point
 for benefit-sensitive behavior.
-
-## RTK Command Preference
-When invoking external CLI commands from Codex for this repository, prefer the `rtk` prefix for tools such as `pnpm`, `cargo`, `make`, `git`, `docker`, `node`, and `bash`.
-
-Examples:
-- `rtk pnpm test`
-- `rtk cargo check -p api-gateway --locked`
-- `rtk make dev-infra`
-
-PowerShell builtins and simple read-only inspection commands do not need the `rtk` prefix.

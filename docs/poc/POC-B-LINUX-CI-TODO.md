@@ -18,21 +18,21 @@ Run PoC-B on Linux or CI to verify the OpenNext Cloudflare Workers adapter outpu
 ## TODO
 
 - [ ] Run workspace install on Linux.
-  - Command: `rtk pnpm install --frozen-lockfile`
+  - Command: `pnpm install --frozen-lockfile`
   - Evidence to capture: pnpm version, lockfile status, install exit code.
   - Use a native Linux install; do not reuse a Windows `node_modules` tree because OpenNext dependencies include platform-specific native packages.
 
 - [ ] Run `apps/web` production build.
-  - Command: `rtk pnpm --filter @prophetica/web build`
+  - Command: `pnpm --filter @prophetica/web build`
   - Evidence to capture: build exit code and any Edge runtime / Server Action warnings.
 
 - [ ] Run OpenNext Cloudflare adapter generation on Linux.
-  - Command: `rtk pnpm --filter @prophetica/web exec opennextjs-cloudflare build`
+  - Command: `pnpm --filter @prophetica/web exec opennextjs-cloudflare build`
   - Evidence to capture: whether `apps/web/.open-next/worker.js` and `apps/web/.open-next/assets` exist after the command.
   - If this fails on Linux, treat as real adapter/toolchain blocker and open fallback ADR.
 
 - [ ] Preview the generated Workers output.
-  - Command: `rtk pnpm --filter @prophetica/web preview`
+  - Command: `pnpm --filter @prophetica/web preview`
   - Evidence to capture: local Workers preview URL and runtime logs.
 
 - [ ] Scenario B: verify WebSocket fan-out path against preview or configured gateway.

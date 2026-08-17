@@ -95,7 +95,7 @@ Source checklist:
 
 ```bash
 WALLET_LEDGER_TEST_DATABASE_URL=postgres://user:pass@localhost:5432/prophetica_wallet_ledger_test \
-  rtk cargo nextest run -p wallet-ledger-service --locked
+  cargo nextest run -p wallet-ledger-service --locked
 ```
 
 This workstation cannot truthfully complete the integration item without a
@@ -205,11 +205,11 @@ Source checklist: `TODO.md`, "SPEC-022 Completion Blockers".
 - Run:
 
 ```bash
-rtk node tools/scripts/record-spec-022-liff-evidence.mjs .tmp/spec-022-liff.log
-rtk node tools/scripts/record-spec-022-manual-qa-evidence.mjs .tmp/spec-022-manual-qa.log
-rtk node tools/scripts/preflight-spec-022-evidence.mjs
-rtk node tools/scripts/finalize-spec-022-complete.mjs
-rtk node tools/scripts/check-spec-022-complete.mjs
+node tools/scripts/record-spec-022-liff-evidence.mjs .tmp/spec-022-liff.log
+node tools/scripts/record-spec-022-manual-qa-evidence.mjs .tmp/spec-022-manual-qa.log
+node tools/scripts/preflight-spec-022-evidence.mjs
+node tools/scripts/finalize-spec-022-complete.mjs
+node tools/scripts/check-spec-022-complete.mjs
 ```
 
 SPEC-022 must remain incomplete until those commands pass against real external

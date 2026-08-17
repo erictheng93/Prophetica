@@ -10,6 +10,6 @@
 # Runs after UTC/Taipei daily ledger cutover window. The payout worker is idempotent at
 # wallet-ledger-service via `referral-commission-payout:{referrer}:{epoch_day}`
 # and at referral-service via `paid_out_txn_id`.
-00 18 * * * REFERRAL_WORKER_MODE=daily-qualification rtk referral-worker
-10 18 * * * REFERRAL_WORKER_MODE=trade-accrual rtk referral-worker
-15 18 * * * REFERRAL_WORKER_MODE=daily-payout rtk referral-worker
+00 18 * * * REFERRAL_WORKER_MODE=daily-qualification referral-worker
+10 18 * * * REFERRAL_WORKER_MODE=trade-accrual referral-worker
+15 18 * * * REFERRAL_WORKER_MODE=daily-payout referral-worker

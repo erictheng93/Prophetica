@@ -31,4 +31,4 @@ KYC_SERVICE_URL = "http://127.0.0.1:8085"
 PROPHETICA_DEV_USER_ID = "user_01"
 
 # Secrets must be configured outside git:
-#   rtk pnpm --filter @prophetica/web exec wrangler secret put KYC_PROVIDER_WEBHOOK_SECRET
+#   pnpm --filter @prophetica/web exec wrangler secret put KYC_PROVIDER_WEBHOOK_SECRET

@@ -36,7 +36,7 @@ export function finalizeAffiliateP0Complete(repoRoot) {
           "tools/scripts/check-affiliate-p0-complete.mjs",
         ],
         evidence:
-          "Cloudflare Access, WebAuthn/passkey, public signup referral, and admin affiliate review E2E evidence were recorded, then rtk node tools/scripts/finalize-affiliate-p0-complete.mjs and rtk node tools/scripts/check-affiliate-p0-complete.mjs passed.",
+          "Cloudflare Access, WebAuthn/passkey, public signup referral, and admin affiliate review E2E evidence were recorded, then node tools/scripts/finalize-affiliate-p0-complete.mjs and node tools/scripts/check-affiliate-p0-complete.mjs passed.",
       },
     ],
   };

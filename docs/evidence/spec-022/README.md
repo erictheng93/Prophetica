@@ -44,7 +44,7 @@ The operator should verify:
 Record evidence:
 
 ```bash
-rtk node tools/scripts/record-spec-022-liff-evidence.mjs .tmp/spec-022-liff.log
+node tools/scripts/record-spec-022-liff-evidence.mjs .tmp/spec-022-liff.log
 ```
 
 This writes `docs/evidence/spec-022-liff/latest.json`.
@@ -77,7 +77,7 @@ The operator should verify:
 Record evidence:
 
 ```bash
-rtk node tools/scripts/record-spec-022-manual-qa-evidence.mjs .tmp/spec-022-manual-qa.log
+node tools/scripts/record-spec-022-manual-qa-evidence.mjs .tmp/spec-022-manual-qa.log
 ```
 
 This writes `docs/evidence/spec-022-manual-qa/latest.json`.
@@ -88,9 +88,9 @@ After both evidence files are recorded, run the preflight, finalize the
 manifest, and run the completion check:
 
 ```bash
-rtk node tools/scripts/preflight-spec-022-evidence.mjs
-rtk node tools/scripts/finalize-spec-022-complete.mjs
-rtk node tools/scripts/check-spec-022-complete.mjs
+node tools/scripts/preflight-spec-022-evidence.mjs
+node tools/scripts/finalize-spec-022-complete.mjs
+node tools/scripts/check-spec-022-complete.mjs
 ```
 
 The preflight checks for the required local LIFF configuration, both `.tmp`

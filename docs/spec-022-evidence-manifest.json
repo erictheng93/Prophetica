@@ -27,7 +27,7 @@
         "services/user-service/migrations/202605180002_create_login_event_outbox.sql",
         "services/user-service/tests/login_event_migrations.rs"
       ],
-      "evidence": "USER_SERVICE_TEST_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica rtk cargo test -p user-service --test login_event_migrations --locked => 1 passed; constraints and indexes verified on real Postgres."
+      "evidence": "USER_SERVICE_TEST_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica cargo test -p user-service --test login_event_migrations --locked => 1 passed; constraints and indexes verified on real Postgres."
     },
     {
       "id": "auth-writer-query-retention-observability",
@@ -37,7 +37,7 @@
         "services/user-service/tests/auth.rs",
         "infra/prometheus/rules/login-events.yml"
       ],
-      "evidence": "USER_SERVICE_TEST_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica rtk cargo test -p user-service --locked => 47 passed, 1 ignored; rtk cargo clippy -p user-service --all-targets --locked -- -D warnings => no issues."
+      "evidence": "USER_SERVICE_TEST_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica cargo test -p user-service --locked => 47 passed, 1 ignored; cargo clippy -p user-service --all-targets --locked -- -D warnings => no issues."
     },
     {
       "id": "liff-session-exchange-contract",
@@ -49,14 +49,14 @@
         "services/user-service/tests/liff_linked_account_store.rs",
         "services/_binaries/core-api/src/main.rs"
       ],
-      "evidence": "rtk cargo test -p user-service --test auth liff_session_exchange --locked => 2 passed; USER_SERVICE_TEST_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica rtk cargo test -p user-service --test liff_linked_account_store --locked => 1 passed; rtk pnpm --filter @prophetica/liff lint => passed; rtk cargo check -p core-api --locked => passed."
+      "evidence": "cargo test -p user-service --test auth liff_session_exchange --locked => 2 passed; USER_SERVICE_TEST_DATABASE_URL=postgres://proph:dev@localhost:5432/prophetica cargo test -p user-service --test liff_linked_account_store --locked => 1 passed; pnpm --filter @prophetica/liff lint => passed; cargo check -p core-api --locked => passed."
     },
     {
       "id": "latency-budget-local-evidence",
       "artifacts": [
         "services/user-service/tests/auth.rs"
       ],
-      "evidence": "rtk cargo test -p user-service --test auth spec_022_login_event_latency_p95_local_budget --locked -- --ignored => 1 passed, 27 filtered out; local login event + geo timeout P95 stayed below 100ms."
+      "evidence": "cargo test -p user-service --test auth spec_022_login_event_latency_p95_local_budget --locked -- --ignored => 1 passed, 27 filtered out; local login event + geo timeout P95 stayed below 100ms."
     },
     {
       "id": "external-evidence-recorder-contract",
@@ -71,7 +71,7 @@
         "docs/evidence/spec-022/liff-log.example",
         "docs/evidence/spec-022/manual-qa-log.example"
       ],
-      "evidence": "rtk node --test tools/scripts/*.test.mjs => 17 passed; rtk node tools/scripts/preflight-spec-022-evidence.mjs reports missing env/log/evidence prerequisites in the local environment and tests cover evidence fields that are not true; rtk node tools/scripts/finalize-spec-022-complete.mjs restores the blocked manifest and exits 1 while external evidence is missing; rtk node tools/scripts/check-spec-022-complete.mjs remains fail-closed while the manifest status is blocked."
+      "evidence": "node --test tools/scripts/*.test.mjs => 17 passed; node tools/scripts/preflight-spec-022-evidence.mjs reports missing env/log/evidence prerequisites in the local environment and tests cover evidence fields that are not true; node tools/scripts/finalize-spec-022-complete.mjs restores the blocked manifest and exits 1 while external evidence is missing; node tools/scripts/check-spec-022-complete.mjs remains fail-closed while the manifest status is blocked."
     },
     {
       "id": "web-admin-ui-and-rbac",
@@ -84,7 +84,7 @@
         "apps/admin/lib/login-events-bff.ts",
         "apps/admin/lib/rbac.ts"
       ],
-      "evidence": "Earlier targeted verification in this thread: rtk pnpm --filter @prophetica/web test => 177 passed; rtk pnpm --filter @prophetica/web lint => passed; rtk pnpm --filter @prophetica/admin test => 105 passed; rtk pnpm --filter @prophetica/admin lint => passed."
+      "evidence": "Earlier targeted verification in this thread: pnpm --filter @prophetica/web test => 177 passed; pnpm --filter @prophetica/web lint => passed; pnpm --filter @prophetica/admin test => 105 passed; pnpm --filter @prophetica/admin lint => passed."
     }
   ],
   "required_external_evidence": [

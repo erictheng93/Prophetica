@@ -276,7 +276,7 @@ Live Verification 結果：
     P95 < 60s:          ❌ Not run; no real KYC provider sandbox or mobile device flow.
     offending log:
       - `next-on-pages` on Windows: `SHELLAC COMMAND FAILED! Executing: pnpm --version ... Unexpected error: {"cmd":"pnpm --version","stdout":"","stderr":""}`
-      - shim retry: `rtk pnpm --filter @prophetica/web exec next-on-pages` timed out after 240s and left no `.vercel/output/static`.
+      - shim retry: `pnpm --filter @prophetica/web exec next-on-pages` timed out after 240s and left no `.vercel/output/static`.
       - env scan: no `KYC_PROVIDER_*` / `KYC_SERVICE_BASE_URL` values in process env.
   Scenario B (WebSocket fan-out):
     HTTP 101 upgrade:   ❌ Not run; no Pages preview URL and no ws-gateway `wss://` tunnel.
@@ -287,7 +287,7 @@ Live Verification 結果：
       - `where.exe ngrok` returned no match.
       - `rg NEXT_PUBLIC_WS_GATEWAY_URL` found only PoC snippet references, no configured endpoint.
   Scenario C (Server Actions):
-    pnpm build clean:   ✅ OK for `rtk pnpm --filter @prophetica/web build`; only webpack cache warnings from `next-intl` dynamic import parsing.
+    pnpm build clean:   ✅ OK for `pnpm --filter @prophetica/web build`; only webpack cache warnings from `next-intl` dynamic import parsing.
     Pages adapter:      ❌ Fail; `next-on-pages` did not produce Pages output on this Windows host.
     Action renders:     ❌ Not run; no preview deployment.
     offending log:

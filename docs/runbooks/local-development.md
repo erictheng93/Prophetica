@@ -17,16 +17,16 @@ aligned.
 ## Bootstrap
 
 ```powershell
-rtk pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
-rtk make dev-infra
+make dev-infra
 ```
 
 `dev-infra` starts local dependencies such as PostgreSQL, Redis, Kafka, Vault,
 Mailhog, and observability services. Stop them with:
 
 ```powershell
-rtk make down
+make down
 ```
 
 ## Full MVP Stack
@@ -34,7 +34,7 @@ rtk make down
 Run the player web app, admin app, and core API bundle together:
 
 ```powershell
-rtk pnpm dev
+pnpm dev
 ```
 
 With the checked-in `.env.example` defaults:
@@ -53,14 +53,14 @@ set.
 To run only the frontend apps:
 
 ```powershell
-rtk pnpm dev:apps
+pnpm dev:apps
 ```
 
 To run only one frontend app:
 
 ```powershell
-rtk pnpm --filter @prophetica/web dev
-rtk pnpm --filter @prophetica/admin dev
+pnpm --filter @prophetica/web dev
+pnpm --filter @prophetica/admin dev
 ```
 
 ## Backend Services
@@ -68,10 +68,10 @@ rtk pnpm --filter @prophetica/admin dev
 The `core-api` binary is the local bundle for the MVP API surface:
 
 ```powershell
-rtk pnpm dev:core-api
+pnpm dev:core-api
 ```
 
-Use `rtk cargo run -p core-api --locked` only when the needed env vars are
+Use `cargo run -p core-api --locked` only when the needed env vars are
 already exported in the shell; Cargo does not load the root `.env` file.
 
 It starts these HTTP services from one process:
@@ -92,7 +92,7 @@ without a separately started ledger process.
 The order path still needs a matching engine process:
 
 ```powershell
-rtk cargo run -p matching-engine-cold --locked
+cargo run -p matching-engine-cold --locked
 ```
 
 Relevant local env vars:
@@ -120,7 +120,7 @@ projection.
 
 ## Portfolio Live Wallet Check
 
-After `rtk make dev-infra` and `rtk pnpm dev`, check these endpoints:
+After `make dev-infra` and `pnpm dev`, check these endpoints:
 
 ```powershell
 curl.exe -fsS http://localhost:8080/healthz/ready
@@ -129,8 +129,8 @@ curl.exe -fsS http://localhost:8086/healthz/ready
 
 If `/portfolio` still shows the fallback wallet state, check that:
 
-- `rtk pnpm dev` was used instead of `rtk pnpm dev:apps`.
-- Postgres is running from `rtk make dev-infra`.
+- `pnpm dev` was used instead of `pnpm dev:apps`.
+- Postgres is running from `make dev-infra`.
 - `WALLET_LEDGER_BASE_URL` points to `http://localhost:8086`.
 - `API_GATEWAY_BASE_URL` points to `http://localhost:8080`.
 
@@ -146,7 +146,7 @@ OpenSSL discovery to be configured. Use one of these paths:
 Docker validation example from PowerShell:
 
 ```powershell
-rtk docker run --rm `
+docker run --rm `
   -e CARGO_TARGET_DIR=/cargo-target `
   -v "${PWD}:/work" `
   -v "$env:USERPROFILE\.cargo\target:/cargo-target" `
