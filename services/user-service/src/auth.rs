@@ -69,6 +69,7 @@ pub struct AuthConfig {
     login_identifier_hmac_key_version: String,
     trusted_proxy_config: TrustedProxyConfig,
     login_event_metrics: Arc<LoginEventMetrics>,
+    allow_local_sessions: bool,
 }
 
 #[derive(Clone)]
@@ -487,7 +488,19 @@ impl AuthConfig {
             login_identifier_hmac_key_version: "dev-v1".to_owned(),
             trusted_proxy_config: TrustedProxyConfig::default(),
             login_event_metrics: Arc::new(LoginEventMetrics::default()),
+            allow_local_sessions: true,
         }
+    }
+
+    #[must_use]
+    pub fn with_allow_local_sessions(mut self, allow: bool) -> Self {
+        self.allow_local_sessions = allow;
+        self
+    }
+
+    #[must_use]
+    pub fn allows_local_sessions(&self) -> bool {
+        self.allow_local_sessions
     }
 
     #[must_use]
@@ -581,8 +594,9 @@ impl AuthConfig {
     #[must_use]
     pub fn from_env() -> Self {
         let prophetica_env = env::var("PROPHETICA_ENV").unwrap_or_else(|_| "dev".to_owned());
+        let is_production = prophetica_env.eq_ignore_ascii_case("production");
 
-        let accounts = if prophetica_env.eq_ignore_ascii_case("production") {
+        let accounts = if is_production {
             Vec::new()
         } else if let Some(accounts) = Self::from_local_login_accounts_json_env() {
             accounts
@@ -604,7 +618,11 @@ impl AuthConfig {
                 .map_or_else(Vec::new, |account| vec![account])
         };
 
-        let mut config = Self::new(accounts);
+        let allow_local_sessions = !is_production
+            && (env_flag("USER_SERVICE_ALLOW_LOCAL_SESSIONS")
+                || env::var("USER_SERVICE_ALLOW_LOCAL_SESSIONS").is_err());
+
+        let mut config = Self::new(accounts).with_allow_local_sessions(allow_local_sessions);
         if let Ok(private_jwk) = env::var("USER_SERVICE_ED25519_SESSION_PRIVATE_JWK") {
             config = config.with_session_signer(&private_jwk);
         }
@@ -2583,6 +2601,11 @@ fn bearer_token(headers: &HeaderMap) -> Option<&str> {
 }
 
 fn parse_local_session_token(token: &str) -> Option<LocalSessionToken> {
+    if let Ok(env) = env::var("PROPHETICA_ENV") {
+        if env.eq_ignore_ascii_case("production") {
+            return None;
+        }
+    }
     let rest = token.strip_prefix("local-user-service:")?;
     let (_scope, user_and_expiry) = rest.split_once(':')?;
     let (user_id, expiry) = user_and_expiry.rsplit_once(':')?;
@@ -2603,6 +2626,9 @@ fn parse_session_token(config: &AuthConfig, token: &str) -> Option<LocalSessionT
             .session_signer
             .as_ref()
             .and_then(|signer| signer.verify_session_token(token));
+    }
+    if !config.allow_local_sessions {
+        return None;
     }
     parse_local_session_token(token)
 }

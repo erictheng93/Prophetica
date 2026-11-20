@@ -1865,3 +1865,24 @@ async fn request_with_optional_bearer_json(
         body,
     }
 }
+
+#[tokio::test]
+async fn unsigned_local_session_token_is_rejected_when_local_sessions_disabled() {
+    let config = config_with_fixture().with_allow_local_sessions(false);
+    assert!(!config.allows_local_sessions());
+    let app = auth_router_with_config(config);
+
+    let forged_token = "local-user-service:admin:admin_01:9999999999";
+    let response = request_with_optional_bearer_json(
+        app,
+        "GET",
+        "/api/auth/me",
+        Some(forged_token),
+        json!({}),
+    )
+    .await;
+
+    assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+}
+
+
