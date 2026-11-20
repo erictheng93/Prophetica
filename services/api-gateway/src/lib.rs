@@ -4183,6 +4183,10 @@ where
             "/api/internal/admin/affiliate-payouts/:payout_id/review",
             post(review_affiliate_payout::<W, E, R, K>),
         )
+        .route(
+            "/api/internal/referrals/capture",
+            post(capture_referral::<W, E, R, K>),
+        )
         .route_layer(middleware::from_fn(verify_admin_proxy_internal_call))
         .with_state(state.clone());
 
@@ -4218,10 +4222,6 @@ where
         .route(
             "/v1/account/affiliate/commission-summary",
             get(get_my_affiliate_commission_summary::<W, E, R, K>),
-        )
-        .route(
-            "/api/internal/referrals/capture",
-            post(capture_referral::<W, E, R, K>),
         )
         .with_state(state)
         .merge(admin_router)
@@ -8113,6 +8113,38 @@ mod tests {
                 referred_at_day: Some(20_000),
             }]
         );
+    }
+
+    #[tokio::test]
+    async fn internal_referral_capture_rejects_unauthenticated_request() {
+        let referral = InMemoryReferralClient::default();
+        let app = router_with_services(
+            InMemoryWalletLedgerClient::default(),
+            InMemoryMatchingEngineClient::default(),
+            referral.clone(),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/internal/referrals/capture")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "referral_code": "AFF-100",
+                            "referred_user_id": "MEM-900",
+                            "referred_at_day": 20_000
+                        })
+                        .to_string(),
+                    ))
+                    .expect("request should build"),
+            )
+            .await
+            .expect("request should execute");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(referral.capture_requests().is_empty());
     }
 
     #[tokio::test]
