@@ -22,6 +22,8 @@ export default async function MarketsTrendingPage() {
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("headline")}
         tagline={t("tagline")}
       />

@@ -30,20 +30,20 @@ export default async function AccountSecurityPage() {
         cta={<SiteThemeToggle />}
       />
       <section className="border-b border-proph-hairline bg-proph-canvas-parchment">
-        <div className="mx-auto max-w-proph px-6 py-10 md:px-10">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-primary">
+        <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
+          <p className="inline-flex items-center rounded-proph-pill border border-proph-primary/40 bg-proph-primary/10 px-3 py-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-primary">
             Account Security
           </p>
-          <h1 className="mt-3 text-[34px] font-semibold leading-[1.1] tracking-[-0.374px]">
+          <h1 className="mt-4 font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.374px]">
             登入紀錄
           </h1>
-          <p className="mt-3 max-w-2xl text-[15px] leading-[1.47] tracking-[-0.224px] text-proph-ink-muted-80">
+          <p className="mt-3 max-w-2xl font-text text-[15px] leading-[1.47] tracking-[-0.224px] text-proph-ink-muted-80">
             最近登入時間、約略位置、裝置與瀏覽器。IP 只顯示遮罩版本。
           </p>
         </div>
       </section>
-      <section className="mx-auto max-w-proph px-6 py-8 md:px-10">
-        <div className="overflow-hidden border border-proph-hairline bg-proph-canvas">
+      <section className="mx-auto max-w-proph px-6 py-10 md:px-10">
+        <div className="overflow-hidden rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas shadow-proph-card">
           <div className="hidden grid-cols-[1.3fr_1fr_1fr_1fr] border-b border-proph-hairline bg-proph-canvas-parchment px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-64 sm:grid">
             <span>時間</span>
             <span>地點</span>
@@ -64,7 +64,8 @@ export default async function AccountSecurityPage() {
                   <span>{formatEpoch(event.occurred_at_epoch_seconds)}</span>
                   <span>{loginEventLocationLabel(event)}</span>
                   <span>
-                    {loginEventDeviceLabel(event)} / {loginEventBrowserLabel(event)}
+                    {loginEventDeviceLabel(event)} /{" "}
+                    {loginEventBrowserLabel(event)}
                   </span>
                   <span>{event.ip_masked || "未知"}</span>
                 </li>

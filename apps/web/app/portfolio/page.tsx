@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import { TrendDown, TrendUp } from "@phosphor-icons/react/dist/ssr";
 import { getTranslations } from "next-intl/server";
-import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import {
+  ProphFooter,
+  ProphLinkButton,
+  ProphSubNav,
+  ProphTile,
+} from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
@@ -9,11 +14,7 @@ import {
   getFooterColumns,
   MainNavLinks,
 } from "@/lib/site-nav";
-import {
-  categoryLabel,
-  formatPoints,
-  statusLabel,
-} from "@/lib/mock-markets";
+import { categoryLabel, formatPoints, statusLabel } from "@/lib/mock-markets";
 import {
   formatPointsSigned,
   type PortfolioSummary,
@@ -55,20 +56,27 @@ type PortfolioCopy = Awaited<ReturnType<typeof getTranslations<"portfolio">>>;
 
 export default async function PortfolioPage() {
   const upstreamSessionToken = await getUpstreamSessionToken();
-  const [t, sectionFooterColumns, walletOverview, portfolio] = await Promise.all([
-    getTranslations("portfolio"),
-    getFooterColumns(["markets", "legal", "support"]),
-    fetchWalletOverview({ bearerToken: upstreamSessionToken ?? undefined }),
-    fetchPortfolioPositions(),
-  ]);
+  const [t, sectionFooterColumns, walletOverview, portfolio] =
+    await Promise.all([
+      getTranslations("portfolio"),
+      getFooterColumns(["markets", "legal", "support"]),
+      fetchWalletOverview({ bearerToken: upstreamSessionToken ?? undefined }),
+      fetchPortfolioPositions(),
+    ]);
   const { active, settled, summary } = portfolio;
 
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
       <ProphTile
         surface="light"
+        glow="brand"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -76,7 +84,9 @@ export default async function PortfolioPage() {
       <section className="bg-proph-canvas-parchment">
         <div className="mx-auto max-w-proph px-6 py-6 md:px-10">
           <p className="rounded-proph-md border border-proph-primary/30 bg-proph-canvas px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
-            <strong className="font-semibold text-proph-ink">{t("demoBanner.label")}</strong>{" "}
+            <strong className="font-semibold text-proph-ink">
+              {t("demoBanner.label")}
+            </strong>{" "}
             {t("demoBanner.body")}
           </p>
         </div>
@@ -107,14 +117,19 @@ function SummaryCards({
     {
       label:
         walletOverview.source === "api-gateway"
-          ? t("summary.wallet.labelLive", { userId: walletOverview.balance.userId })
+          ? t("summary.wallet.labelLive", {
+              userId: walletOverview.balance.userId,
+            })
           : t("summary.wallet.labelFallback"),
       value: formatPoints(walletOverview.balance.availablePoints),
       tone: "neutral" as const,
     },
     {
       label: t("summary.locked.label"),
-      value: formatPoints(walletOverview.balance.lockedPoints + walletOverview.balance.frozenPoints),
+      value: formatPoints(
+        walletOverview.balance.lockedPoints +
+          walletOverview.balance.frozenPoints,
+      ),
       tone: "neutral" as const,
     },
     {
@@ -146,7 +161,7 @@ function SummaryCards({
           {cards.map((card) => (
             <article
               key={card.label}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1 hover:border-proph-primary/40"
             >
               <div
                 className={
@@ -194,13 +209,13 @@ function LedgerActivitySection({
         </header>
 
         {walletOverview.ledgerEntries.length === 0 ? (
-          <article className="rounded-proph-lg border border-proph-divider-soft bg-proph-canvas-parchment p-6">
+          <article className="rounded-proph-xl border border-proph-divider-soft bg-proph-canvas-parchment p-6">
             <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
               {t("ledger.empty")}
             </p>
           </article>
         ) : (
-          <ul className="divide-y divide-proph-divider-soft rounded-proph-lg border border-proph-hairline bg-proph-canvas">
+          <ul className="divide-y divide-proph-divider-soft rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas shadow-proph-card overflow-hidden">
             {walletOverview.ledgerEntries.slice(0, 5).map((entry) => (
               <li
                 key={entry.txnId}
@@ -208,7 +223,10 @@ function LedgerActivitySection({
               >
                 <div className="min-w-0">
                   <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
-                    {t("ledger.txnLabel", { txnId: entry.txnId, direction: entry.direction })}
+                    {t("ledger.txnLabel", {
+                      txnId: entry.txnId,
+                      direction: entry.direction,
+                    })}
                   </div>
                   <div className="mt-1 truncate font-mono text-[14px] tabular-nums tracking-[-0.224px] text-proph-ink-muted-80">
                     {entry.accountCode}
@@ -223,7 +241,9 @@ function LedgerActivitySection({
                   {formatPointsSigned(entry.amountPoints)}
                 </div>
                 <div className="font-mono text-[14px] tabular-nums tracking-[-0.224px] text-proph-ink-muted-48">
-                  {t("ledger.balanceLabel", { balance: formatPoints(entry.balanceAfterPoints) })}
+                  {t("ledger.balanceLabel", {
+                    balance: formatPoints(entry.balanceAfterPoints),
+                  })}
                 </div>
               </li>
             ))}
@@ -273,7 +293,12 @@ function PositionsSection({
         ) : (
           <ul className="space-y-4">
             {positions.map((p) => (
-              <PositionRow key={`${p.marketId}-${p.outcome}`} t={t} position={p} variant={variant} />
+              <PositionRow
+                key={`${p.marketId}-${p.outcome}`}
+                t={t}
+                position={p}
+                variant={variant}
+              />
             ))}
           </ul>
         )}
@@ -293,16 +318,24 @@ function PositionRow({
 }) {
   const { market, outcome, shares, avgCostCents } = position;
   const pnl =
-    variant === "active" ? position.unrealizedPnlPoints : (position.realizedPnlPoints ?? 0);
+    variant === "active"
+      ? position.unrealizedPnlPoints
+      : (position.realizedPnlPoints ?? 0);
   const pnlTone = pickTone(pnl);
-  const valueLabelKey = variant === "active" ? "positions.active.valueLabel" : "positions.settled.valueLabel";
-  const pnlLabelKey = variant === "active" ? "positions.active.pnlLabel" : "positions.settled.pnlLabel";
+  const valueLabelKey =
+    variant === "active"
+      ? "positions.active.valueLabel"
+      : "positions.settled.valueLabel";
+  const pnlLabelKey =
+    variant === "active"
+      ? "positions.active.pnlLabel"
+      : "positions.settled.pnlLabel";
 
   return (
     <li>
       <a
         href={`/markets/${market.id}`}
-        className="block rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 transition-colors hover:border-proph-primary"
+        className="block rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1 hover:border-proph-primary/50"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
@@ -328,8 +361,16 @@ function PositionRow({
         </div>
 
         <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-proph-divider-soft pt-4 md:grid-cols-4">
-          <Field label={t("positions.fields.shares")} value={shares.toLocaleString()} mono />
-          <Field label={t("positions.fields.avgPrice")} value={`${avgCostCents}¢`} mono />
+          <Field
+            label={t("positions.fields.shares")}
+            value={shares.toLocaleString()}
+            mono
+          />
+          <Field
+            label={t("positions.fields.avgPrice")}
+            value={`${avgCostCents}¢`}
+            mono
+          />
           <Field
             label={t(valueLabelKey)}
             value={formatPoints(
@@ -377,18 +418,30 @@ function Field({
       <dd
         className={
           "mt-1 inline-flex items-center gap-1 " +
-          (mono ? "font-mono tabular-nums text-[17px] tracking-[-0.374px] " : "font-text text-[17px] tracking-[-0.374px] ") +
+          (mono
+            ? "font-mono tabular-nums text-[17px] tracking-[-0.374px] "
+            : "font-text text-[17px] tracking-[-0.374px] ") +
           toneClass(tone)
         }
       >
         {tone === "positive" ? (
-          <TrendUp weight="bold" className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <TrendUp
+            weight="bold"
+            className="h-4 w-4 shrink-0"
+            aria-hidden="true"
+          />
         ) : tone === "negative" ? (
-          <TrendDown weight="bold" className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <TrendDown
+            weight="bold"
+            className="h-4 w-4 shrink-0"
+            aria-hidden="true"
+          />
         ) : null}
         <span>{value}</span>
         {extra ? (
-          <span className="ml-1 font-text text-[12px] tracking-[-0.12px]">{extra}</span>
+          <span className="ml-1 font-text text-[12px] tracking-[-0.12px]">
+            {extra}
+          </span>
         ) : null}
       </dd>
     </div>

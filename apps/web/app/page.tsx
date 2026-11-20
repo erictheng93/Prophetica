@@ -13,34 +13,11 @@ import {
   MainNavLinks,
   siteFooterColumnIds,
 } from "@/lib/site-nav";
-
-// Landing page — DESIGN.md (Apple-style) integration test, now i18n-ready.
-// First page migrated to next-intl: copy lives in messages/zh-Hant.json
-// (`landing.*` namespace). Other pages still use string literals; migrate
-// per the pattern here as catalogues mature (see Tech Lead followups).
-//
-// Product posture: copy frames the product as an event-prediction experience.
-
-const TileMedia = ({
-  label,
-  surface,
-}: {
-  label: string;
-  surface: "light" | "dark";
-}) => (
-  <div
-    className={
-      "flex h-64 w-full max-w-3xl items-center justify-center rounded-proph-lg " +
-      (surface === "dark"
-        ? "bg-proph-surface-tile-2 text-proph-body-muted"
-        : "bg-proph-canvas-parchment text-proph-ink-muted-80")
-    }
-  >
-    <span className="font-display text-[21px] font-semibold tracking-[0.231px]">
-      {label}
-    </span>
-  </div>
-);
+import { GuardianWidget } from "@/components/landing/guardian-widget";
+import { HeroPredictionWidget } from "@/components/landing/hero-prediction-widget";
+import { MarketTickerRibbon } from "@/components/landing/market-ticker-ribbon";
+import { MatchingEngineWidget } from "@/components/landing/matching-engine-widget";
+import { PointsWalletWidget } from "@/components/landing/points-wallet-widget";
 
 export default async function LandingPage() {
   const [t, footerColumns] = await Promise.all([
@@ -65,6 +42,8 @@ export default async function LandingPage() {
 
       <ProphTile
         surface="light"
+        glow="brand"
+        gridPattern
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {t("hero.headline")}
@@ -81,11 +60,14 @@ export default async function LandingPage() {
             </ProphLinkButton>
           </>
         }
-        media={<TileMedia label={t("hero.media")} surface="light" />}
+        media={<HeroPredictionWidget />}
       />
+
+      <MarketTickerRibbon />
 
       <ProphTile
         surface="dark"
+        glow="brand"
         headline={t("neutral.headline")}
         tagline={t("neutral.tagline")}
         actions={
@@ -93,11 +75,12 @@ export default async function LandingPage() {
             {t("neutral.cta")}
           </ProphLinkButton>
         }
-        media={<TileMedia label={t("neutral.media")} surface="dark" />}
+        media={<MatchingEngineWidget />}
       />
 
       <ProphTile
         surface="parchment"
+        glow="gold"
         headline={t("points.headline")}
         tagline={t("points.tagline")}
         actions={
@@ -110,11 +93,12 @@ export default async function LandingPage() {
             </ProphLinkButton>
           </>
         }
-        media={<TileMedia label={t("points.media")} surface="light" />}
+        media={<PointsWalletWidget />}
       />
 
       <ProphTile
         surface="dark-2"
+        glow="emerald"
         headline={t("responsibleGaming.headline")}
         tagline={t("responsibleGaming.tagline")}
         actions={
@@ -133,13 +117,13 @@ export default async function LandingPage() {
             </ProphLinkButton>
           </>
         }
-        media={
-          <TileMedia label={t("responsibleGaming.media")} surface="dark" />
-        }
+        media={<GuardianWidget />}
       />
 
       <ProphTile
         surface="light"
+        glow="brand"
+        gridPattern
         headline={t("start.headline")}
         tagline={t("start.tagline")}
         actions={

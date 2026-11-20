@@ -25,11 +25,9 @@ function orderSummary(order: RedemptionOrder): string {
   return `${order.orderId.slice(0, 8)}•${order.skuId}•${formatState(order.state)}`;
 }
 
-const CANCELLABLE_ORDER_STATES: ReadonlySet<RedemptionOrder["state"]> = new Set([
-  "submitted",
-  "accepted",
-  "committed",
-]);
+const CANCELLABLE_ORDER_STATES: ReadonlySet<RedemptionOrder["state"]> = new Set(
+  ["submitted", "accepted", "committed"],
+);
 
 function ErrorMessage({ message }: { message: string }) {
   return (
@@ -54,7 +52,9 @@ function EmptyState({ label }: { label: string }) {
 export function RedemptionClient() {
   const [catalog, setCatalog] = useState<RedemptionCatalogItem[]>([]);
   const [entitlements, setEntitlements] = useState<RedemptionEntitlement[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<RedemptionOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<RedemptionOrder | null>(
+    null,
+  );
   const [lookupOrderId, setLookupOrderId] = useState("");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
@@ -75,7 +75,8 @@ export function RedemptionClient() {
       const data = await fetchRedemptionCatalog();
       setCatalog(data);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load catalog";
+      const message =
+        err instanceof Error ? err.message : "Failed to load catalog";
       setError(message);
     } finally {
       setIsCatalogLoading(false);
@@ -106,12 +107,16 @@ export function RedemptionClient() {
       clearStatus();
       setIsSubmitting(skuId);
       try {
-        const order = await createRedemptionOrder({ skuId, idempotencyKey: crypto.randomUUID() });
+        const order = await createRedemptionOrder({
+          skuId,
+          idempotencyKey: crypto.randomUUID(),
+        });
         setSelectedOrder(order);
         setStatusMessage(`Order created: ${orderSummary(order)}`);
         await loadEntitlements();
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to create order";
+        const message =
+          err instanceof Error ? err.message : "Failed to create order";
         setError(message);
       } finally {
         setIsSubmitting(null);
@@ -133,7 +138,8 @@ export function RedemptionClient() {
       setSelectedOrder(order);
       setStatusMessage(`Order found: ${orderSummary(order)}`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Order lookup failed";
+      const message =
+        err instanceof Error ? err.message : "Order lookup failed";
       setError(message);
     } finally {
       setIsLookingUp(false);
@@ -153,7 +159,8 @@ export function RedemptionClient() {
       setStatusMessage(`Order canceled: ${orderSummary(updated)}`);
       await loadEntitlements();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Order cancel failed";
+      const message =
+        err instanceof Error ? err.message : "Order cancel failed";
       setError(message);
     } finally {
       setIsSubmitting(null);
@@ -166,7 +173,7 @@ export function RedemptionClient() {
 
   return (
     <div className="space-y-8">
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
         <header className="mb-4">
           <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px]">
             Catalog
@@ -177,14 +184,16 @@ export function RedemptionClient() {
         </header>
 
         {isCatalogLoading ? (
-          <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">Loading catalog...</p>
+          <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
+            Loading catalog...
+          </p>
         ) : null}
 
         {catalog.length === 0 && !isCatalogLoading ? (
           <EmptyState label="No redeemable items are available right now." />
         ) : null}
 
-        <ul className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <ul className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {catalog.map((item) => {
             const busy = isSubmitting === item.skuId;
             const disabled = busy || Boolean(isSubmitting);
@@ -192,7 +201,7 @@ export function RedemptionClient() {
             return (
               <li
                 key={item.skuId}
-                className="rounded-proph-lg border border-proph-hairline bg-proph-canvas-parchment p-5"
+                className="flex flex-col rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas-parchment p-6 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-proph-primary/40 hover:shadow-proph-card"
               >
                 <div className="font-display text-[21px] font-semibold leading-[1.26] tracking-[0.196px]">
                   {item.title}
@@ -203,14 +212,14 @@ export function RedemptionClient() {
                 <p className="mt-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
                   {item.description}
                 </p>
-                <p className="mt-4 font-text text-[17px] leading-[1.47] tracking-[-0.374px]">
+                <p className="mt-4 font-mono text-[17px] font-semibold leading-[1.47] tracking-[-0.374px] text-proph-primary">
                   {formatPoints(item.pricePoints)}
                 </p>
                 <button
                   type="button"
                   disabled={disabled}
                   onClick={() => void submitOrder(item.skuId)}
-                  className="mt-4 inline-flex h-10 min-w-[132px] items-center justify-center rounded-proph-pill bg-proph-primary px-5 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-4 inline-flex h-10 min-w-[132px] items-center justify-center rounded-proph-pill bg-proph-primary px-5 font-text text-[14px] font-medium leading-[1.43] tracking-[-0.224px] text-proph-on-primary transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {busy ? "Submitting" : "Create order"}
                 </button>
@@ -220,7 +229,7 @@ export function RedemptionClient() {
         </ul>
       </section>
 
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
         <header className="mb-4">
           <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px]">
             Order lookup and action
@@ -252,11 +261,11 @@ export function RedemptionClient() {
         </div>
 
         {selectedOrder ? (
-            <article className="mt-6 rounded-proph-md border border-proph-hairline bg-proph-canvas-parchment p-4">
+          <article className="mt-6 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas-parchment p-6 shadow-sm">
             <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
               Order details
             </div>
-            <dl className="mt-3 grid gap-2 text-[14px] tracking-[-0.224px] font-text">
+            <dl className="mt-3 grid gap-2 font-text text-[14px] tracking-[-0.224px]">
               <div className="grid gap-1">
                 <dt className="text-proph-ink-muted-80">Order ID</dt>
                 <dd className="font-mono">{selectedOrder.orderId}</dd>
@@ -298,7 +307,7 @@ export function RedemptionClient() {
         ) : null}
       </section>
 
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
         <header className="mb-4">
           <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px]">
             My entitlements
@@ -309,18 +318,20 @@ export function RedemptionClient() {
         </header>
 
         {isEntitlementsLoading ? (
-          <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">Loading entitlements...</p>
+          <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
+            Loading entitlements...
+          </p>
         ) : null}
 
         {entitlements.length === 0 && !isEntitlementsLoading ? (
           <EmptyState label="No entitlements yet." />
         ) : null}
 
-        <ul className="grid grid-cols-1 gap-2">
+        <ul className="grid grid-cols-1 gap-3">
           {entitlements.map((entitlement) => (
             <li
               key={entitlement.entitlementId}
-              className="rounded-proph-md border border-proph-hairline bg-proph-canvas-parchment px-4 py-3"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas-parchment p-5 transition-all hover:border-proph-primary/40"
             >
               <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
                 {entitlement.state}
@@ -339,7 +350,11 @@ export function RedemptionClient() {
         </ul>
       </section>
 
-      {statusMessage ? <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">{statusMessage}</p> : null}
+      {statusMessage ? (
+        <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
+          {statusMessage}
+        </p>
+      ) : null}
       {error ? <ErrorMessage message={error} /> : null}
     </div>
   );
