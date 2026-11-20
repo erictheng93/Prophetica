@@ -36,6 +36,10 @@ export interface JourneyMockState {
   orderBody: unknown;
   /// Authorization header captured from the order POST.
   orderAuthorization: string | undefined;
+  selfExclusionActive?: boolean;
+  selfExclusionRecord?: Record<string, unknown> | null;
+  redemptionOrders?: Array<Record<string, unknown>>;
+  redemptionEntitlements?: Array<Record<string, unknown>>;
 }
 
 export function freshJourneyState(): JourneyMockState {
@@ -44,6 +48,10 @@ export function freshJourneyState(): JourneyMockState {
     balanceMinor: 0,
     orderBody: undefined,
     orderAuthorization: undefined,
+    selfExclusionActive: false,
+    selfExclusionRecord: null,
+    redemptionOrders: [],
+    redemptionEntitlements: [],
   };
 }
 
@@ -141,6 +149,101 @@ export async function setupJourneyMocks(
           remaining_qty: 10,
           fee_pts: 0,
         });
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        request.url === "/v1/responsible-gaming/self-exclusion"
+      ) {
+        writeJson(response, 200, {
+          user_id: JOURNEY_USER_ID,
+          active: Boolean(state.selfExclusionActive),
+          record: state.selfExclusionRecord ?? null,
+          source: "api-gateway",
+        });
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        request.url === "/v1/responsible-gaming/self-exclusion"
+      ) {
+        const body = (await readJson(request)) as Record<string, unknown>;
+        state.selfExclusionActive = true;
+        state.selfExclusionRecord = {
+          record_id: `rec-se-${Date.now()}`,
+          user_id: JOURNEY_USER_ID,
+          mode: body.mode,
+          period: body.period ?? null,
+          points_disposition: body.points_disposition ?? null,
+          reason: body.reason ?? null,
+          starts_at_epoch_seconds: Math.floor(Date.now() / 1000),
+          ends_at_epoch_seconds:
+            body.period === "six_months"
+              ? Math.floor(Date.now() / 1000) + 180 * 86400
+              : null,
+          frozen_minor_units: -100000,
+        };
+        writeJson(response, 200, {
+          record: state.selfExclusionRecord,
+          ledger_idempotency_key: "ledger-se-001",
+          replayed: false,
+        });
+        return;
+      }
+      if (
+        request.method === "POST" &&
+        request.url === "/v1/redemption/orders"
+      ) {
+        const body = (await readJson(request)) as Record<string, unknown>;
+        const orderId = `ord-red-${Date.now()}`;
+        const entitlementId = `ent-${Date.now()}`;
+        const order = {
+          order_id: orderId,
+          state: "accepted",
+          user_id: JOURNEY_USER_ID,
+          sku_id: body.sku_id,
+          price_minor_units: 50000,
+          price_points: 500,
+          entitlement_id: entitlementId,
+          idempotency_key: body.idempotency_key ?? "idemp-001",
+          replayed: false,
+        };
+        state.redemptionOrders = state.redemptionOrders ?? [];
+        state.redemptionOrders.push(order);
+        state.redemptionEntitlements = state.redemptionEntitlements ?? [];
+        state.redemptionEntitlements.push({
+          entitlement_id: entitlementId,
+          order_id: orderId,
+          owner_user_id: JOURNEY_USER_ID,
+          sku_id: body.sku_id,
+          state: "active",
+          fulfillment_payload: { code: "REDEEM-PROMO-999" },
+        });
+        writeJson(response, 200, order);
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        request.url?.startsWith("/v1/redemption/entitlements/")
+      ) {
+        writeJson(response, 200, {
+          entitlements: state.redemptionEntitlements ?? [],
+        });
+        return;
+      }
+      if (
+        request.method === "GET" &&
+        request.url?.startsWith("/v1/redemption/orders/")
+      ) {
+        const orderId = request.url.split("/").pop();
+        const found = state.redemptionOrders?.find(
+          (o) => o.order_id === orderId,
+        );
+        if (found) {
+          writeJson(response, 200, found);
+        } else {
+          writeJson(response, 404, { error: "order_not_found" });
+        }
         return;
       }
       writeJson(response, 404, { error: "not_found" });

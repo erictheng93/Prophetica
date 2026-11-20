@@ -78,6 +78,8 @@ export default async function AuthPage({ searchParams }: PageProps) {
 
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t(`hero.${mode}.headline`)}
         tagline={t(`hero.${mode}.tagline`)}
       />
