@@ -113,7 +113,7 @@ export function CooldownActivationForm({
           </p>
         </header>
 
-        <div className="mb-6 rounded-proph-md border border-proph-hairline bg-proph-canvas-parchment px-5 py-4">
+        <div className="mb-6 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas-parchment p-6 shadow-sm">
           <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
             {copy.statusLabel}
           </div>
@@ -129,12 +129,12 @@ export function CooldownActivationForm({
 
         <form onSubmit={onSubmit}>
           <fieldset className="space-y-6" disabled={pending}>
-            <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <fieldset className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <legend className="sr-only">{copy.legend}</legend>
               {options.map((option) => (
                 <label
                   key={option.id}
-                  className="flex cursor-pointer flex-col gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas p-5 transition-colors has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment"
+                  className="flex cursor-pointer flex-col gap-3 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-sm transition-all duration-200 hover:-translate-y-0.5 has-[:checked]:border-proph-primary has-[:checked]:bg-proph-canvas-parchment has-[:checked]:shadow-proph-card"
                 >
                   <span className="flex items-center gap-3">
                     <input
@@ -157,7 +157,7 @@ export function CooldownActivationForm({
               ))}
             </fieldset>
 
-            <div className="rounded-proph-md border border-proph-primary/30 bg-proph-canvas-parchment px-5 py-4">
+            <div className="rounded-proph-xl border border-proph-primary/30 bg-proph-canvas-parchment p-6">
               <p className="font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink">
                 {callout}
               </p>
@@ -213,6 +213,8 @@ function isErrorPayload(value: unknown): value is { message?: unknown } {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isCooldownDuration(value: FormDataEntryValue | null): value is CooldownDuration {
+function isCooldownDuration(
+  value: FormDataEntryValue | null,
+): value is CooldownDuration {
   return value === "24h" || value === "7d" || value === "30d";
 }

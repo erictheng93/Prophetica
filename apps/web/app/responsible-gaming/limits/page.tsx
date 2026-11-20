@@ -26,19 +26,23 @@ const mockState = {
   lastChangeAt: "2026-04-12",
 };
 
-
-type LimitsCopy = Awaited<ReturnType<typeof getTranslations<"responsibleGaming.limits">>>;
+type LimitsCopy = Awaited<
+  ReturnType<typeof getTranslations<"responsibleGaming.limits">>
+>;
 
 export default async function LimitsPage() {
   const [t, tFmt] = await Promise.all([
     getTranslations("responsibleGaming.limits"),
     getTranslations("common.format"),
   ]);
-  const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
+  const formatPoints = (n: number) =>
+    tFmt("points", { n: n.toLocaleString("zh-Hant") });
   return (
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -55,13 +59,16 @@ function CurrentLimitCard({
   t: LimitsCopy;
   formatPoints: (n: number) => string;
 }) {
-  const usagePct = Math.min(100, (mockState.thisMonthUsed / mockState.currentLimit) * 100);
+  const usagePct = Math.min(
+    100,
+    (mockState.thisMonthUsed / mockState.currentLimit) * 100,
+  );
   const nearLimit = usagePct >= 80;
 
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-8">
+        <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-8 shadow-proph-card">
           <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
             {t("current.label")}
           </div>
@@ -76,12 +83,15 @@ function CurrentLimitCard({
             })}
           </div>
 
-          <div className="mt-6 h-2 w-full overflow-hidden rounded-proph-pill bg-proph-divider-soft">
-            <div className="h-full bg-proph-primary" style={{ width: `${usagePct}%` }} />
+          <div className="mt-6 h-2.5 w-full overflow-hidden rounded-proph-pill bg-proph-divider-soft">
+            <div
+              className="h-full rounded-proph-pill bg-proph-primary transition-all duration-500"
+              style={{ width: `${usagePct}%` }}
+            />
           </div>
 
           {nearLimit ? (
-            <p className="mt-6 rounded-proph-md border border-proph-primary bg-proph-canvas-parchment px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-primary">
+            <p className="mt-6 rounded-proph-xl border border-proph-primary bg-proph-canvas-parchment p-4 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-primary">
               {t("current.warning", { pct: usagePct.toFixed(0) })}
             </p>
           ) : null}
@@ -102,7 +112,9 @@ function AdjustForm({
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
         <header className="mb-8">
-          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">{t("form.heading")}</h2>
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
+            {t("form.heading")}
+          </h2>
           <p className="mt-3 font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
             {t("form.intro")}
           </p>
@@ -115,7 +127,7 @@ function AdjustForm({
               {limitOptions.map((opt) => (
                 <label
                   key={opt.value}
-                  className="flex cursor-pointer items-center gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas px-5 py-4 transition-colors has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment"
+                  className="flex cursor-pointer items-center gap-3 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas px-5 py-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 has-[:checked]:border-proph-primary has-[:checked]:bg-proph-canvas-parchment has-[:checked]:shadow-proph-card"
                 >
                   <input
                     type="radio"
@@ -129,9 +141,14 @@ function AdjustForm({
                   </span>
                 </label>
               ))}
-              <label className="flex cursor-pointer flex-col gap-2 rounded-proph-md border border-proph-hairline bg-proph-canvas px-5 py-4 has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment md:col-span-2">
+              <label className="flex cursor-pointer flex-col gap-2 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas px-5 py-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 has-[:checked]:border-proph-primary has-[:checked]:bg-proph-canvas-parchment has-[:checked]:shadow-proph-card md:col-span-2">
                 <span className="flex items-center gap-3">
-                  <input type="radio" name="monthlyLimit" value="custom" className="h-4 w-4 accent-proph-primary" />
+                  <input
+                    type="radio"
+                    name="monthlyLimit"
+                    value="custom"
+                    className="h-4 w-4 accent-proph-primary"
+                  />
                   <span className="font-display text-[21px] font-semibold tracking-[0.231px]">
                     {t("form.customLabel")}
                   </span>
@@ -141,7 +158,7 @@ function AdjustForm({
                   inputMode="numeric"
                   min={1}
                   placeholder={t("form.customPlaceholder")}
-                  className="ml-7 w-full min-h-11 max-w-xs rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+                  className="ml-7 min-h-11 w-full max-w-xs rounded-proph-md border border-proph-hairline/80 bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
                   aria-label={t("form.customAriaLabel")}
                 />
               </label>

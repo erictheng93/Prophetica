@@ -28,10 +28,13 @@ const mockSnapshot = {
   netSettlementPoints: -1240,
 };
 
-
-type ToolsCopy = Awaited<ReturnType<typeof getTranslations<"responsibleGaming.overview.tools">>>;
+type ToolsCopy = Awaited<
+  ReturnType<typeof getTranslations<"responsibleGaming.overview.tools">>
+>;
 type SnapshotCopy = Awaited<
-  ReturnType<typeof getTranslations<"responsibleGaming.overview.monthlySnapshot">>
+  ReturnType<
+    typeof getTranslations<"responsibleGaming.overview.monthlySnapshot">
+  >
 >;
 
 export default async function ResponsibleGamingPage() {
@@ -41,12 +44,15 @@ export default async function ResponsibleGamingPage() {
     getTranslations("responsibleGaming.overview.tools"),
     getTranslations("common.format"),
   ]);
-  const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
+  const formatPoints = (n: number) =>
+    tFmt("points", { n: n.toLocaleString("zh-Hant") });
 
   return (
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {tHero("headline")}
@@ -68,7 +74,10 @@ function MonthlySnapshot({
   t: SnapshotCopy;
   formatPoints: (n: number) => string;
 }) {
-  const usagePct = Math.min(100, (mockSnapshot.depositPoints / mockSnapshot.depositLimit) * 100);
+  const usagePct = Math.min(
+    100,
+    (mockSnapshot.depositPoints / mockSnapshot.depositLimit) * 100,
+  );
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
@@ -82,23 +91,27 @@ function MonthlySnapshot({
         </header>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+          <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1">
             <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px]">
               {formatPoints(mockSnapshot.depositPoints)}
             </div>
             <div className="mt-1 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
-              {t("depositCard.limitNote", { limit: formatPoints(mockSnapshot.depositLimit) })}
+              {t("depositCard.limitNote", {
+                limit: formatPoints(mockSnapshot.depositLimit),
+              })}
             </div>
             <div className="mt-4 h-1.5 w-full overflow-hidden rounded-proph-pill bg-proph-divider-soft">
               <div
                 className="h-full bg-proph-primary"
                 style={{ width: `${usagePct}%` }}
-                aria-label={t("depositCard.ariaLabel", { pct: usagePct.toFixed(0) })}
+                aria-label={t("depositCard.ariaLabel", {
+                  pct: usagePct.toFixed(0),
+                })}
               />
             </div>
           </article>
 
-          <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+          <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1">
             <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px]">
               {mockSnapshot.tradeCount}
             </div>
@@ -107,7 +120,7 @@ function MonthlySnapshot({
             </div>
           </article>
 
-          <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+          <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1">
             <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] sm:text-[34px]">
               {formatPoints(mockSnapshot.netSettlementPoints)}
             </div>
@@ -133,7 +146,7 @@ function ToolsGrid({ t }: { t: ToolsCopy }) {
             <a
               key={id}
               href={TOOL_HREFS[id]}
-              className="group rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 transition-colors hover:border-proph-primary"
+              className="group rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1 hover:border-proph-primary/40"
             >
               <h3 className="mt-1 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px] text-proph-ink">
                 {t(`items.${id}.title`)}

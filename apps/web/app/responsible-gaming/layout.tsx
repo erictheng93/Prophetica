@@ -21,7 +21,13 @@ import {
  * directly above page content. Horizontally scrollable on narrow viewports;
  * each chip is a regular anchor.
  */
-function RGSectionNav({ links, ariaLabel }: { links: SiteNavLink[]; ariaLabel: string }) {
+function RGSectionNav({
+  links,
+  ariaLabel,
+}: {
+  links: SiteNavLink[];
+  ariaLabel: string;
+}) {
   return (
     <nav
       aria-label={ariaLabel}
@@ -45,7 +51,11 @@ function RGSectionNav({ links, ariaLabel }: { links: SiteNavLink[]; ariaLabel: s
   );
 }
 
-export default async function ResponsibleGamingLayout({ children }: { children: ReactNode }) {
+export default async function ResponsibleGamingLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const [rgColumn, footerColumns, tNav] = await Promise.all([
     getFooterColumn("responsibleGaming"),
     getFooterColumns(["responsibleGaming", "legal", "support"]),
@@ -54,7 +64,11 @@ export default async function ResponsibleGamingLayout({ children }: { children: 
 
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
       <RGSectionNav links={rgColumn.links} ariaLabel={tNav("ariaLabel")} />
 
