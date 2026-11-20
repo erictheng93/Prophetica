@@ -265,95 +265,94 @@ function SigninForm({
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
-        <form
-          action={submitSigninAction}
-          className="space-y-6 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8"
-        >
-          <input type="hidden" name="return_to" value={returnTo} />
-          {status && statusBannerId ? (
-            <SigninStatusBanner id={statusBannerId} t={t} status={status} />
-          ) : null}
+        <div className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
+          <form action={submitSigninAction} className="space-y-6">
+            <input type="hidden" name="return_to" value={returnTo} />
+            {status && statusBannerId ? (
+              <SigninStatusBanner id={statusBannerId} t={t} status={status} />
+            ) : null}
 
-          <label className="block">
-            <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
-              {t("signin.identifier.label")}
-            </span>
-            <input
-              id="signin-identifier"
-              type="text"
-              name="identifier"
-              autoComplete="username"
-              autoCapitalize="none"
-              enterKeyHint="next"
-              spellCheck={false}
-              required
-              aria-describedby="signin-identifier-hint"
-              placeholder={t("signin.identifier.placeholder")}
-              className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
-            />
-            <span
-              id="signin-identifier-hint"
-              className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48"
-            >
-              {t("signin.identifier.hint")}
-            </span>
-          </label>
-
-          <label className="block">
-            <span className="flex items-baseline justify-between">
+            <label className="block">
               <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
-                {t("signin.password")}
+                {t("signin.identifier.label")}
               </span>
-              <a
-                href="/support/contact?topic=password-reset"
-                className="font-text text-[14px] tracking-[-0.224px] text-proph-primary underline"
+              <input
+                id="signin-identifier"
+                type="text"
+                name="identifier"
+                autoComplete="username"
+                autoCapitalize="none"
+                enterKeyHint="next"
+                spellCheck={false}
+                required
+                aria-describedby="signin-identifier-hint"
+                placeholder={t("signin.identifier.placeholder")}
+                className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+              />
+              <span
+                id="signin-identifier-hint"
+                className="mt-1 block font-text text-[12px] tracking-[-0.12px] text-proph-ink-muted-48"
               >
-                {t("signin.forgotPassword")}
-              </a>
-            </span>
-            <input
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              placeholder="********"
-              required
-              aria-invalid={status === "invalid" ? true : undefined}
-              aria-describedby={passwordDescribedBy}
-              className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
-            />
-          </label>
+                {t("signin.identifier.hint")}
+              </span>
+            </label>
 
-          <label className="flex min-h-11 items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
-            <input
-              type="checkbox"
-              name="remember"
-              className="h-4 w-4 accent-proph-primary"
-            />
-            {t("signin.remember")}
-          </label>
-
-          <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
-            <button
-              type="submit"
-              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98]"
-            >
-              {t("signin.submit")}
-            </button>
-          </div>
-
-          <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
-            {t.rich("signin.signupPrompt", {
-              signupLink: (chunks) => (
+            <label className="block">
+              <span className="flex items-baseline justify-between">
+                <span className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-ink">
+                  {t("signin.password")}
+                </span>
                 <a
-                  href={authPath({ mode: "signup", returnTo })}
-                  className="text-proph-primary underline"
+                  href="/support/contact?topic=password-reset"
+                  className="font-text text-[14px] tracking-[-0.224px] text-proph-primary underline"
                 >
-                  {chunks}
+                  {t("signin.forgotPassword")}
                 </a>
-              ),
-            })}
-          </p>
-        </form>
+              </span>
+              <input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                placeholder="********"
+                required
+                aria-invalid={status === "invalid" ? true : undefined}
+                aria-describedby={passwordDescribedBy}
+                className="mt-1 w-full min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 font-text text-[17px] tracking-[-0.374px] text-proph-ink placeholder:text-proph-ink-muted-48 focus:border-proph-primary-focus focus:outline-none"
+              />
+            </label>
+
+            <label className="flex min-h-11 items-center gap-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
+              <input
+                type="checkbox"
+                name="remember"
+                className="h-4 w-4 accent-proph-primary"
+              />
+              {t("signin.remember")}
+            </label>
+
+            <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
+              <button
+                type="submit"
+                className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98]"
+              >
+                {t("signin.submit")}
+              </button>
+            </div>
+
+            <p className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-48">
+              {t.rich("signin.signupPrompt", {
+                signupLink: (chunks) => (
+                  <a
+                    href={authPath({ mode: "signup", returnTo })}
+                    className="text-proph-primary underline"
+                  >
+                    {chunks}
+                  </a>
+                ),
+              })}
+            </p>
+          </form>
+        </div>
       </div>
     </section>
   );
@@ -396,7 +395,7 @@ function SignupForm({
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
         <form
           action={submitSignupAction}
-          className="space-y-6 rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 md:p-8"
+          className="space-y-6 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8"
         >
           <input type="hidden" name="return_to" value={returnTo} />
           <p className="font-text text-[12px] uppercase leading-none tracking-[0] text-proph-primary">
@@ -480,7 +479,7 @@ function SignupForm({
           <div className="mt-6 flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 sm:flex-row sm:items-center">
             <button
               type="submit"
-              className="inline-flex min-h-11 select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary transition-colors hover:bg-proph-primary-focus"
+              className="inline-flex min-h-11 select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98]"
             >
               {t("signup.form.submit")}
             </button>
