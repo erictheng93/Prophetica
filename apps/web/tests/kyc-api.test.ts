@@ -6,6 +6,7 @@ import {
   fetchKycOverview,
   resolveKycServiceBaseUrl,
   resolveKycSubmitErrorStatus,
+  resolveKycUserId,
   startKycUpgrade,
   submitTierOneVerification,
   tierMonthlyLimitPoints,
@@ -348,6 +349,144 @@ test("startKycUpgrade falls back to 3-segment idempotency key when status is una
       process.env.PROPHETICA_DEV_USER_ID = previousDevUserId;
     }
   }
+});
+
+test("resolveKycUserId resolves explicit user id across all environments", () => {
+  const mutableEnv = process.env as Record<string, string | undefined>;
+  const previousEnv = process.env.NODE_ENV;
+  try {
+    mutableEnv.NODE_ENV = "production";
+    assert.equal(resolveKycUserId("user_explicit_99"), "user_explicit_99");
+    mutableEnv.NODE_ENV = "development";
+    assert.equal(resolveKycUserId("user_explicit_99"), "user_explicit_99");
+  } finally {
+    mutableEnv.NODE_ENV = previousEnv;
+  }
+});
+
+test("resolveKycUserId throws error when user id is missing in production", () => {
+  const mutableEnv = process.env as Record<string, string | undefined>;
+  const previousEnv = process.env.NODE_ENV;
+  try {
+    mutableEnv.NODE_ENV = "production";
+    assert.throws(
+      () => resolveKycUserId(),
+      /KYC user id is required in production environment/,
+    );
+    assert.throws(
+      () => resolveKycUserId("   "),
+      /KYC user id is required in production environment/,
+    );
+  } finally {
+    mutableEnv.NODE_ENV = previousEnv;
+  }
+});
+
+test("resolveKycUserId falls back to dev user id in non-production", () => {
+  const mutableEnv = process.env as Record<string, string | undefined>;
+  const previousEnv = process.env.NODE_ENV;
+  const previousDev = process.env.PROPHETICA_DEV_USER_ID;
+  try {
+    mutableEnv.NODE_ENV = "development";
+    mutableEnv.PROPHETICA_DEV_USER_ID = "dev_user_test";
+    assert.equal(resolveKycUserId(), "dev_user_test");
+
+    delete mutableEnv.PROPHETICA_DEV_USER_ID;
+    assert.equal(resolveKycUserId(), KYC_FALLBACK_USER_ID);
+  } finally {
+    mutableEnv.NODE_ENV = previousEnv;
+    restoreEnv("PROPHETICA_DEV_USER_ID", previousDev);
+  }
+});
+
+test("submitTierOneVerification propagates explicit userId from input and options", async () => {
+  const calls: unknown[] = [];
+  const factory: KycClientFactory = ({ auth }) => ({
+    async getStatus() {
+      throw new Error("not used");
+    },
+    async verifyTierOne(input) {
+      calls.push({ authUserId: auth?.userId, inputUserId: input.userId });
+      return {
+        userId: input.userId,
+        targetTier: "TIER_1",
+        status: "passed",
+        provider: "manual",
+        documentIdHash: "c".repeat(64),
+        replayed: false,
+      };
+    },
+    async startUpgrade() {
+      throw new Error("not used");
+    },
+  });
+
+  await submitTierOneVerification(
+    {
+      userId: "user_from_input",
+      legalName: "Test User",
+      birthday: "1990-01-01",
+      country: "TW",
+      documentId: "A123456789",
+      consent: true,
+    },
+    { baseUrl: "http://kyc.local", kycClientFactory: factory },
+  );
+
+  assert.deepEqual(calls, [
+    { authUserId: "user_from_input", inputUserId: "user_from_input" },
+  ]);
+});
+
+test("startKycUpgrade propagates explicit userId from options", async () => {
+  const calls: unknown[] = [];
+  const factory: KycClientFactory = ({ auth }) => ({
+    async getStatus(userId) {
+      assert.equal(userId, "user_from_options");
+      return {
+        userId: "user_from_options",
+        currentTier: "TIER_1",
+        status: "passed",
+        provider: null,
+        providerApplicantId: null,
+        country: "TW",
+        tier1RecordId: "tier1_rec_options",
+        declaredMonthlyIncome: null,
+        submittedAt: null,
+        reviewedAt: null,
+        expiresAt: null,
+      };
+    },
+    async verifyTierOne() {
+      throw new Error("not used");
+    },
+    async startUpgrade(req) {
+      calls.push({ authUserId: auth?.userId, reqUserId: req.userId });
+      return {
+        userId: req.userId,
+        targetTier: req.targetTier,
+        status: "pending",
+        provider: "iproov",
+        providerApplicantId: "app_1",
+        sdkToken: "token_1",
+        expiresAt: null,
+        replayed: false,
+      };
+    },
+  });
+
+  await startKycUpgrade(
+    { targetTier: "TIER_2" },
+    {
+      baseUrl: "http://kyc.local",
+      kycClientFactory: factory,
+      userId: "user_from_options",
+    },
+  );
+
+  assert.deepEqual(calls, [
+    { authUserId: "user_from_options", reqUserId: "user_from_options" },
+  ]);
 });
 
 const createFetchBackedKycClient: KycClientFactory = ({ auth }) => ({

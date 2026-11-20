@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { ProphTile } from "@prophetica/ui";
 import { fetchKycOverview } from "@/lib/kyc-api";
+import { getViewer } from "@/lib/session";
 import { Tier3LaunchClient } from "./tier-3-launch-client";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -77,9 +79,14 @@ function Requirements({ t }: { t: Tier3Copy }) {
 }
 
 export default async function Tier3Page() {
+  const viewer = await getViewer();
+  if (!viewer?.userId) {
+    redirect("/auth/sign-in");
+  }
+
   const [t, overview] = await Promise.all([
     getTranslations("kyc.tier3"),
-    fetchKycOverview(),
+    fetchKycOverview({ userId: viewer.userId }),
   ]);
 
   const country = overview.country ?? "TW";

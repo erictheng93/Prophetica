@@ -12,6 +12,7 @@ import {
   startKycUpgrade,
   type KycOverview,
 } from "@/lib/kyc-api";
+import { getViewer } from "@/lib/session";
 import type { KycTargetTier, StartKycUpgradeResponse } from "@prophetica/ts-sdk";
 
 export interface StartKycUpgradeActionInput {
@@ -23,9 +24,18 @@ export interface StartKycUpgradeActionInput {
 export async function startKycUpgradeAction(
   input: StartKycUpgradeActionInput,
 ): Promise<StartKycUpgradeResponse> {
-  return startKycUpgrade(input);
+  const viewer = await getViewer();
+  if (!viewer?.userId) {
+    throw new Error("Unauthorized");
+  }
+  return startKycUpgrade(input, { userId: viewer.userId });
 }
 
 export async function refreshKycOverviewAction(): Promise<KycOverview> {
-  return fetchKycOverview();
+  const viewer = await getViewer();
+  if (!viewer?.userId) {
+    throw new Error("Unauthorized");
+  }
+  return fetchKycOverview({ userId: viewer.userId });
 }
+

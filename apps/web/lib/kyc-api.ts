@@ -66,16 +66,14 @@ export interface KycMutationOptions {
   baseUrl?: string;
   fetcher?: Fetcher;
   kycClientFactory?: KycClientFactory;
+  userId?: string;
 }
 
 export async function fetchKycOverview(
   options: FetchKycOverviewOptions = {},
 ): Promise<KycOverview> {
   const baseUrl = resolveKycServiceBaseUrl(options.baseUrl);
-  const userId =
-    options.userId ??
-    process.env.PROPHETICA_DEV_USER_ID ??
-    KYC_FALLBACK_USER_ID;
+  const userId = resolveKycUserId(options.userId);
   const kycClientFactory =
     options.kycClientFactory ?? (await loadKycClientFactory());
   const kycClient = kycClientFactory({
@@ -110,7 +108,10 @@ export async function submitTierOneVerification(
   input: SubmitTierOneVerificationInput,
   options: KycMutationOptions = {},
 ): Promise<VerifyTierOneResponse> {
-  const { userId, kycClient } = await mutationContext(options);
+  const { userId, kycClient } = await mutationContext({
+    ...options,
+    userId: input.userId ?? options.userId,
+  });
   return kycClient.verifyTierOne({
     userId,
     legalName: input.legalName,
@@ -146,9 +147,14 @@ export async function startKycUpgrade(
 }
 
 export function resolveKycUserId(userIdOption?: string): string {
-  return (
-    userIdOption ?? process.env.PROPHETICA_DEV_USER_ID ?? KYC_FALLBACK_USER_ID
-  );
+  const explicit = userIdOption?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("KYC user id is required in production environment");
+  }
+  return process.env.PROPHETICA_DEV_USER_ID ?? KYC_FALLBACK_USER_ID;
 }
 
 export function resolveKycServiceBaseUrl(baseUrlOption?: string): string {
@@ -197,7 +203,7 @@ export function tierMonthlyLimitPoints(tier: KycTier): number | null {
 
 async function mutationContext(options: KycMutationOptions) {
   const baseUrl = resolveKycServiceBaseUrl(options.baseUrl);
-  const userId = resolveKycUserId();
+  const userId = resolveKycUserId(options.userId);
   const kycClientFactory =
     options.kycClientFactory ?? (await loadKycClientFactory());
 

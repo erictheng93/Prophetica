@@ -8,6 +8,7 @@ import {
   type KycSubmitErrorStatus,
 } from "@/lib/kyc-api";
 import { safeReturnTo } from "@/lib/safe-return-to";
+import { getViewer } from "@/lib/session";
 import { recordJourneyRedirect } from "@/lib/telemetry/journey-metrics";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -47,12 +48,18 @@ interface PageProps {
 async function submitTierOneAction(formData: FormData) {
   "use server";
 
+  const viewer = await getViewer();
+  if (!viewer?.userId) {
+    redirect("/auth/sign-in");
+  }
+
   const returnTo = safeReturnTo(
     readFormValue(formData, "return_to"),
     "/kyc/status",
   );
   try {
     await submitTierOneVerification({
+      userId: viewer.userId,
       legalName: readFormValue(formData, "legalName"),
       birthday: readFormValue(formData, "birthday"),
       country: readFormValue(formData, "country"),
@@ -300,6 +307,11 @@ function Tier1Form({
 }
 
 export default async function Tier1Page({ searchParams }: PageProps) {
+  const viewer = await getViewer();
+  if (!viewer?.userId) {
+    redirect("/auth/sign-in");
+  }
+
   const t = await getTranslations("kyc.tier1");
   const params = await searchParams;
   const returnTo = safeReturnTo(

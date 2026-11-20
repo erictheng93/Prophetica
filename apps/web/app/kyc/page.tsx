@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { ProphLinkButton, ProphTile } from "@prophetica/ui";
 import { TierStepper } from "@/components/tier-stepper";
 import { fetchKycOverview, type KycOverview } from "@/lib/kyc-api";
+import { getViewer } from "@/lib/session";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("kyc.overview.metadata");
@@ -166,10 +168,15 @@ function TierCards({
 }
 
 export default async function KYCOverviewPage() {
+  const viewer = await getViewer();
+  if (!viewer?.userId) {
+    redirect("/auth/sign-in");
+  }
+
   const [t, tFmt, overview] = await Promise.all([
     getTranslations("kyc.overview"),
     getTranslations("common.format"),
-    fetchKycOverview(),
+    fetchKycOverview({ userId: viewer.userId }),
   ]);
   const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
 

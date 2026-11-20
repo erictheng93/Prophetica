@@ -9,6 +9,6 @@
     "incremental": false,
     "types": ["node"]
   },
-  "include": ["tests/**/*.ts", "lib/**/*.ts"],
+  "include": ["tests/**/*.ts", "lib/**/*.ts", "middleware.ts"],
   "exclude": ["lib/analytics-server-fetch.ts", "lib/session.ts", "lib/upstream-session.ts"]
 }

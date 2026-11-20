@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import type { Icon } from "@phosphor-icons/react";
 import {
@@ -9,6 +10,7 @@ import {
 } from "@phosphor-icons/react/dist/ssr";
 import { ProphLinkButton, ProphTile } from "@prophetica/ui";
 import { fetchKycOverview, type KycOverview } from "@/lib/kyc-api";
+import { getViewer } from "@/lib/session";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("kyc.status.metadata");
@@ -144,9 +146,14 @@ function NextSteps({ t }: { t: StatusCopy }) {
 }
 
 export default async function StatusPage() {
+  const viewer = await getViewer();
+  if (!viewer?.userId) {
+    redirect("/auth/sign-in");
+  }
+
   const [t, overview] = await Promise.all([
     getTranslations("kyc.status"),
-    fetchKycOverview(),
+    fetchKycOverview({ userId: viewer.userId }),
   ]);
   const timeline = buildTimeline(overview);
 
