@@ -19,6 +19,13 @@ test("admin UI completes a real member KYC action through gateway services and P
   context,
   page,
 }) => {
+  const dockerAvailable =
+    spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
+  test.skip(
+    !dockerAvailable,
+    "Docker daemon is required for full-chain integration test",
+  );
+
   const schemas = uniqueSchemas();
   preparePostgresSchemas(schemas);
   const services = await startFullChainServices(schemas);

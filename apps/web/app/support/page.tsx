@@ -51,7 +51,7 @@ function ChannelGrid({ t }: { t: SupportOverviewCopy }) {
           {channels.map((c) => (
             <article
               key={c.key}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
             >
               <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
                 {t(`channels.items.${c.key}.hours`)}
@@ -87,7 +87,7 @@ function CategoryGrid({ t }: { t: SupportOverviewCopy }) {
             <a
               key={c.key}
               href={c.route}
-              className="group rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 transition-colors hover:border-proph-primary"
+              className="group rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1 hover:border-proph-primary/40"
             >
               <h3 className="mt-1 font-display text-[21px] font-semibold tracking-[0.231px] text-proph-ink group-hover:underline">
                 {t(`categories.items.${c.key}.title`)}
@@ -108,16 +108,18 @@ function RGCallout({ t }: { t: SupportOverviewCopy }) {
   return (
     <section className="bg-proph-surface-tile-1 text-proph-on-dark">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
-          {t("rgCallout.headline")}
-        </h2>
-        <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-body-muted">
-          {t("rgCallout.body")}
-        </p>
-        <div className="mt-8 flex flex-wrap items-center gap-4">
-          <ProphLinkButton variant="primary" href="/responsible-gaming">
-            {t("rgCallout.cta")}
-          </ProphLinkButton>
+        <div className="relative overflow-hidden rounded-proph-xl border border-white/10 bg-white/[0.03] backdrop-blur-md p-8 md:p-12 shadow-proph-card">
+          <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
+            {t("rgCallout.headline")}
+          </h2>
+          <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-body-muted">
+            {t("rgCallout.body")}
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-4">
+            <ProphLinkButton variant="primary" href="/responsible-gaming">
+              {t("rgCallout.cta")}
+            </ProphLinkButton>
+          </div>
         </div>
       </div>
     </section>
@@ -131,6 +133,8 @@ export default async function SupportHubPage() {
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
