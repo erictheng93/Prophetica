@@ -10,7 +10,8 @@ interface UserServiceLiffSessionResponse {
   expires_at_epoch_seconds?: unknown;
 }
 
-const USER_SERVICE_URL = process.env.USER_SERVICE_URL ?? "http://localhost:8084";
+const USER_SERVICE_URL =
+  process.env.USER_SERVICE_URL ?? "http://localhost:8084";
 const UPSTREAM_SESSION_COOKIE_NAME = "proph_user_service_session";
 
 export async function POST(request: Request) {
@@ -40,20 +41,32 @@ export async function POST(request: Request) {
   ).catch(() => null);
 
   if (!upstream) {
-    return NextResponse.json({ error: "auth_service_unavailable" }, { status: 503 });
+    return NextResponse.json(
+      { error: "auth_service_unavailable" },
+      { status: 503 },
+    );
   }
   if (upstream.status === 401 || upstream.status === 403) {
-    return NextResponse.json({ error: "invalid_liff_identity" }, { status: 401 });
+    return NextResponse.json(
+      { error: "invalid_liff_identity" },
+      { status: 401 },
+    );
   }
   if (!upstream.ok) {
-    return NextResponse.json({ error: "auth_service_error" }, { status: upstream.status });
+    return NextResponse.json(
+      { error: "auth_service_error" },
+      { status: upstream.status },
+    );
   }
 
   let payload: UserServiceLiffSessionResponse;
   try {
     payload = (await upstream.json()) as UserServiceLiffSessionResponse;
   } catch {
-    return NextResponse.json({ error: "invalid_auth_response" }, { status: 502 });
+    return NextResponse.json(
+      { error: "invalid_auth_response" },
+      { status: 502 },
+    );
   }
 
   const userId = typeof payload.user_id === "string" ? payload.user_id : "";
@@ -65,7 +78,10 @@ export async function POST(request: Request) {
       : 0;
 
   if (!userId || !sessionToken || expiresAt <= 0) {
-    return NextResponse.json({ error: "invalid_auth_response" }, { status: 502 });
+    return NextResponse.json(
+      { error: "invalid_auth_response" },
+      { status: 502 },
+    );
   }
 
   const now = Math.floor(Date.now() / 1000);
