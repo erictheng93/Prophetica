@@ -22,7 +22,7 @@ const variantStyles: Record<AmbientGlowVariant, string> = {
   emerald:
     "from-emerald-500/20 via-teal-400/10 to-transparent dark:from-emerald-500/25 dark:via-teal-400/15",
   aurora:
-    "from-indigo-500/20 via-purple-500/15 to-pink-500/10 dark:from-indigo-500/25 dark:via-purple-500/20",
+    "from-teal-500/20 via-emerald-400/15 to-amber-300/10 dark:from-teal-500/25 dark:via-emerald-500/20",
   subtle:
     "from-zinc-400/10 via-zinc-300/5 to-transparent dark:from-zinc-600/15 dark:via-zinc-700/5",
 };
