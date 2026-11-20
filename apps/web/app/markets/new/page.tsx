@@ -22,6 +22,8 @@ export default async function MarketsNewPage() {
     <>
       <ProphTile
         surface="light"
+        glow="brand"
+        gridPattern
         headline={t("headline")}
         tagline={t("tagline")}
       />
