@@ -31,6 +31,8 @@ export default async function CooldownPage() {
     <>
       <ProphTile
         surface="light"
+        glow="brand"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -79,7 +81,7 @@ function FrozenWhatHappens({ t }: { t: CooldownCopy }) {
           {FROZEN_ITEM_IDS.map((id) => (
             <li
               key={id}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
             >
               <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">
                 {t(`frozen.items.${id}.title`)}

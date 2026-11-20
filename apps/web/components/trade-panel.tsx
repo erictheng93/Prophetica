@@ -260,7 +260,7 @@ export function TradePanel({
         className={
           "fixed inset-x-0 bottom-0 z-50 max-h-[88vh] overflow-y-auto rounded-t-proph-lg border-t border-proph-hairline bg-proph-canvas p-6 transition-transform duration-300 " +
           (sheetOpen ? "translate-y-0" : "translate-y-full") +
-          " lg:static lg:inset-auto lg:z-auto lg:max-h-none lg:translate-y-0 lg:rounded-proph-lg lg:border lg:border-proph-hairline lg:overflow-visible lg:sticky lg:top-[140px] lg:self-start"
+          " lg:static lg:inset-auto lg:z-auto lg:max-h-none lg:translate-y-0 lg:rounded-proph-xl lg:border lg:border-proph-hairline/80 lg:shadow-proph-card lg:overflow-visible lg:sticky lg:top-[140px] lg:self-start"
         }
       >
         <div className="flex items-baseline justify-between">

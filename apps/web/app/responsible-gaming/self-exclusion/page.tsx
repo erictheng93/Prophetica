@@ -94,6 +94,8 @@ export default async function SelfExclusionPage({
       <h1 className="sr-only">{t("hero.headline")}</h1>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -147,7 +149,7 @@ function StatusBlock({
       <div className="mx-auto max-w-proph px-6 py-8 md:px-10">
         <article
           className={
-            "rounded-proph-lg border bg-proph-canvas p-6 " +
+            "rounded-proph-xl border bg-proph-canvas p-6 shadow-proph-card " +
             (isUnavailable || isInvalid
               ? "border-proph-feedback-error/50"
               : "border-proph-primary/40")
@@ -198,7 +200,7 @@ function ScopeBlock({ t }: { t: SECopy }) {
           {SCOPE_ITEM_IDS.map((id) => (
             <li
               key={id}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
             >
               <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">
                 {t(`scope.items.${id}.title`)}
@@ -230,12 +232,12 @@ function TimeoutChoice({ t }: { t: SECopy }) {
         <form action={submitSelfExclusionAction}>
           <input type="hidden" name="mode" value="timeout" />
           <fieldset className="space-y-6">
-            <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <fieldset className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <legend className="sr-only">{t("timeout.legend")}</legend>
               {TIMEOUT_OPTION_IDS.map((id) => (
                 <label
                   key={id}
-                  className="flex cursor-pointer flex-col gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas p-5 has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment"
+                  className="flex cursor-pointer flex-col gap-3 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment has-[:checked]:shadow-proph-card"
                 >
                   <span className="flex items-center gap-3">
                     <input
@@ -269,7 +271,7 @@ function TimeoutChoice({ t }: { t: SECopy }) {
               </label>
               <button
                 type="submit"
-                className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary"
+                className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-hover active:scale-[0.98]"
               >
                 {t("timeout.submit")}
               </button>
@@ -297,14 +299,14 @@ function PermanentSection({ t }: { t: SECopy }) {
         <form action={submitSelfExclusionAction}>
           <input type="hidden" name="mode" value="permanent" />
           <fieldset className="space-y-6">
-            <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <fieldset className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <legend className="font-display text-[21px] font-semibold tracking-[0.231px]">
                 {t("permanent.pointsLegend")}
               </legend>
               {PERMANENT_OPTION_IDS.map((id) => (
                 <label
                   key={id}
-                  className="flex cursor-pointer flex-col gap-3 rounded-proph-md border border-proph-on-dark/20 p-5 has-[:checked]:border-proph-primary-on-dark"
+                  className="flex cursor-pointer flex-col gap-3 rounded-proph-xl border border-white/20 bg-white/[0.04] backdrop-blur-sm p-5 transition-all duration-200 hover:-translate-y-0.5 has-[:checked]:border-proph-gold-primary has-[:checked]:bg-white/[0.08]"
                 >
                   <span className="flex items-center gap-3">
                     <input
@@ -326,7 +328,7 @@ function PermanentSection({ t }: { t: SECopy }) {
               ))}
             </fieldset>
 
-            <label className="flex items-start gap-3 rounded-proph-md border border-proph-on-dark/20 px-5 py-4 font-text text-[14px] leading-[1.43] tracking-[-0.224px]">
+            <label className="flex items-start gap-3 rounded-proph-xl border border-white/20 bg-white/[0.02] px-5 py-4 font-text text-[14px] leading-[1.43] tracking-[-0.224px]">
               <input
                 type="checkbox"
                 name="consent"
@@ -342,13 +344,13 @@ function PermanentSection({ t }: { t: SECopy }) {
               </span>
             </label>
 
-            <div className="flex flex-col items-start gap-3 border-t border-proph-on-dark/20 pt-6 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col items-start gap-3 border-t border-white/20 pt-6 md:flex-row md:items-center md:justify-between">
               <p className="font-text text-[14px] tracking-[-0.224px] text-proph-body-muted">
                 {t("permanent.footnote")}
               </p>
               <button
                 type="submit"
-                className="inline-flex select-none items-center justify-center rounded-proph-pill border border-proph-on-dark/40 bg-transparent px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-dark"
+                className="inline-flex select-none items-center justify-center rounded-proph-pill border border-proph-gold-primary/60 bg-proph-gold-primary/10 px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-dark shadow-proph-glow-sm transition-all duration-150 hover:bg-proph-gold-primary/20 active:scale-[0.98]"
               >
                 {t("permanent.submit")}
               </button>

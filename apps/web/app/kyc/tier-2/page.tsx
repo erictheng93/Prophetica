@@ -28,7 +28,7 @@ function RequirementsBlock({ t }: { t: Tier2Copy }) {
           {requirementKeys.map((key) => (
             <li
               key={key}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
             >
               <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">
                 {t(`requirements.items.${key}.title`)}
@@ -56,6 +56,8 @@ export default async function Tier2Page() {
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
