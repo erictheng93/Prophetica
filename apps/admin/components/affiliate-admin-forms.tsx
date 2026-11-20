@@ -7,25 +7,44 @@ import type { AffiliateDetail } from "@/lib/affiliates";
 import type { Role } from "@/lib/rbac";
 
 const inputClass =
-  "min-h-11 rounded-proph-sm border border-proph-hairline bg-proph-canvas px-3 py-2 text-[14px] tracking-[-0.224px] text-proph-ink";
+  "min-h-11 rounded-proph-md border border-proph-hairline/80 bg-proph-canvas px-3 py-2 font-text text-[14px] tracking-[-0.224px] text-proph-ink transition-colors focus:border-proph-primary focus:outline-none focus:ring-1 focus:ring-proph-primary";
 const labelClass =
-  "flex flex-col gap-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48";
+  "flex flex-col gap-1 font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48";
 const buttonClass =
-  "inline-flex min-h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 text-[14px] font-semibold text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 font-text text-[14px] font-semibold text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
 
 export function AffiliateCreateForm({ role }: { role: Role }) {
   const disabled = role !== "admin" && role !== "manager";
   const isAdmin = role === "admin";
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5 md:p-6">
-      <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
+      <h2 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
         新增代理
       </h2>
-      <form action={createAffiliateAction} className="mt-4 grid gap-3 md:grid-cols-4">
+      <form
+        action={createAffiliateAction}
+        className="mt-4 grid gap-3 md:grid-cols-4"
+      >
         <Field name="userId" label="User ID" placeholder="018f..." required />
-        <Field name="affiliateId" label="代理 ID" placeholder="AFF-200" required />
-        <Field name="displayName" label="名稱" placeholder="Orion Partners" required />
-        <Field name="email" label="登入 Email" type="email" placeholder="ops@example.com" required />
+        <Field
+          name="affiliateId"
+          label="代理 ID"
+          placeholder="AFF-200"
+          required
+        />
+        <Field
+          name="displayName"
+          label="名稱"
+          placeholder="Orion Partners"
+          required
+        />
+        <Field
+          name="email"
+          label="登入 Email"
+          type="email"
+          placeholder="ops@example.com"
+          required
+        />
         <Field name="phone" label="電話" placeholder="0912345678" required />
         <Field name="password" label="初始密碼" type="password" required />
         <Field
@@ -34,9 +53,23 @@ export function AffiliateCreateForm({ role }: { role: Role }) {
           placeholder={isAdmin ? "U-MANAGER-001" : "自動歸屬自身"}
           disabled={!isAdmin}
         />
-        <Select name="status" label="狀態" defaultValue="onboarding" options={affiliateStatusOptions} />
-        <NumberField name="commissionRateBps" label="佣金 BPS" defaultValue={600} />
-        <Select name="tier" label="層級" defaultValue="1" options={tierOptions} />
+        <Select
+          name="status"
+          label="狀態"
+          defaultValue="onboarding"
+          options={affiliateStatusOptions}
+        />
+        <NumberField
+          name="commissionRateBps"
+          label="佣金 BPS"
+          defaultValue={600}
+        />
+        <Select
+          name="tier"
+          label="層級"
+          defaultValue="1"
+          options={tierOptions}
+        />
         {isAdmin && (
           <>
             <Select
@@ -51,14 +84,31 @@ export function AffiliateCreateForm({ role }: { role: Role }) {
               defaultValue="pending_review"
               options={creditStatusOptions}
             />
-            <NumberField name="maxActiveCreditAccounts" label="Active 上限" defaultValue={0} />
-            <NumberField name="totalCreditLimitMinorUnits" label="總授信 minor" defaultValue={0} />
-            <NumberField name="perAccountLimitMinorUnits" label="單戶 minor" defaultValue={0} />
+            <NumberField
+              name="maxActiveCreditAccounts"
+              label="Active 上限"
+              defaultValue={0}
+            />
+            <NumberField
+              name="totalCreditLimitMinorUnits"
+              label="總授信 minor"
+              defaultValue={0}
+            />
+            <NumberField
+              name="perAccountLimitMinorUnits"
+              label="單戶 minor"
+              defaultValue={0}
+            />
             <Field name="creditReviewExpiresAt" label="覆核到期" type="date" />
           </>
         )}
         <Field name="reason" label="原因" required className="md:col-span-2" />
-        <Field name="authorizationBasis" label="授權依據" required className="md:col-span-2" />
+        <Field
+          name="authorizationBasis"
+          label="授權依據"
+          required
+          className="md:col-span-2"
+        />
         <div className="md:col-span-4">
           <button type="submit" className={buttonClass} disabled={disabled}>
             建立代理
@@ -78,18 +128,48 @@ export function AffiliateUpdateForm({
 }) {
   const isAdmin = role === "admin";
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-      <h3 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
+      <h3 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
         編輯代理資料
       </h3>
-      <form action={updateAffiliateAction} className="mt-4 grid gap-3 md:grid-cols-4">
+      <form
+        action={updateAffiliateAction}
+        className="mt-4 grid gap-3 md:grid-cols-4"
+      >
         <input type="hidden" name="affiliateId" value={affiliate.id} />
-        <Field name="displayName" label="名稱" defaultValue={affiliate.displayName} />
-        <Field name="email" label="更新 Email" type="email" placeholder={affiliate.emailMasked} />
-        <Select name="status" label="狀態" defaultValue={affiliate.status} options={affiliateStatusOptions} />
-        <NumberField name="commissionRateBps" label="佣金 BPS" defaultValue={affiliate.commissionRateBps} />
-        <Select name="tier" label="層級" defaultValue={String(affiliate.tier)} options={tierOptions} />
-        <Field name="ownerSponsorId" label="上層 Sponsor" defaultValue={affiliate.ownerSponsorId ?? ""} />
+        <Field
+          name="displayName"
+          label="名稱"
+          defaultValue={affiliate.displayName}
+        />
+        <Field
+          name="email"
+          label="更新 Email"
+          type="email"
+          placeholder={affiliate.emailMasked}
+        />
+        <Select
+          name="status"
+          label="狀態"
+          defaultValue={affiliate.status}
+          options={affiliateStatusOptions}
+        />
+        <NumberField
+          name="commissionRateBps"
+          label="佣金 BPS"
+          defaultValue={affiliate.commissionRateBps}
+        />
+        <Select
+          name="tier"
+          label="層級"
+          defaultValue={String(affiliate.tier)}
+          options={tierOptions}
+        />
+        <Field
+          name="ownerSponsorId"
+          label="上層 Sponsor"
+          defaultValue={affiliate.ownerSponsorId ?? ""}
+        />
         {isAdmin && (
           <>
             <Select
@@ -129,7 +209,12 @@ export function AffiliateUpdateForm({
         )}
         <Field name="effectiveAt" label="生效日" type="date" />
         <Field name="reason" label="原因" required className="md:col-span-2" />
-        <Field name="authorizationBasis" label="授權依據" required className="md:col-span-2" />
+        <Field
+          name="authorizationBasis"
+          label="授權依據"
+          required
+          className="md:col-span-2"
+        />
         <div className="md:col-span-4">
           <button type="submit" className={buttonClass}>
             儲存變更
@@ -140,9 +225,16 @@ export function AffiliateUpdateForm({
   );
 }
 
-export function AffiliateArchiveForm({ affiliate }: { affiliate: AffiliateDetail }) {
+export function AffiliateArchiveForm({
+  affiliate,
+}: {
+  affiliate: AffiliateDetail;
+}) {
   return (
-    <form action={archiveAffiliateAction} className="mt-4 grid gap-3 md:grid-cols-3">
+    <form
+      action={archiveAffiliateAction}
+      className="mt-4 grid gap-3 md:grid-cols-3"
+    >
       <input type="hidden" name="affiliateId" value={affiliate.id} />
       <Field name="reason" label="封存原因" required />
       <Field name="authorizationBasis" label="授權依據" required />
@@ -266,7 +358,12 @@ function Select({
   return (
     <label className={labelClass}>
       {label}
-      <select className={inputClass} name={name} defaultValue={defaultValue} disabled={disabled}>
+      <select
+        className={inputClass}
+        name={name}
+        defaultValue={defaultValue}
+        disabled={disabled}
+      >
         {options.map(([value, text]) => (
           <option key={value} value={value}>
             {text}

@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import {
+  ProphFooter,
+  ProphLinkButton,
+  ProphSubNav,
+  ProphTile,
+} from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
@@ -24,7 +29,12 @@ const STEP_IDS = [
   { id: "topup", num: "03", href: "/topup" },
   { id: "trade", num: "04", href: "/markets" },
 ] as const;
-const SETTLEMENT_ITEM_IDS = ["transparent", "appealWindow", "stateMachine", "autoPayout"] as const;
+const SETTLEMENT_ITEM_IDS = [
+  "transparent",
+  "appealWindow",
+  "stateMachine",
+  "autoPayout",
+] as const;
 const PRICING_CARD_IDS = ["cost", "winYes", "loseNo"] as const;
 
 type PricingCardId = (typeof PRICING_CARD_IDS)[number];
@@ -58,10 +68,16 @@ export default async function HowItWorksPage() {
 
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
       <ProphTile
         surface="light"
+        glow="brand"
+        gridPattern
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {t("hero.headline")}
@@ -94,7 +110,7 @@ export default async function HowItWorksPage() {
             {PRINCIPLE_IDS.map((id) => (
               <article
                 key={id}
-                className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+                className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1 hover:border-proph-primary/40"
               >
                 <h3 className="mt-1 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
                   {t(`principles.items.${id}.title`)}
@@ -155,7 +171,9 @@ export default async function HowItWorksPage() {
           <p className="mt-4 max-w-3xl font-display text-[24px] font-light leading-[1.5] text-proph-body-muted">
             {t.rich("matching.lead", {
               strong: (chunks) => (
-                <strong className="font-semibold text-proph-on-dark">{chunks}</strong>
+                <strong className="font-semibold text-proph-on-dark">
+                  {chunks}
+                </strong>
               ),
             })}
           </p>
@@ -177,7 +195,10 @@ export default async function HowItWorksPage() {
           </div>
 
           <div className="mt-8">
-            <ProphLinkButton variant="primary" href="/markets/wbsc-2026-tw-semifinal">
+            <ProphLinkButton
+              variant="primary"
+              href="/markets/wbsc-2026-tw-semifinal"
+            >
               {t("matching.cta")}
             </ProphLinkButton>
           </div>
@@ -211,7 +232,9 @@ export default async function HowItWorksPage() {
                     key={id}
                     className={`rounded-proph-md border bg-proph-canvas-parchment p-5 ${tone.border}`}
                   >
-                    <dt className={`font-text text-[12px] uppercase tracking-[-0.12px] ${tone.dt}`}>
+                    <dt
+                      className={`font-text text-[12px] uppercase tracking-[-0.12px] ${tone.dt}`}
+                    >
                       {t(`pricing.cards.${id}.label`)}
                     </dt>
                     <dd

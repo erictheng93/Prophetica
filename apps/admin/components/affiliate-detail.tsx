@@ -82,20 +82,20 @@ export function AffiliateDetailView({
     <div className="space-y-8">
       <Link
         href="/affiliate"
-        className="-mx-2 inline-flex min-h-11 items-center rounded-proph-sm px-2 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-primary transition-colors hover:bg-proph-canvas-parchment active:bg-proph-divider-soft"
+        className="-mx-2 inline-flex min-h-11 items-center rounded-proph-pill px-3 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-primary transition-all duration-150 hover:bg-proph-canvas-parchment active:scale-[0.98]"
       >
         ← {adminCopy.affiliateAdmin.detailBackToList}
       </Link>
 
       <AffiliateUpdateForm affiliate={affiliate} role={viewerRole} />
 
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48">
+            <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48">
               {adminCopy.affiliateAdmin.detailEyebrow}
             </p>
-            <h2 className="mt-2 text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">
+            <h2 className="mt-2 font-display text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">
               {affiliate.displayName}
             </h2>
             <p className="mt-1 font-mono text-[13px] tracking-[-0.224px] text-proph-ink-muted-80">
@@ -104,7 +104,7 @@ export function AffiliateDetailView({
             {affiliate.userId && (
               <Link
                 href={`/members?query=${encodeURIComponent(affiliate.userId)}`}
-                className="mt-3 inline-flex min-h-9 items-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-3 text-[13px] font-semibold text-proph-primary hover:border-proph-primary-focus"
+                className="mt-3 inline-flex min-h-9 items-center rounded-proph-pill border border-proph-hairline/80 bg-proph-surface-pearl px-3 font-text text-[13px] font-semibold text-proph-primary shadow-sm transition-all duration-150 hover:border-proph-primary-focus active:scale-[0.98]"
               >
                 查看對應會員帳戶
               </Link>
@@ -152,23 +152,23 @@ export function AffiliateDetailView({
         </dl>
       </section>
 
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-        <h3 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
+        <h3 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
           {adminCopy.affiliateAdmin.detailSubTreeHeading}
         </h3>
         <ul className="mt-4 grid gap-3 md:grid-cols-3">
           {affiliate.subTreeBreakdown.map((tier) => (
             <li
               key={tier.tier}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-5 shadow-sm transition-all duration-200 hover:-translate-y-1"
             >
-              <p className="text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]">
+              <p className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]">
                 Tier {tier.tier}
               </p>
-              <p className="mt-3 text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">
+              <p className="mt-3 font-display text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">
                 {tier.count}
               </p>
-              <p className="mt-2 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+              <p className="mt-2 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
                 活躍 {tier.activeCount} · 本月貢獻{" "}
                 {formatMinor(tier.mtdContributionMinor, "USDT")}
               </p>
@@ -177,16 +177,16 @@ export function AffiliateDetailView({
         </ul>
       </section>
 
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-        <h3 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
+        <h3 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
           {adminCopy.affiliateAdmin.detailPayoutsHeading}
         </h3>
         {affiliate.recentPayouts.length === 0 ? (
-          <p className="mt-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+          <p className="mt-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
             尚無撥款紀錄。
           </p>
         ) : (
-          <ul className="mt-4 divide-y divide-proph-hairline">
+          <ul className="mt-4 divide-y divide-proph-hairline/60">
             {affiliate.recentPayouts.map((payout) => (
               <li
                 key={payout.id}
@@ -195,13 +195,13 @@ export function AffiliateDetailView({
                 <span className="font-mono text-[13px] tracking-[-0.224px] text-proph-ink-muted-80">
                   {payout.id}
                 </span>
-                <span className="text-[17px] font-semibold tracking-[-0.374px]">
+                <span className="font-display text-[17px] font-semibold tracking-[-0.374px]">
                   {formatMinor(payout.amountMinor, payout.currency)}
                 </span>
                 <StatusPill tone={payoutTone[payout.status]}>
                   {payoutLabel[payout.status]}
                 </StatusPill>
-                <span className="text-[14px] tracking-[-0.224px] text-proph-ink-muted-80 md:text-right">
+                <span className="font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80 md:text-right">
                   {payout.settledAt}
                 </span>
               </li>
@@ -210,9 +210,9 @@ export function AffiliateDetailView({
         )}
       </section>
 
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <h3 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+          <h3 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
             {adminCopy.affiliateAdmin.detailCreditHeading}
           </h3>
           <StatusPill tone={creditStatusTone[affiliate.creditProfile.status]}>

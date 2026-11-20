@@ -33,8 +33,8 @@ export default function AffiliatePage({
           >
             <div className="space-y-8">
               {saga && (
-                <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5 md:p-6">
-                  <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+                <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
+                  <h2 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
                     建立狀態
                   </h2>
                   <dl className="mt-4 grid gap-3 text-[14px] md:grid-cols-4">

@@ -25,7 +25,9 @@
   }
 
   /* Display headlines default to SF Pro Display */
-  h1, h2, h3 {
+  h1,
+  h2,
+  h3 {
     font-family: var(--proph-font-display);
   }
 
@@ -48,5 +50,61 @@
   .proph-frosted {
     backdrop-filter: var(--proph-backdrop-filter);
     -webkit-backdrop-filter: var(--proph-backdrop-filter);
+  }
+
+  /* Luxury Glass Panel */
+  .proph-glass-panel {
+    background-color: var(--proph-glass-bg);
+    border: 1px solid var(--proph-glass-border);
+    backdrop-filter: var(--proph-backdrop-filter);
+    -webkit-backdrop-filter: var(--proph-backdrop-filter);
+  }
+
+  /* Subtle ambient background grid */
+  .proph-grid-pattern {
+    background-size: 32px 32px;
+    background-image:
+      linear-gradient(to right, rgba(120, 120, 128, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(120, 120, 128, 0.05) 1px, transparent 1px);
+  }
+
+  /* Gold Luxury Gradient Button */
+  .proph-gold-button {
+    background: linear-gradient(180deg, #f0d78c 0%, #d4a857 58%, #a68340 100%);
+    box-shadow: var(--proph-shadow-gold-cta);
+    color: #000000;
+  }
+
+  /* Shimmer animation */
+  @keyframes proph-shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .proph-shimmer-sweep {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .proph-shimmer-sweep::after {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0,
+      rgba(255, 255, 255, 0.12) 20%,
+      rgba(255, 255, 255, 0.25) 60%,
+      rgba(255, 255, 255, 0)
+    );
+    animation: proph-shimmer 2.4s infinite;
+    content: "";
   }
 }

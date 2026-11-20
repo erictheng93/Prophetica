@@ -15,10 +15,7 @@ export default async function MembersPage({
   return (
     <RoleGate allow={["admin", "manager", "affiliate"]}>
       {(viewer) => (
-        <AdminShell
-          title={route.label}
-          description={route.summary}
-        >
+        <AdminShell title={route.label} description={route.summary}>
           <div className="space-y-8">
             <MemberManagement
               initialQuery={initialQuery}

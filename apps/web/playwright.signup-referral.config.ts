@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://127.0.0.1:3000";
+const parsedWebPort = Number.parseInt(process.env.WEB_PORT ?? "3000", 10);
+const WEB_PORT = Number.isNaN(parsedWebPort) || parsedWebPort <= 0 ? 3000 : parsedWebPort;
+const WEB_ORIGIN = process.env.WEB_ORIGIN ?? `http://127.0.0.1:${WEB_PORT}`;
 const USER_SERVICE_URL =
   process.env.PUBLIC_SIGNUP_E2E_USER_SERVICE_URL ?? "http://127.0.0.1:43284";
 const API_GATEWAY_URL =
@@ -19,6 +21,8 @@ export default defineConfig({
   webServer: {
     command: "pnpm dev",
     env: {
+      WEB_PORT: WEB_PORT.toString(),
+      PORT: WEB_PORT.toString(),
       USER_SERVICE_URL,
       API_GATEWAY_URL,
     },

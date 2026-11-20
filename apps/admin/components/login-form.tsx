@@ -154,7 +154,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="inline-flex h-12 w-full items-center justify-center rounded-proph-pill bg-proph-primary px-6 text-[17px] font-normal leading-[1.47] tracking-[-0.374px] text-proph-on-primary transition-transform duration-150 ease-out active:scale-[0.97] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-proph-primary-focus disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-12 w-full items-center justify-center rounded-proph-pill bg-proph-primary px-6 font-text text-[17px] font-medium leading-[1.47] tracking-[-0.374px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-proph-primary-focus disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? adminCopy.login.submitting : adminCopy.login.submit}
       </button>

@@ -23,30 +23,30 @@ export function AffiliateList({ affiliates }: AffiliateListProps) {
   return (
     <section
       aria-labelledby="affiliate-list-title"
-      className="rounded-proph-lg border border-proph-hairline bg-proph-canvas"
+      className="overflow-hidden rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas shadow-proph-card"
     >
       <header className="px-5 pt-5 md:px-6 md:pt-6">
         <h2
           id="affiliate-list-title"
-          className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
+          className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
         >
           {adminCopy.affiliateAdmin.listHeading}
         </h2>
-        <p className="mt-1 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+        <p className="mt-1 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
           {adminCopy.affiliateAdmin.listDescription}
         </p>
       </header>
       {affiliates.length === 0 ? (
-        <div className="px-5 py-8 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80 md:px-6">
+        <div className="px-5 py-8 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80 md:px-6">
           代理資料服務尚未連線；未啟用 dev fallback 時不顯示本機範例資料。
         </div>
       ) : (
-        <ul className="mt-4 divide-y divide-proph-hairline">
+        <ul className="mt-4 divide-y divide-proph-hairline/60 border-t border-proph-hairline/60">
           {affiliates.map((row) => (
             <li key={row.id}>
               <Link
                 href={`/affiliate/${row.id}`}
-                className="grid min-h-[88px] gap-3 px-5 py-5 transition-colors hover:bg-proph-surface-pearl active:bg-proph-canvas-parchment md:px-6 md:grid-cols-[160px_1fr_auto_auto]"
+                className="grid min-h-[88px] gap-3 px-5 py-5 transition-colors duration-150 hover:bg-proph-canvas-parchment/60 md:grid-cols-[160px_1fr_auto_auto] md:px-6"
               >
                 <div className="flex flex-col gap-1">
                   <span className="font-mono text-[13px] tracking-[-0.224px] text-proph-ink-muted-80">

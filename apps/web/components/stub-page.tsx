@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
-import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import {
+  ProphFooter,
+  ProphLinkButton,
+  ProphSubNav,
+  ProphTile,
+} from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
@@ -35,10 +40,16 @@ export async function StubPage({
   ]);
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={headline}
         tagline={tagline ?? t("tagline")}
         actions={

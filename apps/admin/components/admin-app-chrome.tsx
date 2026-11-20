@@ -51,7 +51,7 @@ export function AdminAppChrome({
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="border-b border-proph-hairline bg-proph-canvas-parchment text-proph-ink md:hidden">
+        <div className="border-b border-proph-hairline/80 bg-proph-canvas-parchment text-proph-ink md:hidden">
           <div className="px-5 py-3">
             <AdminNavDrawer
               ariaLabel={ariaLabel}

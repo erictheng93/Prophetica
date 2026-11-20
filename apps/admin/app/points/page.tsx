@@ -9,10 +9,7 @@ export default function PointsPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
       {(viewer) => (
-        <AdminShell
-          title={route.label}
-          description={route.summary}
-        >
+        <AdminShell title={route.label} description={route.summary}>
           <div className="space-y-8">
             <PointsOperations viewerRole={viewer.role} />
           </div>

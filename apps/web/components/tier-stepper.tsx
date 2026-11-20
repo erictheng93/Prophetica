@@ -27,7 +27,7 @@ export async function TierStepper({ currentTier }: TierStepperProps) {
 
   return (
     <ol
-      className="flex w-full items-stretch overflow-x-auto"
+      className="flex w-full items-stretch overflow-x-auto rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas shadow-sm"
       aria-label={t("ariaLabel")}
     >
       {tiers.map((tier, idx) => {

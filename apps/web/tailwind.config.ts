@@ -44,6 +44,17 @@ const config: Config = {
           "feedback-error": "var(--proph-color-feedback-error)",
           "feedback-warning": "var(--proph-color-feedback-warning)",
           "feedback-success": "var(--proph-color-feedback-success)",
+          // Black Gold & Luxury accents
+          "gold-primary": "var(--proph-gold-primary)",
+          "gold-warm": "var(--proph-gold-warm)",
+          "gold-deep": "var(--proph-gold-deep)",
+          "gold-antique": "var(--proph-gold-antique)",
+          "black-velvet": "var(--proph-black-velvet)",
+          "black-stage": "var(--proph-black-stage)",
+          "panel-elevated": "var(--proph-panel-elevated)",
+          pearl: "var(--proph-pearl)",
+          "smoke-gold": "var(--proph-smoke-gold)",
+          mist: "var(--proph-mist)",
         },
       },
       borderRadius: {
@@ -63,8 +74,9 @@ const config: Config = {
         proph: "1440px",
       },
       boxShadow: {
-        // The single legal shadow in the system; reserved for product imagery.
         "proph-product": "var(--proph-shadow-product)",
+        "proph-card": "var(--proph-shadow-card)",
+        "proph-gold-cta": "var(--proph-shadow-gold-cta)",
       },
     },
   },

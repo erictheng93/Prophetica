@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import {
+  ProphFooter,
+  ProphLinkButton,
+  ProphSubNav,
+  ProphTile,
+} from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
@@ -30,10 +35,16 @@ export default async function AboutPage() {
 
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={
           <span className="font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-[1.07] tracking-[-0.28px]">
             {t("hero.headline")}
@@ -66,7 +77,7 @@ export default async function AboutPage() {
             {PRINCIPLE_IDS.map((id) => (
               <article
                 key={id}
-                className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+                className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
               >
                 <h3 className="mt-1 font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
                   {t(`principles.items.${id}.title`)}
@@ -88,7 +99,9 @@ export default async function AboutPage() {
           <p className="mt-4 max-w-3xl font-display text-[24px] font-light leading-[1.5] text-proph-body-muted">
             {t.rich("neutrality.lead", {
               highlight: (chunks) => (
-                <strong className="font-semibold text-proph-on-dark">{chunks}</strong>
+                <strong className="font-semibold text-proph-on-dark">
+                  {chunks}
+                </strong>
               ),
             })}
           </p>
@@ -97,7 +110,7 @@ export default async function AboutPage() {
             {NEUTRALITY_ITEM_IDS.map((id) => (
               <article
                 key={id}
-                className="rounded-proph-lg border border-proph-on-dark/15 p-6"
+                className="rounded-proph-xl border border-white/15 bg-white/[0.03] p-6 shadow-proph-card backdrop-blur-sm transition-all duration-200 hover:-translate-y-1"
               >
                 <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">
                   {t(`neutrality.items.${id}.title`)}
@@ -134,7 +147,7 @@ export default async function AboutPage() {
             {COMPANY_IDS.map((id) => (
               <li
                 key={id}
-                className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+                className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-3">
                   <div className="flex items-baseline gap-3">
@@ -171,7 +184,7 @@ export default async function AboutPage() {
             {PRODUCT_SCOPE_ITEM_IDS.map((id) => (
               <li
                 key={id}
-                className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5"
+                className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5"
               >
                 <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">
                   {t(`productScope.items.${id}.title`)}
@@ -191,6 +204,8 @@ export default async function AboutPage() {
 
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("contact.headline")}
         tagline={t("contact.tagline")}
         actions={

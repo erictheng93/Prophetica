@@ -70,7 +70,7 @@ function PrivacyReminder({ t }: { t: Tier1Copy }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
-        <article className="rounded-proph-lg border border-proph-primary/30 bg-proph-canvas p-6">
+        <article className="rounded-proph-xl border border-proph-primary/30 bg-proph-canvas p-6 shadow-sm">
           <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">
             {t("privacy.heading")}
           </h2>
@@ -114,7 +114,7 @@ function CountryGuide({ t }: { t: Tier1Copy }) {
           {countries.map((c) => (
             <li
               key={c.code}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
             >
               <div className="flex items-baseline gap-3">
                 <span aria-hidden className="text-[24px]">
@@ -314,6 +314,8 @@ export default async function Tier1Page({ searchParams }: PageProps) {
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />

@@ -107,7 +107,7 @@ function SectionBlock({ section, t }: { section: Section; t: FAQCopy }) {
           {section.items.map((item, i) => (
             <li
               key={`${section.id}-${i}`}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:border-proph-primary/40"
             >
               <details className="group">
                 <summary className="flex cursor-pointer list-none items-baseline justify-between gap-4">
@@ -143,7 +143,7 @@ function ManagedSectionBlock({ section }: { section: PublicFaqSection }) {
           {section.items.map((item) => (
             <li
               key={`${section.id}-${item.id}`}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:border-proph-primary/40"
             >
               <details className="group">
                 <summary className="flex cursor-pointer list-none items-baseline justify-between gap-4">
@@ -179,6 +179,8 @@ export default async function FAQPage() {
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />

@@ -43,10 +43,16 @@ export default async function AccountAffiliatePage() {
 
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -66,7 +72,13 @@ export default async function AccountAffiliatePage() {
   );
 }
 
-function SourceBanner({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard }) {
+function SourceBanner({
+  t,
+  dashboard,
+}: {
+  t: Copy;
+  dashboard: AffiliateDashboard;
+}) {
   if (dashboard.source === "api-gateway") {
     return null;
   }
@@ -90,11 +102,18 @@ function SourceBanner({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard
   );
 }
 
-function SummaryCards({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard }) {
+function SummaryCards({
+  t,
+  dashboard,
+}: {
+  t: Copy;
+  dashboard: AffiliateDashboard;
+}) {
   const cards = [
     {
       label: t("summary.count.label"),
-      value: dashboard.summary.successfulReferralsCount.toLocaleString("zh-Hant"),
+      value:
+        dashboard.summary.successfulReferralsCount.toLocaleString("zh-Hant"),
     },
     {
       label: t("summary.total.label"),
@@ -126,7 +145,7 @@ function SummaryCards({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard
           {cards.map((card) => (
             <article
               key={card.label}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1 hover:border-proph-gold-primary/40"
             >
               <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.374px] text-proph-ink sm:text-[34px]">
                 {card.value}
@@ -146,7 +165,13 @@ function SummaryCards({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard
   );
 }
 
-function ShareSection({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard }) {
+function ShareSection({
+  t,
+  dashboard,
+}: {
+  t: Copy;
+  dashboard: AffiliateDashboard;
+}) {
   const hasCode = dashboard.referralCode.length > 0;
 
   return (
@@ -161,7 +186,7 @@ function ShareSection({ t, dashboard }: { t: Copy; dashboard: AffiliateDashboard
           </p>
         </header>
 
-        <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 md:p-8">
+        <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_auto] md:items-start">
             <div className="min-w-0">
               <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
@@ -232,15 +257,19 @@ function ReferralListSection({
         </header>
 
         {referrals.length === 0 ? (
-          <article className="rounded-proph-lg border border-proph-divider-soft bg-proph-canvas p-8 text-center">
+          <article className="rounded-proph-xl border border-proph-divider-soft bg-proph-canvas p-8 text-center">
             <p className="font-text text-[17px] tracking-[-0.374px] text-proph-ink-muted-80">
               {t("referrals.empty")}
             </p>
           </article>
         ) : (
-          <ul className="divide-y divide-proph-divider-soft rounded-proph-lg border border-proph-hairline bg-proph-canvas">
+          <ul className="divide-y divide-proph-divider-soft rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas shadow-proph-card overflow-hidden">
             {referrals.map((referral) => (
-              <ReferralRow key={referral.referredId} t={t} referral={referral} />
+              <ReferralRow
+                key={referral.referredId}
+                t={t}
+                referral={referral}
+              />
             ))}
           </ul>
         )}
@@ -253,7 +282,13 @@ function ReferralListSection({
   );
 }
 
-function ReferralRow({ t, referral }: { t: Copy; referral: AffiliateReferralListItem }) {
+function ReferralRow({
+  t,
+  referral,
+}: {
+  t: Copy;
+  referral: AffiliateReferralListItem;
+}) {
   return (
     <li className="grid grid-cols-1 items-center gap-3 p-5 md:grid-cols-[2fr_auto_auto_auto]">
       <div className="min-w-0">
@@ -292,7 +327,13 @@ function ReferralRow({ t, referral }: { t: Copy; referral: AffiliateReferralList
   );
 }
 
-function StatusPill({ t, status }: { t: Copy; status: AffiliateReferralStatus }) {
+function StatusPill({
+  t,
+  status,
+}: {
+  t: Copy;
+  status: AffiliateReferralStatus;
+}) {
   const tone = STATUS_TONE[status];
   const toneClass =
     tone === "positive"

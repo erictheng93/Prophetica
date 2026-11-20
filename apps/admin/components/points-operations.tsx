@@ -137,33 +137,33 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
 
   return (
     <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-        <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
+        <h2 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
           會員點數查詢
         </h2>
         <form className="mt-5 space-y-4" onSubmit={lookupBalance}>
           <label className="block">
-            <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            <span className="font-text text-[13px] font-semibold text-proph-ink-muted-80">
               會員 ID
             </span>
             <input
               value={lookupUserId}
               onChange={(event) => setLookupUserId(event.target.value)}
-              className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus"
+              className="mt-2 h-11 w-full rounded-proph-md border border-proph-hairline/80 bg-proph-canvas px-3.5 font-text text-[14px] tracking-[-0.224px] outline-none transition-colors focus:border-proph-primary focus:ring-1 focus:ring-proph-primary"
               placeholder="user_123"
             />
           </label>
           <button
             type="submit"
             disabled={balanceLoading}
-            className="inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {balanceLoading ? "查詢中" : "查詢餘額"}
           </button>
         </form>
 
         {balanceError && (
-          <p className="mt-4 rounded-proph-sm border border-proph-feedback-error bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink">
+          <p className="mt-4 rounded-proph-md border border-proph-feedback-error/40 bg-proph-feedback-error/10 p-3.5 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink">
             {balanceError}
           </p>
         )}
@@ -192,8 +192,8 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
         )}
       </section>
 
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-        <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
+        <h2 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
           手動點數調整
         </h2>
         <form
@@ -201,20 +201,20 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
           onSubmit={submitAdjustment}
         >
           <label className="block">
-            <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            <span className="font-text text-[13px] font-semibold text-proph-ink-muted-80">
               目標會員 ID
             </span>
             <input
               value={targetUserId}
               onChange={(event) => setTargetUserId(event.target.value)}
               disabled={!canSubmit || adjustmentLoading}
-              className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus disabled:opacity-60"
+              className="mt-2 h-11 w-full rounded-proph-md border border-proph-hairline/80 bg-proph-canvas px-3.5 font-text text-[14px] tracking-[-0.224px] outline-none transition-colors focus:border-proph-primary focus:ring-1 focus:ring-proph-primary disabled:opacity-60"
               placeholder="user_123"
             />
           </label>
 
           <label className="block">
-            <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            <span className="font-text text-[13px] font-semibold text-proph-ink-muted-80">
               方向
             </span>
             <select
@@ -223,7 +223,7 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
                 setDirection(event.target.value as ManualPointDirection)
               }
               disabled={!canSubmit || adjustmentLoading}
-              className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus disabled:opacity-60"
+              className="mt-2 h-11 w-full rounded-proph-md border border-proph-hairline/80 bg-proph-canvas px-3.5 font-text text-[14px] tracking-[-0.224px] outline-none transition-colors focus:border-proph-primary focus:ring-1 focus:ring-proph-primary disabled:opacity-60"
             >
               {allowedDirections.map((option) => (
                 <option key={option} value={option}>
@@ -234,7 +234,7 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
           </label>
 
           <label className="block">
-            <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            <span className="font-text text-[13px] font-semibold text-proph-ink-muted-80">
               點數
             </span>
             <input
@@ -242,32 +242,32 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
               onChange={(event) => setAmount(event.target.value)}
               disabled={!canSubmit || adjustmentLoading}
               inputMode="decimal"
-              className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus disabled:opacity-60"
+              className="mt-2 h-11 w-full rounded-proph-md border border-proph-hairline/80 bg-proph-canvas px-3.5 font-text text-[14px] tracking-[-0.224px] outline-none transition-colors focus:border-proph-primary focus:ring-1 focus:ring-proph-primary disabled:opacity-60"
               placeholder="100.00"
             />
           </label>
 
           <label className="block">
-            <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            <span className="font-text text-[13px] font-semibold text-proph-ink-muted-80">
               Reason code
             </span>
             <input
               value={reasonCode}
               onChange={(event) => setReasonCode(event.target.value)}
               disabled={!canSubmit || adjustmentLoading}
-              className="mt-2 h-11 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 text-[14px] tracking-[-0.224px] outline-none focus:border-proph-primary-focus disabled:opacity-60"
+              className="mt-2 h-11 w-full rounded-proph-md border border-proph-hairline/80 bg-proph-canvas px-3.5 font-text text-[14px] tracking-[-0.224px] outline-none transition-colors focus:border-proph-primary focus:ring-1 focus:ring-proph-primary disabled:opacity-60"
             />
           </label>
 
           <label className="block md:col-span-2">
-            <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            <span className="font-text text-[13px] font-semibold text-proph-ink-muted-80">
               原因說明
             </span>
             <textarea
               value={reasonText}
               onChange={(event) => setReasonText(event.target.value)}
               disabled={!canSubmit || adjustmentLoading}
-              className="mt-2 min-h-24 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 py-2 text-[14px] leading-[1.43] tracking-[-0.224px] outline-none focus:border-proph-primary-focus disabled:opacity-60"
+              className="mt-2 min-h-24 w-full rounded-proph-md border border-proph-hairline/80 bg-proph-canvas px-3.5 py-2.5 font-text text-[14px] leading-[1.43] tracking-[-0.224px] outline-none transition-colors focus:border-proph-primary focus:ring-1 focus:ring-proph-primary disabled:opacity-60"
               placeholder="輸入調整依據、工單或活動原因"
             />
           </label>
@@ -276,7 +276,7 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
             <button
               type="submit"
               disabled={!canSubmit || adjustmentLoading}
-              className="inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {adjustmentLoading ? "提交中" : "提交調整"}
             </button>
@@ -307,11 +307,11 @@ export function PointsOperations({ viewerRole }: PointsOperationsProps) {
 
 function BalanceRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-3">
-      <dt className="text-[13px] font-semibold text-proph-ink-muted-80">
+    <div className="flex items-center justify-between gap-4 rounded-proph-md border border-proph-hairline/80 bg-proph-canvas-parchment/60 p-3.5 shadow-sm">
+      <dt className="font-text text-[13px] font-semibold text-proph-ink-muted-80">
         {label}
       </dt>
-      <dd className="font-mono text-[15px] tracking-[-0.224px] text-proph-ink">
+      <dd className="font-mono text-[15px] font-semibold tracking-[-0.224px] text-proph-ink">
         {value}
       </dd>
     </div>

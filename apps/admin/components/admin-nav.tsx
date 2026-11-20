@@ -59,9 +59,9 @@ export function AdminNav({
               key={link.key}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "inline-flex min-h-11 items-center rounded-proph-sm px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors",
+                "inline-flex min-h-11 items-center rounded-proph-pill px-4 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] transition-all duration-150",
                 isActive
-                  ? "bg-white/15 text-white"
+                  ? "bg-white/20 text-white shadow-sm"
                   : "text-proph-primary-on-dark hover:bg-white/10 active:bg-white/15",
               )}
               href={link.href}
@@ -74,7 +74,7 @@ export function AdminNav({
       <div className="flex items-center gap-3 lg:order-2">
         <span
           aria-label="目前登入身份"
-          className="rounded-proph-pill border border-white/20 px-3 py-1.5 text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-primary-on-dark"
+          className="rounded-proph-pill border border-white/20 px-3 py-1.5 font-mono text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-primary-on-dark"
         >
           {roleLabel}
         </span>
@@ -82,7 +82,7 @@ export function AdminNav({
           type="button"
           onClick={handleSignOut}
           disabled={pending}
-          className="inline-flex min-h-11 items-center rounded-proph-sm bg-white/10 px-4 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-on-dark transition-colors hover:bg-white/20 active:bg-white/25 disabled:opacity-60"
+          className="inline-flex min-h-11 items-center rounded-proph-pill bg-white/10 px-4 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-on-dark shadow-sm transition-all duration-150 hover:bg-white/20 active:scale-[0.98] disabled:opacity-60"
         >
           {signOutLabel}
         </button>
@@ -167,12 +167,12 @@ export function AdminSidebar({
   }
 
   return (
-    <aside className="hidden md:sticky md:top-0 md:flex md:h-screen md:w-60 md:flex-col md:border-r md:border-proph-hairline md:bg-proph-canvas-parchment md:text-proph-ink lg:w-64">
-      <div className="border-b border-proph-hairline px-6 py-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48">
+    <aside className="hidden md:sticky md:top-0 md:flex md:h-screen md:w-60 md:flex-col md:border-r md:border-proph-hairline/80 md:bg-proph-canvas-parchment md:text-proph-ink lg:w-64">
+      <div className="border-b border-proph-hairline/80 px-6 py-6">
+        <p className="font-text text-[11px] font-semibold uppercase tracking-[0.08em] text-proph-primary">
           {brandKicker}
         </p>
-        <p className="mt-1 text-[17px] font-semibold leading-[1.24] tracking-[-0.374px] text-proph-ink">
+        <p className="mt-1 font-display text-[17px] font-semibold leading-[1.24] tracking-[-0.374px] text-proph-ink">
           {brandLabel}
         </p>
       </div>
@@ -198,9 +198,9 @@ export function AdminSidebar({
                       aria-expanded={sectionOpen}
                       aria-controls={`${link.key}-children`}
                       className={cn(
-                        "flex min-h-11 w-full items-center justify-between rounded-proph-sm px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors",
+                        "flex min-h-11 w-full items-center justify-between rounded-proph-md px-3 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] transition-all duration-150",
                         isActive
-                          ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
+                          ? "border border-proph-hairline/80 bg-proph-canvas font-semibold text-proph-primary shadow-sm"
                           : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
                       )}
                     >
@@ -219,7 +219,7 @@ export function AdminSidebar({
                       <ul
                         id={`${link.key}-children`}
                         aria-label={`${link.label} 子導覽`}
-                        className="mt-1 flex flex-col gap-1 border-l border-proph-hairline pl-3"
+                        className="mt-1 flex flex-col gap-1 border-l border-proph-hairline/80 pl-3"
                       >
                         {link.children.map((child) => {
                           const isChildActive = activeChildKey === child.key;
@@ -232,15 +232,15 @@ export function AdminSidebar({
                                   isChildActive ? "page" : undefined
                                 }
                                 className={cn(
-                                  "flex min-h-9 items-center rounded-proph-sm px-3 py-2 text-[13px] leading-[1.31] tracking-[-0.12px] transition-colors",
+                                  "flex min-h-9 items-center rounded-proph-md px-3 py-2 font-text text-[13px] leading-[1.31] tracking-[-0.12px] transition-all duration-150",
                                   isChildActive
-                                    ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
+                                    ? "border border-proph-hairline/80 bg-proph-canvas font-medium text-proph-primary shadow-sm"
                                     : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
                                 )}
                               >
                                 <span>{child.label}</span>
                                 {child.badge ? (
-                                  <span className="ml-2 inline-flex items-center rounded-proph-pill bg-proph-divider-soft px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80">
+                                  <span className="ml-2 inline-flex items-center rounded-proph-pill bg-proph-divider-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80">
                                     {child.badge}
                                   </span>
                                 ) : null}
@@ -260,15 +260,15 @@ export function AdminSidebar({
                         : undefined
                     }
                     className={cn(
-                      "flex min-h-11 items-center rounded-proph-sm px-3 py-2 text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors",
+                      "flex min-h-11 items-center rounded-proph-md px-3 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] transition-all duration-150",
                       isActive
-                        ? "bg-proph-canvas text-proph-primary shadow-[inset_0_0_0_1px_var(--proph-color-hairline)]"
+                        ? "border border-proph-hairline/80 bg-proph-canvas font-semibold text-proph-primary shadow-sm"
                         : "text-proph-ink-muted-80 hover:bg-proph-canvas hover:text-proph-ink active:bg-proph-divider-soft",
                     )}
                   >
                     <span>{link.label}</span>
                     {link.badge ? (
-                      <span className="ml-2 inline-flex items-center rounded-proph-pill bg-proph-divider-soft px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80">
+                      <span className="ml-2 inline-flex items-center rounded-proph-pill bg-proph-divider-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80">
                         {link.badge}
                       </span>
                     ) : null}
@@ -280,10 +280,10 @@ export function AdminSidebar({
         </ul>
       </nav>
 
-      <div className="space-y-3 border-t border-proph-hairline px-5 py-4">
+      <div className="space-y-3 border-t border-proph-hairline/80 px-5 py-4">
         <span
           aria-label="目前登入身份"
-          className="inline-flex rounded-proph-pill border border-proph-hairline bg-proph-canvas px-3 py-1.5 text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80"
+          className="inline-flex rounded-proph-pill border border-proph-hairline/80 bg-proph-canvas px-3 py-1.5 font-mono text-[12px] font-semibold leading-none tracking-[-0.12px] text-proph-ink-muted-80"
         >
           {roleLabel}
         </span>
@@ -291,7 +291,7 @@ export function AdminSidebar({
           type="button"
           onClick={handleSignOut}
           disabled={pending}
-          className="flex h-11 w-full items-center justify-center rounded-proph-sm bg-proph-ink text-[14px] leading-[1.29] tracking-[-0.224px] text-proph-on-dark transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-50"
+          className="flex h-11 w-full items-center justify-center rounded-proph-pill bg-proph-ink font-text text-[14px] font-medium leading-[1.29] tracking-[-0.224px] text-proph-on-dark shadow-proph-button transition-all duration-150 hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
         >
           {signOutLabel}
         </button>
