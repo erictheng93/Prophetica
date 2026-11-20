@@ -50,3 +50,21 @@ export const colors = {
 } as const;
 
 export type ColorToken = keyof typeof colors;
+
+/**
+ * Black Gold Luxury color system — design/BlackGoldLuxuryDesign.md
+ */
+export const blackGoldColors = {
+  goldPrimary: "#D4A857",
+  goldWarm: "#F0D78C",
+  goldDeep: "#8B6914",
+  goldAntique: "#B8860B",
+  blackVelvet: "#0A0808",
+  blackStage: "#000000",
+  panelElevated: "#141010",
+  pearl: "#EDE6D8",
+  smokeGold: "#C9B98F",
+  mist: "#8A8378",
+} as const;
+
+export type BlackGoldColorToken = keyof typeof blackGoldColors;

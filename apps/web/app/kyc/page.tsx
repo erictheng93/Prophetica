@@ -40,7 +40,6 @@ const tierCards: TierCardData[] = [
   },
 ];
 
-
 type KycOverviewCopy = Awaited<
   ReturnType<typeof getTranslations<"kyc.overview">>
 >;
@@ -72,7 +71,7 @@ function CurrentStatusBlock({
 
         <TierStepper currentTier={overview.currentTierNumber} />
 
-        <article className="mt-8 rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+        <article className="mt-8 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-8 shadow-proph-card">
           <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
             {t("current.depositLabel")}
           </div>
@@ -117,7 +116,7 @@ function TierCards({
               <article
                 key={card.tier}
                 className={
-                  "flex flex-col rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6 " +
+                  "flex flex-col rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1 " +
                   (isPast ? "opacity-60" : "")
                 }
               >
@@ -171,16 +170,23 @@ export default async function KYCOverviewPage() {
     getTranslations("common.format"),
     fetchKycOverview(),
   ]);
-  const formatPoints = (n: number) => tFmt("points", { n: n.toLocaleString("zh-Hant") });
+  const formatPoints = (n: number) =>
+    tFmt("points", { n: n.toLocaleString("zh-Hant") });
 
   return (
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
-      <CurrentStatusBlock t={t} overview={overview} formatPoints={formatPoints} />
+      <CurrentStatusBlock
+        t={t}
+        overview={overview}
+        formatPoints={formatPoints}
+      />
       <TierCards t={t} overview={overview} />
     </>
   );

@@ -160,7 +160,7 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
           <div
             ref={containerRef}
             data-testid="kyc-tier2-iframe-host"
-            className="flex min-h-[480px] flex-col items-center justify-center gap-3 rounded-proph-lg border-2 border-dashed border-proph-hairline bg-proph-canvas-parchment text-center"
+            className="flex min-h-[480px] flex-col items-center justify-center gap-3 rounded-proph-xl border-2 border-dashed border-proph-hairline/80 bg-proph-canvas-parchment text-center shadow-sm"
             aria-live="polite"
           >
             {showStatus ? (
@@ -179,7 +179,7 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
                   <button
                     type="button"
                     onClick={handleRetry}
-                    className="mt-4 inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary"
+                    className="mt-4 inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-hover active:scale-[0.98]"
                   >
                     {tPhase("retryCta")}
                   </button>
@@ -212,12 +212,12 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
             disabled={!showForm}
             aria-disabled={!showForm}
           >
-            <fieldset className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <fieldset className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <legend className="sr-only">{t("income.legend")}</legend>
               {incomeBuckets.map((b) => (
                 <label
                   key={b.value}
-                  className="flex cursor-pointer items-center gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas px-5 py-4 has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment"
+                  className="flex cursor-pointer items-center gap-3 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas px-5 py-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment has-[:checked]:shadow-proph-card"
                 >
                   <input
                     type="radio"
@@ -232,7 +232,7 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
                   </span>
                 </label>
               ))}
-              <label className="flex cursor-pointer items-center gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas px-5 py-4 has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment md:col-span-2">
+              <label className="flex cursor-pointer items-center gap-3 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas px-5 py-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 has-[:checked]:border-proph-primary-focus has-[:checked]:bg-proph-canvas-parchment has-[:checked]:shadow-proph-card md:col-span-2">
                 <input
                   type="radio"
                   name="incomeBucket"
@@ -255,7 +255,7 @@ export function Tier2LaunchClient({ country }: Tier2LaunchClientProps) {
                 type="button"
                 onClick={launch}
                 disabled={!showForm}
-                className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t("income.submit")}
               </button>

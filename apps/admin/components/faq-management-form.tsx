@@ -43,7 +43,9 @@ export function FaqManagementForm({
     () =>
       catalog.sections.reduce(
         (total, section) =>
-          total + section.items.filter((item) => section.enabled && item.enabled).length,
+          total +
+          section.items.filter((item) => section.enabled && item.enabled)
+            .length,
         0,
       ),
     [catalog.sections],
@@ -78,7 +80,10 @@ export function FaqManagementForm({
   }
 
   async function resetCatalog() {
-    if (!canEdit || !window.confirm("確定要移除後台管理內容並回到系統預設 FAQ？")) {
+    if (
+      !canEdit ||
+      !window.confirm("確定要移除後台管理內容並回到系統預設 FAQ？")
+    ) {
       return;
     }
     setSaveState("saving");
@@ -103,7 +108,10 @@ export function FaqManagementForm({
     setMessage("FAQ 已回到系統預設。");
   }
 
-  function updateSection(sectionId: string, next: (section: FaqSection) => FaqSection) {
+  function updateSection(
+    sectionId: string,
+    next: (section: FaqSection) => FaqSection,
+  ) {
     setCatalog((current) => ({
       ...current,
       sections: current.sections.map((section) =>
@@ -120,7 +128,9 @@ export function FaqManagementForm({
   ) {
     updateSection(sectionId, (section) => ({
       ...section,
-      items: section.items.map((item) => (item.id === itemId ? next(item) : item)),
+      items: section.items.map((item) =>
+        item.id === itemId ? next(item) : item,
+      ),
     }));
   }
 
@@ -176,15 +186,15 @@ export function FaqManagementForm({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5 md:grid-cols-[1fr_auto] md:items-center">
+      <section className="grid gap-4 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:grid-cols-[1fr_auto] md:items-center md:p-8">
         <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-primary">
+          <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-primary">
             {source === "managed" ? "後台發布中" : "系統預設"}
           </p>
-          <h2 className="mt-2 text-[21px] font-semibold leading-[1.19] text-proph-ink">
+          <h2 className="mt-2 font-display text-[21px] font-semibold leading-[1.19] text-proph-ink">
             {enabledItemCount} 則公開 FAQ
           </h2>
-          <p className="mt-1 text-[14px] leading-[1.43] text-proph-ink-muted-80">
+          <p className="mt-1 font-mono text-[13px] leading-[1.43] text-proph-ink-muted-80">
             最後更新：{catalog.updatedAt}，更新者：{catalog.updatedBy}
           </p>
         </div>
@@ -193,7 +203,7 @@ export function FaqManagementForm({
             type="button"
             onClick={saveCatalog}
             disabled={!canEdit || saveState === "saving"}
-            className="inline-flex min-h-11 items-center rounded-proph-sm bg-proph-primary px-4 py-2 text-[14px] font-semibold text-proph-on-dark transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded-proph-pill bg-proph-primary px-5 py-2 font-text text-[14px] font-semibold text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98] disabled:opacity-50"
           >
             {saveState === "saving" ? "發布中" : "發布 FAQ"}
           </button>
@@ -201,7 +211,7 @@ export function FaqManagementForm({
             type="button"
             onClick={resetCatalog}
             disabled={!canEdit || saveState === "saving"}
-            className="inline-flex min-h-11 items-center rounded-proph-sm border border-proph-hairline bg-proph-canvas px-4 py-2 text-[14px] font-semibold text-proph-ink transition-colors hover:bg-proph-divider-soft disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded-proph-pill border border-proph-hairline/80 bg-proph-canvas px-5 py-2 font-text text-[14px] font-semibold text-proph-ink shadow-sm transition-all duration-150 hover:bg-proph-canvas-parchment active:scale-[0.98] disabled:opacity-50"
           >
             回到預設
           </button>
@@ -209,7 +219,7 @@ export function FaqManagementForm({
       </section>
 
       {!canEdit && (
-        <p className="rounded-proph-lg border border-proph-hairline bg-proph-canvas-parchment px-4 py-3 text-[14px] text-proph-ink-muted-80">
+        <p className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas-parchment px-5 py-4 font-text text-[14px] text-proph-ink-muted-80 shadow-sm">
           你的角色可以檢視 FAQ，但只有 admin 能發布或重置內容。
         </p>
       )}
@@ -217,7 +227,7 @@ export function FaqManagementForm({
       {message && (
         <p
           className={cn(
-            "rounded-proph-lg border px-4 py-3 text-[14px]",
+            "rounded-proph-xl border px-5 py-4 font-text text-[14px] shadow-sm",
             saveState === "error"
               ? "border-proph-feedback-danger/40 bg-proph-feedback-danger/10 text-proph-ink"
               : "border-proph-feedback-success/40 bg-proph-feedback-success/10 text-proph-ink",
@@ -227,7 +237,7 @@ export function FaqManagementForm({
         </p>
       )}
 
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-4">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2" aria-label="FAQ 語系">
             {FAQ_SUPPORTED_LOCALES.map((candidate) => (
@@ -357,7 +367,11 @@ export function FaqManagementForm({
                       onChange={(value) =>
                         updateItem(section.id, item.id, (current) => ({
                           ...current,
-                          question: withLocalizedText(current.question, locale, value),
+                          question: withLocalizedText(
+                            current.question,
+                            locale,
+                            value,
+                          ),
                         }))
                       }
                     />
@@ -368,7 +382,11 @@ export function FaqManagementForm({
                       onChange={(value) =>
                         updateItem(section.id, item.id, (current) => ({
                           ...current,
-                          answer: withLocalizedText(current.answer, locale, value),
+                          answer: withLocalizedText(
+                            current.answer,
+                            locale,
+                            value,
+                          ),
                         }))
                       }
                     />
@@ -396,7 +414,9 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-[13px] font-semibold text-proph-ink-muted-80">{label}</span>
+      <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+        {label}
+      </span>
       <input
         type="text"
         value={value}
@@ -421,7 +441,9 @@ function TextArea({
 }) {
   return (
     <label className="block">
-      <span className="text-[13px] font-semibold text-proph-ink-muted-80">{label}</span>
+      <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+        {label}
+      </span>
       <textarea
         value={value}
         disabled={disabled}

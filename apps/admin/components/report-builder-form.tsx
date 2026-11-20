@@ -204,7 +204,7 @@ export function ReportBuilderForm({
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex h-12 min-w-[200px] items-center justify-center rounded-proph-pill bg-proph-primary px-6 text-[15px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-12 min-w-[200px] items-center justify-center rounded-proph-pill bg-proph-primary px-6 font-text text-[15px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {adminCopy.analytics.submitCta}
       </button>

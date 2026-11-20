@@ -53,6 +53,8 @@ export default async function MarketDetailPage({ params }: PageProps) {
     <>
       <ProphTile
         surface="light"
+        glow="brand"
+        gridPattern
         headline={market.title}
         tagline={market.brief}
       />
@@ -62,7 +64,7 @@ export default async function MarketDetailPage({ params }: PageProps) {
           {isSettled && market.resolvedOutcome ? (
             <ResolvedBanner market={market} />
           ) : (
-            <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-8">
+            <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-8 shadow-proph-card">
               <ProbabilityBar yesCents={market.yesPriceCents} size="lg" />
               <p className="mt-4 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
                 {t("pricingExplainer")}
@@ -87,7 +89,7 @@ async function ChartSection({ market }: { market: Market }) {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
-        <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+        <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card">
           <header className="mb-4 flex items-baseline justify-between">
             <div>
               <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">
@@ -155,7 +157,7 @@ async function OpenMarketBody({ market }: { market: Market }) {
 async function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
   const t = await getTranslations("marketDetail.orderBook");
   return (
-    <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
+    <article className="overflow-hidden rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas shadow-proph-card">
       <header className="border-b border-proph-divider-soft px-6 py-4">
         <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">
           {t("title")}
@@ -227,7 +229,7 @@ async function OrderBookTable({ book }: { book: EngineOrderBookSnapshot }) {
 async function RecentTradesTable({ trades }: { trades: RecentTrade[] }) {
   const t = await getTranslations("marketDetail.recentTrades");
   return (
-    <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas">
+    <article className="overflow-hidden rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas shadow-proph-card">
       <header className="border-b border-proph-divider-soft px-6 py-4">
         <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">
           {t("title")}

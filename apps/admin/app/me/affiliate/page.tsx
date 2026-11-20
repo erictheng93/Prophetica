@@ -15,11 +15,11 @@ export default function AffiliateHomePage() {
           <div className="space-y-8">
             <section
               aria-labelledby="affiliate-summary-title"
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8"
             >
               <h2
                 id="affiliate-summary-title"
-                className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
+                className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
               >
                 本月概覽
               </h2>
@@ -48,7 +48,7 @@ export default function AffiliateHomePage() {
                   />
                 </div>
               ) : (
-                <p className="mt-6 max-w-3xl rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+                <p className="mt-6 max-w-3xl rounded-proph-md border border-proph-divider-soft bg-proph-surface-pearl p-4 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80 shadow-sm">
                   referral-service 尚未連線，無法讀取代理概覽。
                 </p>
               )}
@@ -70,14 +70,14 @@ function Stat({
   detail: string;
 }) {
   return (
-    <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5">
-      <h3 className="text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]">
+    <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1">
+      <h3 className="font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px]">
         {label}
       </h3>
-      <p className="mt-3 text-[28px] font-semibold leading-[1.14] tracking-[-0.374px]">
+      <p className="mt-3 font-display text-[28px] font-semibold leading-[1.14] tracking-[-0.374px] sm:text-[34px]">
         {value}
       </p>
-      <p className="mt-2 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+      <p className="mt-2 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
         {detail}
       </p>
     </article>

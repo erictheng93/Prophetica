@@ -14,11 +14,11 @@ function ProgressList({ title, items, indicator }: ProgressListProps) {
   const marker = indicator === "success" ? "✓" : "!";
 
   return (
-    <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5">
-      <h3 className="text-[16px] font-semibold leading-[1.31] tracking-[-0.374px]">
+    <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card">
+      <h3 className="font-display text-[16px] font-semibold leading-[1.31] tracking-[-0.374px]">
         {title}
       </h3>
-      <ul className="mt-4 space-y-3 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+      <ul className="mt-4 space-y-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
         {items.map((item) => (
           <li key={item} className="flex items-start gap-2">
             <span className={`mt-1 inline-flex ${indicatorStyle}`}>
@@ -41,22 +41,22 @@ function CrossDomainStream({ events, routes }: CrossDomainStreamProps) {
   const labels = new Map(routes.map((route) => [route.domain, route.label]));
 
   return (
-    <section aria-labelledby="cross-domain-stream-title" className="mt-4">
+    <section aria-labelledby="cross-domain-stream-title" className="mt-6">
       <div className="mb-4">
         <h3
           id="cross-domain-stream-title"
-          className="text-[16px] font-semibold leading-[1.31] tracking-[-0.374px]"
+          className="font-display text-[16px] font-semibold leading-[1.31] tracking-[-0.374px]"
         >
           跨域串流確認
         </h3>
-        <p className="mt-1 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+        <p className="mt-1 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
           已串接會員、點數、代理、KYC、補償與工單審批事件，並保留回傳確認收據。
         </p>
       </div>
-      <div className="overflow-hidden rounded-proph-lg border border-proph-hairline">
+      <div className="overflow-hidden rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas shadow-proph-card">
         {events.map((event) => (
           <article
-            className="grid gap-3 border-b border-proph-hairline bg-proph-canvas p-5 last:border-b-0 md:grid-cols-[1fr_auto]"
+            className="grid gap-3 border-b border-proph-hairline/60 bg-proph-canvas p-5 last:border-b-0 transition-colors duration-150 hover:bg-proph-canvas-parchment/60 md:grid-cols-[1fr_auto]"
             key={event.id}
           >
             <div>
@@ -64,27 +64,29 @@ function CrossDomainStream({ events, routes }: CrossDomainStreamProps) {
                 <span className="font-mono text-[12px] leading-none tracking-[-0.12px] text-proph-ink-muted-80">
                   {event.correlationId}
                 </span>
-                <span className="rounded-proph-pill border border-proph-feedback-success px-2 py-1 text-[12px] leading-none tracking-[-0.12px] text-proph-feedback-success">
+                <span className="rounded-proph-pill border border-proph-feedback-success/40 bg-proph-feedback-success/10 px-2 py-0.5 font-text text-[11px] font-semibold leading-none tracking-[-0.12px] text-proph-feedback-success">
                   回傳確認
                 </span>
               </div>
-              <h4 className="mt-2 text-[17px] font-semibold leading-[1.24] tracking-[-0.374px]">
+              <h4 className="mt-2 font-display text-[17px] font-semibold leading-[1.24] tracking-[-0.374px]">
                 {event.title}
               </h4>
-              <p className="mt-1 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+              <p className="mt-1 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
                 {labels.get(event.sourceDomain)} -&gt;{" "}
                 {event.targetDomains
                   .map((domain) => labels.get(domain) ?? domain)
                   .join(" / ")}
               </p>
-              <p className="mt-1 font-mono text-[12px] leading-[1.5] tracking-[-0.12px] text-proph-ink-muted-80">
+              <p className="mt-1 font-mono text-[12px] leading-[1.5] tracking-[-0.12px] text-proph-ink-muted-48">
                 {event.linkedQueueIds.join(" / ")}
               </p>
             </div>
-            <dl className="space-y-1 text-left text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80 md:text-right">
+            <dl className="space-y-1 text-left font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80 md:text-right">
               <div>
                 <dt className="sr-only">收據</dt>
-                <dd className="font-mono">{event.acknowledgement.receiptId}</dd>
+                <dd className="font-mono text-[12px] text-proph-primary">
+                  {event.acknowledgement.receiptId}
+                </dd>
               </div>
               <div>
                 <dt className="sr-only">回傳模組</dt>
@@ -92,11 +94,15 @@ function CrossDomainStream({ events, routes }: CrossDomainStreamProps) {
               </div>
               <div>
                 <dt className="sr-only">回傳路徑</dt>
-                <dd>{event.acknowledgement.returnPath}</dd>
+                <dd className="font-mono text-[12px]">
+                  {event.acknowledgement.returnPath}
+                </dd>
               </div>
               <div>
                 <dt className="sr-only">確認時間</dt>
-                <dd>{event.acknowledgement.confirmedAt}</dd>
+                <dd className="font-mono text-[12px] text-proph-ink-muted-48">
+                  {event.acknowledgement.confirmedAt}
+                </dd>
               </div>
             </dl>
           </article>

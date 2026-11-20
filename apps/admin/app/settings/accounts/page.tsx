@@ -60,9 +60,18 @@ export default function ManagerAccountsPage({
                 <Input name="displayName" label="Display name" required />
                 <Input name="email" label="Email" type="email" required />
                 <Input name="phone" label="Phone" required />
-                <Input name="password" label="Password" type="password" required />
+                <Input
+                  name="password"
+                  label="Password"
+                  type="password"
+                  required
+                />
                 <Input name="country" label="Country" defaultValue="TW" />
-                <Input name="timezone" label="Timezone" defaultValue="Asia/Taipei" />
+                <Input
+                  name="timezone"
+                  label="Timezone"
+                  defaultValue="Asia/Taipei"
+                />
                 <Input name="tier" label="Tier" defaultValue="standard" />
                 <Input name="reason" label="Reason" required />
                 <Input
@@ -93,7 +102,11 @@ export default function ManagerAccountsPage({
                       </option>
                     ))}
                 </Select>
-                <Select name="managingManagerId" label="Target manager" required>
+                <Select
+                  name="managingManagerId"
+                  label="Target manager"
+                  required
+                >
                   {activeManagers.map((manager) => (
                     <option key={manager.user_id} value={manager.user_id}>
                       {manager.user_id}

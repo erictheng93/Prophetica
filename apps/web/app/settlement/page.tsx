@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { ProphFooter, ProphLinkButton, ProphSubNav, ProphTile } from "@prophetica/ui";
+import {
+  ProphFooter,
+  ProphLinkButton,
+  ProphSubNav,
+  ProphTile,
+} from "@prophetica/ui";
 import {
   AuthCta,
   Brand,
@@ -19,9 +24,20 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // SPEC-004 §2 settlement state machine — codes are not translated; labels +
 // bodies come from the `settlement.stateMachine.states.<CODE>` namespace.
-const STATE_CODES = ["CLOSED", "PENDING", "SETTLING", "SETTLED", "CANCELLED"] as const;
+const STATE_CODES = [
+  "CLOSED",
+  "PENDING",
+  "SETTLING",
+  "SETTLED",
+  "CANCELLED",
+] as const;
 const ORACLE_ITEM_IDS = ["single", "dual", "median", "unknowable"] as const;
-const ESCALATE_ITEM_IDS = ["amount", "multiple", "undecidable", "oracleDisputed"] as const;
+const ESCALATE_ITEM_IDS = [
+  "amount",
+  "multiple",
+  "undecidable",
+  "oracleDisputed",
+] as const;
 
 export default async function SettlementPage() {
   const [t, sectionFooterColumns] = await Promise.all([
@@ -31,10 +47,16 @@ export default async function SettlementPage() {
 
   return (
     <main className="min-h-screen bg-proph-canvas">
-      <ProphSubNav category={<Brand />} links={<MainNavLinks />} cta={<AuthCta />} />
+      <ProphSubNav
+        category={<Brand />}
+        links={<MainNavLinks />}
+        cta={<AuthCta />}
+      />
 
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
         actions={
@@ -64,7 +86,7 @@ export default async function SettlementPage() {
             {STATE_CODES.map((code, i) => (
               <li
                 key={code}
-                className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5"
+                className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5"
               >
                 <div className="flex items-baseline gap-3">
                   <span className="font-mono text-[12px] tabular-nums tracking-[-0.12px] text-proph-ink-muted-48">
@@ -101,7 +123,7 @@ export default async function SettlementPage() {
             {ORACLE_ITEM_IDS.map((id) => (
               <li
                 key={id}
-                className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+                className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
               >
                 <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">
                   {t(`oracle.items.${id}.title`)}
@@ -127,7 +149,7 @@ export default async function SettlementPage() {
           </header>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+            <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1">
               <h3 className="font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
                 {t("dispute.standard.title")}
               </h3>
@@ -136,7 +158,7 @@ export default async function SettlementPage() {
               </p>
             </article>
 
-            <article className="rounded-proph-lg border border-proph-feedback-warning/40 bg-proph-canvas p-6">
+            <article className="rounded-proph-xl border border-proph-feedback-warning/40 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1">
               <h3 className="font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
                 {t("dispute.escalate.title")}
               </h3>

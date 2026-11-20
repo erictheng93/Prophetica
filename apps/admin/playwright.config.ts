@@ -4,6 +4,7 @@ import { ADMIN_ORIGIN, ADMIN_PORT } from "./tests/admin-env.js";
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 120_000,
+  workers: 1,
   expect: {
     timeout: 20_000,
   },
