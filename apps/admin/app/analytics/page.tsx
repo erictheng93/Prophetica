@@ -53,7 +53,7 @@ function AnalyticsUnavailableState() {
   return (
     <section
       aria-labelledby="analytics-templates-unavailable-title"
-      className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+      className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8"
     >
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill tone="warning">
@@ -65,11 +65,11 @@ function AnalyticsUnavailableState() {
       </div>
       <h2
         id="analytics-templates-unavailable-title"
-        className="mt-3 text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
+        className="mt-3 font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]"
       >
         {adminCopy.analytics.templatesUnavailableTitle}
       </h2>
-      <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+      <p className="mt-2 max-w-3xl font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
         {adminCopy.analytics.templatesUnavailableDescription}
       </p>
     </section>
@@ -84,7 +84,7 @@ function TemplateCard({ template }: { template: ReportTemplate }) {
       : adminCopy.analytics.retentionOps;
 
   return (
-    <article className="flex flex-col gap-4 rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+    <article className="flex flex-col gap-4 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1">
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill
           tone={
@@ -95,24 +95,24 @@ function TemplateCard({ template }: { template: ReportTemplate }) {
         >
           {categoryLabel[template.category]}
         </StatusPill>
-        <span className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48">
+        <span className="font-mono text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-ink-muted-48">
           {template.schemaVersion}
         </span>
         {hasSensitive && (
-          <span className="inline-flex items-center rounded-proph-pill border border-proph-feedback-warning bg-proph-canvas-parchment px-2 py-1 text-[11px] font-semibold leading-none tracking-[-0.12px] text-proph-ink">
+          <span className="inline-flex items-center rounded-proph-pill border border-proph-feedback-warning/40 bg-proph-feedback-warning/10 px-2 py-0.5 font-text text-[11px] font-semibold leading-none tracking-[-0.12px] text-proph-ink">
             {adminCopy.analytics.sensitiveBadge}
           </span>
         )}
       </div>
       <header>
-        <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-proph-ink">
+        <h2 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px] text-proph-ink">
           {template.name}
         </h2>
         <p className="mt-2 font-mono text-[13px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
           {template.code}
         </p>
       </header>
-      <dl className="grid gap-3 text-[14px] leading-[1.43] tracking-[-0.224px]">
+      <dl className="grid gap-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px]">
         <KeyValue
           label="輸出欄位"
           value={template.fields.map((field) => field.label).join("、")}
@@ -123,10 +123,10 @@ function TemplateCard({ template }: { template: ReportTemplate }) {
         />
         <KeyValue label="最近一次預設快照" value={template.generatedAt} />
       </dl>
-      <div className="mt-auto flex items-center justify-end">
+      <div className="mt-auto flex items-center justify-end border-t border-proph-divider-soft/60 pt-4">
         <Link
           href={`/analytics/run/${template.code}`}
-          className="inline-flex min-h-11 items-center rounded-proph-pill bg-proph-primary px-5 text-[15px] leading-[1.29] tracking-[-0.224px] text-proph-on-primary transition-opacity hover:opacity-95 active:opacity-90"
+          className="inline-flex min-h-11 items-center rounded-proph-pill bg-proph-primary px-5 font-text text-[15px] font-medium leading-[1.29] tracking-[-0.224px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98]"
         >
           {adminCopy.analytics.runCta}
         </Link>

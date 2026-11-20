@@ -271,9 +271,7 @@ export function MemberManagement({
         } catch {
           errorCode = null;
         }
-        setLookupError(
-          memberLookupErrorMessage(response.status, errorCode),
-        );
+        setLookupError(memberLookupErrorMessage(response.status, errorCode));
         return;
       }
       const nextSummary = (await response.json()) as MemberManagementSummary;
@@ -528,7 +526,7 @@ export function MemberManagement({
         <>
           <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)] xl:items-start">
             <div className="space-y-6">
-              <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+              <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
                 <div className="flex flex-col gap-4">
                   <div>
                     <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
@@ -784,7 +782,7 @@ function PendingCasesPanel(props: {
     props.cases?.source === "api-gateway" ? "api-gateway" : "dev fallback";
 
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
@@ -909,7 +907,7 @@ function MemberDirectory(props: {
   onView: (summary: MemberManagementSummary) => void;
 }) {
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
       <div className="flex flex-col gap-4">
         <div>
           <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
@@ -1042,7 +1040,7 @@ function ActionQueuePanel(props: {
   );
 
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
@@ -1191,7 +1189,7 @@ function MemberEditor(props: {
   const affiliateLocked = props.viewerRole === "affiliate";
 
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
@@ -1336,7 +1334,7 @@ function MemberOverview({ summary }: { summary: MemberManagementSummary }) {
     summary.kyc_risk.risk_level === "high" ? "critical" : "neutral";
 
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
       <div className="flex flex-wrap items-center gap-3">
         <StatusPill tone={statusTone}>
           {statusLabels[summary.member.status]}
@@ -1435,7 +1433,7 @@ function OpenCases({
   cases: MemberManagementSummary["open_cases"];
 }) {
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
       <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
         待處理案件
       </h2>
@@ -1487,7 +1485,7 @@ function ActionPanel(props: {
   onTicketIdChange: (value: string) => void;
 }) {
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
       <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
         提交處理動作
       </h2>
@@ -1564,7 +1562,7 @@ function ActionPanel(props: {
 
 function AuditPanel({ summary }: { summary: MemberManagementSummary }) {
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
       <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
         稽核姿態
       </h2>

@@ -3,10 +3,14 @@ import { cn } from "@prophetica/ui";
 import type { OpsTone } from "@/lib/ops-facade";
 
 const toneClasses: Record<OpsTone, string> = {
-  neutral: "border-proph-hairline bg-proph-surface-pearl text-proph-ink-muted-80",
-  warning: "border-proph-feedback-warning bg-proph-canvas-parchment text-proph-ink",
-  success: "border-proph-feedback-success bg-proph-canvas text-proph-ink",
-  critical: "border-proph-feedback-error bg-proph-canvas text-proph-feedback-error",
+  neutral:
+    "border-proph-hairline/80 bg-proph-surface-pearl text-proph-ink-muted-80",
+  warning:
+    "border-proph-feedback-warning/40 bg-proph-feedback-warning/10 text-proph-ink",
+  success:
+    "border-proph-feedback-success/40 bg-proph-feedback-success/10 text-proph-ink",
+  critical:
+    "border-proph-feedback-error/40 bg-proph-feedback-error/10 text-proph-feedback-error",
 };
 
 interface StatusPillProps {
@@ -15,7 +19,11 @@ interface StatusPillProps {
   className?: string;
 }
 
-export function StatusPill({ children, tone = "neutral", className }: StatusPillProps) {
+export function StatusPill({
+  children,
+  tone = "neutral",
+  className,
+}: StatusPillProps) {
   return (
     <span
       className={cn(

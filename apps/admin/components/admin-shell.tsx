@@ -18,15 +18,19 @@ export function AdminShell({
 }: AdminShellProps) {
   return (
     <>
-      <header className="border-b border-proph-hairline bg-proph-canvas-parchment">
-        <div className="px-5 py-8 md:px-10 md:py-10">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-primary">
+      <header className="relative overflow-hidden border-b border-proph-hairline/80 bg-proph-canvas-parchment">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-proph-gold-primary/5 blur-3xl"
+        />
+        <div className="relative px-5 py-8 md:px-10 md:py-10">
+          <p className="font-text text-[12px] font-semibold uppercase tracking-[0.08em] text-proph-primary">
             {eyebrow}
           </p>
-          <h1 className="mt-3 max-w-4xl text-[28px] font-semibold leading-[1.14] tracking-[-0.28px] text-proph-ink sm:text-[34px] sm:leading-[1.1] sm:tracking-[-0.374px] md:text-[40px] md:leading-[1.07] lg:text-[44px]">
+          <h1 className="mt-3 max-w-4xl font-display text-[28px] font-semibold leading-[1.14] tracking-[-0.28px] text-proph-ink sm:text-[34px] sm:leading-[1.1] sm:tracking-[-0.374px] md:text-[40px] md:leading-[1.07] lg:text-[44px]">
             {title}
           </h1>
-          <p className="mt-3 max-w-3xl text-[15px] leading-[1.47] tracking-[-0.224px] text-proph-ink-muted-80 sm:text-[17px] sm:tracking-[-0.374px]">
+          <p className="mt-3 max-w-3xl font-text text-[15px] leading-[1.47] tracking-[-0.224px] text-proph-ink-muted-80 sm:text-[17px] sm:tracking-[-0.374px]">
             {description}
           </p>
         </div>
