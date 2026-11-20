@@ -42,11 +42,74 @@
     letter-spacing: -0.374px;
   }
 
-  h1, h2, h3 {
+  /* Display headlines default to SF Pro Display with balanced wraps */
+  h1,
+  h2,
+  h3,
+  h4 {
     font-family: var(--proph-font-display);
+    text-wrap: balance;
   }
 
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Apple-tight link grammar — Action Blue, no underline by default */
   a {
     color: var(--proph-color-primary);
+  }
+
+  /* Themed browser surfaces (impeccable craft floor) */
+  ::selection {
+    background-color: rgba(212, 168, 87, 0.28);
+    color: inherit;
+  }
+
+  input,
+  textarea,
+  [contenteditable="true"] {
+    caret-color: var(--proph-gold-primary, #d4a857);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--proph-color-primary-focus, #0071e3);
+    outline-offset: 2px;
+  }
+
+  /* Numeric alignment for sports odds and financial figures */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Intentional motion sensitivity preserving instant feedback */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-ping,
+    .animate-spin,
+    .animate-pulse {
+      animation: none !important;
+    }
+    *,
+    ::before,
+    ::after {
+      transition-duration: 0.001s !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Custom luxury scrollbars */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(140, 109, 45, 0.35);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 168, 87, 0.55);
   }
 }

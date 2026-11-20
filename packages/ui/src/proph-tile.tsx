@@ -21,6 +21,10 @@ export interface ProphTileProps extends HTMLAttributes<HTMLElement> {
   media?: ReactNode;
   /** Reverse stack so media sits above the text block. Defaults to text-first. */
   mediaFirst?: boolean;
+  /** Optional ambient atmosphere glow */
+  glow?: "brand" | "gold" | "emerald" | "none";
+  /** Optional background geometric micro-grid */
+  gridPattern?: boolean;
 }
 
 /*
@@ -48,6 +52,8 @@ export const ProphTile = forwardRef<HTMLElement, ProphTileProps>(
       actions,
       media,
       mediaFirst = false,
+      glow = "none",
+      gridPattern = false,
       className,
       ...props
     },
@@ -95,18 +101,35 @@ export const ProphTile = forwardRef<HTMLElement, ProphTileProps>(
       </div>
     ) : null;
 
+    const glowGradient =
+      glow === "brand"
+        ? "radial-gradient(50% 50% at 50% 20%, rgba(0, 102, 204, 0.15) 0%, transparent 100%)"
+        : glow === "gold"
+          ? "radial-gradient(50% 50% at 50% 20%, rgba(212, 168, 87, 0.18) 0%, transparent 100%)"
+          : glow === "emerald"
+            ? "radial-gradient(50% 50% at 50% 20%, rgba(31, 122, 63, 0.15) 0%, transparent 100%)"
+            : null;
+
     return (
       <section
         ref={ref}
         className={cn(
-          "w-full",
+          "relative isolate w-full overflow-hidden",
           "px-5 sm:px-6 md:px-10",
           "py-16 md:py-[80px]",
+          gridPattern && "proph-grid-pattern",
           surfaceClasses[surface],
           className,
         )}
         {...props}
       >
+        {glowGradient ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 -z-10"
+            style={{ background: glowGradient }}
+          />
+        ) : null}
         <div className="mx-auto max-w-[1440px]">
           {mediaFirst ? (
             <>

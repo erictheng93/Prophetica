@@ -18,7 +18,9 @@ const GUIDE_HREFS: Record<(typeof GUIDE_IDS)[number], string> = {
   supportCs: "/support/contact",
 };
 
-type ResourcesCopy = Awaited<ReturnType<typeof getTranslations<"responsibleGaming.resources">>>;
+type ResourcesCopy = Awaited<
+  ReturnType<typeof getTranslations<"responsibleGaming.resources">>
+>;
 
 export default async function ResourcesPage() {
   const t = await getTranslations("responsibleGaming.resources");
@@ -26,6 +28,8 @@ export default async function ResourcesPage() {
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -46,7 +50,7 @@ function GuideCards({ t }: { t: ResourcesCopy }) {
           {GUIDE_IDS.map((id) => (
             <article
               key={id}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1 hover:border-proph-primary/40"
             >
               <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">
                 {t(`guides.items.${id}.title`)}
@@ -72,21 +76,32 @@ function PrivacyNote({ t }: { t: ResourcesCopy }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">{t("privacy.heading")}</h2>
-        <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
-          {t.rich("privacy.external", {
-            strong: (chunks) => <strong className="font-semibold text-proph-ink">{chunks}</strong>,
-          })}
-        </p>
-        <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
-          {t.rich("privacy.internal", {
-            privacyLink: (chunks) => (
-              <a href="/legal/privacy" className="text-proph-primary underline">
-                {chunks}
-              </a>
-            ),
-          })}
-        </p>
+        <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-8 shadow-sm">
+          <h2 className="font-display text-[28px] font-semibold leading-[1.1] sm:text-[34px] md:text-[40px]">
+            {t("privacy.heading")}
+          </h2>
+          <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
+            {t.rich("privacy.external", {
+              strong: (chunks) => (
+                <strong className="font-semibold text-proph-ink">
+                  {chunks}
+                </strong>
+              ),
+            })}
+          </p>
+          <p className="mt-4 max-w-3xl font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-ink-muted-80">
+            {t.rich("privacy.internal", {
+              privacyLink: (chunks) => (
+                <a
+                  href="/legal/privacy"
+                  className="text-proph-primary underline"
+                >
+                  {chunks}
+                </a>
+              ),
+            })}
+          </p>
+        </article>
       </div>
     </section>
   );

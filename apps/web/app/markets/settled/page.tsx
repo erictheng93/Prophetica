@@ -22,6 +22,8 @@ export default async function MarketsSettledPage() {
     <>
       <ProphTile
         surface="light"
+        glow="emerald"
+        gridPattern
         headline={t("headline")}
         tagline={t("tagline")}
       />

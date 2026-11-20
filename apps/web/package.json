@@ -5,7 +5,7 @@
   "type": "module",
   "description": "prophetica player-facing web app bootstrap.",
   "scripts": {
-    "dev": "next dev --webpack -p 3000",
+    "dev": "node ./scripts/dev.mjs",
     "build": "next build --webpack",
     "test:e2e:signup-referral": "playwright test --config playwright.signup-referral.config.ts tests/e2e/signup-referral.spec.ts",
     "test:e2e:journey": "playwright test --config playwright.journey.config.ts tests/e2e/journey-*.spec.ts",

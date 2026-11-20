@@ -10,10 +10,7 @@ export default function ApprovalsPage() {
   return (
     <RoleGate allow={["admin", "manager"]}>
       {(viewer) => (
-        <AdminShell
-          title={route.label}
-          description={route.summary}
-        >
+        <AdminShell title={route.label} description={route.summary}>
           {route.inDevelopment ? (
             <div
               role="status"

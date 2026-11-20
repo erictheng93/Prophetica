@@ -94,6 +94,8 @@ export default async function TopUpPage({ searchParams }: TopUpPageProps) {
 
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />
@@ -165,7 +167,7 @@ function ServiceAssistedTopup({
       aria-labelledby="topup-assistance-heading"
     >
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-8">
+        <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-8 shadow-proph-card">
           <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
             {t("mvpAssistance.label")}
           </div>
@@ -237,11 +239,11 @@ function BalanceBlock(props: BalanceBlockProps) {
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+          <article className="relative overflow-hidden rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
             <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
               {t("balance.currentLabel")}
             </div>
-            <div className="mt-2 font-display text-[28px] sm:text-[34px] md:text-[40px] lg:text-[56px] font-semibold leading-none tracking-[-0.28px]">
+            <div className="mt-2 font-display text-[28px] font-semibold leading-none tracking-[-0.28px] sm:text-[34px] md:text-[40px] lg:text-[56px]">
               {formatPoints(currentBalance)}
             </div>
             <div className="mt-3 font-text text-[14px] tracking-[-0.224px] text-proph-ink-muted-80">
@@ -254,7 +256,7 @@ function BalanceBlock(props: BalanceBlockProps) {
             ) : null}
           </article>
 
-          <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+          <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
             <div className="font-text text-[12px] uppercase leading-none tracking-[-0.12px] text-proph-ink-muted-48">
               {t("balance.monthlyLabel")}
             </div>
@@ -417,10 +419,10 @@ function ChannelSection({ t }: { t: TopupCopy }) {
               <li
                 key={key}
                 className={
-                  "flex flex-col rounded-proph-lg border p-6 " +
+                  "flex flex-col rounded-proph-xl border p-6 transition-all duration-200 " +
                   (disabled
-                    ? "border-proph-divider-soft bg-proph-canvas-parchment"
-                    : "border-proph-hairline bg-proph-canvas")
+                    ? "border-proph-divider-soft bg-proph-canvas-parchment opacity-70"
+                    : "border-proph-hairline/80 bg-proph-canvas shadow-proph-card hover:-translate-y-0.5 hover:border-proph-primary/40")
                 }
               >
                 <div className="flex items-baseline justify-between gap-3">
@@ -489,7 +491,7 @@ function ConfirmSection({ t, atLimit }: { t: TopupCopy; atLimit: boolean }) {
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-proph px-6 py-16 md:px-10">
-        <article className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-8">
+        <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-8 shadow-proph-card">
           <h2 className="font-display text-[28px] font-semibold leading-[1.14] tracking-[0.196px]">
             {t("confirm.heading")}
           </h2>

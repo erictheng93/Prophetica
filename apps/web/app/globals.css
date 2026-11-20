@@ -24,14 +24,76 @@
     letter-spacing: -0.374px;
   }
 
-  /* Display headlines default to SF Pro Display */
-  h1, h2, h3 {
+  /* Display headlines default to SF Pro Display with balanced wraps */
+  h1,
+  h2,
+  h3,
+  h4 {
     font-family: var(--proph-font-display);
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
   }
 
   /* Apple-tight link grammar — Action Blue, no underline by default */
   a {
     color: var(--proph-color-primary);
+  }
+
+  /* Themed browser surfaces (impeccable craft floor) */
+  ::selection {
+    background-color: rgba(212, 168, 87, 0.28);
+    color: inherit;
+  }
+
+  input,
+  textarea,
+  [contenteditable="true"] {
+    caret-color: var(--proph-gold-primary, #d4a857);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--proph-color-primary-focus, #0071e3);
+    outline-offset: 2px;
+  }
+
+  /* Numeric alignment for financial data and market odds */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Intentional motion sensitivity preserving instant feedback */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-ping,
+    .animate-spin,
+    .animate-pulse,
+    .proph-shimmer-sweep::after {
+      animation: none !important;
+    }
+    *,
+    ::before,
+    ::after {
+      transition-duration: 0.001s !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Custom luxury scrollbars */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(140, 109, 45, 0.35);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 168, 87, 0.55);
   }
 }
 
@@ -48,5 +110,62 @@
   .proph-frosted {
     backdrop-filter: var(--proph-backdrop-filter);
     -webkit-backdrop-filter: var(--proph-backdrop-filter);
+  }
+
+  /* Luxury Glass Panel */
+  .proph-glass-panel {
+    background-color: var(--proph-glass-bg);
+    border: 1px solid var(--proph-glass-border);
+    backdrop-filter: var(--proph-backdrop-filter);
+    -webkit-backdrop-filter: var(--proph-backdrop-filter);
+  }
+
+  /* Subtle ambient background grid */
+  /* impeccable-disable-next-line codex-grid-background -- technical chart & canvas measurement grid */
+  .proph-grid-pattern {
+    background-size: 32px 32px;
+    background-image:
+      linear-gradient(to right, rgba(120, 120, 128, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(120, 120, 128, 0.05) 1px, transparent 1px);
+  }
+
+  /* Gold Luxury Gradient Button */
+  .proph-gold-button {
+    background: linear-gradient(180deg, #f0d78c 0%, #d4a857 58%, #a68340 100%);
+    box-shadow: var(--proph-shadow-gold-cta);
+    color: #000000;
+  }
+
+  /* Shimmer animation */
+  @keyframes proph-shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .proph-shimmer-sweep {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .proph-shimmer-sweep::after {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0,
+      rgba(255, 255, 255, 0.12) 20%,
+      rgba(255, 255, 255, 0.25) 60%,
+      rgba(255, 255, 255, 0)
+    );
+    animation: proph-shimmer 2.4s infinite;
+    content: "";
   }
 }

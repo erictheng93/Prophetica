@@ -41,7 +41,10 @@ export async function SportsAuthCta() {
   return (
     <div className="flex items-center gap-2 sm:gap-3">
       <LanguageSwitcher />
-      <nav aria-label={t("account.ariaLabel")} className="flex items-center gap-2">
+      <nav
+        aria-label={t("account.ariaLabel")}
+        className="flex items-center gap-2"
+      >
         <a
           href="/auth/sign-in"
           className="font-text text-[14px] leading-[1.29] tracking-[0] text-[var(--sports-muted)] transition-colors hover:text-[#F0D78C]"
@@ -86,7 +89,10 @@ export async function getSportsFooterColumns() {
     {
       heading: t("compliance.heading"),
       links: [
-        { label: t("compliance.responsibleGaming"), href: "/responsible-gaming" },
+        {
+          label: t("compliance.responsibleGaming"),
+          href: "/responsible-gaming",
+        },
         { label: t("compliance.terms"), href: "/legal/terms" },
         { label: t("compliance.privacy"), href: "/legal/privacy" },
       ],

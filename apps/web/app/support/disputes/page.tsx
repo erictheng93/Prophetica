@@ -62,7 +62,9 @@ async function submitDisputeAction(formData: FormData) {
 
   const evidenceUrls = reason
     .split(/\s+/)
-    .filter((token) => token.startsWith("https://") || token.startsWith("http://"));
+    .filter(
+      (token) => token.startsWith("https://") || token.startsWith("http://"),
+    );
 
   await submitMarketDispute({
     marketId,
@@ -129,7 +131,7 @@ function CategoryGrid({ t }: { t: DisputesCopy }) {
           {categories.map((c) => (
             <li
               key={c.id}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
             >
               <div className="flex items-baseline justify-between gap-3">
                 <h3 className="font-display text-[21px] font-semibold tracking-[0.231px]">
@@ -167,7 +169,7 @@ function FlowTimeline({ t }: { t: DisputesCopy }) {
           {flow.map((step, i) => (
             <li
               key={step}
-              className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-5"
+              className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5"
             >
               <div className="flex items-baseline gap-3">
                 <span className="font-mono text-[12px] tabular-nums tracking-[-0.12px] text-proph-ink-muted-48">
@@ -196,7 +198,7 @@ function PrivacyCallout({ t }: { t: DisputesCopy }) {
   return (
     <section className="bg-proph-canvas-parchment">
       <div className="mx-auto max-w-proph px-6 py-12 md:px-10">
-        <article className="rounded-proph-lg border border-proph-primary/30 bg-proph-canvas p-6">
+        <article className="rounded-proph-xl border border-proph-primary/30 bg-proph-canvas p-8 shadow-sm">
           <h2 className="font-display text-[21px] font-semibold tracking-[0.231px]">
             {t("privacy.heading")}
           </h2>
@@ -327,7 +329,7 @@ function SubmissionForm({ t }: { t: DisputesCopy }) {
             </span>
           </label>
 
-          <label className="flex items-start gap-3 rounded-proph-md border border-proph-hairline bg-proph-canvas px-4 py-3 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+          <label className="flex items-start gap-3 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas px-4 py-3 shadow-sm font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
             <input
               type="checkbox"
               required
@@ -353,7 +355,7 @@ function SubmissionForm({ t }: { t: DisputesCopy }) {
             </p>
             <button
               type="submit"
-              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
+              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-proph-ink-muted-48"
             >
               {t("form.submit")}
             </button>
@@ -371,6 +373,8 @@ export default async function DisputesPage() {
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
         actions={

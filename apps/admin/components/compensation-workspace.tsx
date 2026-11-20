@@ -52,13 +52,19 @@ const statusLabels: Record<CompensationProposalStatus, string> = {
 
 const statusTone: Record<CompensationProposalStatus, string> = {
   proposed: "border-proph-primary bg-proph-surface-pearl text-proph-primary",
-  approved: "border-proph-divider-soft bg-proph-surface-pearl text-proph-ink-muted-80",
-  posting: "border-proph-divider-soft bg-proph-surface-pearl text-proph-ink-muted-80",
+  approved:
+    "border-proph-divider-soft bg-proph-surface-pearl text-proph-ink-muted-80",
+  posting:
+    "border-proph-divider-soft bg-proph-surface-pearl text-proph-ink-muted-80",
   posted: "border-proph-feedback-success bg-proph-surface-pearl text-proph-ink",
-  posting_failed: "border-proph-feedback-error bg-proph-surface-pearl text-proph-ink",
-  posting_unknown: "border-proph-feedback-warning bg-proph-surface-pearl text-proph-ink",
-  rejected: "border-proph-divider-soft bg-proph-surface-pearl text-proph-ink-muted-48",
-  cancelled: "border-proph-divider-soft bg-proph-surface-pearl text-proph-ink-muted-48",
+  posting_failed:
+    "border-proph-feedback-error bg-proph-surface-pearl text-proph-ink",
+  posting_unknown:
+    "border-proph-feedback-warning bg-proph-surface-pearl text-proph-ink",
+  rejected:
+    "border-proph-divider-soft bg-proph-surface-pearl text-proph-ink-muted-48",
+  cancelled:
+    "border-proph-divider-soft bg-proph-surface-pearl text-proph-ink-muted-48",
 };
 
 const stuckStatuses: CompensationProposalStatus[] = [
@@ -87,7 +93,9 @@ export function CompensationWorkspace({
     stuck: false,
     history: false,
   });
-  const [queueErrors, setQueueErrors] = useState<Record<QueueKey, string | null>>({
+  const [queueErrors, setQueueErrors] = useState<
+    Record<QueueKey, string | null>
+  >({
     proposed: null,
     stuck: null,
     history: null,
@@ -98,7 +106,10 @@ export function CompensationWorkspace({
 
   const canRetry = viewerRole === "admin";
   const canUseWorkspace = viewerRole === "admin" || viewerRole === "manager";
-  const amountMinorUnits = useMemo(() => parseAmountToMinorUnits(form.amount), [form.amount]);
+  const amountMinorUnits = useMemo(
+    () => parseAmountToMinorUnits(form.amount),
+    [form.amount],
+  );
 
   useEffect(() => {
     void refreshAllQueues();
@@ -128,8 +139,12 @@ export function CompensationWorkspace({
     setQueueLoading((current) => ({ ...current, [key]: true }));
     setQueueErrors((current) => ({ ...current, [key]: null }));
     try {
-      const rows = await Promise.all(statuses.map((status) => fetchProposals(status)));
-      setRows(rows.flat().filter((proposal) => proposal.status !== "cancelled"));
+      const rows = await Promise.all(
+        statuses.map((status) => fetchProposals(status)),
+      );
+      setRows(
+        rows.flat().filter((proposal) => proposal.status !== "cancelled"),
+      );
     } catch (error) {
       setRows([]);
       setQueueErrors((current) => ({
@@ -192,9 +207,12 @@ export function CompensationWorkspace({
         setSubmitError(await compensationErrorMessage(response));
         return;
       }
-      const body = (await response.json()) as CompensationProposalCreateResponse;
+      const body =
+        (await response.json()) as CompensationProposalCreateResponse;
       setSubmitResult(body);
-      setMutationMessage(`已建立補償提案 ${body.proposal.proposal_id}，進入待審佇列。`);
+      setMutationMessage(
+        `已建立補償提案 ${body.proposal.proposal_id}，進入待審佇列。`,
+      );
       setForm(emptyForm);
       await refreshProposed();
     } catch {
@@ -286,52 +304,64 @@ export function CompensationWorkspace({
         </div>
       )}
 
-      <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
+      <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+            <h2 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
               補償提案
             </h2>
-            <p className="mt-2 max-w-3xl text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+            <p className="mt-2 max-w-3xl font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
               建立客服補償提案；核准、入帳與 retry 仍由後端狀態機守門。
             </p>
           </div>
           <StatusBadge status="proposed" />
         </div>
-        <form className="mt-5 grid gap-4 md:grid-cols-2" onSubmit={submitProposal}>
+        <form
+          className="mt-5 grid gap-4 md:grid-cols-2"
+          onSubmit={submitProposal}
+        >
           <TextField
             label="subject_user_id"
             value={form.subjectUserId}
-            onChange={(value) => setForm((current) => ({ ...current, subjectUserId: value }))}
+            onChange={(value) =>
+              setForm((current) => ({ ...current, subjectUserId: value }))
+            }
             disabled={submitLoading}
             placeholder="user_123"
           />
           <TextField
             label="ticket"
             value={form.ticketId}
-            onChange={(value) => setForm((current) => ({ ...current, ticketId: value }))}
+            onChange={(value) =>
+              setForm((current) => ({ ...current, ticketId: value }))
+            }
             disabled={submitLoading}
             placeholder="OPS-1042"
           />
           <TextField
             label="amount"
             value={form.amount}
-            onChange={(value) => setForm((current) => ({ ...current, amount: value }))}
+            onChange={(value) =>
+              setForm((current) => ({ ...current, amount: value }))
+            }
             disabled={submitLoading}
             inputMode="decimal"
             placeholder="100.00"
           />
           <label className="block md:col-span-2">
-            <span className="text-[13px] font-semibold text-proph-ink-muted-80">
+            <span className="font-text text-[13px] font-semibold text-proph-ink-muted-80">
               reason
             </span>
             <textarea
               value={form.reason}
               onChange={(event) =>
-                setForm((current) => ({ ...current, reason: event.target.value }))
+                setForm((current) => ({
+                  ...current,
+                  reason: event.target.value,
+                }))
               }
               disabled={submitLoading}
-              className="mt-2 min-h-24 w-full rounded-proph-sm border border-proph-hairline bg-proph-surface-pearl px-3 py-2 text-[14px] leading-[1.43] tracking-[-0.224px] outline-none focus:border-proph-primary-focus disabled:opacity-60"
+              className="mt-2 min-h-24 w-full rounded-proph-md border border-proph-hairline/80 bg-proph-canvas px-3.5 py-2.5 font-text text-[14px] leading-[1.43] tracking-[-0.224px] outline-none transition-colors focus:border-proph-primary focus:ring-1 focus:ring-proph-primary disabled:opacity-60"
               placeholder="補償原因、客服處理紀錄與依據"
             />
           </label>
@@ -339,7 +369,7 @@ export function CompensationWorkspace({
             <button
               type="submit"
               disabled={submitLoading}
-              className="inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-11 items-center justify-center rounded-proph-pill bg-proph-primary px-5 font-text text-[14px] font-semibold leading-[1.29] tracking-[-0.224px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitLoading ? "提交中" : "建立提案"}
             </button>
@@ -348,7 +378,8 @@ export function CompensationWorkspace({
         {submitError && <ErrorNotice message={submitError} />}
         {submitResult && (
           <p className="mt-4 font-mono text-[12px] text-proph-ink-muted-80">
-            audit: {submitResult.audit.action} / {submitResult.audit.proposer_kind}
+            audit: {submitResult.audit.action} /{" "}
+            {submitResult.audit.proposer_kind}
           </p>
         )}
       </section>
@@ -378,7 +409,9 @@ export function CompensationWorkspace({
                     onClick={() => void reviewProposal(proposal, "approved")}
                     className="inline-flex h-10 items-center rounded-proph-pill bg-proph-primary px-4 text-[13px] font-semibold text-proph-on-primary disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {reviewLoading === `${proposal.proposal_id}:approved` ? "核准中" : "approve"}
+                    {reviewLoading === `${proposal.proposal_id}:approved`
+                      ? "核准中"
+                      : "approve"}
                   </button>
                   <button
                     type="button"
@@ -386,7 +419,9 @@ export function CompensationWorkspace({
                     onClick={() => void reviewProposal(proposal, "rejected")}
                     className="inline-flex h-10 items-center rounded-proph-pill border border-proph-hairline bg-proph-surface-pearl px-4 text-[13px] font-semibold text-proph-ink disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {reviewLoading === `${proposal.proposal_id}:rejected` ? "駁回中" : "reject"}
+                    {reviewLoading === `${proposal.proposal_id}:rejected`
+                      ? "駁回中"
+                      : "reject"}
                   </button>
                 </div>
               </ProposalCard>
@@ -403,7 +438,11 @@ export function CompensationWorkspace({
           itemCount={stuck.length}
         >
           {stuck.map((proposal) => (
-            <ProposalCard key={proposal.proposal_id} proposal={proposal} showPostingDetails>
+            <ProposalCard
+              key={proposal.proposal_id}
+              proposal={proposal}
+              showPostingDetails
+            >
               {canRetry ? (
                 <button
                   type="button"
@@ -411,7 +450,9 @@ export function CompensationWorkspace({
                   onClick={() => void retryPosting(proposal)}
                   className="inline-flex h-10 items-center rounded-proph-pill bg-proph-ink px-4 text-[13px] font-semibold text-proph-on-dark disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {retryLoading === proposal.proposal_id ? "retry 中" : "retry posting"}
+                  {retryLoading === proposal.proposal_id
+                    ? "retry 中"
+                    : "retry posting"}
                 </button>
               ) : (
                 <p className="text-[13px] text-proph-ink-muted-80">
@@ -433,7 +474,11 @@ export function CompensationWorkspace({
       >
         <div className="grid gap-3 lg:grid-cols-2">
           {history.map((proposal) => (
-            <ProposalCard key={proposal.proposal_id} proposal={proposal} compact />
+            <ProposalCard
+              key={proposal.proposal_id}
+              proposal={proposal}
+              compact
+            />
           ))}
         </div>
       </QueuePanel>
@@ -459,17 +504,21 @@ function QueuePanel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6">
-      <h2 className="text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
+    <section className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8">
+      <h2 className="font-display text-[21px] font-semibold leading-[1.19] tracking-[0.231px]">
         {title}
       </h2>
-      <p className="mt-2 text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
+      <p className="mt-2 font-text text-[14px] leading-[1.43] tracking-[-0.224px] text-proph-ink-muted-80">
         {description}
       </p>
-      {loading && <p className="mt-4 text-[14px] text-proph-ink-muted-80">載入中...</p>}
+      {loading && (
+        <p className="mt-4 font-text text-[14px] text-proph-ink-muted-80">
+          載入中...
+        </p>
+      )}
       {error && <ErrorNotice message={error} />}
       {!loading && !error && itemCount === 0 ? (
-        <p className="mt-4 rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-4 text-[14px] text-proph-ink-muted-80">
+        <p className="mt-4 rounded-proph-md border border-proph-divider-soft bg-proph-surface-pearl p-4 font-text text-[14px] text-proph-ink-muted-80">
           {empty}
         </p>
       ) : null}
@@ -492,7 +541,7 @@ function ProposalCard({
   showPostingDetails?: boolean;
 }) {
   return (
-    <article className="rounded-proph-sm border border-proph-divider-soft bg-proph-surface-pearl p-4">
+    <article className="rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="font-mono text-[14px] font-semibold text-proph-ink">
@@ -505,15 +554,27 @@ function ProposalCard({
         <StatusBadge status={proposal.status} />
       </div>
       <dl className="mt-4 grid gap-2 text-[13px] leading-[1.43] text-proph-ink-muted-80">
-        <MetaRow label="amount" value={formatMinorUnits(proposal.amount_minor_units)} />
+        <MetaRow
+          label="amount"
+          value={formatMinorUnits(proposal.amount_minor_units)}
+        />
         {!compact && <MetaRow label="reason" value={proposal.reason} />}
         <MetaRow label="proposer" value={proposal.proposer_kind} />
-        <MetaRow label="attempts" value={String(proposal.posting_attempt_count)} />
+        <MetaRow
+          label="attempts"
+          value={String(proposal.posting_attempt_count)}
+        />
         {showPostingDetails && (
           <>
             <MetaRow label="approved_at" value={proposal.approved_at ?? "—"} />
-            <MetaRow label="last_error" value={proposal.last_posting_error ?? "—"} />
-            <MetaRow label="ledger_key" value={proposal.ledger_idempotency_key ?? "—"} />
+            <MetaRow
+              label="last_error"
+              value={proposal.last_posting_error ?? "—"}
+            />
+            <MetaRow
+              label="ledger_key"
+              value={proposal.ledger_idempotency_key ?? "—"}
+            />
           </>
         )}
       </dl>

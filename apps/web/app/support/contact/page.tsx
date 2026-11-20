@@ -42,7 +42,7 @@ function ChannelCards({ t }: { t: ContactCopy }) {
           {channels.map((c) => (
             <li
               key={c.key}
-              className="flex flex-col rounded-proph-lg border border-proph-hairline bg-proph-canvas p-6"
+              className="flex flex-col rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card transition-all duration-200 hover:-translate-y-1"
             >
               <div className="font-text text-[12px] uppercase tracking-[-0.12px] text-proph-ink-muted-48">
                 {t(`channels.items.${c.key}.bestFor`)}
@@ -177,6 +177,8 @@ export default async function ContactPage() {
     <>
       <ProphTile
         surface="light"
+        glow="gold"
+        gridPattern
         headline={t("hero.headline")}
         tagline={t("hero.tagline")}
       />

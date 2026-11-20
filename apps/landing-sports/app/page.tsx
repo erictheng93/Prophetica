@@ -37,8 +37,7 @@ const blackGoldLuxuryDesign = {
 } as const;
 
 const goldButtonStyle: CSSProperties = {
-  background:
-    "linear-gradient(180deg, #F0D78C 0%, #D4A857 58%, #A68340 100%)",
+  background: "linear-gradient(180deg, #F0D78C 0%, #D4A857 58%, #A68340 100%)",
   boxShadow:
     "inset 0 1px 0 rgba(255, 240, 200, 0.72), inset 0 -1px 0 rgba(80, 50, 0, 0.5), 0 0 32px rgba(212, 168, 87, 0.34)",
   color: blackGoldLuxuryDesign.stageBlack,
@@ -62,7 +61,7 @@ function GoldPrimaryCta({
 }) {
   return (
     <TrackedSignupButton
-      className="border-0 px-[28px] py-[14px] text-[16px] font-semibold leading-none transition hover:scale-[1.02]"
+      className="border-0 px-[28px] py-[14px] text-[16px] font-semibold leading-none transition-all duration-200 hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
       label={label}
       placement={placement}
       style={goldButtonStyle}
@@ -80,7 +79,7 @@ function GoldGhostLink({
 }) {
   return (
     <ProphLinkButton
-      className={ghostGoldClass}
+      className={`${ghostGoldClass} transition-all duration-150 active:scale-[0.98]`}
       href={href}
       variant="secondary-pill-on-dark"
     >
@@ -98,7 +97,7 @@ function BlackGoldTileMedia({
 }) {
   return (
     <div
-      className="relative isolate flex h-64 w-full max-w-3xl items-center justify-center overflow-hidden rounded-[24px] border border-[var(--sports-border)] bg-[var(--sports-panel)]"
+      className="relative isolate flex h-64 w-full max-w-3xl items-center justify-center overflow-hidden rounded-[24px] border border-[var(--sports-border)] bg-[var(--sports-panel)] transition-all duration-300 hover:border-[#D4A857]/40"
       style={{
         boxShadow:
           "inset 0 1px 0 rgba(240, 215, 140, 0.28), inset 0 -22px 54px rgba(0, 0, 0, 0.72), 0 24px 70px rgba(0, 0, 0, 0.48), 0 0 34px rgba(212, 168, 87, 0.16)",

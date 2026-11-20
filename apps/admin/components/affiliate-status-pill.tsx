@@ -24,5 +24,7 @@ interface AffiliateStatusPillProps {
 }
 
 export function AffiliateStatusPill({ status }: AffiliateStatusPillProps) {
-  return <StatusPill tone={toneByStatus[status]}>{labelByStatus[status]}</StatusPill>;
+  return (
+    <StatusPill tone={toneByStatus[status]}>{labelByStatus[status]}</StatusPill>
+  );
 }

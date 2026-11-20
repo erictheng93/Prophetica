@@ -120,7 +120,9 @@ export default function AdminLoginEventsPage({
                       key={event.id}
                       className="grid gap-3 px-4 py-4 text-[13px] leading-[1.38] tracking-[-0.12px] lg:grid-cols-[1.1fr_0.8fr_1fr_1fr_1fr_1.3fr]"
                     >
-                      <span>{formatEpoch(event.occurred_at_epoch_seconds)}</span>
+                      <span>
+                        {formatEpoch(event.occurred_at_epoch_seconds)}
+                      </span>
                       <span>{event.event_type}</span>
                       <span>
                         {event.principal_type}
@@ -130,7 +132,9 @@ export default function AdminLoginEventsPage({
                       <span>{event.ip_address || "未知"}</span>
                       <span>
                         {adminLoginDeviceLabel(event)}
-                        {event.browser_name ? ` / ${event.browser_name}` : " / 未知"}
+                        {event.browser_name
+                          ? ` / ${event.browser_name}`
+                          : " / 未知"}
                       </span>
                     </li>
                   ))}
