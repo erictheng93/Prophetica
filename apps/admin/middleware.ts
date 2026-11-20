@@ -1,8 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { requiresCloudflareAccess } from "@/lib/cloudflare-access-policy";
-import { hasTrustedProductionAccessSignal } from "@/lib/production-access-gate";
-import { canAccess, defaultLandingFor } from "@/lib/rbac";
-import { verifyAdminSessionToken } from "@/lib/session-crypto";
+import { NextResponse, type NextRequest } from "next/server.js";
+import { requiresCloudflareAccess } from "./lib/cloudflare-access-policy.js";
+import { hasTrustedProductionAccessSignal } from "./lib/production-access-gate.js";
+import { canAccess, defaultLandingFor } from "./lib/rbac.js";
+import { verifyAdminSessionToken } from "./lib/session-crypto.js";
 
 const SESSION_COOKIE_NAME = "proph_admin_session";
 
@@ -42,7 +42,7 @@ function isPublic(pathname: string): boolean {
   );
 }
 
-export async function proxy(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (isPublic(pathname)) {
@@ -97,3 +97,7 @@ export async function proxy(req: NextRequest) {
 export const config = {
   matcher: ["/((?!_next/static|_next/image).*)"],
 };
+
+export const proxy = middleware;
+export default middleware;
+
