@@ -216,17 +216,17 @@ function ModeToggle({
         <div
           role="tablist"
           aria-label={t("modeToggle.ariaLabel")}
-          className="flex gap-2"
+          className="inline-flex rounded-proph-pill border border-proph-hairline/80 bg-proph-canvas p-1 shadow-sm"
         >
           <a
             role="tab"
             aria-selected={mode === "signin"}
             href={authPath({ returnTo })}
             className={
-              "inline-flex items-center rounded-proph-pill px-5 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors " +
+              "inline-flex items-center rounded-proph-pill px-6 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] transition-all duration-150 " +
               (mode === "signin"
-                ? "bg-proph-primary text-proph-on-primary"
-                : "border border-proph-hairline bg-proph-canvas text-proph-ink-muted-80 hover:border-proph-primary hover:text-proph-ink")
+                ? "bg-proph-primary text-proph-on-primary shadow-proph-button"
+                : "text-proph-ink-muted-80 hover:text-proph-ink")
             }
           >
             {t("modeToggle.signin")}
@@ -236,10 +236,10 @@ function ModeToggle({
             aria-selected={mode === "signup"}
             href={authPath({ mode: "signup", returnTo })}
             className={
-              "inline-flex items-center rounded-proph-pill px-5 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] transition-colors " +
+              "inline-flex items-center rounded-proph-pill px-6 py-2 font-text text-[14px] leading-[1.29] tracking-[-0.224px] transition-all duration-150 " +
               (mode === "signup"
-                ? "bg-proph-primary text-proph-on-primary"
-                : "border border-proph-hairline bg-proph-canvas text-proph-ink-muted-80 hover:border-proph-primary hover:text-proph-ink")
+                ? "bg-proph-primary text-proph-on-primary shadow-proph-button"
+                : "text-proph-ink-muted-80 hover:text-proph-ink")
             }
           >
             {t("modeToggle.signup")}
@@ -265,7 +265,10 @@ function SigninForm({
   return (
     <section className="bg-proph-canvas">
       <div className="mx-auto max-w-2xl px-6 py-12 md:px-10">
-        <form action={submitSigninAction} className="space-y-6">
+        <form
+          action={submitSigninAction}
+          className="space-y-6 rounded-proph-xl border border-proph-hairline/80 bg-proph-canvas p-6 shadow-proph-card md:p-8"
+        >
           <input type="hidden" name="return_to" value={returnTo} />
           {status && statusBannerId ? (
             <SigninStatusBanner id={statusBannerId} t={t} status={status} />
@@ -332,7 +335,7 @@ function SigninForm({
           <div className="flex flex-col items-start gap-3 border-t border-proph-divider-soft pt-6 md:flex-row md:items-center md:justify-between">
             <button
               type="submit"
-              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary transition-colors hover:bg-proph-primary-focus"
+              className="inline-flex select-none items-center justify-center rounded-proph-pill bg-proph-primary px-[22px] py-[11px] font-text text-[17px] leading-[1.47] tracking-[-0.374px] text-proph-on-primary shadow-proph-button transition-all duration-150 hover:bg-proph-primary-focus active:scale-[0.98]"
             >
               {t("signin.submit")}
             </button>
